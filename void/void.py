@@ -4,7 +4,7 @@ from redbot.core.bot import Red
 from redbot.core.config import Config
 import asyncio
 
-class DeleteMessagesCog(commands.Cog):
+class Void(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.task = bot.loop.create_task(self.delete_messages_task())
@@ -26,4 +26,4 @@ class DeleteMessagesCog(commands.Cog):
         await ctx.send("Deleting messages in channel every 24 hours.")
 
 def setup(bot):
-    bot.add_cog(DeleteMessagesCog(bot))
+    bot.add_cog(Void(bot))
