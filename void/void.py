@@ -1,8 +1,9 @@
 import discord
+import asyncio
 from redbot.core import commands
 from redbot.core.bot import Red
 from redbot.core.config import Config
-import asyncio
+
 
 class Void(commands.Cog):
     def __init__(self, bot):
