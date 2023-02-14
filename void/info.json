@@ -1,0 +1,14 @@
+{
+	"author": [
+		"kirin"
+	],
+	"description": "Delete messages in a channel every 24hrs.",
+    "install_msg": "Thanks for installing, have fun.",
+	"short": "void",
+	"tags": [
+		"utility",
+        "fun"
+	],
+	"requirements": [],
+	"type": "COG"
+}
