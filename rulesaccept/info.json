@@ -1,0 +1,15 @@
+{
+    "author": [
+      "kirin"
+    ],
+    "install_msg": "Rulesaccept cog loaded. Use `[p]sendrules` to send the rules acceptance button.",
+    "name": "Rulesaccept",
+    "short": "Rules acceptance with button and modal.",
+    "description": "Lets users accept rules via a button and modal, and assigns a role upon acceptance.",
+    "requirements": [],
+    "tags": ["rules", "accept", "button", "modal", "role"],
+    "min_bot_version": "3.5.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG"
+  }
