@@ -173,5 +173,42 @@ class CustomRoleColor(commands.Cog):
         except Exception as e:
             await ctx.send(f"An error occurred: {e}")
 
+    @commands.command()
+    @commands.guild_only()
+    async def myrolementionable(self, ctx, state: str):
+        """
+        Toggle whether your assigned role is mentionable.
+        Usage: [p]myrolementionable on
+               [p]myrolementionable off
+        """
+        assignments = await self.config.guild(ctx.guild).assignments()
+        role_id = assignments.get(str(ctx.author.id))
+        if not role_id:
+            await ctx.send("You don't have a role assigned for mention management.")
+            return
+
+        role = ctx.guild.get_role(role_id)
+        if not role:
+            await ctx.send("The assigned role no longer exists.")
+            return
+
+        if role >= ctx.guild.me.top_role:
+            await ctx.send("I can't edit that role (it's higher than my top role).")
+            return
+
+        state = state.lower()
+        if state not in ("on", "off", "true", "false", "yes", "no"):
+            await ctx.send("Please specify `on` or `off`.")
+            return
+
+        mentionable = state in ("on", "true", "yes")
+        try:
+            await role.edit(mentionable=mentionable, reason=f"Changed by {ctx.author}")
+            await ctx.send(f"{role.mention} is now {'mentionable' if mentionable else 'not mentionable'}.")
+        except discord.Forbidden:
+            await ctx.send("I don't have permission to edit that role.")
+        except Exception as e:
+            await ctx.send(f"An error occurred: {e}")
+
 def setup(bot):
     bot.add_cog(CustomRoleColor())
