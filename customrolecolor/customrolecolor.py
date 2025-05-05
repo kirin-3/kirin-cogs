@@ -3,7 +3,7 @@ import discord
 
 class CustomRoleColor(commands.Cog):
     """
-    Allow admins to assign a role to a user, and let that user change the color and name of that role.
+    Allow admins to assign a role to a user, and let that user change the color, name, and icon of that role.
     """
 
     def __init__(self):
@@ -17,16 +17,15 @@ class CustomRoleColor(commands.Cog):
     @checks.admin_or_permissions(manage_roles=True)
     async def assignrole(self, ctx, member: discord.Member, role: discord.Role):
         """
-        Assign a role to a user for color and name management.
+        Assign a role to a user for color, name, and icon management.
         Usage: [p]assignrole @user @role
         """
-        # Optionally, check if the bot can manage the role
         if role >= ctx.guild.me.top_role:
             await ctx.send("I can't manage that role (it's higher than my top role).")
             return
 
         await self.config.guild(ctx.guild).assignments.set_raw(str(member.id), value=role.id)
-        await ctx.send(f"{member.mention} can now manage the color and name of {role.mention}.")
+        await ctx.send(f"{member.mention} can now manage the color, name, and icon of {role.mention}.")
 
     @commands.command()
     @commands.guild_only()
@@ -46,7 +45,6 @@ class CustomRoleColor(commands.Cog):
             await ctx.send("The assigned role no longer exists.")
             return
 
-        # Validate color input
         if not color.startswith("#") or len(color) != 7:
             await ctx.send("Please provide a valid hex color (e.g., #ff0000).")
             return
@@ -57,7 +55,6 @@ class CustomRoleColor(commands.Cog):
             await ctx.send("Invalid hex color.")
             return
 
-        # Check bot permissions and role hierarchy
         if role >= ctx.guild.me.top_role:
             await ctx.send("I can't edit that role (it's higher than my top role).")
             return
@@ -88,7 +85,6 @@ class CustomRoleColor(commands.Cog):
             await ctx.send("The assigned role no longer exists.")
             return
 
-        # Check bot permissions and role hierarchy
         if role >= ctx.guild.me.top_role:
             await ctx.send("I can't edit that role (it's higher than my top role).")
             return
@@ -98,6 +94,52 @@ class CustomRoleColor(commands.Cog):
             await ctx.send(f"Changed name of your role to **{new_name}**.")
         except discord.Forbidden:
             await ctx.send("I don't have permission to edit that role.")
+        except Exception as e:
+            await ctx.send(f"An error occurred: {e}")
+
+    @commands.command()
+    @commands.guild_only()
+    async def myroleicon(self, ctx):
+        """
+        Change the icon of your assigned role.
+        Usage: [p]myroleicon (attach an image)
+        """
+        assignments = await self.config.guild(ctx.guild).assignments()
+        role_id = assignments.get(str(ctx.author.id))
+        if not role_id:
+            await ctx.send("You don't have a role assigned for icon management.")
+            return
+
+        role = ctx.guild.get_role(role_id)
+        if not role:
+            await ctx.send("The assigned role no longer exists.")
+            return
+
+        if role >= ctx.guild.me.top_role:
+            await ctx.send("I can't edit that role (it's higher than my top role).")
+            return
+
+        if not ctx.message.attachments:
+            await ctx.send("Please attach an image to use as the role icon.")
+            return
+
+        attachment = ctx.message.attachments[0]
+        if not attachment.filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif")):
+            await ctx.send("The icon must be a PNG, JPG, or GIF image.")
+            return
+
+        if attachment.size > 256 * 1024:
+            await ctx.send("The image must be under 256 KB.")
+            return
+
+        try:
+            image_bytes = await attachment.read()
+            await role.edit(icon=image_bytes, reason=f"Changed by {ctx.author}")
+            await ctx.send(f"Changed icon for {role.mention}.")
+        except discord.Forbidden:
+            await ctx.send("I don't have permission to edit that role.")
+        except discord.HTTPException as e:
+            await ctx.send(f"Failed to set icon: {e}")
         except Exception as e:
             await ctx.send(f"An error occurred: {e}")
 
