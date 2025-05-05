@@ -1,5 +1,6 @@
 from redbot.core import commands, Config, checks
 import discord
+import inspect
 
 class CustomRoleColor(commands.Cog):
     """
@@ -102,7 +103,7 @@ class CustomRoleColor(commands.Cog):
     async def myroleicon(self, ctx):
         """
         Change the icon of your assigned role.
-        Usage: [p]myroleicon (attach an image)
+        Usage: [p]myroleicon (attach a PNG or JPEG image)
         """
         assignments = await self.config.guild(ctx.guild).assignments()
         role_id = assignments.get(str(ctx.author.id))
@@ -119,22 +120,31 @@ class CustomRoleColor(commands.Cog):
             await ctx.send("I can't edit that role (it's higher than my top role).")
             return
 
+        if "ROLE_ICONS" not in ctx.guild.features:
+            await ctx.send("This server does not have the ROLE_ICONS feature (requires Level 2 boost).")
+            return
+
         if not ctx.message.attachments:
-            await ctx.send("Please attach an image to use as the role icon.")
+            await ctx.send("Please attach a PNG or JPEG image to use as the role icon.")
             return
 
         attachment = ctx.message.attachments[0]
-        if not attachment.filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif")):
-            await ctx.send("The icon must be a PNG, JPG, or GIF image.")
+        if not attachment.filename.lower().endswith((".png", ".jpg", ".jpeg")):
+            await ctx.send("The icon must be a PNG or JPEG image.")
             return
 
         if attachment.size > 256 * 1024:
             await ctx.send("The image must be under 256 KB.")
             return
 
+        # Check if 'display_icon' is a valid argument for role.edit
+        if "display_icon" not in inspect.signature(role.edit).parameters:
+            await ctx.send("Role icons are not supported on this version of Redbot/discord.py.")
+            return
+
         try:
             image_bytes = await attachment.read()
-            await role.edit(icon=image_bytes, reason=f"Changed by {ctx.author}")
+            await role.edit(display_icon=image_bytes, reason=f"Changed by {ctx.author}")
             await ctx.send(f"Changed icon for {role.mention}.")
         except discord.Forbidden:
             await ctx.send("I don't have permission to edit that role.")
