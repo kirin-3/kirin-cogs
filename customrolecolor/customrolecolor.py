@@ -100,10 +100,12 @@ class CustomRoleColor(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
-    async def myroleicon(self, ctx):
+    async def myroleicon(self, ctx, emoji: str = None):
         """
         Change the icon of your assigned role.
-        Usage: [p]myroleicon (attach a PNG or JPEG image)
+        Usage:
+          [p]myroleicon :emoji:         (set icon to a unicode emoji)
+          [p]myroleicon                 (attach a PNG or JPEG image)
         """
         assignments = await self.config.guild(ctx.guild).assignments()
         role_id = assignments.get(str(ctx.author.id))
@@ -124,8 +126,31 @@ class CustomRoleColor(commands.Cog):
             await ctx.send("This server does not have the ROLE_ICONS feature (requires Level 2 boost).")
             return
 
+        # Check if 'display_icon' is a valid argument for role.edit
+        if "display_icon" not in inspect.signature(role.edit).parameters:
+            await ctx.send("Role icons are not supported on this version of Redbot/discord.py.")
+            return
+
+        # If an emoji is provided, use it as the icon
+        if emoji:
+            # Only allow unicode emoji, not custom Discord emoji
+            if emoji.startswith("<:") or emoji.startswith("<a:"):
+                await ctx.send("Only unicode emoji are supported as role icons, not custom Discord emoji.")
+                return
+            try:
+                await role.edit(display_icon=emoji, reason=f"Changed by {ctx.author}")
+                await ctx.send(f"Changed icon for {role.mention} to {emoji}")
+            except discord.Forbidden:
+                await ctx.send("I don't have permission to edit that role.")
+            except discord.HTTPException as e:
+                await ctx.send(f"Failed to set icon: {e}")
+            except Exception as e:
+                await ctx.send(f"An error occurred: {e}")
+            return
+
+        # Otherwise, check for an image attachment
         if not ctx.message.attachments:
-            await ctx.send("Please attach a PNG or JPEG image to use as the role icon.")
+            await ctx.send("Please attach a PNG or JPEG image, or provide a unicode emoji as an argument.")
             return
 
         attachment = ctx.message.attachments[0]
@@ -135,11 +160,6 @@ class CustomRoleColor(commands.Cog):
 
         if attachment.size > 256 * 1024:
             await ctx.send("The image must be under 256 KB.")
-            return
-
-        # Check if 'display_icon' is a valid argument for role.edit
-        if "display_icon" not in inspect.signature(role.edit).parameters:
-            await ctx.send("Role icons are not supported on this version of Redbot/discord.py.")
             return
 
         try:
