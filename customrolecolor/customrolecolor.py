@@ -3,7 +3,7 @@ import discord
 
 class CustomRoleColor(commands.Cog):
     """
-    Allow admins to assign a role to a user, and let that user change the color of that role.
+    Allow admins to assign a role to a user, and let that user change the color and name of that role.
     """
 
     def __init__(self):
@@ -17,7 +17,7 @@ class CustomRoleColor(commands.Cog):
     @checks.admin_or_permissions(manage_roles=True)
     async def assignrole(self, ctx, member: discord.Member, role: discord.Role):
         """
-        Assign a role to a user for color management.
+        Assign a role to a user for color and name management.
         Usage: [p]assignrole @user @role
         """
         # Optionally, check if the bot can manage the role
@@ -26,7 +26,7 @@ class CustomRoleColor(commands.Cog):
             return
 
         await self.config.guild(ctx.guild).assignments.set_raw(str(member.id), value=role.id)
-        await ctx.send(f"{member.mention} can now manage the color of {role.mention}.")
+        await ctx.send(f"{member.mention} can now manage the color and name of {role.mention}.")
 
     @commands.command()
     @commands.guild_only()
@@ -65,6 +65,37 @@ class CustomRoleColor(commands.Cog):
         try:
             await role.edit(color=new_color, reason=f"Changed by {ctx.author}")
             await ctx.send(f"Changed color of {role.mention} to {color}.")
+        except discord.Forbidden:
+            await ctx.send("I don't have permission to edit that role.")
+        except Exception as e:
+            await ctx.send(f"An error occurred: {e}")
+
+    @commands.command()
+    @commands.guild_only()
+    async def myrolename(self, ctx, *, new_name: str):
+        """
+        Change the name of your assigned role.
+        Usage: [p]myrolename New Role Name
+        """
+        assignments = await self.config.guild(ctx.guild).assignments()
+        role_id = assignments.get(str(ctx.author.id))
+        if not role_id:
+            await ctx.send("You don't have a role assigned for name management.")
+            return
+
+        role = ctx.guild.get_role(role_id)
+        if not role:
+            await ctx.send("The assigned role no longer exists.")
+            return
+
+        # Check bot permissions and role hierarchy
+        if role >= ctx.guild.me.top_role:
+            await ctx.send("I can't edit that role (it's higher than my top role).")
+            return
+
+        try:
+            await role.edit(name=new_name, reason=f"Changed by {ctx.author}")
+            await ctx.send(f"Changed name of your role to **{new_name}**.")
         except discord.Forbidden:
             await ctx.send("I don't have permission to edit that role.")
         except Exception as e:
