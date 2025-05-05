@@ -1,0 +1,11 @@
+{
+    "name": "customrolecolor",
+    "short": "Custom Role Color Helper",
+    "description": "Custom Role Color Helper.",
+    "author": ["kirin"],
+    "version": "1.0.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "license": "MIT"
+  }
