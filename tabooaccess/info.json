@@ -1,0 +1,15 @@
+{
+    "author": [
+      "kirin"
+    ],
+    "install_msg": "tabooaccess cog loaded. Use `[p]sendrules` to send the tabooacess acceptance button.",
+    "name": "tabooacess",
+    "short": "Taboo access control with button and modal.",
+    "description": "Manages access to taboo content through a button and modal system, assigning appropriate roles upon acceptance.",
+    "requirements": [],
+    "tags": ["taboo", "access", "button", "modal", "role", "nsfw"],
+    "min_bot_version": "3.5.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG"
+  }
