@@ -14,7 +14,7 @@ class TabooAccess(commands.Cog):
         """Send the taboo access control buttons."""
         view = TabooAccessView()
         await ctx.send(
-            "Click the button below when you understand the rules and ready.",
+            "Click the button below to manage your taboo content access.",
             view=view
         )
 
@@ -66,12 +66,15 @@ class LetMeOutButton(discord.ui.Button):
             )
 
 class TabooAccessModal(discord.ui.Modal, title="Taboo Access Confirmation"):
-    answer = discord.ui.TextInput(
-        label="Type 'yes' or 'i agree' to confirm",
-        placeholder="yes",
-        required=True,
-        max_length=10
-    )
+    def __init__(self):
+        super().__init__()
+        self.answer = discord.ui.TextInput(
+            label="Type 'yes' or 'i agree' to confirm",
+            placeholder="yes",
+            required=True,
+            max_length=10
+        )
+        self.add_item(self.answer)
 
     async def on_submit(self, interaction: discord.Interaction):
         if self.answer.value.strip().lower() in ["yes", "i agree"]:
@@ -79,11 +82,17 @@ class TabooAccessModal(discord.ui.Modal, title="Taboo Access Confirmation"):
             member = interaction.user
             role_id = 1319776542099767316
             role = guild.get_role(role_id)
+            
             if role:
                 try:
                     await member.add_roles(role, reason="Accepted taboo access.")
                     await interaction.response.send_message(
                         "Thank you! You have been granted taboo content access.", ephemeral=True
+                    )
+                    # Send the additional info as a followup ephemeral message
+                    await interaction.followup.send(
+                        "You will need a role from <#708066544688562196> channel as well for full access.",
+                        ephemeral=True
                     )
                 except Exception as e:
                     await interaction.response.send_message(
