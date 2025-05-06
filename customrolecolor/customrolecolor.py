@@ -47,13 +47,13 @@ class CustomRoleColor(commands.Cog):
             return
 
         if not color.startswith("#") or len(color) != 7:
-            await ctx.send("Please provide a valid hex color (e.g., #ff0000).")
+            await ctx.send("Please provide a valid hex color (e.g., #ff0000). You can use [this](https://htmlcolorcodes.com) site for getting the code.")
             return
 
         try:
             new_color = discord.Color(int(color[1:], 16))
         except ValueError:
-            await ctx.send("Invalid hex color.")
+            await ctx.send("Invalid hex color. You can use [this](https://htmlcolorcodes.com) site for getting the code.")
             return
 
         if role >= ctx.guild.me.top_role:
