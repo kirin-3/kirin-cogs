@@ -27,7 +27,7 @@ class TabooAccessView(discord.ui.View):
 class LetMeInButton(discord.ui.Button):
     def __init__(self):
         super().__init__(
-            label="Let me in",
+            label="Let me in!",
             style=discord.ButtonStyle.success,
             custom_id="tabooaccess_let_me_in"
         )
@@ -39,7 +39,7 @@ class LetMeInButton(discord.ui.Button):
 class LetMeOutButton(discord.ui.Button):
     def __init__(self):
         super().__init__(
-            label="Let me out",
+            label="Let me out!",
             style=discord.ButtonStyle.danger,
             custom_id="tabooaccess_let_me_out"
         )
@@ -88,11 +88,6 @@ class TabooAccessModal(discord.ui.Modal, title="Taboo Access Confirmation"):
                     await member.add_roles(role, reason="Accepted taboo access.")
                     await interaction.response.send_message(
                         "Thank you! You have been granted taboo content access.", ephemeral=True
-                    )
-                    # Send the additional info as a followup ephemeral message
-                    await interaction.followup.send(
-                        "You will need a role from <#708066544688562196> channel as well for full access.",
-                        ephemeral=True
                     )
                 except Exception as e:
                     await interaction.response.send_message(
