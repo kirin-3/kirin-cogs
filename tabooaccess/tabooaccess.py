@@ -14,7 +14,7 @@ class TabooAccess(commands.Cog):
         """Send the taboo access control buttons."""
         view = TabooAccessView()
         await ctx.send(
-            "Click the button below when you read the rules and ready.",
+            "Click the button below when you understand the rules and ready.",
             view=view
         )
 
