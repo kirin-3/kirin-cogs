@@ -77,6 +77,7 @@ Examples:
 3. For each patron, it checks:
    - If they are a new patron (first-time donation)
    - If they have a recurring monthly donation that hasn't been processed
+   - If they have a yearly subscription (divides amount by 12 for monthly equivalent)
 4. If a Discord connection is found, it sends an award message to the configured channel
 5. The cog keeps track of processed donations by storing the last charge date for each patron
 
@@ -127,3 +128,22 @@ To fix this:
 If token refresh fails automatically, you can try manually refreshing the token:
 1. Use `[p]patreonset refreshpatreontoken` to attempt a manual refresh
 2. If this fails, you'll need to get a new token from Patreon 
+
+## Donation Handling
+
+### Monthly and Yearly Subscriptions
+
+The cog handles both monthly and yearly subscription types:
+
+- **Monthly subscriptions**: Processed at their actual amount
+- **Yearly subscriptions**: Automatically divided by 12 to get a monthly equivalent
+
+For example, if someone donates €120/year, the cog will calculate this as €10/month for award purposes. This ensures that patrons are treated fairly regardless of their billing cycle preference.
+
+### First-time vs. Recurring
+
+You can control whether the cog sends award messages for:
+- First-time donations only
+- Both first-time and recurring monthly donations
+
+Use the `[p]patreonset monthly` command to toggle this behavior. 

@@ -687,7 +687,17 @@ class Patron(commands.Cog):
                     if not amount_cents:
                         continue
                     
+                    # Get original amount in dollars
                     amount_dollars = amount_cents / 100
+                    
+                    # Check for pledge cadence (monthly, yearly, etc.)
+                    pledge_cadence = attributes.get("pledge_cadence", 1)  # Default to monthly (1)
+                    
+                    # If pledge_cadence is 12, it's a yearly donation - convert to monthly equivalent
+                    if pledge_cadence == 12:
+                        # Calculate monthly equivalent for yearly donations
+                        amount_dollars = amount_dollars / 12
+                        self.bot.logger.info(f"Yearly donation detected for {member_id}, converting ${amount_cents/100:.2f}/year to ${amount_dollars:.2f}/month")
                     
                     # Skip if below minimum amount
                     if amount_dollars < min_amount:
@@ -800,7 +810,7 @@ class Patron(commands.Cog):
         url = (
             f"https://www.patreon.com/api/oauth2/v2/campaigns/{settings['campaign_id']}/members"
             f"?include=user,currently_entitled_tiers"
-            f"&fields%5Bmember%5D=currently_entitled_amount_cents,full_name,last_charge_date,patron_status"
+            f"&fields%5Bmember%5D=currently_entitled_amount_cents,full_name,last_charge_date,patron_status,pledge_cadence"
             f"&fields%5Buser%5D=full_name,social_connections,email"
         )
         
