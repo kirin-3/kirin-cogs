@@ -375,7 +375,6 @@ class Patron(commands.Cog):
                       "The next check will process all patrons as if they were new donors.")
     
     @patreonset.command(name="listpatrons")
-    @checks.is_owner()
     async def list_patrons(self, ctx):
         """
         List Discord usernames of current patrons without pinging them
@@ -407,7 +406,7 @@ class Patron(commands.Cog):
             connections = await self.config.guild(guild).patreon_discord_connections()
             
             # Track patrons with Discord connections
-            patrons_with_discord = []
+            discord_usernames = []
             
             for member in members:
                 try:
@@ -432,13 +431,8 @@ class Patron(commands.Cog):
                     if not user_id:
                         continue
                     
-                    # Get patron name
-                    patron_name = attributes.get("full_name", "Unknown Patron")
-                    amount_dollars = amount_cents / 100
-                    
                     # Try to get Discord connection from social connections
                     discord_id = None
-                    discord_username = None
                     
                     # Check included user data
                     for included in member.get("included", []):
@@ -474,45 +468,29 @@ class Patron(commands.Cog):
                         else:
                             discord_username = f"Unknown (ID: {discord_id})"
                     
-                    # Add to our list
-                    patrons_with_discord.append({
-                        "name": patron_name,
-                        "discord": discord_username,
-                        "amount": amount_dollars
-                    })
+                    # Add to our list (only the username)
+                    discord_usernames.append(discord_username)
                     
                 except Exception as e:
                     self.bot.logger.error(f"Error processing member {member.get('id')}: {e}", exc_info=True)
             
-            if not patrons_with_discord:
+            if not discord_usernames:
                 return await ctx.send("No patrons with Discord connections found.")
             
-            # Sort by donation amount (highest first)
-            patrons_with_discord.sort(key=lambda x: x["amount"], reverse=True)
+            # Sort alphabetically for clean output
+            discord_usernames.sort()
             
-            # Build embed for display
-            embed = discord.Embed(
-                title="Current Patrons with Discord Accounts",
-                color=discord.Color.gold(),
-                description=f"Found {len(patrons_with_discord)} patrons with Discord connections"
-            )
+            # Prepare output
+            output = "\n".join(discord_usernames)
             
-            # Add patrons to embed
-            patron_lines = []
-            for patron in patrons_with_discord:
-                patron_lines.append(f"**{patron['discord']}** - ${patron['amount']:.2f}/month")
-            
-            # Split into fields if there are many patrons
-            chunks = [patron_lines[i:i+10] for i in range(0, len(patron_lines), 10)]
-            
-            for i, chunk in enumerate(chunks):
-                embed.add_field(
-                    name=f"Patrons {i*10+1}-{i*10+len(chunk)}" if len(chunks) > 1 else "Patrons",
-                    value="\n".join(chunk),
-                    inline=False
-                )
-            
-            await ctx.send(embed=embed)
+            # Split into chunks if needed (Discord has 2000 char limit)
+            if len(output) <= 1990:
+                await ctx.send(f"**Current Patron Discord Usernames:**\n```\n{output}\n```")
+            else:
+                chunks = [discord_usernames[i:i+20] for i in range(0, len(discord_usernames), 20)]
+                for i, chunk in enumerate(chunks):
+                    chunk_text = "\n".join(chunk)
+                    await ctx.send(f"**Patron Discord Usernames (Part {i+1}/{len(chunks)}):**\n```\n{chunk_text}\n```")
     
     @patreonset.command(name="resetapi")
     @commands.dm_only()
