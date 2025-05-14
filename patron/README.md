@@ -40,6 +40,8 @@ All commands require bot owner permissions to use:
 - `[p]patreonset refreshpatreontoken` - Manually refresh your Patreon access token
 - `[p]patreonset cleartransactions` - Clear all processed donation records to reprocess them
 - `[p]patreonset listpatrons` - List Discord usernames of current patrons without pinging them
+- `[p]patreonset resetapi` - Reset all Patreon API credentials (DM only)
+- `[p]patreonset tokenguide` - Provides a step-by-step guide for getting new Patreon API tokens
 
 ## Message Format
 
@@ -106,4 +108,22 @@ Discord users can be connected to Patreon accounts in two ways:
 - Only the bot owner can configure and use the cog commands
 - Sensitive API credentials can be set via DM for increased security
 - Make sure your Discord bot has permission to send messages in the award channel
-- Patron data is stored securely and only used for the award process 
+- Patron data is stored securely and only used for the award process
+
+## Troubleshooting
+
+### Token Expiration Issues
+
+If you see errors like `Error fetching patrons: Failed to refresh token: HTTP 401 - {"error":"invalid_grant"}`, your Patreon refresh token has expired or been revoked. Patreon tokens can expire after a period of inactivity or if permissions are changed.
+
+To fix this:
+1. Use `[p]patreonset resetapi confirm=True` to reset all credentials (DM only)
+2. Use `[p]patreonset tokenguide` to get detailed instructions for generating new tokens
+3. Follow the guide to obtain fresh tokens from Patreon's OAuth system
+4. Set the new tokens using the appropriate commands
+
+### Manual Token Refresh
+
+If token refresh fails automatically, you can try manually refreshing the token:
+1. Use `[p]patreonset refreshpatreontoken` to attempt a manual refresh
+2. If this fails, you'll need to get a new token from Patreon 

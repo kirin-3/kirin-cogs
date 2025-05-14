@@ -160,13 +160,29 @@ class Patron(commands.Cog):
         
         Example: .award {amount} {discord_user}
         """
-        await self.config.guild(ctx.guild).message_format.set(format_str)
+        # If in DM, get the guild to store settings
+        if ctx.guild is None:
+            guild = await self._get_guild_for_dm_settings(ctx)
+            if not guild:
+                return
+        else:
+            guild = ctx.guild
+            
+        await self.config.guild(guild).message_format.set(format_str)
         await ctx.send(f"Award message format set to: {format_str}")
     
     @patreonset.command(name="minamount")
     async def set_min_amount(self, ctx, amount: float):
         """Set the minimum donation amount that triggers an award message"""
-        await self.config.guild(ctx.guild).min_donation_amount.set(amount)
+        # If in DM, get the guild to store settings
+        if ctx.guild is None:
+            guild = await self._get_guild_for_dm_settings(ctx)
+            if not guild:
+                return
+        else:
+            guild = ctx.guild
+            
+        await self.config.guild(guild).min_donation_amount.set(amount)
         await ctx.send(f"Minimum donation amount set to ${amount:.2f}")
     
     @patreonset.command(name="monthly")
@@ -177,7 +193,15 @@ class Patron(commands.Cog):
         Set to True to send award messages for recurring monthly donations.
         Set to False to only send messages for first-time donations.
         """
-        await self.config.guild(ctx.guild).process_monthly.set(enabled)
+        # If in DM, get the guild to store settings
+        if ctx.guild is None:
+            guild = await self._get_guild_for_dm_settings(ctx)
+            if not guild:
+                return
+        else:
+            guild = ctx.guild
+            
+        await self.config.guild(guild).process_monthly.set(enabled)
         if enabled:
             await ctx.send("Monthly recurring donation processing is now enabled.")
         else:
@@ -186,11 +210,19 @@ class Patron(commands.Cog):
     @patreonset.command(name="status")
     async def show_status(self, ctx):
         """Show current Patreon API configuration status"""
-        settings = await self.config.guild(ctx.guild).api_settings()
-        message_format = await self.config.guild(ctx.guild).message_format()
-        min_amount = await self.config.guild(ctx.guild).min_donation_amount()
-        process_monthly = await self.config.guild(ctx.guild).process_monthly()
-        last_check = await self.config.guild(ctx.guild).last_check()
+        # If in DM, get the guild to check settings
+        if ctx.guild is None:
+            guild = await self._get_guild_for_dm_settings(ctx)
+            if not guild:
+                return
+        else:
+            guild = ctx.guild
+            
+        settings = await self.config.guild(guild).api_settings()
+        message_format = await self.config.guild(guild).message_format()
+        min_amount = await self.config.guild(guild).min_donation_amount()
+        process_monthly = await self.config.guild(guild).process_monthly()
+        last_check = await self.config.guild(guild).last_check()
         
         # Create API status markers
         api_statuses = {
@@ -232,7 +264,15 @@ class Patron(commands.Cog):
         
         This shows which Patreon users are connected to Discord accounts
         """
-        connections = await self.config.guild(ctx.guild).patreon_discord_connections()
+        # If in DM, get the guild to check settings
+        if ctx.guild is None:
+            guild = await self._get_guild_for_dm_settings(ctx)
+            if not guild:
+                return
+        else:
+            guild = ctx.guild
+            
+        connections = await self.config.guild(guild).patreon_discord_connections()
         
         if not connections:
             return await ctx.send("No Patreon-Discord connections found.")
@@ -255,6 +295,11 @@ class Patron(commands.Cog):
     @patreonset.command(name="manualconnect")
     async def manual_connect(self, ctx, patreon_id: str, discord_user: discord.Member):
         """Manually connect a Patreon user ID to a Discord user"""
+        # This command requires a guild context due to discord.Member parameter
+        if not ctx.guild:
+            await ctx.send("This command can only be used in a server, not in DMs.")
+            return
+            
         async with self.config.guild(ctx.guild).patreon_discord_connections() as connections:
             connections[patreon_id] = str(discord_user.id)
         
@@ -263,8 +308,16 @@ class Patron(commands.Cog):
     @patreonset.command(name="checkpatrons")
     async def manual_check_patrons(self, ctx):
         """Manually trigger a check for new patrons and donations"""
+        # If in DM, get the guild to check settings
+        if ctx.guild is None:
+            guild = await self._get_guild_for_dm_settings(ctx)
+            if not guild:
+                return
+        else:
+            guild = ctx.guild
+            
         async with ctx.typing():
-            result = await self.check_and_process_donations(ctx.guild)
+            result = await self.check_and_process_donations(guild)
             
             if isinstance(result, str):
                 await ctx.send(f"Error checking patrons: {result}")
@@ -274,13 +327,21 @@ class Patron(commands.Cog):
     @patreonset.command(name="refreshpatreontoken")
     async def refresh_patreon_token(self, ctx):
         """Manually refresh your Patreon access token"""
+        # If in DM, get the guild to check settings
+        if ctx.guild is None:
+            guild = await self._get_guild_for_dm_settings(ctx)
+            if not guild:
+                return
+        else:
+            guild = ctx.guild
+            
         async with ctx.typing():
-            settings = await self.config.guild(ctx.guild).api_settings()
+            settings = await self.config.guild(guild).api_settings()
             
             if not all([settings["client_id"], settings["client_secret"], settings["creator_refresh_token"]]):
                 return await ctx.send("Missing required Patreon API credentials. Please set client ID, client secret, and refresh token.")
             
-            result = await self.refresh_access_token(ctx.guild)
+            result = await self.refresh_access_token(guild)
             
             if isinstance(result, str):
                 await ctx.send(f"Error refreshing token: {result}")
@@ -297,11 +358,19 @@ class Patron(commands.Cog):
         
         Set confirm to True to confirm this action.
         """
+        # If in DM, get the guild to check settings
+        if ctx.guild is None:
+            guild = await self._get_guild_for_dm_settings(ctx)
+            if not guild:
+                return
+        else:
+            guild = ctx.guild
+            
         if not confirm:
             return await ctx.send("This will clear ALL processed donation records and resend messages for every patron. "
                                  "If you're sure, run the command again with `confirm=True`.")
         
-        await self.config.guild(ctx.guild).processed_donations.set({})
+        await self.config.guild(guild).processed_donations.set({})
         await ctx.send("All processed donation records have been cleared. "
                       "The next check will process all patrons as if they were new donors.")
     
@@ -314,20 +383,28 @@ class Patron(commands.Cog):
         This command fetches current patrons from Patreon and displays their
         Discord usernames if a connection exists.
         """
+        # If in DM, get the guild to check settings
+        if ctx.guild is None:
+            guild = await self._get_guild_for_dm_settings(ctx)
+            if not guild:
+                return
+        else:
+            guild = ctx.guild
+            
         async with ctx.typing():
-            settings = await self.config.guild(ctx.guild).api_settings()
+            settings = await self.config.guild(guild).api_settings()
             
             if not all([settings["creator_access_token"], settings["campaign_id"]]):
                 return await ctx.send("Missing required API credentials. Please set up the Patreon API integration first.")
             
             # Get members (patrons) from Patreon API
-            members = await self.get_campaign_members(ctx.guild)
+            members = await self.get_campaign_members(guild)
             
             if isinstance(members, str):
                 return await ctx.send(f"Error fetching patrons: {members}")
             
             # Get Discord-Patreon connections
-            connections = await self.config.guild(ctx.guild).patreon_discord_connections()
+            connections = await self.config.guild(guild).patreon_discord_connections()
             
             # Track patrons with Discord connections
             patrons_with_discord = []
@@ -387,7 +464,7 @@ class Patron(commands.Cog):
                     
                     # Get Discord user
                     try:
-                        discord_user = await ctx.guild.fetch_member(int(discord_id))
+                        discord_user = await guild.fetch_member(int(discord_id))
                         discord_username = str(discord_user)  # Get the username without pinging
                     except (discord.NotFound, discord.HTTPException):
                         # Try to get the user from the bot's cache
@@ -437,6 +514,109 @@ class Patron(commands.Cog):
             
             await ctx.send(embed=embed)
     
+    @patreonset.command(name="resetapi")
+    @commands.dm_only()
+    async def reset_api_credentials(self, ctx, confirm: bool = False):
+        """
+        Reset all Patreon API credentials
+        
+        Use this if your tokens have expired and you need to completely reconfigure
+        the API integration with new credentials.
+        
+        Set confirm to True to confirm this action.
+        """
+        # Get the guild to store settings
+        guild = await self._get_guild_for_dm_settings(ctx)
+        if not guild:
+            return
+            
+        if not confirm:
+            return await ctx.send("This will reset ALL Patreon API credentials. "
+                                 "You will need to reconfigure them completely. "
+                                 "If you're sure, run the command again with `confirm=True`.")
+        
+        default_settings = {
+            "client_id": None,
+            "client_secret": None,
+            "creator_access_token": None,
+            "creator_refresh_token": None,
+            "campaign_id": None,
+            "webhook_secret": None,
+        }
+        
+        async with self.config.guild(guild).api_settings() as settings:
+            for key in default_settings:
+                settings[key] = default_settings[key]
+        
+        setup_guide = (
+            "**Patreon API credentials have been reset.**\n\n"
+            "To reconfigure, follow these steps:\n"
+            "1. Go to https://www.patreon.com/portal/registration/register-clients\n"
+            "2. Create or edit your client\n"
+            "3. Set the redirect URI to `https://localhost/oauth/redirect`\n"
+            "4. Get your Client ID and Client Secret\n"
+            "5. Use `patreonset clientid` and `patreonset clientsecret` to set them\n"
+            "6. Use a tool like Postman or the Patreon documentation to get your creator access token and refresh token\n"
+            "7. Set them with `patreonset accesstoken` and `patreonset refreshtoken`\n"
+            "8. Get your campaign ID from your Patreon URL and set it with `patreonset campaignid`\n"
+        )
+        
+        await ctx.send(setup_guide)
+    
+    @patreonset.command(name="tokenguide")
+    async def token_guide(self, ctx):
+        """
+        Provides a step-by-step guide for getting new Patreon API tokens
+        
+        This gives detailed instructions for creating and obtaining new
+        OAuth tokens when your old ones expire or are revoked.
+        """
+        guide = (
+            "**How to Get New Patreon API Tokens**\n\n"
+            "1. **Register/Update Your OAuth Client**\n"
+            "   • Go to https://www.patreon.com/portal/registration/register-clients\n"
+            "   • Create a new client or edit your existing one\n"
+            "   • Set the redirect URI to: `https://localhost/oauth/redirect`\n"
+            "   • Save your Client ID and Client Secret\n\n"
+            
+            "2. **Get Authorization Code**\n"
+            "   • Construct this URL (replace YOUR_CLIENT_ID):\n"
+            "   ```\n"
+            "   https://www.patreon.com/oauth2/authorize?response_type=code&client_id=YOUR_CLIENT_ID&redirect_uri=https://localhost/oauth/redirect&scope=campaigns.members identity.memberships campaigns identity\n"
+            "   ```\n"
+            "   • Open the URL in your browser\n"
+            "   • Authorize your app\n"
+            "   • You'll be redirected to a URL like: `https://localhost/oauth/redirect?code=YOUR_AUTH_CODE`\n"
+            "   • Copy the `code` parameter value\n\n"
+            
+            "3. **Exchange Code for Tokens**\n"
+            "   • Use a tool like Postman or curl to make this request:\n"
+            "   ```\n"
+            "   POST https://www.patreon.com/api/oauth2/token\n"
+            "   Content-Type: application/x-www-form-urlencoded\n\n"
+            "   grant_type=authorization_code&code=YOUR_AUTH_CODE&client_id=YOUR_CLIENT_ID&client_secret=YOUR_CLIENT_SECRET&redirect_uri=https://localhost/oauth/redirect\n"
+            "   ```\n"
+            "   • This will return your access_token and refresh_token\n\n"
+            
+            "4. **Set Your Tokens in this Cog**\n"
+            "   • Use `[p]patreonset clientid YOUR_CLIENT_ID`\n"
+            "   • Use `[p]patreonset clientsecret YOUR_CLIENT_SECRET`\n"
+            "   • Use `[p]patreonset accesstoken YOUR_ACCESS_TOKEN`\n"
+            "   • Use `[p]patreonset refreshtoken YOUR_REFRESH_TOKEN`\n\n"
+            
+            "5. **Get Your Campaign ID**\n"
+            "   • Go to your creator page and check the URL\n"
+            "   • Format: https://www.patreon.com/YOUR_NAME\n"
+            "   • Use API to get ID: https://www.patreon.com/api/oauth2/v2/campaigns\n"
+            "   • Add this header: `Authorization: Bearer YOUR_ACCESS_TOKEN`\n"
+            "   • Extract your campaign ID from the response\n"
+            "   • Use `[p]patreonset campaignid YOUR_CAMPAIGN_ID`\n\n"
+            
+            "After following these steps, use `[p]patreonset status` to verify your configuration."
+        )
+        
+        await ctx.send(guide)
+    
     async def refresh_access_token(self, guild) -> Union[bool, str]:
         """Refresh the Patreon access token"""
         settings = await self.config.guild(guild).api_settings()
@@ -463,6 +643,14 @@ class Patron(commands.Cog):
             ) as resp:
                 if resp.status != 200:
                     error_text = await resp.text()
+                    
+                    # Handle invalid_grant error specifically
+                    if "invalid_grant" in error_text:
+                        return ("Your Patreon refresh token is invalid or has expired. "
+                                "Please obtain a new token by re-authorizing your application at "
+                                "https://www.patreon.com/portal/registration/register-clients and update it "
+                                "using the `patreonset refreshtoken` command.")
+                    
                     return f"Failed to refresh token: HTTP {resp.status} - {error_text}"
                 
                 response_data = await resp.json()
