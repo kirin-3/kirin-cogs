@@ -44,7 +44,8 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        if self.answer.value.strip() == "I agree to the rules.":
+        valid_responses = ["I agree to the rules.", "I Agree To The Rules."]
+        if self.answer.value.strip() in valid_responses:
             guild = interaction.guild
             member = interaction.user
             role_id = 686098839651876908
