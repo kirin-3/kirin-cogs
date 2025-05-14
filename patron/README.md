@@ -24,10 +24,10 @@ A Red Discord Bot cog that integrates with Patreon's API to automatically award 
 
 All commands require bot owner permissions to use:
 
-- `[p]patreonset clientid <client_id>` - Set your Patreon API Client ID
-- `[p]patreonset clientsecret <client_secret>` - Set your Patreon API Client Secret
-- `[p]patreonset accesstoken <access_token>` - Set your Patreon Creator Access Token
-- `[p]patreonset refreshtoken <refresh_token>` - Set your Patreon Creator Refresh Token
+- `[p]patreonset clientid <client_id>` - Set your Patreon API Client ID (DM only)
+- `[p]patreonset clientsecret <client_secret>` - Set your Patreon API Client Secret (DM only)
+- `[p]patreonset accesstoken <access_token>` - Set your Patreon Creator Access Token (DM only)
+- `[p]patreonset refreshtoken <refresh_token>` - Set your Patreon Creator Refresh Token (DM only)
 - `[p]patreonset campaignid <campaign_id>` - Set your Patreon Campaign ID
 - `[p]patreonset awardchannel <channel>` - Set the channel where award messages will be sent
 - `[p]patreonset messageformat <format>` - Set the format for award messages
@@ -104,5 +104,6 @@ Discord users can be connected to Patreon accounts in two ways:
 
 - The cog checks for new patrons every hour
 - Only the bot owner can configure and use the cog commands
+- Sensitive API credentials can be set via DM for increased security
 - Make sure your Discord bot has permission to send messages in the award channel
 - Patron data is stored securely and only used for the award process 

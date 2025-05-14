@@ -69,48 +69,75 @@ class Patron(commands.Cog):
             await asyncio.sleep(3600)  # Check once an hour
         
     @commands.group(name="patreonset")
-    @commands.guild_only()
     @checks.is_owner()
     async def patreonset(self, ctx):
         """Configure Patreon API integration"""
         pass
     
     @patreonset.command(name="clientid")
+    @commands.dm_only()
     async def set_client_id(self, ctx, client_id: str):
-        """Set your Patreon API Client ID"""
-        async with self.config.guild(ctx.guild).api_settings() as settings:
+        """Set your Patreon API Client ID (DM only for security)"""
+        # Get the guild to store settings
+        guild = await self._get_guild_for_dm_settings(ctx)
+        if not guild:
+            return
+            
+        async with self.config.guild(guild).api_settings() as settings:
             settings["client_id"] = client_id
         await ctx.send("Patreon Client ID has been set.")
-        await ctx.message.delete()
     
     @patreonset.command(name="clientsecret")
+    @commands.dm_only()
     async def set_client_secret(self, ctx, client_secret: str):
-        """Set your Patreon API Client Secret"""
-        async with self.config.guild(ctx.guild).api_settings() as settings:
+        """Set your Patreon API Client Secret (DM only for security)"""
+        # Get the guild to store settings
+        guild = await self._get_guild_for_dm_settings(ctx)
+        if not guild:
+            return
+            
+        async with self.config.guild(guild).api_settings() as settings:
             settings["client_secret"] = client_secret
         await ctx.send("Patreon Client Secret has been set.")
-        await ctx.message.delete()
     
     @patreonset.command(name="accesstoken")
+    @commands.dm_only()
     async def set_access_token(self, ctx, access_token: str):
-        """Set your Patreon Creator Access Token"""
-        async with self.config.guild(ctx.guild).api_settings() as settings:
+        """Set your Patreon Creator Access Token (DM only for security)"""
+        # Get the guild to store settings
+        guild = await self._get_guild_for_dm_settings(ctx)
+        if not guild:
+            return
+            
+        async with self.config.guild(guild).api_settings() as settings:
             settings["creator_access_token"] = access_token
         await ctx.send("Patreon Creator Access Token has been set.")
-        await ctx.message.delete()
     
     @patreonset.command(name="refreshtoken")
+    @commands.dm_only()
     async def set_refresh_token(self, ctx, refresh_token: str):
-        """Set your Patreon Creator Refresh Token"""
-        async with self.config.guild(ctx.guild).api_settings() as settings:
+        """Set your Patreon Creator Refresh Token (DM only for security)"""
+        # Get the guild to store settings
+        guild = await self._get_guild_for_dm_settings(ctx)
+        if not guild:
+            return
+            
+        async with self.config.guild(guild).api_settings() as settings:
             settings["creator_refresh_token"] = refresh_token
         await ctx.send("Patreon Creator Refresh Token has been set.")
-        await ctx.message.delete()
     
     @patreonset.command(name="campaignid")
     async def set_campaign_id(self, ctx, campaign_id: str):
         """Set your Patreon Campaign ID"""
-        async with self.config.guild(ctx.guild).api_settings() as settings:
+        # If in DM, get the guild to store settings
+        if ctx.guild is None:
+            guild = await self._get_guild_for_dm_settings(ctx)
+            if not guild:
+                return
+        else:
+            guild = ctx.guild
+            
+        async with self.config.guild(guild).api_settings() as settings:
             settings["campaign_id"] = campaign_id
         await ctx.send("Patreon Campaign ID has been set.")
     
@@ -710,4 +737,43 @@ class Patron(commands.Cog):
             
         except Exception as e:
             self.bot.logger.error(f"Error sending award message: {e}", exc_info=True)
-            return False 
+            return False
+    
+    async def _get_guild_for_dm_settings(self, ctx):
+        """Helper method to get the guild for DM settings.
+        Will ask the user to choose a guild if they're in multiple guilds."""
+        # Get guilds the bot is in
+        guilds = self.bot.guilds
+        
+        # If no guilds, we can't configure
+        if not guilds:
+            await ctx.send("The bot is not in any guilds. Cannot configure settings.")
+            return None
+            
+        # If only one guild, use that
+        if len(guilds) == 1:
+            return guilds[0]
+            
+        # If multiple guilds, ask the user to choose
+        guild_options = {str(i+1): guild for i, guild in enumerate(guilds)}
+        
+        # Build the selection message
+        guild_list = "\n".join([f"{num}: {guild.name}" for num, guild in guild_options.items()])
+        await ctx.send(f"Please select a guild to configure settings for by sending its number:\n{guild_list}")
+        
+        # Wait for a reply
+        try:
+            def check(m):
+                return m.author == ctx.author and m.channel == ctx.channel and m.content in guild_options
+                
+            response = await self.bot.wait_for("message", check=check, timeout=60)
+            selected_guild = guild_options[response.content]
+            await ctx.send(f"Configuring settings for guild: {selected_guild.name}")
+            return selected_guild
+            
+        except asyncio.TimeoutError:
+            await ctx.send("Selection timed out. Please try again.")
+            return None
+        except Exception as e:
+            await ctx.send(f"Error selecting guild: {str(e)}")
+            return None 
