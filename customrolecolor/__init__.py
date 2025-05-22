@@ -11,4 +11,4 @@ from .customrolecolor import CustomRoleColor
 
 # Your bot's code continues here...
 async def setup(bot):
-    await bot.add_cog(CustomRoleColor())
+    await bot.add_cog(CustomRoleColor(bot))
