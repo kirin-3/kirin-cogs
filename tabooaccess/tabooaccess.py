@@ -4,7 +4,8 @@ import discord
 class TabooAccess(commands.Cog):
     """Cog for managing taboo content access."""
 
-    def __init__(self):
+    def __init__(self, bot):
+        self.bot = bot
         super().__init__()
 
     @commands.command()
@@ -103,4 +104,4 @@ class TabooAccessModal(discord.ui.Modal, title="Taboo Access Confirmation"):
             )
 
 async def setup(bot):
-    await bot.add_cog(TabooAccess())
+    await bot.add_cog(TabooAccess(bot))

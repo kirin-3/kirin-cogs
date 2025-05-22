@@ -10,8 +10,13 @@ class ImageFilter(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self.config = Config.get_conf(self, identifier=1234567891)
-        self.target_channel_id = 1319688029530492948  # The specific channel ID to monitor
+        self.config = Config.get_conf(self, identifier=1234567891, force_registration=True)
+        
+        # Default configuration
+        default_guild = {
+            "target_channel_id": 1319688029530492948  # The specific channel ID to monitor
+        }
+        self.config.register_guild(**default_guild)
         
         # Common image URL patterns
         self.image_patterns = [
@@ -52,7 +57,11 @@ class ImageFilter(commands.Cog):
             return
             
         # Check if this is the targeted channel
-        if message.channel.id != self.target_channel_id:
+        if not message.guild:
+            return
+            
+        target_channel_id = await self.config.guild(message.guild).target_channel_id()
+        if message.channel.id != target_channel_id:
             return
             
         # Get all URLs from the message
@@ -116,7 +125,8 @@ class ImageFilter(commands.Cog):
     @commands.admin_or_permissions(administrator=True)
     async def filter_status(self, ctx):
         """Show the current status of the image filter."""
-        channel = self.bot.get_channel(self.target_channel_id)
+        target_channel_id = await self.config.guild(ctx.guild).target_channel_id()
+        channel = self.bot.get_channel(target_channel_id)
         channel_name = channel.name if channel else "Unknown channel"
         
         embed = discord.Embed(
@@ -126,7 +136,7 @@ class ImageFilter(commands.Cog):
         )
         embed.add_field(
             name="Target Channel",
-            value=f"ID: {self.target_channel_id}\nName: {channel_name}",
+            value=f"ID: {target_channel_id}\nName: {channel_name}",
             inline=False
         )
         embed.add_field(
@@ -135,4 +145,16 @@ class ImageFilter(commands.Cog):
             inline=False
         )
         
-        await ctx.send(embed=embed) 
+        await ctx.send(embed=embed)
+
+    @imagefilter.command(name="setchannel")
+    @commands.admin_or_permissions(administrator=True)
+    async def set_filter_channel(self, ctx, channel: discord.TextChannel = None):
+        """Set the channel for the Tenor-only filter.
+        
+        If no channel is specified, the current channel will be used.
+        """
+        channel = channel or ctx.channel
+        
+        await self.config.guild(ctx.guild).target_channel_id.set(channel.id)
+        await ctx.send(f"Image filter will now monitor {channel.mention}.") 

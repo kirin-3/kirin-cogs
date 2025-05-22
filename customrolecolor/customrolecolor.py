@@ -5,9 +5,15 @@ import inspect
 class CustomRoleColor(commands.Cog):
     """
     Allow admins to assign a role to a user, and let that user change the color, name, and icon of that role.
+    
+    This cog enables server administrators to designate specific roles for users to customize.
+    Once assigned, users can change the color, name, icon, and mentionable status of their role.
+    
+    Note: The bot must have manage roles permission and its top role must be above the roles being managed.
     """
 
-    def __init__(self):
+    def __init__(self, bot):
+        self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567890)
         # Structure: {guild_id: {user_id: role_id}}
         default_guild = {"assignments": {}}
@@ -210,5 +216,5 @@ class CustomRoleColor(commands.Cog):
         except Exception as e:
             await ctx.send(f"An error occurred: {e}")
 
-def setup(bot):
-    bot.add_cog(CustomRoleColor())
+async def setup(bot):
+    await bot.add_cog(CustomRoleColor(bot))

@@ -1,7 +1,7 @@
 *.pyc
 /redenv/*
 /redenv
-
+docs/
 # Added by Claude Task Master
 # Logs
 logs
