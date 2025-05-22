@@ -1,0 +1,11 @@
+{
+    "name": "imagefilter",
+    "short": "Tenor Image Filter",
+    "description": "Deletes image links that aren't from tenor.com in a specific channel.",
+    "author": ["kirin"],
+    "version": "1.0.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "license": "MIT"
+} 
