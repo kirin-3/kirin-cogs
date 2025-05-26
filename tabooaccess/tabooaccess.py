@@ -1,4 +1,4 @@
-from redbot.core import commands
+from redbot.core import commands, Config
 import discord
 
 class TabooAccess(commands.Cog):
@@ -7,48 +7,69 @@ class TabooAccess(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         super().__init__()
+        self.config = Config.get_conf(self, identifier=873624951)
+        default_guild = {
+            "taboo_role_id": 1319776542099767316
+        }
+        self.config.register_guild(**default_guild)
+        self.bot.loop.create_task(self.initialize())
+    
+    async def initialize(self):
+        await self.bot.wait_until_ready()
+        self.bot.add_view(TabooAccessView(self))
 
     @commands.command()
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
     async def sendtaboo(self, ctx):
         """Send the taboo access control buttons."""
-        view = TabooAccessView()
+        view = TabooAccessView(self)
         await ctx.send(
             "Click the button below when you understand the rules and ready.",
             view=view
         )
+        
+    @commands.command()
+    @commands.guild_only()
+    @commands.admin_or_permissions(manage_guild=True)
+    async def settaboorole(self, ctx, role: discord.Role):
+        """Set the role to be assigned for taboo access."""
+        await self.config.guild(ctx.guild).taboo_role_id.set(role.id)
+        await ctx.send(f"Taboo access role set to {role.name}.")
 
 class TabooAccessView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, cog):
         super().__init__(timeout=None)
-        self.add_item(LetMeInButton())
-        self.add_item(LetMeOutButton())
+        self.cog = cog
+        self.add_item(LetMeInButton(cog))
+        self.add_item(LetMeOutButton(cog))
 
 class LetMeInButton(discord.ui.Button):
-    def __init__(self):
+    def __init__(self, cog):
         super().__init__(
             label="Let me in!",
             style=discord.ButtonStyle.success,
             custom_id="tabooaccess_let_me_in"
         )
+        self.cog = cog
 
     async def callback(self, interaction: discord.Interaction):
-        modal = TabooAccessModal()
+        modal = TabooAccessModal(self.cog)
         await interaction.response.send_modal(modal)
 
 class LetMeOutButton(discord.ui.Button):
-    def __init__(self):
+    def __init__(self, cog):
         super().__init__(
             label="Let me out!",
             style=discord.ButtonStyle.danger,
             custom_id="tabooaccess_let_me_out"
         )
+        self.cog = cog
 
     async def callback(self, interaction: discord.Interaction):
         guild = interaction.guild
         member = interaction.user
-        role_id = 1319776542099767316
+        role_id = await self.cog.config.guild(guild).taboo_role_id()
         role = guild.get_role(role_id)
         
         if role and role in member.roles:
@@ -67,8 +88,9 @@ class LetMeOutButton(discord.ui.Button):
             )
 
 class TabooAccessModal(discord.ui.Modal, title="Taboo Access Confirmation"):
-    def __init__(self):
+    def __init__(self, cog):
         super().__init__()
+        self.cog = cog
         self.answer = discord.ui.TextInput(
             label="Type 'yes' or 'i agree' to confirm",
             placeholder="yes",
@@ -81,7 +103,7 @@ class TabooAccessModal(discord.ui.Modal, title="Taboo Access Confirmation"):
         if self.answer.value.strip().lower() in ["yes", "i agree"]:
             guild = interaction.guild
             member = interaction.user
-            role_id = 1319776542099767316
+            role_id = await self.cog.config.guild(guild).taboo_role_id()
             role = guild.get_role(role_id)
             
             if role:
