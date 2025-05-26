@@ -1,41 +1,67 @@
-from redbot.core import commands
+from redbot.core import commands, Config
 import discord
 
 class rulesaccept(commands.Cog):
     """Cog for rule acceptance with button and modal."""
 
-    def __init__(self):
+    def __init__(self, bot):
         super().__init__()
+        self.bot = bot
+        self.config = Config.get_conf(self, identifier=862735937)
+        default_guild = {
+            "rules_channel_id": 684360255798509582,
+            "member_role_id": 686098839651876908
+        }
+        self.config.register_guild(**default_guild)
+        self.bot.loop.create_task(self.initialize())
+    
+    async def initialize(self):
+        await self.bot.wait_until_ready()
+        self.bot.add_view(rulesacceptView(self))
 
     @commands.command()
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
     async def sendrules(self, ctx):
         """Send the rules acceptance button."""
-        view = rulesacceptView()
+        view = rulesacceptView(self)
         await ctx.send(
             "Please read the rules. When ready, click the button below to accept.",
             view=view
         )
+    
+    @commands.command()
+    @commands.guild_only()
+    @commands.admin_or_permissions(manage_guild=True)
+    async def setrole(self, ctx, role: discord.Role):
+        """Set the role to be assigned when rules are accepted."""
+        await self.config.guild(ctx.guild).member_role_id.set(role.id)
+        await ctx.send(f"Role set to {role.name}.")
 
 class rulesacceptView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, cog):
         super().__init__(timeout=None)
-        self.add_item(rulesacceptButton())
+        self.cog = cog
+        self.add_item(rulesacceptButton(cog))
 
 class rulesacceptButton(discord.ui.Button):
-    def __init__(self):
+    def __init__(self, cog):
         super().__init__(
             label="I have read and accept the rules.",
             style=discord.ButtonStyle.success,
             custom_id="rulesaccept_button"
         )
+        self.cog = cog
 
     async def callback(self, interaction: discord.Interaction):
-        modal = rulesacceptModal()
+        modal = rulesacceptModal(self.cog)
         await interaction.response.send_modal(modal)
 
 class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
+    def __init__(self, cog):
+        super().__init__()
+        self.cog = cog
+        
     answer = discord.ui.TextInput(
         label="Type exactly: I agree to the rules.",
         placeholder="I agree to the rules.",
@@ -48,7 +74,7 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
         if self.answer.value.strip() in valid_responses:
             guild = interaction.guild
             member = interaction.user
-            role_id = 686098839651876908
+            role_id = await self.cog.config.guild(guild).member_role_id()
             role = guild.get_role(role_id)
             if role:
                 try:
@@ -75,4 +101,4 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
             )
 
 async def setup(bot):
-    await bot.add_cog(rulesaccept())
+    await bot.add_cog(rulesaccept(bot))
