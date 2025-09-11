@@ -1,0 +1,11 @@
+{
+    "name": "verifyuser",
+    "short": "User Verification System",
+    "description": "Allows authorized users to verify other users by granting them a verification role.",
+    "author": ["kirin"],
+    "version": "1.0.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "license": "MIT"
+}
