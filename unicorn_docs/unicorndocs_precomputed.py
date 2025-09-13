@@ -29,8 +29,9 @@ class UnicornDocsPrecomputed(commands.Cog):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
         
-        # Hardcoded configuration
-        self.VECTORS_PATH = "./vectors"
+        # Hardcoded configuration - use absolute path based on cog location
+        cog_dir = Path(__file__).parent
+        self.VECTORS_PATH = str(cog_dir / "vectors")
         self.MODERATION_ROLES = [696020813299580940, 898586656842600549]
         self.CHAT_MODEL = "deepseek/deepseek-chat-v3.1:free"
         self.MAX_CHUNKS = 5
@@ -55,6 +56,7 @@ class UnicornDocsPrecomputed(commands.Cog):
             
         try:
             vectors_path = Path(self.VECTORS_PATH)
+            log.info(f"Looking for vectors in: {vectors_path.absolute()}")
             
             # Load configuration
             config_file = vectors_path / "config.json"
@@ -62,6 +64,8 @@ class UnicornDocsPrecomputed(commands.Cog):
                 with open(config_file, 'r') as f:
                     self._config = json.load(f)
                 log.info(f"Loaded config: {self._config}")
+            else:
+                log.warning(f"Config file not found at: {config_file.absolute()}")
             
             # Load embeddings
             embeddings_file = vectors_path / "embeddings.pkl"
@@ -70,7 +74,7 @@ class UnicornDocsPrecomputed(commands.Cog):
                     self._embeddings = pickle.load(f)
                 log.info(f"Loaded {len(self._embeddings)} embeddings")
             else:
-                log.warning("No embeddings file found")
+                log.warning(f"Embeddings file not found at: {embeddings_file.absolute()}")
                 return
             
             # Load metadata
@@ -80,7 +84,7 @@ class UnicornDocsPrecomputed(commands.Cog):
                     self._metadata = pickle.load(f)
                 log.info(f"Loaded {len(self._metadata)} metadata entries")
             else:
-                log.warning("No metadata file found")
+                log.warning(f"Metadata file not found at: {metadata_file.absolute()}")
                 return
                 
             self._loaded = True
