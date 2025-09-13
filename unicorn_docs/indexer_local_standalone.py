@@ -52,11 +52,11 @@ OUTPUT_DIRECTORY = "./vectors"
 #    - Better than L6, faster than mpnet
 #    - Good compromise option
 
-EMBEDDING_MODEL = "all-mpnet-base-v2"  # Recommended: Good balance of speed and accuracy
+EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v1"  # Recommended: Good balance of speed and accuracy
 
-# Chunking configuration
-CHUNK_SIZE = 300
-CHUNK_OVERLAP = 50
+# Chunking configuration - Optimized for better context
+CHUNK_SIZE = 500  # Increased for more context per chunk
+CHUNK_OVERLAP = 100  # Increased overlap for better continuity
 
 # --- CORE FUNCTIONS ---
 
@@ -137,7 +137,7 @@ def main():
     print(f"🤖 Loading embedding model: {EMBEDDING_MODEL}")
     print("   (This may take a moment on first run...)")
     try:
-        model = SentenceTransformer(EMBEDDING_MODEL)
+        model = SentenceTransformer(EMBEDDING_MODEL, trust_remote_code=True)
         print("   ✅ Model loaded successfully!")
     except Exception as e:
         print(f"   ❌ Error loading model: {e}")

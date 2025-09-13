@@ -34,7 +34,7 @@ class UnicornDocsPrecomputed(commands.Cog):
         self.VECTORS_PATH = str(cog_dir / "vectors")
         self.MODERATION_ROLES = [696020813299580940, 898586656842600549]
         self.CHAT_MODEL = "mistralai/mistral-small-3.2-24b-instruct:free"
-        self.MAX_CHUNKS = 5
+        self.MAX_CHUNKS = 8  # Increased for more context
         
         # Only API key is configurable
         default_global = {
@@ -132,26 +132,41 @@ class UnicornDocsPrecomputed(commands.Cog):
         except Exception:
             return 0
 
-    def simple_text_search(self, query: str, max_chunks: int = 5) -> List[Dict[str, Any]]:
-        """Simple text-based search as fallback when embeddings aren't available."""
+    def simple_text_search(self, query: str, max_chunks: int = 8) -> List[Dict[str, Any]]:
+        """Enhanced text-based search with better scoring."""
         query_lower = query.lower()
+        query_words = [word.strip() for word in query_lower.split() if len(word.strip()) > 2]  # Filter short words
         results = []
         
         for i, metadata in enumerate(self._metadata):
             text_lower = metadata.get('original_text', '').lower()
             source_lower = metadata.get('source_file', '').lower()
             
-            # Simple scoring based on word matches
+            # Enhanced scoring system
             score = 0
-            query_words = query_lower.split()
             
+            # Exact phrase matching (highest priority)
+            if query_lower in text_lower:
+                score += 10
+            
+            # Word matching with position weighting
             for word in query_words:
                 if word in text_lower:
-                    score += 1
+                    # Check if word appears in title/heading (higher score)
+                    if text_lower.startswith(word) or f"# {word}" in text_lower:
+                        score += 3
+                    else:
+                        score += 1
+                
                 if word in source_lower:
                     score += 0.5
             
+            # Bonus for longer, more relevant chunks
             if score > 0:
+                text_length = len(metadata.get('original_text', ''))
+                if text_length > 200:  # Prefer substantial chunks
+                    score += 0.5
+                
                 results.append({
                     'text': metadata.get('original_text', ''),
                     'source_file': metadata.get('source_file', 'Unknown'),
@@ -191,21 +206,43 @@ class UnicornDocsPrecomputed(commands.Cog):
             
             model = self.CHAT_MODEL
             
-            # Build context from retrieved chunks
-            context = "\n\n".join([chunk['text'] for chunk in context_chunks])
+            # Build context from retrieved chunks with quality filtering
+            filtered_chunks = []
+            for chunk in context_chunks:
+                text = chunk['text'].strip()
+                # Filter out very short or low-quality chunks
+                if len(text) > 50 and not text.startswith('---'):  # Skip frontmatter
+                    filtered_chunks.append(text)
+            
+            context = "\n\n".join(filtered_chunks)
             
             # Create the prompt
             system_prompt = """You are a specialized Discord server moderation documentation assistant for the Unicornia server. Your primary purpose is to help moderation team members quickly find and understand server policies, procedures, and guidelines.
 
-IMPORTANT INSTRUCTIONS:
+CORE RESPONSIBILITIES:
+- Provide accurate, actionable information based on the provided documentation
+- Help moderators understand complex procedures and policies
+- Offer step-by-step guidance when procedures are available
+- Clarify rules and their applications
+
+RESPONSE GUIDELINES:
 - Answer questions based ONLY on the provided documentation context
-- If the context doesn't contain enough information to answer the question, clearly state "This information is not available in the current documentation"
-- Be concise but thorough in your responses
-- Always cite the source file when possible
-- Focus on practical, actionable information for moderators
-- If asked about procedures, provide step-by-step guidance when available
+- If the context doesn't contain enough information, clearly state "This information is not available in the current documentation"
+- Be concise but thorough - provide complete answers when possible
+- Always cite the source file when referencing specific information
+- Focus on practical, actionable information that moderators can immediately use
+- If asked about procedures, provide clear step-by-step guidance
+- For policy questions, explain both the rule and its practical application
 - Maintain a professional, helpful tone suitable for moderation team use
-- Do not make up or assume information not present in the documentation"""
+- Do not make up, assume, or infer information not present in the documentation
+- If multiple sources contain relevant information, synthesize them clearly
+- Prioritize the most recent or authoritative information when conflicts exist
+
+FORMAT PREFERENCES:
+- Use bullet points for lists and procedures
+- Use **bold** for important terms or key points
+- Use `code blocks` for commands or specific text
+- Structure responses logically with clear sections when appropriate"""
             
             user_prompt = f"""Context from documentation:
 {context}
@@ -227,7 +264,7 @@ Please provide a helpful answer based on the context above."""
                         {"role": "user", "content": user_prompt}
                     ],
                     "max_tokens": 1000,
-                    "temperature": 1.0
+                    "temperature": 0.3  # Lower temperature for more focused, consistent responses
                 }),
                 timeout=60
             )
