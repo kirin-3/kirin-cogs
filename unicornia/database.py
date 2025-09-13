@@ -204,6 +204,17 @@ class DatabaseManager:
                 )
             """)
             
+            # XP Shop Owned Items table (matching Nadeko's XpShopOwnedItem)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS XpShopOwnedItem (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    UserId INTEGER,
+                    ItemType INTEGER,
+                    ItemKey TEXT,
+                    UNIQUE(UserId, ItemType, ItemKey)
+                )
+            """)
+            
             # Shop system tables (matching Nadeko structure)
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS ShopEntry (
@@ -792,3 +803,82 @@ class DatabaseManager:
                 INSERT INTO XpCurrencyReward (XpSettingsId, Level, Amount) VALUES (?, ?, ?)
             """, (xp_settings_id, level, amount))
             await db.commit()
+    
+    # XP Shop methods
+    async def get_user_xp_items(self, user_id: int, item_type: int = None):
+        """Get user's owned XP shop items"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            if item_type is not None:
+                cursor = await db.execute("""
+                    SELECT Id, UserId, ItemType, ItemKey FROM XpShopOwnedItem 
+                    WHERE UserId = ? AND ItemType = ?
+                """, (user_id, item_type))
+            else:
+                cursor = await db.execute("""
+                    SELECT Id, UserId, ItemType, ItemKey FROM XpShopOwnedItem 
+                    WHERE UserId = ?
+                """, (user_id,))
+            return await cursor.fetchall()
+    
+    async def user_owns_xp_item(self, user_id: int, item_type: int, item_key: str) -> bool:
+        """Check if user owns a specific XP shop item"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT COUNT(*) FROM XpShopOwnedItem 
+                WHERE UserId = ? AND ItemType = ? AND ItemKey = ?
+            """, (user_id, item_type, item_key))
+            count = (await cursor.fetchone())[0]
+            return count > 0
+    
+    async def purchase_xp_item(self, user_id: int, item_type: int, item_key: str, price: int) -> bool:
+        """Purchase an XP shop item"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            
+            # Check if user already owns this item
+            if await self.user_owns_xp_item(user_id, item_type, item_key):
+                return False
+            
+            # Check if user has enough currency
+            cursor = await db.execute("SELECT CurrencyAmount FROM DiscordUser WHERE UserId = ?", (user_id,))
+            row = await cursor.fetchone()
+            current_balance = row[0] if row else 0
+            
+            if current_balance < price:
+                return False
+            
+            # Deduct currency
+            await db.execute("""
+                INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
+                ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount - ?
+            """, (user_id, -price, price))
+            
+            # Add item to user's collection
+            await db.execute("""
+                INSERT INTO XpShopOwnedItem (UserId, ItemType, ItemKey) VALUES (?, ?, ?)
+            """, (user_id, item_type, item_key))
+            
+            # Log transaction
+            await db.execute("""
+                INSERT INTO currency_transactions (user_id, amount, type, extra, note)
+                VALUES (?, ?, 'xp_shop_purchase', ?, ?)
+            """, (user_id, -price, item_key, f"Purchased XP item: {item_key}"))
+            
+            await db.commit()
+            return True
+    
+    async def get_user_rank_in_guild(self, user_id: int, guild_id: int) -> int:
+        """Get user's XP rank in a guild"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT COUNT(*) + 1 FROM UserXpStats 
+                WHERE GuildId = ? AND Xp > (
+                    SELECT COALESCE(Xp, 0) FROM UserXpStats 
+                    WHERE UserId = ? AND GuildId = ?
+                )
+            """, (guild_id, user_id, guild_id))
+            rank = (await cursor.fetchone())[0]
+            return rank

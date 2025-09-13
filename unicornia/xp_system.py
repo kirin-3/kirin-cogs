@@ -8,6 +8,8 @@ from typing import Optional, Dict, Any
 from redbot.core import commands
 from redbot.core.utils.chat_formatting import humanize_number
 from .database import DatabaseManager, LevelStats
+from .xp_card_generator import XPCardGenerator
+import os
 
 
 class XPSystem:
@@ -18,6 +20,10 @@ class XPSystem:
         self.config = config
         self.bot = bot
         self.xp_cooldowns = {}  # {user_id: timestamp}
+        
+        # Initialize XP card generator
+        cog_dir = os.path.dirname(os.path.abspath(__file__))
+        self.card_generator = XPCardGenerator(cog_dir)
     
     async def process_message(self, message: discord.Message):
         """Process a message for XP gain"""
