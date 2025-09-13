@@ -84,7 +84,7 @@ class CurrencyGeneration:
         async with self.db._get_connection() as db:
             await self.db._setup_wal_mode(db)
             await db.execute("""
-                INSERT INTO currency_plants (guild_id, channel_id, amount, password)
+                INSERT INTO PlantedCurrency (GuildId, ChannelId, Amount, Password)
                 VALUES (?, ?, ?, ?)
             """, (guild_id, channel_id, amount, password))
             await db.commit()
@@ -95,9 +95,9 @@ class CurrencyGeneration:
             await self.db._setup_wal_mode(db)
             # Find and remove the plant
             cursor = await db.execute("""
-                SELECT id, amount FROM currency_plants 
-                WHERE guild_id = ? AND password = ? 
-                ORDER BY planted_at DESC LIMIT 1
+                SELECT Id, Amount FROM PlantedCurrency 
+                WHERE GuildId = ? AND Password = ? 
+                ORDER BY Id DESC LIMIT 1
             """, (guild_id, password))
             
             plant = await cursor.fetchone()
@@ -107,7 +107,7 @@ class CurrencyGeneration:
             plant_id, amount = plant
             
             # Remove the plant
-            await db.execute("DELETE FROM currency_plants WHERE id = ?", (plant_id,))
+            await db.execute("DELETE FROM PlantedCurrency WHERE Id = ?", (plant_id,))
             
             # Give currency to user
             await self.db.add_currency(user_id, amount, "plant_pick", password, note=f"Picked plant with password {password}")
@@ -167,8 +167,8 @@ class CurrencyDecay:
             await self.db._setup_wal_mode(db)
             # Get all users above threshold
             cursor = await db.execute("""
-                SELECT user_id, currency_amount FROM users 
-                WHERE currency_amount > ? AND user_id != ?
+                SELECT UserId, CurrencyAmount FROM DiscordUser 
+                WHERE CurrencyAmount > ? AND UserId != ?
             """, (min_threshold, self.bot.user.id))
             
             users = await cursor.fetchall()
@@ -183,9 +183,9 @@ class CurrencyDecay:
                 if decay_amount > 0:
                     # Apply decay
                     await db.execute("""
-                        UPDATE users 
-                        SET currency_amount = currency_amount - ? 
-                        WHERE user_id = ?
+                        UPDATE DiscordUser 
+                        SET CurrencyAmount = CurrencyAmount - ? 
+                        WHERE UserId = ?
                     """, (decay_amount, user_id))
                     
                     # Log decay transaction

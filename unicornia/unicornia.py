@@ -82,8 +82,12 @@ class Unicornia(commands.Cog):
         """Called when the cog is loaded - proper async initialization"""
         try:
             # Initialize database first
-            self.db = DatabaseManager("data/unicornia.db")
+            nadeko_db_path = "data/nadeko.db"  # Default Nadeko database path
+            self.db = DatabaseManager("data/unicornia.db", nadeko_db_path)
             await self.db.initialize()
+            
+            # Migrate data from Nadeko database
+            await self.db.migrate_from_nadeko()
             
             # Initialize all systems
             self.xp_system = XPSystem(self.db, self.config, self.bot)

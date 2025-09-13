@@ -144,20 +144,38 @@ Before using the cog, you need to configure the path to your Nadeko database:
 
 ## Database Structure
 
-This cog uses its own SQLite database with WAL (Write-Ahead Logging) mode enabled for optimal performance and corruption prevention. The database includes the following tables:
+This cog uses its own SQLite database with WAL (Write-Ahead Logging) mode enabled for optimal performance and corruption prevention. The database structure matches Nadeko's schema for easy migration and includes the following tables:
 
-- `users`: User wallet currency and total XP
-- `user_xp`: Per-guild user XP data
-- `bank_users`: User bank balances
+- `DiscordUser`: User data including wallet currency and total XP (matches Nadeko)
+- `UserXpStats`: Per-guild user XP data (matches Nadeko)
+- `BankUsers`: User bank balances (matches Nadeko)
+- `PlantedCurrency`: Currency generation plants (matches Nadeko)
+- `ShopEntry`: Shop entries for guilds (matches Nadeko)
+- `ShopEntryItem`: Items within shop entries (matches Nadeko)
+- `XpCurrencyReward`: Currency rewards for reaching levels (matches Nadeko)
+- `GCChannelId`: Currency generation channels (matches Nadeko)
 - `currency_transactions`: Currency transaction history
 - `timely_claims`: Daily reward claim tracking
 - `shop_items`: Shop items
 - `user_shop_items`: User's purchased items
 - `waifus`: Waifu system data
-- `currency_plants`: Currency generation plants
 - `waifu_items`: Waifu items and gifts
 - `waifu_updates`: Waifu system transaction history
 - `xp_shop_items`: XP shop customization items
+
+### Migration from Nadeko
+
+The cog automatically migrates data from an existing Nadeko database on first load. Place your Nadeko database file at `data/nadeko.db` and the cog will automatically import:
+
+- ✅ User wallet currency (`CurrencyAmount`)
+- ✅ User total XP (`TotalXp`) 
+- ✅ Per-guild XP (`UserXpStats`)
+- ✅ Bank balances (`BankUsers`)
+- ✅ Currency plants (`PlantedCurrency`)
+- ✅ Shop entries (`ShopEntry` and `ShopEntryItem`)
+- ✅ XP currency rewards (`XpCurrencyReward`)
+- ✅ Currency generation channels (`GCChannelId`)
+- ✅ User usernames and avatars
 
 ### Database Optimizations
 - **WAL Mode**: Prevents database corruption and improves concurrency

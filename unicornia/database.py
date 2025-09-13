@@ -25,9 +25,10 @@ class LevelStats:
 class DatabaseManager:
     """Handles all database operations for Unicornia"""
     
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, nadeko_db_path: str = None):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.nadeko_db_path = nadeko_db_path
     
     def _get_connection(self):
         """Get a database connection with WAL mode enabled"""
@@ -78,30 +79,32 @@ class DatabaseManager:
         async with self._get_connection() as db:
             # Set up WAL mode and optimizations
             await self._setup_wal_mode(db)
-            # Create tables
+            # Create tables matching Nadeko's structure
             await db.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id INTEGER PRIMARY KEY,
-                    username TEXT,
-                    currency_amount INTEGER DEFAULT 0,
-                    total_xp INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                CREATE TABLE IF NOT EXISTS DiscordUser (
+                    UserId INTEGER PRIMARY KEY,
+                    Username TEXT,
+                    AvatarId TEXT,
+                    ClubId INTEGER,
+                    IsClubAdmin INTEGER DEFAULT 0,
+                    TotalXp INTEGER DEFAULT 0,
+                    CurrencyAmount INTEGER DEFAULT 0
                 )
             """)
             
             await db.execute("""
-                CREATE TABLE IF NOT EXISTS user_xp (
-                    user_id INTEGER,
-                    guild_id INTEGER,
-                    xp INTEGER DEFAULT 0,
-                    PRIMARY KEY (user_id, guild_id)
+                CREATE TABLE IF NOT EXISTS UserXpStats (
+                    UserId INTEGER,
+                    GuildId INTEGER,
+                    Xp INTEGER DEFAULT 0,
+                    PRIMARY KEY (UserId, GuildId)
                 )
             """)
             
             await db.execute("""
-                CREATE TABLE IF NOT EXISTS bank_users (
-                    user_id INTEGER PRIMARY KEY,
-                    balance INTEGER DEFAULT 0
+                CREATE TABLE IF NOT EXISTS BankUsers (
+                    UserId INTEGER PRIMARY KEY,
+                    Balance INTEGER DEFAULT 0
                 )
             """)
             
@@ -179,13 +182,14 @@ class DatabaseManager:
             """)
             
             await db.execute("""
-                CREATE TABLE IF NOT EXISTS currency_plants (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    guild_id INTEGER,
-                    channel_id INTEGER,
-                    amount INTEGER,
-                    password TEXT,
-                    planted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                CREATE TABLE IF NOT EXISTS PlantedCurrency (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    GuildId INTEGER,
+                    ChannelId INTEGER,
+                    UserId INTEGER,
+                    MessageId INTEGER,
+                    Amount INTEGER,
+                    Password TEXT
                 )
             """)
             
@@ -197,6 +201,52 @@ class DatabaseManager:
                     item_key TEXT,
                     is_using BOOLEAN DEFAULT FALSE,
                     purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Shop system tables (matching Nadeko structure)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS ShopEntry (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    GuildId INTEGER,
+                    Index INTEGER,
+                    Price INTEGER,
+                    Name TEXT,
+                    AuthorId INTEGER,
+                    Type INTEGER,
+                    RoleName TEXT,
+                    RoleId INTEGER,
+                    RoleRequirement INTEGER,
+                    Command TEXT
+                )
+            """)
+            
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS ShopEntryItem (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ShopEntryId INTEGER,
+                    Text TEXT,
+                    FOREIGN KEY (ShopEntryId) REFERENCES ShopEntry(Id) ON DELETE CASCADE
+                )
+            """)
+            
+            # XP Currency Rewards table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS XpCurrencyReward (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    XpSettingsId INTEGER,
+                    Level INTEGER,
+                    Amount INTEGER
+                )
+            """)
+            
+            # Currency Generation Channels table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS GCChannelId (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    GuildId INTEGER,
+                    ChannelId INTEGER,
+                    UNIQUE(GuildId, ChannelId)
                 )
             """)
             
@@ -243,7 +293,7 @@ class DatabaseManager:
         """Get user's wallet currency"""
         async with self._get_connection() as db:
             await self._setup_wal_mode(db)
-            cursor = await db.execute("SELECT currency_amount FROM users WHERE user_id = ?", (user_id,))
+            cursor = await db.execute("SELECT CurrencyAmount FROM DiscordUser WHERE UserId = ?", (user_id,))
             row = await cursor.fetchone()
             return row[0] if row else 0
     
@@ -253,8 +303,8 @@ class DatabaseManager:
             await self._setup_wal_mode(db)
             # Update user currency
             await db.execute("""
-                INSERT INTO users (user_id, currency_amount) VALUES (?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET currency_amount = currency_amount + ?
+                INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
+                ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount + ?
             """, (user_id, amount, amount))
             
             # Log transaction
@@ -270,7 +320,7 @@ class DatabaseManager:
         async with self._get_connection() as db:
             await self._setup_wal_mode(db)
             # Check if user has enough currency
-            cursor = await db.execute("SELECT currency_amount FROM users WHERE user_id = ?", (user_id,))
+            cursor = await db.execute("SELECT CurrencyAmount FROM DiscordUser WHERE UserId = ?", (user_id,))
             row = await cursor.fetchone()
             current_balance = row[0] if row else 0
             
@@ -279,8 +329,8 @@ class DatabaseManager:
             
             # Update user currency
             await db.execute("""
-                INSERT INTO users (user_id, currency_amount) VALUES (?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET currency_amount = currency_amount - ?
+                INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
+                ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount - ?
             """, (user_id, -amount, amount))
             
             # Log transaction
@@ -297,7 +347,7 @@ class DatabaseManager:
         """Get user's XP in a guild"""
         async with self._get_connection() as db:
             await self._setup_wal_mode(db)
-            cursor = await db.execute("SELECT xp FROM user_xp WHERE user_id = ? AND guild_id = ?", (user_id, guild_id))
+            cursor = await db.execute("SELECT Xp FROM UserXpStats WHERE UserId = ? AND GuildId = ?", (user_id, guild_id))
             row = await cursor.fetchone()
             return row[0] if row else 0
     
@@ -306,14 +356,14 @@ class DatabaseManager:
         async with self._get_connection() as db:
             await self._setup_wal_mode(db)
             await db.execute("""
-                INSERT INTO user_xp (user_id, guild_id, xp) VALUES (?, ?, ?)
-                ON CONFLICT(user_id, guild_id) DO UPDATE SET xp = xp + ?
+                INSERT INTO UserXpStats (UserId, GuildId, Xp) VALUES (?, ?, ?)
+                ON CONFLICT(UserId, GuildId) DO UPDATE SET Xp = Xp + ?
             """, (user_id, guild_id, amount, amount))
             
             # Update total XP
             await db.execute("""
-                INSERT INTO users (user_id, total_xp) VALUES (?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET total_xp = total_xp + ?
+                INSERT INTO DiscordUser (UserId, TotalXp) VALUES (?, ?)
+                ON CONFLICT(UserId) DO UPDATE SET TotalXp = TotalXp + ?
             """, (user_id, amount, amount))
             
             await db.commit()
@@ -323,7 +373,7 @@ class DatabaseManager:
         """Get user's bank balance"""
         async with self._get_connection() as db:
             await self._setup_wal_mode(db)
-            cursor = await db.execute("SELECT balance FROM bank_users WHERE user_id = ?", (user_id,))
+            cursor = await db.execute("SELECT Balance FROM BankUsers WHERE UserId = ?", (user_id,))
             row = await cursor.fetchone()
             return row[0] if row else 0
     
@@ -332,7 +382,7 @@ class DatabaseManager:
         async with self._get_connection() as db:
             await self._setup_wal_mode(db)
             # Check if user has enough currency
-            cursor = await db.execute("SELECT currency_amount FROM users WHERE user_id = ?", (user_id,))
+            cursor = await db.execute("SELECT CurrencyAmount FROM DiscordUser WHERE UserId = ?", (user_id,))
             row = await cursor.fetchone()
             current_balance = row[0] if row else 0
             
@@ -341,14 +391,14 @@ class DatabaseManager:
             
             # Remove from wallet
             await db.execute("""
-                INSERT INTO users (user_id, currency_amount) VALUES (?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET currency_amount = currency_amount - ?
+                INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
+                ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount - ?
             """, (user_id, -amount, amount))
             
             # Add to bank
             await db.execute("""
-                INSERT INTO bank_users (user_id, balance) VALUES (?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET balance = balance + ?
+                INSERT INTO BankUsers (UserId, Balance) VALUES (?, ?)
+                ON CONFLICT(UserId) DO UPDATE SET Balance = Balance + ?
             """, (user_id, amount, amount))
             
             # Log transaction
@@ -365,7 +415,7 @@ class DatabaseManager:
         async with self._get_connection() as db:
             await self._setup_wal_mode(db)
             # Check if user has enough in bank
-            cursor = await db.execute("SELECT balance FROM bank_users WHERE user_id = ?", (user_id,))
+            cursor = await db.execute("SELECT Balance FROM BankUsers WHERE UserId = ?", (user_id,))
             row = await cursor.fetchone()
             bank_balance = row[0] if row else 0
             
@@ -374,14 +424,14 @@ class DatabaseManager:
             
             # Remove from bank
             await db.execute("""
-                INSERT INTO bank_users (user_id, balance) VALUES (?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET balance = balance - ?
+                INSERT INTO BankUsers (UserId, Balance) VALUES (?, ?)
+                ON CONFLICT(UserId) DO UPDATE SET Balance = Balance - ?
             """, (user_id, -amount, amount))
             
             # Add to wallet
             await db.execute("""
-                INSERT INTO users (user_id, currency_amount) VALUES (?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET currency_amount = currency_amount + ?
+                INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
+                ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount + ?
             """, (user_id, amount, amount))
             
             # Log transaction
@@ -432,9 +482,9 @@ class DatabaseManager:
         async with self._get_connection() as db:
             await self._setup_wal_mode(db)
             cursor = await db.execute("""
-                SELECT user_id, xp FROM user_xp 
-                WHERE guild_id = ? 
-                ORDER BY xp DESC 
+                SELECT UserId, Xp FROM UserXpStats 
+                WHERE GuildId = ? 
+                ORDER BY Xp DESC 
                 LIMIT ? OFFSET ?
             """, (guild_id, limit, offset))
             return await cursor.fetchall()
@@ -444,8 +494,231 @@ class DatabaseManager:
         async with self._get_connection() as db:
             await self._setup_wal_mode(db)
             cursor = await db.execute("""
-                SELECT user_id, currency_amount FROM users 
-                ORDER BY currency_amount DESC 
+                SELECT UserId, CurrencyAmount FROM DiscordUser 
+                ORDER BY CurrencyAmount DESC 
                 LIMIT ? OFFSET ?
             """, (limit, offset))
             return await cursor.fetchall()
+    
+    async def migrate_from_nadeko(self):
+        """Migrate data from existing Nadeko database"""
+        if not self.nadeko_db_path or not Path(self.nadeko_db_path).exists():
+            log.info("No Nadeko database found, skipping migration")
+            return
+        
+        log.info("Starting migration from Nadeko database...")
+        
+        try:
+            async with aiosqlite.connect(self.nadeko_db_path) as nadeko_db:
+                # Migrate DiscordUser data
+                async with nadeko_db.execute("SELECT UserId, Username, AvatarId, TotalXp, CurrencyAmount FROM DiscordUser") as cursor:
+                    async for row in cursor:
+                        user_id, username, avatar_id, total_xp, currency_amount = row
+                        async with self._get_connection() as db:
+                            await self._setup_wal_mode(db)
+                            await db.execute("""
+                                INSERT OR REPLACE INTO DiscordUser (UserId, Username, AvatarId, TotalXp, CurrencyAmount)
+                                VALUES (?, ?, ?, ?, ?)
+                            """, (user_id, username, avatar_id, total_xp, currency_amount))
+                            await db.commit()
+                
+                # Migrate UserXpStats data
+                async with nadeko_db.execute("SELECT UserId, GuildId, Xp FROM UserXpStats") as cursor:
+                    async for row in cursor:
+                        user_id, guild_id, xp = row
+                        async with self._get_connection() as db:
+                            await self._setup_wal_mode(db)
+                            await db.execute("""
+                                INSERT OR REPLACE INTO UserXpStats (UserId, GuildId, Xp)
+                                VALUES (?, ?, ?)
+                            """, (user_id, guild_id, xp))
+                            await db.commit()
+                
+                # Migrate BankUsers data
+                async with nadeko_db.execute("SELECT UserId, Balance FROM BankUsers") as cursor:
+                    async for row in cursor:
+                        user_id, balance = row
+                        async with self._get_connection() as db:
+                            await self._setup_wal_mode(db)
+                            await db.execute("""
+                                INSERT OR REPLACE INTO BankUsers (UserId, Balance)
+                                VALUES (?, ?)
+                            """, (user_id, balance))
+                            await db.commit()
+                
+                # Migrate PlantedCurrency data
+                async with nadeko_db.execute("SELECT GuildId, ChannelId, UserId, MessageId, Amount, Password FROM PlantedCurrency") as cursor:
+                    async for row in cursor:
+                        guild_id, channel_id, user_id, message_id, amount, password = row
+                        async with self._get_connection() as db:
+                            await self._setup_wal_mode(db)
+                            await db.execute("""
+                                INSERT OR REPLACE INTO PlantedCurrency (GuildId, ChannelId, UserId, MessageId, Amount, Password)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """, (guild_id, channel_id, user_id, message_id, amount, password))
+                            await db.commit()
+                
+                # Migrate ShopEntry data (if exists)
+                try:
+                    async with nadeko_db.execute("SELECT Id, GuildId, Index, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command FROM ShopEntry") as cursor:
+                        async for row in cursor:
+                            entry_id, guild_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command = row
+                            async with self._get_connection() as db:
+                                await self._setup_wal_mode(db)
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO ShopEntry (Id, GuildId, Index, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """, (entry_id, guild_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command))
+                                await db.commit()
+                except Exception as e:
+                    log.info(f"ShopEntry table not found or empty: {e}")
+                
+                # Migrate ShopEntryItem data (if exists)
+                try:
+                    async with nadeko_db.execute("SELECT Id, ShopEntryId, Text FROM ShopEntryItem") as cursor:
+                        async for row in cursor:
+                            item_id, shop_entry_id, text = row
+                            async with self._get_connection() as db:
+                                await self._setup_wal_mode(db)
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO ShopEntryItem (Id, ShopEntryId, Text)
+                                    VALUES (?, ?, ?)
+                                """, (item_id, shop_entry_id, text))
+                                await db.commit()
+                except Exception as e:
+                    log.info(f"ShopEntryItem table not found or empty: {e}")
+                
+                # Migrate XpCurrencyReward data (if exists)
+                try:
+                    async with nadeko_db.execute("SELECT Id, XpSettingsId, Level, Amount FROM XpCurrencyReward") as cursor:
+                        async for row in cursor:
+                            reward_id, xp_settings_id, level, amount = row
+                            async with self._get_connection() as db:
+                                await self._setup_wal_mode(db)
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO XpCurrencyReward (Id, XpSettingsId, Level, Amount)
+                                    VALUES (?, ?, ?, ?)
+                                """, (reward_id, xp_settings_id, level, amount))
+                                await db.commit()
+                except Exception as e:
+                    log.info(f"XpCurrencyReward table not found or empty: {e}")
+                
+                # Migrate GCChannelId data (if exists)
+                try:
+                    async with nadeko_db.execute("SELECT Id, GuildId, ChannelId FROM GCChannelId") as cursor:
+                        async for row in cursor:
+                            gc_id, guild_id, channel_id = row
+                            async with self._get_connection() as db:
+                                await self._setup_wal_mode(db)
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO GCChannelId (Id, GuildId, ChannelId)
+                                    VALUES (?, ?, ?)
+                                """, (gc_id, guild_id, channel_id))
+                                await db.commit()
+                except Exception as e:
+                    log.info(f"GCChannelId table not found or empty: {e}")
+                
+                log.info("Migration from Nadeko database completed successfully")
+                
+        except Exception as e:
+            log.error(f"Error during migration from Nadeko database: {e}")
+            raise
+    
+    # Shop system methods
+    async def get_shop_entries(self, guild_id: int):
+        """Get all shop entries for a guild"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT Id, GuildId, Index, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command
+                FROM ShopEntry WHERE GuildId = ? ORDER BY Index
+            """, (guild_id,))
+            return await cursor.fetchall()
+    
+    async def get_shop_entry_items(self, shop_entry_id: int):
+        """Get items for a shop entry"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT Id, Text FROM ShopEntryItem WHERE ShopEntryId = ?
+            """, (shop_entry_id,))
+            return await cursor.fetchall()
+    
+    async def add_shop_entry(self, guild_id: int, index: int, price: int, name: str, author_id: int, 
+                           entry_type: int, role_name: str = None, role_id: int = None, 
+                           role_requirement: int = None, command: str = None):
+        """Add a new shop entry"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                INSERT INTO ShopEntry (GuildId, Index, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (guild_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command))
+            await db.commit()
+            return cursor.lastrowid
+    
+    async def add_shop_entry_item(self, shop_entry_id: int, text: str):
+        """Add an item to a shop entry"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                INSERT INTO ShopEntryItem (ShopEntryId, Text) VALUES (?, ?)
+            """, (shop_entry_id, text))
+            await db.commit()
+    
+    # Currency generation channel methods
+    async def get_currency_generation_channels(self, guild_id: int = None):
+        """Get currency generation channels"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            if guild_id:
+                cursor = await db.execute("""
+                    SELECT Id, GuildId, ChannelId FROM GCChannelId WHERE GuildId = ?
+                """, (guild_id,))
+            else:
+                cursor = await db.execute("""
+                    SELECT Id, GuildId, ChannelId FROM GCChannelId
+                """)
+            return await cursor.fetchall()
+    
+    async def add_currency_generation_channel(self, guild_id: int, channel_id: int):
+        """Add a channel for currency generation"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                INSERT OR REPLACE INTO GCChannelId (GuildId, ChannelId) VALUES (?, ?)
+            """, (guild_id, channel_id))
+            await db.commit()
+    
+    async def remove_currency_generation_channel(self, guild_id: int, channel_id: int):
+        """Remove a channel from currency generation"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                DELETE FROM GCChannelId WHERE GuildId = ? AND ChannelId = ?
+            """, (guild_id, channel_id))
+            await db.commit()
+    
+    # XP currency reward methods
+    async def get_xp_currency_rewards(self, xp_settings_id: int = None):
+        """Get XP currency rewards"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            if xp_settings_id:
+                cursor = await db.execute("""
+                    SELECT Id, XpSettingsId, Level, Amount FROM XpCurrencyReward WHERE XpSettingsId = ?
+                """, (xp_settings_id,))
+            else:
+                cursor = await db.execute("""
+                    SELECT Id, XpSettingsId, Level, Amount FROM XpCurrencyReward
+                """)
+            return await cursor.fetchall()
+    
+    async def add_xp_currency_reward(self, xp_settings_id: int, level: int, amount: int):
+        """Add an XP currency reward"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                INSERT INTO XpCurrencyReward (XpSettingsId, Level, Amount) VALUES (?, ?, ?)
+            """, (xp_settings_id, level, amount))
+            await db.commit()
