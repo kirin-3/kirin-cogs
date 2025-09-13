@@ -204,16 +204,17 @@ class DatabaseManager:
                 )
             """)
             
-            # XP Shop Owned Items table (matching Nadeko's XpShopOwnedItem)
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS XpShopOwnedItem (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    UserId INTEGER,
-                    ItemType INTEGER,
-                    ItemKey TEXT,
-                    UNIQUE(UserId, ItemType, ItemKey)
-                )
-            """)
+        # XP Shop Owned Items table (matching Nadeko's XpShopOwnedItem)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS XpShopOwnedItem (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                UserId INTEGER,
+                ItemType INTEGER,
+                ItemKey TEXT,
+                IsUsing BOOLEAN DEFAULT FALSE,
+                UNIQUE(UserId, ItemType, ItemKey)
+            )
+        """)
             
             # Shop system tables (matching Nadeko structure)
             await db.execute("""
@@ -827,7 +828,7 @@ class DatabaseManager:
             return await cursor.fetchall()
     
     async def _ensure_default_background(self, user_id: int, db):
-        """Ensure user has the default background"""
+        """Ensure user has the default background and it's set as active if no other is active"""
         # Check if user already has default background
         cursor = await db.execute("""
             SELECT COUNT(*) FROM XpShopOwnedItem 
@@ -836,10 +837,17 @@ class DatabaseManager:
         count = (await cursor.fetchone())[0]
         
         if count == 0:
-            # Give user the default background for free
-            await db.execute("""
-                INSERT INTO XpShopOwnedItem (UserId, ItemType, ItemKey) VALUES (?, 1, 'default')
+            # Check if user has any active background
+            cursor = await db.execute("""
+                SELECT COUNT(*) FROM XpShopOwnedItem 
+                WHERE UserId = ? AND ItemType = 1 AND IsUsing = TRUE
             """, (user_id,))
+            has_active = (await cursor.fetchone())[0] > 0
+            
+            # Give user the default background for free and set as active if no other is active
+            await db.execute("""
+                INSERT INTO XpShopOwnedItem (UserId, ItemType, ItemKey, IsUsing) VALUES (?, 1, 'default', ?)
+            """, (user_id, not has_active))
             await db.commit()
     
     async def user_owns_xp_item(self, user_id: int, item_type: int, item_key: str) -> bool:
@@ -878,7 +886,7 @@ class DatabaseManager:
             
             # Add item to user's collection
             await db.execute("""
-                INSERT INTO XpShopOwnedItem (UserId, ItemType, ItemKey) VALUES (?, ?, ?)
+                INSERT INTO XpShopOwnedItem (UserId, ItemType, ItemKey, IsUsing) VALUES (?, ?, ?, FALSE)
             """, (user_id, item_type, item_key))
             
             # Log transaction
@@ -886,6 +894,53 @@ class DatabaseManager:
                 INSERT INTO currency_transactions (user_id, amount, type, extra, note)
                 VALUES (?, ?, 'xp_shop_purchase', ?, ?)
             """, (user_id, -price, item_key, f"Purchased XP item: {item_key}"))
+            
+            await db.commit()
+            return True
+    
+    async def get_active_xp_item(self, user_id: int, item_type: int) -> str:
+        """Get the user's active XP item of a given type"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            
+            # Ensure user has default background
+            if item_type == 1:  # Background type
+                await self._ensure_default_background(user_id, db)
+            
+            cursor = await db.execute("""
+                SELECT ItemKey FROM XpShopOwnedItem 
+                WHERE UserId = ? AND ItemType = ? AND IsUsing = TRUE
+            """, (user_id, item_type))
+            result = await cursor.fetchone()
+            
+            if result:
+                return result[0]
+            
+            # If no active item, return default
+            return "default"
+    
+    async def set_active_xp_item(self, user_id: int, item_type: int, item_key: str) -> bool:
+        """Set an XP item as active (user must own it first)"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            
+            # Check if user owns the item
+            if not await self.user_owns_xp_item(user_id, item_type, item_key):
+                return False
+            
+            # Set all items of this type to not using
+            await db.execute("""
+                UPDATE XpShopOwnedItem 
+                SET IsUsing = FALSE 
+                WHERE UserId = ? AND ItemType = ?
+            """, (user_id, item_type))
+            
+            # Set the specified item as using
+            await db.execute("""
+                UPDATE XpShopOwnedItem 
+                SET IsUsing = TRUE 
+                WHERE UserId = ? AND ItemType = ? AND ItemKey = ?
+            """, (user_id, item_type, item_key))
             
             await db.commit()
             return True

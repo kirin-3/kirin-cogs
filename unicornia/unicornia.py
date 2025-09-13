@@ -258,6 +258,80 @@ class Unicornia(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Error processing purchase: {e}")
     
+    @xp_shop_group.command(name="use")
+    async def shop_use(self, ctx, item_key: str):
+        """Set an XP background as active
+        
+        Usage: 
+        - `[p]xpshop use default` - Use default background
+        - `[p]xpshop use shadow` - Use shadow background (must own it first)
+        """
+        if not self._check_systems_ready():
+            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
+            return
+        
+        try:
+            # Check if user owns the background
+            if not await self.db.user_owns_xp_item(ctx.author.id, 1, item_key):
+                await ctx.send(f"❌ You don't own the background `{item_key}`. Purchase it first with `[p]xpshop buy {item_key}`.")
+                return
+            
+            # Set as active
+            success = await self.db.set_active_xp_item(ctx.author.id, 1, item_key)
+            
+            if success:
+                backgrounds = self.xp_system.card_generator.get_available_backgrounds()
+                item_name = backgrounds.get(item_key, {}).get('name', item_key)
+                await ctx.send(f"✅ Now using **{item_name}** as your XP background!")
+            else:
+                await ctx.send(f"❌ Failed to set background. Make sure you own `{item_key}`.")
+                
+        except Exception as e:
+            await ctx.send(f"❌ Error setting background: {e}")
+    
+    @xp_shop_group.command(name="owned", aliases=["inventory", "inv"])
+    async def shop_owned(self, ctx):
+        """View your owned XP backgrounds"""
+        if not self._check_systems_ready():
+            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
+            return
+        
+        try:
+            owned_items = await self.db.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
+            backgrounds = self.xp_system.card_generator.get_available_backgrounds()
+            
+            if not owned_items:
+                await ctx.send("❌ You don't own any backgrounds yet. Use `[p]xpshop backgrounds` to see what's available!")
+                return
+            
+            embed = discord.Embed(
+                title="🎒 Your XP Backgrounds",
+                description="Backgrounds you own",
+                color=discord.Color.green()
+            )
+            
+            active_background = await self.db.get_active_xp_item(ctx.author.id, 1)
+            
+            for item in owned_items:
+                item_key = item[3]  # ItemKey from database
+                bg_data = backgrounds.get(item_key, {})
+                name = bg_data.get('name', item_key)
+                desc = bg_data.get('desc', '')
+                
+                status = " 🌟 **ACTIVE**" if item_key == active_background else ""
+                
+                embed.add_field(
+                    name=f"{name}{status}",
+                    value=f"Key: `{item_key}`\n{desc}" if desc else f"Key: `{item_key}`",
+                    inline=True
+                )
+            
+            embed.set_footer(text=f"Use '[p]xpshop use <key>' to change your active background")
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error loading owned backgrounds: {e}")
+    
     @xp_shop_group.command(name="reload")
     @commands.is_owner()
     async def shop_reload_config(self, ctx):
@@ -289,8 +363,13 @@ class Unicornia(commands.Cog):
             inline=False
         )
         embed.add_field(
+            name="Available Commands:",
+            value="`[p]xpshop backgrounds` - View all backgrounds\n`[p]xpshop buy <key>` - Purchase a background\n`[p]xpshop use <key>` - Set active background\n`[p]xpshop owned` - View your inventory",
+            inline=False
+        )
+        embed.add_field(
             name="Note:",
-            value="All users start with the 'default' background. They can purchase additional backgrounds with currency.",
+            value="All users start with the 'default' background. Purchase backgrounds with currency, then use `[p]xpshop use <key>` to activate them!",
             inline=False
         )
         await ctx.send(embed=embed)
@@ -345,7 +424,35 @@ class Unicornia(commands.Cog):
         
         try:
             level_stats = await self.xp_system.get_user_level_stats(member.id, ctx.guild.id)
+            user_rank = await self.db.get_user_rank_in_guild(member.id, ctx.guild.id)
             
+            # Get user's active background
+            active_background = await self.db.get_active_xp_item(member.id, 1)  # 1 = Background
+            
+            # Generate XP card
+            try:
+                card_image_bytes = await self.xp_system.card_generator.generate_xp_card(
+                    member.id,
+                    member.display_name,
+                    str(member.avatar.url) if member.avatar else str(member.default_avatar.url),
+                    level_stats.level,
+                    level_stats.level_xp,
+                    level_stats.required_xp,
+                    level_stats.total_xp,
+                    user_rank,
+                    active_background
+                )
+                
+                if card_image_bytes:
+                    file = discord.File(card_image_bytes, filename="xp_card.png")
+                    await ctx.send(file=file)
+                    return
+                    
+            except Exception as e:
+                log.error(f"Error generating XP card for {member.display_name}: {e}")
+                # Fall back to embed if card generation fails
+            
+            # Fallback embed if XP card generation fails
             embed = discord.Embed(
                 title=f"{member.display_name}'s Level",
                 color=member.color or discord.Color.blue()
@@ -353,14 +460,18 @@ class Unicornia(commands.Cog):
             embed.add_field(name="Level", value=level_stats.level, inline=True)
             embed.add_field(name="XP", value=f"{level_stats.level_xp:,}/{level_stats.required_xp:,}", inline=True)
             embed.add_field(name="Total XP", value=f"{level_stats.total_xp:,}", inline=True)
+            embed.add_field(name="Rank", value=f"#{user_rank}", inline=True)
             
             # Progress bar
             progress_bar = self.xp_system.get_progress_bar(level_stats.level_xp, level_stats.required_xp)
             embed.add_field(name="Progress", value=f"`{progress_bar}` {level_stats.level_xp/level_stats.required_xp:.1%}", inline=False)
+            embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+            embed.set_footer(text=f"Active background: {active_background}")
             
             await ctx.send(embed=embed)
             
         except Exception as e:
+            log.error(f"Error in level check for {member.display_name}: {e}", exc_info=True)
             await ctx.send(f"❌ Error retrieving level data: {e}")
     
     @level_group.command(name="leaderboard", aliases=["lb", "top"])
