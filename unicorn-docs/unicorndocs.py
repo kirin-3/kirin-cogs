@@ -410,6 +410,3 @@ Please provide a helpful answer based on the context above."""
         
         await ctx.send(embed=embed)
 
-
-async def setup(bot: Red):
-    await bot.add_cog(UnicornDocs(bot))
