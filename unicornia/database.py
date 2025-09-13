@@ -175,8 +175,8 @@ class DatabaseManager:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS currency_plants (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
                     guild_id INTEGER,
+                    channel_id INTEGER,
                     amount INTEGER,
                     password TEXT,
                     planted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

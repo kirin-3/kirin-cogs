@@ -1,11 +1,11 @@
-# Unicornia - Nadeko Migration Cog
-# A Red bot cog that reads from Nadeko's SQLite database to provide leveling and economy features
+# Unicornia - Full-Featured Leveling and Economy Cog
+# A complete Red bot cog that provides comprehensive leveling and economy features
 
 from .unicornia import Unicornia
 
-__red_end_user_data_statement__ = "This cog reads from an existing Nadeko SQLite database and does not store additional user data."
+__red_end_user_data_statement__ = "This cog stores user level, XP, currency, and economy data in its own SQLite database."
 
 
-def setup(bot):
+async def setup(bot):
     cog = Unicornia(bot)
-    bot.add_cog(cog)
+    await bot.add_cog(cog)

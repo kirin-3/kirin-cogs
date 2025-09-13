@@ -788,7 +788,3 @@ class Unicornia(commands.Cog):
         await self.config.guild(ctx.guild).currency_rewards.set(currency_rewards)
         currency_symbol = await self.config.currency_symbol()
         await ctx.send(f"✅ Users reaching level {level} will receive {currency_symbol}{amount:,}.")
-
-
-async def setup(bot: Red):
-    await bot.add_cog(Unicornia(bot))
