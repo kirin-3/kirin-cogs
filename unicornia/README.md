@@ -144,7 +144,7 @@ Before using the cog, you need to configure the path to your Nadeko database:
 
 ## Database Structure
 
-This cog uses its own SQLite database with the following tables:
+This cog uses its own SQLite database with WAL (Write-Ahead Logging) mode enabled for optimal performance and corruption prevention. The database includes the following tables:
 
 - `users`: User wallet currency and total XP
 - `user_xp`: Per-guild user XP data
@@ -154,6 +154,17 @@ This cog uses its own SQLite database with the following tables:
 - `shop_items`: Shop items
 - `user_shop_items`: User's purchased items
 - `waifus`: Waifu system data
+- `currency_plants`: Currency generation plants
+- `waifu_items`: Waifu items and gifts
+- `waifu_updates`: Waifu system transaction history
+- `xp_shop_items`: XP shop customization items
+
+### Database Optimizations
+- **WAL Mode**: Prevents database corruption and improves concurrency
+- **Memory Mapping**: 256MB memory mapping for faster access
+- **Incremental Vacuum**: Automatic database maintenance
+- **Optimized Page Size**: 4KB pages for better performance
+- **Automatic Integrity Checks**: Hourly database integrity verification
 
 ## Level Calculation
 

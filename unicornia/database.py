@@ -4,10 +4,13 @@ Database models and operations for Unicornia
 
 import aiosqlite
 import math
+import logging
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
 from datetime import datetime
+
+log = logging.getLogger("red.unicornia.database")
 
 
 @dataclass
@@ -26,9 +29,49 @@ class DatabaseManager:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
     
+    async def _get_connection(self):
+        """Get a database connection with WAL mode enabled"""
+        conn = await aiosqlite.connect(self.db_path)
+        # Enable WAL mode and optimize settings for better performance and corruption prevention
+        await conn.execute("PRAGMA journal_mode=WAL")
+        await conn.execute("PRAGMA synchronous=NORMAL")
+        await conn.execute("PRAGMA cache_size=1000")
+        await conn.execute("PRAGMA temp_store=MEMORY")
+        await conn.execute("PRAGMA mmap_size=268435456")  # 256MB memory mapping
+        await conn.execute("PRAGMA page_size=4096")  # 4KB page size
+        await conn.execute("PRAGMA auto_vacuum=INCREMENTAL")  # Incremental vacuum
+        return conn
+    
+    async def check_wal_integrity(self) -> bool:
+        """Check WAL mode integrity and perform maintenance if needed"""
+        try:
+            async with self._get_connection() as db:
+                # Check if WAL mode is active
+                cursor = await db.execute("PRAGMA journal_mode")
+                mode = await cursor.fetchone()
+                if mode[0] != "wal":
+                    log.warning("Database not in WAL mode, attempting to enable...")
+                    await db.execute("PRAGMA journal_mode=WAL")
+                    await db.commit()
+                
+                # Check database integrity
+                cursor = await db.execute("PRAGMA integrity_check")
+                result = await cursor.fetchone()
+                if result[0] != "ok":
+                    log.error(f"Database integrity check failed: {result[0]}")
+                    return False
+                
+                # Perform WAL checkpoint to prevent WAL file from growing too large
+                await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                
+                return True
+        except Exception as e:
+            log.error(f"WAL integrity check failed: {e}")
+            return False
+    
     async def initialize(self):
         """Initialize the database with all required tables"""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             # Create tables
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS users (
@@ -192,14 +235,14 @@ class DatabaseManager:
     # Currency methods
     async def get_user_currency(self, user_id: int) -> int:
         """Get user's wallet currency"""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             cursor = await db.execute("SELECT currency_amount FROM users WHERE user_id = ?", (user_id,))
             row = await cursor.fetchone()
             return row[0] if row else 0
     
     async def add_currency(self, user_id: int, amount: int, transaction_type: str, extra: str = "", other_id: int = None, note: str = ""):
         """Add currency to user's wallet"""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             # Update user currency
             await db.execute("""
                 INSERT INTO users (user_id, currency_amount) VALUES (?, ?)
@@ -216,7 +259,7 @@ class DatabaseManager:
     
     async def remove_currency(self, user_id: int, amount: int, transaction_type: str, extra: str = "", other_id: int = None, note: str = "") -> bool:
         """Remove currency from user's wallet"""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             # Check if user has enough currency
             cursor = await db.execute("SELECT currency_amount FROM users WHERE user_id = ?", (user_id,))
             row = await cursor.fetchone()
@@ -243,14 +286,14 @@ class DatabaseManager:
     # XP methods
     async def get_user_xp(self, user_id: int, guild_id: int) -> int:
         """Get user's XP in a guild"""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             cursor = await db.execute("SELECT xp FROM user_xp WHERE user_id = ? AND guild_id = ?", (user_id, guild_id))
             row = await cursor.fetchone()
             return row[0] if row else 0
     
     async def add_xp(self, user_id: int, guild_id: int, amount: int):
         """Add XP to user in a guild"""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             await db.execute("""
                 INSERT INTO user_xp (user_id, guild_id, xp) VALUES (?, ?, ?)
                 ON CONFLICT(user_id, guild_id) DO UPDATE SET xp = xp + ?
@@ -267,14 +310,14 @@ class DatabaseManager:
     # Bank methods
     async def get_bank_balance(self, user_id: int) -> int:
         """Get user's bank balance"""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             cursor = await db.execute("SELECT balance FROM bank_users WHERE user_id = ?", (user_id,))
             row = await cursor.fetchone()
             return row[0] if row else 0
     
     async def deposit_bank(self, user_id: int, amount: int) -> bool:
         """Deposit currency to bank"""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             # Check if user has enough currency
             cursor = await db.execute("SELECT currency_amount FROM users WHERE user_id = ?", (user_id,))
             row = await cursor.fetchone()
@@ -306,7 +349,7 @@ class DatabaseManager:
     
     async def withdraw_bank(self, user_id: int, amount: int) -> bool:
         """Withdraw currency from bank"""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             # Check if user has enough in bank
             cursor = await db.execute("SELECT balance FROM bank_users WHERE user_id = ?", (user_id,))
             row = await cursor.fetchone()
@@ -341,7 +384,7 @@ class DatabaseManager:
         """Check if user can claim timely reward"""
         cooldown_seconds = cooldown_hours * 3600
         
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             cursor = await db.execute("SELECT last_claim FROM timely_claims WHERE user_id = ?", (user_id,))
             row = await cursor.fetchone()
             
@@ -358,7 +401,7 @@ class DatabaseManager:
         
         await self.add_currency(user_id, amount, "timely", "daily", note="Daily timely reward")
         
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             await db.execute("""
                 INSERT INTO timely_claims (user_id, last_claim) VALUES (?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET last_claim = ?
@@ -370,7 +413,7 @@ class DatabaseManager:
     # Leaderboard methods
     async def get_top_xp_users(self, guild_id: int, limit: int = 10, offset: int = 0):
         """Get top XP users in a guild"""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             cursor = await db.execute("""
                 SELECT user_id, xp FROM user_xp 
                 WHERE guild_id = ? 
@@ -381,7 +424,7 @@ class DatabaseManager:
     
     async def get_top_currency_users(self, limit: int = 10, offset: int = 0):
         """Get top currency users globally"""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self._get_connection() as db:
             cursor = await db.execute("""
                 SELECT user_id, currency_amount FROM users 
                 ORDER BY currency_amount DESC 

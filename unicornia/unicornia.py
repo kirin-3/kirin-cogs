@@ -95,6 +95,9 @@ class Unicornia(commands.Cog):
             # Start background tasks
             await self.currency_decay.start_decay_loop()
             
+            # Start WAL maintenance task
+            asyncio.create_task(self._wal_maintenance_loop())
+            
             log.info("Unicornia: All systems initialized successfully")
         except Exception as e:
             log.error(f"Unicornia: Failed to initialize: {e}")
@@ -119,6 +122,19 @@ class Unicornia(commands.Cog):
             self.currency_generation is not None,
             self.currency_decay is not None
         ])
+    
+    async def _wal_maintenance_loop(self):
+        """Periodic WAL maintenance to prevent corruption and optimize performance"""
+        while True:
+            try:
+                await asyncio.sleep(3600)  # Run every hour
+                if self.db:
+                    await self.db.check_wal_integrity()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                log.error(f"WAL maintenance error: {e}")
+                await asyncio.sleep(300)  # Wait 5 minutes before retrying
     
     @commands.Cog.listener()
     async def on_message(self, message):
