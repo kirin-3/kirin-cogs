@@ -204,8 +204,8 @@ class DatabaseManager:
                 )
             """)
             
-        # XP Shop Owned Items table (matching Nadeko's XpShopOwnedItem)
-        await db.execute("""
+            # XP Shop Owned Items table (matching Nadeko's XpShopOwnedItem)
+            await db.execute("""
             CREATE TABLE IF NOT EXISTS XpShopOwnedItem (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 UserId INTEGER,
@@ -214,10 +214,10 @@ class DatabaseManager:
                 IsUsing BOOLEAN DEFAULT FALSE,
                 UNIQUE(UserId, ItemType, ItemKey)
             )
-        """)
-        
-        # Shop system tables (matching Nadeko structure)
-        await db.execute("""
+            """)
+            
+            # Shop system tables (matching Nadeko structure)
+            await db.execute("""
                 CREATE TABLE IF NOT EXISTS ShopEntry (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     GuildId INTEGER,
@@ -231,38 +231,38 @@ class DatabaseManager:
                     RoleRequirement INTEGER,
                     Command TEXT
                 )
-        """)
-        
-        await db.execute("""
+            """)
+            
+            await db.execute("""
             CREATE TABLE IF NOT EXISTS ShopEntryItem (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     ShopEntryId INTEGER,
                     Text TEXT,
                     FOREIGN KEY (ShopEntryId) REFERENCES ShopEntry(Id) ON DELETE CASCADE
                 )
-        """)
-        
-        # XP Currency Rewards table
-        await db.execute("""
+            """)
+            
+            # XP Currency Rewards table
+            await db.execute("""
                 CREATE TABLE IF NOT EXISTS XpCurrencyReward (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     XpSettingsId INTEGER,
                     Level INTEGER,
                     Amount INTEGER
                 )
-        """)
-        
-        # Currency Generation Channels table
-        await db.execute("""
+            """)
+            
+            # Currency Generation Channels table
+            await db.execute("""
                 CREATE TABLE IF NOT EXISTS GCChannelId (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     GuildId INTEGER,
                     ChannelId INTEGER,
                     UNIQUE(GuildId, ChannelId)
                 )
-        """)
-        
-        await db.commit()
+            """)
+            
+            await db.commit()
     
     # Level calculation methods (using Nadeko's exact formula)
     @staticmethod
