@@ -502,14 +502,30 @@ class DatabaseManager:
     
     async def migrate_from_nadeko(self):
         """Migrate data from existing Nadeko database"""
-        if not self.nadeko_db_path or not Path(self.nadeko_db_path).exists():
-            log.info("No Nadeko database found, skipping migration")
+        # Try multiple possible paths for Nadeko database
+        possible_paths = [
+            self.nadeko_db_path,
+            "/data/nadeko.db",
+            "data/nadeko.db",
+            "nadeko.db",
+            "data/nadeko/nadeko.db"
+        ]
+        
+        nadeko_db_path = None
+        for path in possible_paths:
+            if path and Path(path).exists():
+                nadeko_db_path = path
+                break
+        
+        if not nadeko_db_path:
+            log.info("No Nadeko database found in any of the expected locations, skipping migration")
+            log.info(f"Searched paths: {possible_paths}")
             return
         
-        log.info("Starting migration from Nadeko database...")
+        log.info(f"Starting migration from Nadeko database at {nadeko_db_path}...")
         
         try:
-            async with aiosqlite.connect(self.nadeko_db_path) as nadeko_db:
+            async with aiosqlite.connect(nadeko_db_path) as nadeko_db:
                 # Migrate DiscordUser data
                 async with nadeko_db.execute("SELECT UserId, Username, AvatarId, TotalXp, CurrencyAmount FROM DiscordUser") as cursor:
                     async for row in cursor:
