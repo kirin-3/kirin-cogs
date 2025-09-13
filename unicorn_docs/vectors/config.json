@@ -1,0 +1,8 @@
+{
+  "embedding_model": "all-MiniLM-L6-v2",
+  "chunk_size": 300,
+  "chunk_overlap": 50,
+  "total_chunks": 35,
+  "total_files": 12,
+  "version": "1.0.0"
+}
