@@ -1,34 +1,25 @@
 {
-    "author": [
-        "kirin"
-    ],
+    "name": "unicorn-docs",
+    "short": "Unicorn Documentation Q&A System",
     "description": "AI-powered documentation question and answer system for moderation team. Uses RAG (Retrieval-Augmented Generation) with ChromaDB and OpenRouter API.",
-    "disabled": false,
-    "end_user_data_statement": "This cog stores vector embeddings of documentation content for AI-powered question answering. No personal user data is stored.",
+    "author": ["kirin"],
+    "version": "1.0.0",
     "hidden": false,
-    "install_msg": "UnicornDocs loaded! Use [p]docs config apikey to set up your OpenRouter API key.",
+    "disabled": false,
+    "type": "COG",
+    "license": "MIT",
     "min_bot_version": "3.5.0",
     "min_python_version": [3, 8, 0],
-    "name": "UnicornDocs",
     "permissions": [
         "read_messages",
         "send_messages",
         "embed_links",
         "attach_files"
     ],
-    "required_cogs": {},
     "requirements": [
         "chromadb",
         "requests",
         "python-dotenv"
     ],
-    "short": "Unicorn Documentation Q&A System",
-    "tags": [
-        "utility",
-        "documentation",
-        "ai",
-        "qa",
-        "moderation"
-    ],
-    "type": "COG"
+    "end_user_data_statement": "This cog stores vector embeddings of documentation content for AI-powered question answering. No personal user data is stored."
 }
