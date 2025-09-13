@@ -809,6 +809,11 @@ class DatabaseManager:
         """Get user's owned XP shop items"""
         async with self._get_connection() as db:
             await self._setup_wal_mode(db)
+            
+            # Ensure user has default background (free for everyone)
+            if item_type == 1:  # Background type
+                await self._ensure_default_background(user_id, db)
+            
             if item_type is not None:
                 cursor = await db.execute("""
                     SELECT Id, UserId, ItemType, ItemKey FROM XpShopOwnedItem 
@@ -820,6 +825,22 @@ class DatabaseManager:
                     WHERE UserId = ?
                 """, (user_id,))
             return await cursor.fetchall()
+    
+    async def _ensure_default_background(self, user_id: int, db):
+        """Ensure user has the default background"""
+        # Check if user already has default background
+        cursor = await db.execute("""
+            SELECT COUNT(*) FROM XpShopOwnedItem 
+            WHERE UserId = ? AND ItemType = 1 AND ItemKey = 'default'
+        """, (user_id,))
+        count = (await cursor.fetchone())[0]
+        
+        if count == 0:
+            # Give user the default background for free
+            await db.execute("""
+                INSERT INTO XpShopOwnedItem (UserId, ItemType, ItemKey) VALUES (?, 1, 'default')
+            """, (user_id,))
+            await db.commit()
     
     async def user_owns_xp_item(self, user_id: int, item_type: int, item_key: str) -> bool:
         """Check if user owns a specific XP shop item"""

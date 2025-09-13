@@ -168,7 +168,7 @@ class Unicornia(commands.Cog):
     
     @commands.group(name="xpshop", aliases=["xps"])
     async def xp_shop_group(self, ctx):
-        """XP Shop - Buy backgrounds and frames with currency"""
+        """XP Shop - Buy custom backgrounds with currency"""
         if ctx.invoked_subcommand is None:
             await ctx.send_help(ctx.command)
     
@@ -215,92 +215,33 @@ class Unicornia(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Error loading backgrounds: {e}")
     
-    @xp_shop_group.command(name="frames", aliases=["frame"])
-    async def shop_frames(self, ctx):
-        """View available XP frames"""
-        if not self._check_systems_ready():
-            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
-            return
-        
-        try:
-            frames = self.xp_system.card_generator.get_available_frames()
-            user_owned = await self.db.get_user_xp_items(ctx.author.id, 2)  # 2 = Frame
-            owned_keys = {item[3] for item in user_owned}  # ItemKey
-            
-            embed = discord.Embed(
-                title="🖼️ XP Frames Shop",
-                description="Purchase frames with your currency!",
-                color=discord.Color.green()
-            )
-            
-            for key, frame_data in frames.items():
-                name = frame_data.get('name', key)
-                price = frame_data.get('price', -1)
-                desc = frame_data.get('desc', '')
-                
-                if price == -1:
-                    continue  # Skip removed items
-                
-                owned_text = " ✅ **OWNED**" if key in owned_keys else ""
-                price_text = "FREE" if price == 0 else f"{price:,} 🪙"
-                
-                embed.add_field(
-                    name=f"{name}{owned_text}",
-                    value=f"Price: {price_text}\n{desc}",
-                    inline=True
-                )
-            
-            user_currency = await self.db.get_user_currency(ctx.author.id)
-            embed.set_footer(text=f"Your currency: {user_currency:,} 🪙")
-            
-            await ctx.send(embed=embed)
-            
-        except Exception as e:
-            await ctx.send(f"❌ Error loading frames: {e}")
-    
     @xp_shop_group.command(name="buy")
-    async def shop_buy(self, ctx, item_type: str, item_key: str):
-        """Buy an XP shop item
+    async def shop_buy(self, ctx, item_key: str):
+        """Buy an XP background
         
         Usage: 
-        - `[p]xpshop buy bg default` - Buy default background
-        - `[p]xpshop buy frame purpleHearts` - Buy purple hearts frame
+        - `[p]xpshop buy default` - Buy default background
+        - `[p]xpshop buy shadow` - Buy shadow background
         """
         if not self._check_systems_ready():
             await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
             return
         
-        # Map item type aliases
-        type_mapping = {
-            'bg': 1, 'background': 1, 'bgs': 1,
-            'frame': 2, 'frames': 2
-        }
-        
-        if item_type.lower() not in type_mapping:
-            await ctx.send("❌ Invalid item type. Use `bg` or `frame`.")
-            return
-        
-        item_type_id = type_mapping[item_type.lower()]
-        
         try:
-            # Get item info
-            if item_type_id == 1:  # Background
-                items = self.xp_system.card_generator.get_available_backgrounds()
-                price = self.xp_system.card_generator.get_background_price(item_key)
-            else:  # Frame
-                items = self.xp_system.card_generator.get_available_frames()
-                price = self.xp_system.card_generator.get_frame_price(item_key)
+            # Get background info
+            items = self.xp_system.card_generator.get_available_backgrounds()
+            price = self.xp_system.card_generator.get_background_price(item_key)
             
             if item_key not in items:
-                await ctx.send(f"❌ Item `{item_key}` not found.")
+                await ctx.send(f"❌ Background `{item_key}` not found.")
                 return
             
             if price == -1:
-                await ctx.send(f"❌ Item `{item_key}` is no longer available for purchase.")
+                await ctx.send(f"❌ Background `{item_key}` is no longer available for purchase.")
                 return
             
-            # Attempt purchase
-            success = await self.db.purchase_xp_item(ctx.author.id, item_type_id, item_key, price)
+            # Attempt purchase (item_type_id = 1 for backgrounds)
+            success = await self.db.purchase_xp_item(ctx.author.id, 1, item_key, price)
             
             if success:
                 item_name = items[item_key].get('name', item_key)
@@ -308,8 +249,8 @@ class Unicornia(commands.Cog):
                 await ctx.send(f"✅ Successfully purchased **{item_name}** for {price_text}!")
             else:
                 # Check why it failed
-                if await self.db.user_owns_xp_item(ctx.author.id, item_type_id, item_key):
-                    await ctx.send(f"❌ You already own this item!")
+                if await self.db.user_owns_xp_item(ctx.author.id, 1, item_key):
+                    await ctx.send(f"❌ You already own this background!")
                 else:
                     user_currency = await self.db.get_user_currency(ctx.author.id)
                     await ctx.send(f"❌ Insufficient currency! You have {user_currency:,} 🪙 but need {price:,} 🪙.")
@@ -345,6 +286,11 @@ class Unicornia(commands.Cog):
         embed.add_field(
             name="Background format:",
             value="```yaml\nkey_name:\n  name: Display Name\n  price: 10000\n  url: https://your-image-url.com/image.gif\n  desc: Optional description```",
+            inline=False
+        )
+        embed.add_field(
+            name="Note:",
+            value="All users start with the 'default' background. They can purchase additional backgrounds with currency.",
             inline=False
         )
         await ctx.send(embed=embed)

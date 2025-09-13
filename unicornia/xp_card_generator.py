@@ -65,22 +65,13 @@ class XPCardGenerator:
         return {
             "shop": {
                 "isEnabled": True,
-                "frames": {
-                    "default": {
-                        "name": "No frame",
-                        "price": 0,
-                        "url": "",
-                        "preview": "",
-                        "desc": ""
-                    }
-                },
                 "bgs": {
                     "default": {
                         "name": "Default Background", 
-                        "price": 1,
+                        "price": 0,
                         "url": "https://unicornia.net/botimages/defaultxp1.png",
                         "preview": "",
-                        "desc": ""
+                        "desc": "Free default background for everyone"
                     },
                     "shadow": {
                         "name": "Shadow",
@@ -321,7 +312,6 @@ class XPCardGenerator:
         total_xp: int,
         rank: int,
         background_key: str = "default",
-        frame_key: str = "default"
     ) -> io.BytesIO:
         """Generate XP card image"""
         
@@ -343,14 +333,7 @@ class XPCardGenerator:
                 background = background.resize((self.card_width, self.card_height), Image.Resampling.LANCZOS)
                 card = Image.alpha_composite(card, background)
         
-        # Get frame (if any)
-        frame_config = self.xp_config.get("shop", {}).get("frames", {}).get(frame_key, {})
-        frame_url = frame_config.get("url", "")
-        frame = None
-        if frame_url:
-            frame = await self._download_image(frame_url)
-            if frame:
-                frame = frame.resize((self.card_width, self.card_height), Image.Resampling.LANCZOS)
+        # Frames removed - no longer needed
         
         # Create drawing context
         draw = ImageDraw.Draw(card)
@@ -382,9 +365,7 @@ class XPCardGenerator:
         xp_text = f"{current_xp}/{required_xp} XP"
         draw.text((330, 104), xp_text, font=xp_font, fill=(255, 255, 255, 255))
         
-        # Apply frame overlay (if any)
-        if frame:
-            card = Image.alpha_composite(card, frame)
+        # Frames removed - no overlay needed
         
         # Convert to bytes
         output = io.BytesIO()
@@ -399,18 +380,7 @@ class XPCardGenerator:
             return {}
         return self.xp_config.get("shop", {}).get("bgs", {})
     
-    def get_available_frames(self) -> Dict[str, Dict[str, Any]]:
-        """Get available frames from config"""
-        if not self.xp_config:
-            return {}
-        return self.xp_config.get("shop", {}).get("frames", {})
-    
     def get_background_price(self, background_key: str) -> int:
         """Get price of a background"""
         bg_config = self.get_available_backgrounds().get(background_key, {})
         return bg_config.get("price", -1)
-    
-    def get_frame_price(self, frame_key: str) -> int:
-        """Get price of a frame"""
-        frame_config = self.get_available_frames().get(frame_key, {})
-        return frame_config.get("price", -1)
