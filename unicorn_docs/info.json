@@ -1,7 +1,7 @@
 {
     "author": ["kirin"],
     "install_msg": "UnicornDocs loaded! Use `[p]docs config apikey` to set up your OpenRouter API key.",
-    "name": "unicorn-docs",
+    "name": "unicorn_docs",
     "short": "Unicorn Documentation Q&A System",
     "description": "AI-powered documentation question and answer system for moderation team. Uses RAG (Retrieval-Augmented Generation) with ChromaDB and OpenRouter API.",
     "tags": ["documentation", "ai", "qa", "moderation", "rag", "chromadb"],
