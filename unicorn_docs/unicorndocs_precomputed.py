@@ -29,14 +29,15 @@ class UnicornDocsPrecomputed(commands.Cog):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
         
-        # Default configuration
+        # Hardcoded configuration
+        self.VECTORS_PATH = "./vectors"
+        self.MODERATION_ROLES = [696020813299580940, 898586656842600549]
+        self.CHAT_MODEL = "deepseek/deepseek-chat-v3.1:free"
+        self.MAX_CHUNKS = 5
+        
+        # Only API key is configurable
         default_global = {
-            "openrouter_api_key": "",
-            "vectors_path": "./vectors",
-            "moderation_roles": [],
-            "chat_model": "openai/gpt-3.5-turbo",
-            "max_chunks": 5,
-            "embedding_model": "all-MiniLM-L6-v2"  # For compatibility
+            "openrouter_api_key": ""
         }
         
         self.config.register_global(**default_global)
@@ -53,7 +54,7 @@ class UnicornDocsPrecomputed(commands.Cog):
             return
             
         try:
-            vectors_path = Path(await self.config.vectors_path())
+            vectors_path = Path(self.VECTORS_PATH)
             
             # Load configuration
             config_file = vectors_path / "config.json"
@@ -97,14 +98,9 @@ class UnicornDocsPrecomputed(commands.Cog):
         """Check if the user has moderation team permissions."""
         if not ctx.guild:
             return False
-            
-        moderation_roles = await self.config.moderation_roles()
-        if not moderation_roles:
-            # If no roles configured, allow server administrators
-            return ctx.author.guild_permissions.administrator
         
         user_roles = [role.id for role in ctx.author.roles]
-        return any(role_id in user_roles for role_id in moderation_roles)
+        return any(role_id in user_roles for role_id in self.MODERATION_ROLES)
 
     async def get_embedding(self, text: str) -> Optional[List[float]]:
         """Get text embedding using the same model that was used for indexing."""
@@ -176,16 +172,16 @@ class UnicornDocsPrecomputed(commands.Cog):
         
         if not self._loaded or not self._embeddings:
             log.warning("No vectors loaded, using text search fallback")
-            return self.simple_text_search(question, max_chunks or await self.config.max_chunks())
+            return self.simple_text_search(question, max_chunks or self.MAX_CHUNKS)
         
         try:
             # For now, use text search as fallback
             # In a full implementation, you'd generate query embedding here
-            return self.simple_text_search(question, max_chunks or await self.config.max_chunks())
+            return self.simple_text_search(question, max_chunks or self.MAX_CHUNKS)
             
         except Exception as e:
             log.error(f"Error querying database: {e}")
-            return self.simple_text_search(question, max_chunks or await self.config.max_chunks())
+            return self.simple_text_search(question, max_chunks or self.MAX_CHUNKS)
 
     async def generate_answer(self, question: str, context_chunks: List[Dict[str, Any]]) -> str:
         """Generate an answer using OpenRouter API with RAG context."""
@@ -196,7 +192,7 @@ class UnicornDocsPrecomputed(commands.Cog):
                 context = "\n\n".join([chunk['text'] for chunk in context_chunks])
                 return f"Based on the documentation:\n\n{context[:500]}{'...' if len(context) > 500 else ''}\n\n*Note: OpenRouter API key not configured for AI-generated answers.*"
             
-            model = await self.config.chat_model()
+            model = self.CHAT_MODEL
             
             # Build context from retrieved chunks
             context = "\n\n".join([chunk['text'] for chunk in context_chunks])
@@ -372,8 +368,8 @@ Please provide a helpful answer based on the context above."""
             )
             
             embed.add_field(name="Total Chunks", value=str(len(self._embeddings)), inline=True)
-            embed.add_field(name="Vectors Path", value=await self.config.vectors_path(), inline=False)
-            embed.add_field(name="Chat Model", value=await self.config.chat_model(), inline=True)
+            embed.add_field(name="Vectors Path", value=self.VECTORS_PATH, inline=False)
+            embed.add_field(name="Chat Model", value=self.CHAT_MODEL, inline=True)
             embed.add_field(name="Embedding Type", value="Pre-computed", inline=True)
             
             if self._config:
@@ -398,34 +394,14 @@ Please provide a helpful answer based on the context above."""
         await self.config.openrouter_api_key.set(api_key)
         await ctx.send("✅ OpenRouter API key updated.")
 
-    @config_group.command(name="vectors")
-    async def set_vectors_path(self, ctx: commands.Context, path: str):
-        """Set the vectors directory path."""
-        await self.config.vectors_path.set(path)
-        self._loaded = False  # Reset to reload
-        await self.load_vectors()
-        await ctx.send(f"✅ Vectors path updated to: {path}")
-
-    @config_group.command(name="roles")
-    async def set_moderation_roles(self, ctx: commands.Context, *role_ids: int):
-        """Set moderation team role IDs."""
-        await self.config.moderation_roles.set(list(role_ids))
-        await ctx.send(f"✅ Moderation roles updated: {role_ids}")
-
-    @config_group.command(name="chat")
-    async def set_chat_model(self, ctx: commands.Context, model_name: str):
-        """Set the chat model for OpenRouter."""
-        await self.config.chat_model.set(model_name)
-        await ctx.send(f"✅ Chat model updated to: {model_name}")
-
     @config_group.command(name="show")
     async def show_config(self, ctx: commands.Context):
         """Show current configuration."""
         config = {
-            "Vectors Path": await self.config.vectors_path(),
-            "Chat Model": await self.config.chat_model(),
-            "Max Chunks": await self.config.max_chunks(),
-            "Moderation Roles": await self.config.moderation_roles()
+            "Vectors Path": self.VECTORS_PATH,
+            "Chat Model": self.CHAT_MODEL,
+            "Max Chunks": self.MAX_CHUNKS,
+            "Moderation Roles": [f"<@&{role_id}>" for role_id in self.MODERATION_ROLES]
         }
         
         embed = discord.Embed(
@@ -434,8 +410,6 @@ Please provide a helpful answer based on the context above."""
         )
         
         for key, value in config.items():
-            if key == "Moderation Roles":
-                value = [f"<@&{role_id}>" for role_id in value] if value else "Not configured"
             embed.add_field(name=key, value=str(value), inline=False)
         
         await ctx.send(embed=embed)

@@ -31,24 +31,16 @@ A Red bot cog that provides AI-powered question and answer functionality for doc
    [p]docs config apikey YOUR_OPENROUTER_API_KEY
    ```
 
-2. **Set Moderation Team Roles**:
-   ```
-   [p]docs config roles ROLE_ID_1 ROLE_ID_2 ROLE_ID_3
-   ```
+### Hardcoded Settings
 
-3. **Configure Database Path** (optional):
-   ```
-   [p]docs config database ./staff_docs_db
-   ```
+- **Vectors Path**: `./vectors` (pre-computed vectors)
+- **Chat Model**: `deepseek/deepseek-chat-v3.1:free`
+- **Moderation Roles**: `696020813299580940`, `898586656842600549`
+- **Max Chunks**: 5
 
-### Optional Configuration
+### View Configuration
 
-- **Set Models**:
-  ```
-  [p]docs config models text-embedding-ada-002 openai/gpt-3.5-turbo
-  ```
-
-- **View Current Configuration**:
+- **Show Current Settings**:
   ```
   [p]docs config show
   ```
@@ -77,26 +69,22 @@ A Red bot cog that provides AI-powered question and answer functionality for doc
 - **Configuration Commands**:
   ```
   [p]docs config apikey <key>
-  [p]docs config database <path>
-  [p]docs config roles <role_ids>
-  [p]docs config models <embedding_model> <chat_model>
   [p]docs config show
   ```
 
 ## Database Indexing
 
-The cog works with a ChromaDB database that needs to be populated with your documentation. Use the included `indexer.py` script to index your Markdown documentation:
+The cog works with pre-computed vectors that need to be generated locally. Use the included `indexer_local_standalone.py` script to process your Markdown documentation:
 
 ```bash
-python indexer.py
+# Install sentence-transformers locally
+pip install sentence-transformers
+
+# Run the indexer
+python indexer_local_standalone.py
 ```
 
-Make sure to set up your `.env` file with:
-```
-OPENROUTER_API_KEY=your_api_key_here
-```
-
-And update the paths in `indexer.py` to match your documentation structure.
+This will process all `.md` files in the `./docs/` folder and generate vectors in the `./vectors/` folder. Commit these vectors to git for the bot to use.
 
 ## Commands
 
@@ -107,30 +95,27 @@ And update the paths in `indexer.py` to match your documentation structure.
 
 ### Owner Commands
 - `[p]docs config apikey <key>` - Set OpenRouter API key
-- `[p]docs config database <path>` - Set database path
-- `[p]docs config roles <role_ids>` - Set moderation team roles
-- `[p]docs config models <embedding> <chat>` - Set AI models
 - `[p]docs config show` - Show current configuration
 
 ## Permissions
 
-- **Moderation Team**: Can use `ask`, `search`, and `stats` commands
+- **Moderation Team** (Roles: `696020813299580940`, `898586656842600549`): Can use `ask`, `search`, and `stats` commands
 - **Bot Owner**: Can use all commands including configuration
 
 ## Requirements
 
 - Python 3.8+
 - Red Bot 3.5.0+
-- chromadb
 - requests
 - python-dotenv
+- numpy
 
 ## Troubleshooting
 
 1. **"OpenRouter API key not configured"**: Set your API key using `[p]docs config apikey`
-2. **"You don't have permission"**: Make sure your role is added to moderation roles
-3. **"No relevant information found"**: Check if the database is properly indexed
-4. **Database errors**: Ensure the database path is accessible and ChromaDB is properly installed
+2. **"You don't have permission"**: Make sure you have one of the moderation team roles
+3. **"No relevant information found"**: Check if the vectors are properly generated and committed to git
+4. **Vector loading errors**: Ensure the `./vectors/` folder exists and contains the required files
 
 ## Support
 

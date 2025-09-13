@@ -41,9 +41,8 @@ pip install requests python-dotenv numpy
 # Load the cog
 [p]load unicorn_docs
 
-# Configure
+# Configure (only API key needed)
 [p]docs config apikey YOUR_OPENROUTER_KEY
-[p]docs config roles ROLE_ID_1 ROLE_ID_2
 
 # Use it
 [p]docs ask What is our moderation policy?
@@ -88,11 +87,13 @@ CHUNK_OVERLAP = 50                  # Overlap between chunks
 
 ### **Bot Settings**
 ```bash
-[p]docs config vectors ./vectors     # Path to vectors folder
-[p]docs config apikey YOUR_KEY       # OpenRouter API key
-[p]docs config roles ROLE_ID_1       # Moderation team roles
-[p]docs config chat openai/gpt-3.5-turbo  # Chat model
+[p]docs config apikey YOUR_KEY       # OpenRouter API key (only setting needed)
 ```
+
+**Hardcoded Settings:**
+- Vectors Path: `./vectors`
+- Chat Model: `deepseek/deepseek-chat-v3.1:free`
+- Moderation Roles: `696020813299580940`, `898586656842600549`
 
 ## 🚀 **Quick Start**
 
@@ -100,7 +101,7 @@ CHUNK_OVERLAP = 50                  # Overlap between chunks
 2. **Run indexer**: `python indexer_local_standalone.py`
 3. **Commit vectors**: `git add vectors/ && git commit -m "Update vectors"`
 4. **Deploy bot** with the cog loaded
-5. **Configure bot** with API key and roles
+5. **Configure bot** with API key: `[p]docs config apikey YOUR_KEY`
 6. **Start using**: `[p]docs ask What is our policy?`
 
 ## 🔄 **Updating Documentation**
