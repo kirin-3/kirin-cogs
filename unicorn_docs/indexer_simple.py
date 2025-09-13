@@ -91,14 +91,32 @@ def get_embedding(text_chunk):
             }),
             timeout=30
         )
+        
+        # Debug: Print response details
+        print(f"    Status: {response.status_code}")
+        print(f"    Response: {response.text[:200]}...")
+        
         response.raise_for_status()
-        embedding = response.json()['data'][0]['embedding']
-        return embedding
+        
+        # Try to parse JSON
+        try:
+            result = response.json()
+            if 'data' in result and len(result['data']) > 0:
+                embedding = result['data'][0]['embedding']
+                return embedding
+            else:
+                print(f"    -! No embedding data in response: {result}")
+                return None
+        except json.JSONDecodeError as e:
+            print(f"    -! JSON decode error: {e}")
+            print(f"    -! Raw response: {response.text}")
+            return None
+            
     except requests.exceptions.RequestException as e:
-        print(f"  -! Error getting embedding: {e}")
+        print(f"  -! Request error: {e}")
         return None
     except Exception as e:
-        print(f"  -! Unexpected error getting embedding: {e}")
+        print(f"  -! Unexpected error: {e}")
         return None
 
 # --- MAIN EXECUTION SCRIPT ---
