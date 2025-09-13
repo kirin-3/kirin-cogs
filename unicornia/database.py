@@ -526,29 +526,83 @@ class DatabaseManager:
         
         try:
             async with aiosqlite.connect(nadeko_db_path) as nadeko_db:
-                # Migrate DiscordUser data
+                # Check database size first
+                cursor = await nadeko_db.execute("SELECT COUNT(*) FROM DiscordUser")
+                user_count = (await cursor.fetchone())[0]
+                log.info(f"Found {user_count} users to migrate from DiscordUser table")
+                
+                # Migrate DiscordUser data with batch processing
+                migrated_users = 0
+                batch_size = 1000
+                batch_data = []
+                
                 async with nadeko_db.execute("SELECT UserId, Username, AvatarId, TotalXp, CurrencyAmount FROM DiscordUser") as cursor:
                     async for row in cursor:
                         user_id, username, avatar_id, total_xp, currency_amount = row
-                        async with self._get_connection() as db:
-                            await self._setup_wal_mode(db)
-                            await db.execute("""
-                                INSERT OR REPLACE INTO DiscordUser (UserId, Username, AvatarId, TotalXp, CurrencyAmount)
-                                VALUES (?, ?, ?, ?, ?)
-                            """, (user_id, username, avatar_id, total_xp, currency_amount))
-                            await db.commit()
+                        batch_data.append((user_id, username, avatar_id, total_xp, currency_amount))
+                        migrated_users += 1
+                        
+                        # Process batch when it reaches batch_size
+                        if len(batch_data) >= batch_size:
+                            async with self._get_connection() as db:
+                                await self._setup_wal_mode(db)
+                                await db.executemany("""
+                                    INSERT OR REPLACE INTO DiscordUser (UserId, Username, AvatarId, TotalXp, CurrencyAmount)
+                                    VALUES (?, ?, ?, ?, ?)
+                                """, batch_data)
+                                await db.commit()
+                            log.info(f"Migrated {migrated_users}/{user_count} users...")
+                            batch_data.clear()
+                
+                # Process remaining batch
+                if batch_data:
+                    async with self._get_connection() as db:
+                        await self._setup_wal_mode(db)
+                        await db.executemany("""
+                            INSERT OR REPLACE INTO DiscordUser (UserId, Username, AvatarId, TotalXp, CurrencyAmount)
+                            VALUES (?, ?, ?, ?, ?)
+                        """, batch_data)
+                        await db.commit()
+                
+                log.info(f"Completed DiscordUser migration: {migrated_users} users")
                 
                 # Migrate UserXpStats data
+                cursor = await nadeko_db.execute("SELECT COUNT(*) FROM UserXpStats")
+                xp_count = (await cursor.fetchone())[0]
+                log.info(f"Found {xp_count} XP stats to migrate from UserXpStats table")
+                
+                migrated_xp = 0
+                batch_data = []
+                
                 async with nadeko_db.execute("SELECT UserId, GuildId, Xp FROM UserXpStats") as cursor:
                     async for row in cursor:
                         user_id, guild_id, xp = row
-                        async with self._get_connection() as db:
-                            await self._setup_wal_mode(db)
-                            await db.execute("""
-                                INSERT OR REPLACE INTO UserXpStats (UserId, GuildId, Xp)
-                                VALUES (?, ?, ?)
-                            """, (user_id, guild_id, xp))
-                            await db.commit()
+                        batch_data.append((user_id, guild_id, xp))
+                        migrated_xp += 1
+                        
+                        # Process batch when it reaches batch_size
+                        if len(batch_data) >= batch_size:
+                            async with self._get_connection() as db:
+                                await self._setup_wal_mode(db)
+                                await db.executemany("""
+                                    INSERT OR REPLACE INTO UserXpStats (UserId, GuildId, Xp)
+                                    VALUES (?, ?, ?)
+                                """, batch_data)
+                                await db.commit()
+                            log.info(f"Migrated {migrated_xp}/{xp_count} XP stats...")
+                            batch_data.clear()
+                
+                # Process remaining batch
+                if batch_data:
+                    async with self._get_connection() as db:
+                        await self._setup_wal_mode(db)
+                        await db.executemany("""
+                            INSERT OR REPLACE INTO UserXpStats (UserId, GuildId, Xp)
+                            VALUES (?, ?, ?)
+                        """, batch_data)
+                        await db.commit()
+                
+                log.info(f"Completed UserXpStats migration: {migrated_xp} entries")
                 
                 # Migrate BankUsers data
                 async with nadeko_db.execute("SELECT UserId, Balance FROM BankUsers") as cursor:
