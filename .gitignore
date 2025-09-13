@@ -12,6 +12,7 @@ yarn-error.log*
 dev-debug.log
 pnpm-debug.log*
 lerna-debug.log*
+unicorn_docs/docs/*
 
 # Dependency directories
 node_modules/

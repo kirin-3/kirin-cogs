@@ -1,17 +1,11 @@
 import os
 import sys
-import requests
-import json
 import pickle
 import numpy as np
 from pathlib import Path
-from dotenv import load_dotenv
+from sentence_transformers import SentenceTransformer
 
 # --- SETUP AND CONFIGURATION ---
-
-# Load credentials from the .env file
-load_dotenv()
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # The path to your MkDocs 'docs' directory
 DOCS_DIRECTORY = "./docs"
@@ -22,7 +16,7 @@ DB_DIRECTORY = "./staff_docs_db"
 # Configuration
 CHUNK_SIZE = 300
 CHUNK_OVERLAP = 50
-EMBEDDING_MODEL = "text-embedding-ada-002"
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # Lightweight, fast model
 
 # --- CORE FUNCTIONS ---
 
@@ -76,29 +70,13 @@ def chunk_text(text, chunk_size=300, chunk_overlap=50):
         
     return chunks
 
-def get_embedding(text_chunk):
-    """Sends a text chunk to OpenRouter to get its vector embedding."""
+def get_embedding(text_chunk, model):
+    """Get text embedding using local sentence-transformers model."""
     try:
-        response = requests.post(
-            url="https://openrouter.ai/api/v1/embeddings",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            data=json.dumps({
-                "model": EMBEDDING_MODEL,
-                "input": text_chunk
-            }),
-            timeout=30
-        )
-        response.raise_for_status()
-        embedding = response.json()['data'][0]['embedding']
-        return embedding
-    except requests.exceptions.RequestException as e:
-        print(f"  -! Error getting embedding: {e}")
-        return None
+        embedding = model.encode(text_chunk, convert_to_tensor=False)
+        return embedding.tolist()
     except Exception as e:
-        print(f"  -! Unexpected error getting embedding: {e}")
+        print(f"  -! Error getting embedding: {e}")
         return None
 
 # --- MAIN EXECUTION SCRIPT ---
@@ -106,15 +84,9 @@ def get_embedding(text_chunk):
 def main():
     """
     Orchestrates the entire process of finding, chunking, embedding,
-    and storing the documentation using simple file storage.
+    and storing the documentation using local sentence-transformers.
     """
-    print("--- Starting Documentation Indexing Process (Simple Version) ---")
-    
-    # Check if API key is available
-    if not OPENROUTER_API_KEY:
-        print("Error: OPENROUTER_API_KEY not found in environment variables.")
-        print("Please create a .env file with your OpenRouter API key.")
-        return
+    print("--- Starting Documentation Indexing Process (Local Embeddings) ---")
     
     # Check if docs directory exists
     docs_path = Path(DOCS_DIRECTORY)
@@ -131,6 +103,17 @@ def main():
     
     print(f"Found {len(markdown_files)} Markdown files to process.")
     
+    # 2. Load the embedding model
+    print(f"\nLoading embedding model: {EMBEDDING_MODEL}")
+    print("This may take a moment on first run...")
+    try:
+        model = SentenceTransformer(EMBEDDING_MODEL)
+        print("✅ Embedding model loaded successfully!")
+    except Exception as e:
+        print(f"❌ Error loading embedding model: {e}")
+        print("Make sure sentence-transformers is installed: pip install sentence-transformers")
+        return
+    
     # Create database directory
     db_path = Path(DB_DIRECTORY)
     db_path.mkdir(exist_ok=True)
@@ -144,20 +127,20 @@ def main():
     for filepath in markdown_files:
         print(f"\nProcessing file: {filepath}")
         
-        # 2. Read and parse the file content
+        # 3. Read and parse the file content
         content = parse_markdown_file(filepath)
         if not content:
             print("  - Skipping empty file.")
             continue
             
-        # 3. Split content into manageable chunks
+        # 4. Split content into manageable chunks
         chunks = chunk_text(content, CHUNK_SIZE, CHUNK_OVERLAP)
         print(f"  - Split into {len(chunks)} chunks.")
         
-        # 4. Process each chunk to get its embedding
+        # 5. Process each chunk to get its embedding
         for i, chunk in enumerate(chunks):
             print(f"  - Processing chunk {i+1}/{len(chunks)}...", end=" ")
-            embedding = get_embedding(chunk)
+            embedding = get_embedding(chunk, model)
             
             # If embedding was successful, add it to our lists for storage
             if embedding:
@@ -174,7 +157,7 @@ def main():
 
         total_chunks += len(chunks)
     
-    # 5. Save everything to files
+    # 6. Save everything to files
     try:
         embeddings_file = db_path / "embeddings.pkl"
         metadata_file = db_path / "metadata.pkl"
@@ -189,6 +172,7 @@ def main():
         print(f"Total embeddings stored: {len(all_embeddings)}")
         print(f"Database saved to: {DB_DIRECTORY}")
         print("You can now use the Discord bot to query the documentation.")
+        print("\nNote: This system uses local embeddings and doesn't require any API keys!")
         
     except Exception as e:
         print(f"Error saving database: {e}")

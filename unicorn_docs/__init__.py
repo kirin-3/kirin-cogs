@@ -6,7 +6,7 @@ __credits__ = ["Kirin"]
 __license__ = "MIT"
 
 
-from .unicorndocs_simple import UnicornDocsSimple as UnicornDocs
+from .unicorndocs_precomputed import UnicornDocsPrecomputed as UnicornDocs
 
 
 async def setup(bot):
