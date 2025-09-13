@@ -13,6 +13,7 @@ dev-debug.log
 pnpm-debug.log*
 lerna-debug.log*
 unicorn_docs/docs/*
+nadeko/*
 
 # Dependency directories
 node_modules/

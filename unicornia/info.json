@@ -1,0 +1,17 @@
+{
+    "name": "Unicornia",
+    "author": ["Kirin"],
+    "short": "Nadeko migration cog for leveling and economy features",
+    "description": "A Red bot cog that reads from Nadeko's SQLite database to provide leveling and economy features. This cog allows you to migrate from Nadeko to Red while preserving your existing user data.",
+    "install_msg": "Unicornia cog loaded! This cog reads from Nadeko's SQLite database.",
+    "tags": ["leveling", "economy", "migration", "nadeko"],
+    "min_bot_version": "3.5.0",
+    "max_bot_version": "0.0.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "permissions": [],
+    "min_python_version": [3, 8, 0],
+    "requirements": ["aiosqlite"],
+    "end_user_data_statement": "This cog reads from an existing Nadeko SQLite database and does not store additional user data."
+}
