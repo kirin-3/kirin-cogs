@@ -1,0 +1,25 @@
+{
+    "name": "unicorndocs",
+    "short": "Unicorn Documentation Q&A System",
+    "description": "AI-powered documentation question and answer system for moderation team. Uses RAG (Retrieval-Augmented Generation) with ChromaDB and OpenRouter API.",
+    "author": ["kirin"],
+    "version": "1.0.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "license": "MIT",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [3, 8, 0],
+    "permissions": [
+        "read_messages",
+        "send_messages",
+        "embed_links",
+        "attach_files"
+    ],
+    "requirements": [
+        "chromadb",
+        "requests",
+        "python-dotenv"
+    ],
+    "end_user_data_statement": "This cog stores vector embeddings of documentation content for AI-powered question answering. No personal user data is stored."
+}
