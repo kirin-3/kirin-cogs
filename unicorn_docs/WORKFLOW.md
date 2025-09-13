@@ -80,10 +80,18 @@ Edit `indexer_local_standalone.py`:
 ```python
 DOCS_DIRECTORY = "./docs"           # Your docs folder
 OUTPUT_DIRECTORY = "./vectors"      # Where to save vectors
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # Embedding model
+EMBEDDING_MODEL = "all-mpnet-base-v2"  # Embedding model (see options below)
 CHUNK_SIZE = 300                    # Words per chunk
 CHUNK_OVERLAP = 50                  # Overlap between chunks
 ```
+
+**Embedding Model Options:**
+- `"all-MiniLM-L6-v2"` - Fastest, 22M params (~80MB)
+- `"all-mpnet-base-v2"` - **Recommended**, 110M params (~420MB) 
+- `"nomic-ai/nomic-embed-text-v1"` - Highest quality, 137M params (~500MB)
+- `"all-MiniLM-L12-v2"` - Middle ground, 33M params (~120MB)
+
+**Better models = Better AI answers!** The recommended `all-mpnet-base-v2` will give significantly better results than the basic model.
 
 ### **Bot Settings**
 ```bash
@@ -92,7 +100,7 @@ CHUNK_OVERLAP = 50                  # Overlap between chunks
 
 **Hardcoded Settings:**
 - Vectors Path: `./vectors`
-- Chat Model: `deepseek/deepseek-chat-v3.1:free`
+- Chat Model: `mistralai/mistral-small-3.2-24b-instruct:free`
 - Moderation Roles: `696020813299580940`, `898586656842600549`
 
 ## 🚀 **Quick Start**

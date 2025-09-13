@@ -33,7 +33,7 @@ class UnicornDocsPrecomputed(commands.Cog):
         cog_dir = Path(__file__).parent
         self.VECTORS_PATH = str(cog_dir / "vectors")
         self.MODERATION_ROLES = [696020813299580940, 898586656842600549]
-        self.CHAT_MODEL = "deepseek/deepseek-chat-v3.1:free"
+        self.CHAT_MODEL = "mistralai/mistral-small-3.2-24b-instruct:free"
         self.MAX_CHUNKS = 5
         
         # Only API key is configurable
@@ -98,13 +98,6 @@ class UnicornDocsPrecomputed(commands.Cog):
         """Called when the cog is loaded."""
         await self.load_vectors()
 
-    async def check_moderation_permission(self, ctx: commands.Context) -> bool:
-        """Check if the user has moderation team permissions."""
-        if not ctx.guild:
-            return False
-        
-        user_roles = [role.id for role in ctx.author.roles]
-        return any(role_id in user_roles for role_id in self.MODERATION_ROLES)
 
     async def get_embedding(self, text: str) -> Optional[List[float]]:
         """Get text embedding using the same model that was used for indexing."""
@@ -202,11 +195,17 @@ class UnicornDocsPrecomputed(commands.Cog):
             context = "\n\n".join([chunk['text'] for chunk in context_chunks])
             
             # Create the prompt
-            system_prompt = """You are a helpful assistant for a Discord server moderation team. 
-            Answer questions based ONLY on the provided documentation context. 
-            If the context doesn't contain enough information to answer the question, say so clearly.
-            Be concise but thorough in your responses.
-            Always cite the source file when possible."""
+            system_prompt = """You are a specialized Discord server moderation documentation assistant for the Unicornia server. Your primary purpose is to help moderation team members quickly find and understand server policies, procedures, and guidelines.
+
+IMPORTANT INSTRUCTIONS:
+- Answer questions based ONLY on the provided documentation context
+- If the context doesn't contain enough information to answer the question, clearly state "This information is not available in the current documentation"
+- Be concise but thorough in your responses
+- Always cite the source file when possible
+- Focus on practical, actionable information for moderators
+- If asked about procedures, provide step-by-step guidance when available
+- Maintain a professional, helpful tone suitable for moderation team use
+- Do not make up or assume information not present in the documentation"""
             
             user_prompt = f"""Context from documentation:
 {context}
@@ -228,7 +227,7 @@ Please provide a helpful answer based on the context above."""
                         {"role": "user", "content": user_prompt}
                     ],
                     "max_tokens": 1000,
-                    "temperature": 0.7
+                    "temperature": 1.0
                 }),
                 timeout=60
             )
@@ -253,15 +252,13 @@ Please provide a helpful answer based on the context above."""
         pass
 
     @docs_group.command(name="ask")
+    @commands.has_any_role(696020813299580940, 898586656842600549)
     async def ask_question(self, ctx: commands.Context, *, question: str):
         """
         Ask a question about the documentation.
         
         The bot will search through the documentation and provide an AI-generated answer.
         """
-        if not await self.check_moderation_permission(ctx):
-            await ctx.send("❌ You don't have permission to use this command.")
-            return
         
         if not question.strip():
             await ctx.send("❌ Please provide a question to ask.")
@@ -307,15 +304,13 @@ Please provide a helpful answer based on the context above."""
             await msg.edit(content=f"❌ An error occurred: {e}")
 
     @docs_group.command(name="search")
+    @commands.has_any_role(696020813299580940, 898586656842600549)
     async def search_docs(self, ctx: commands.Context, *, query: str):
         """
         Search for specific information in the documentation.
         
         Returns relevant chunks without AI-generated answers.
         """
-        if not await self.check_moderation_permission(ctx):
-            await ctx.send("❌ You don't have permission to use this command.")
-            return
         
         if not query.strip():
             await ctx.send("❌ Please provide a search query.")
@@ -357,11 +352,9 @@ Please provide a helpful answer based on the context above."""
             await msg.edit(content=f"❌ An error occurred: {e}")
 
     @docs_group.command(name="stats")
+    @commands.has_any_role(696020813299580940, 898586656842600549)
     async def database_stats(self, ctx: commands.Context):
         """Show statistics about the documentation database."""
-        if not await self.check_moderation_permission(ctx):
-            await ctx.send("❌ You don't have permission to use this command.")
-            return
         
         try:
             await self.load_vectors()

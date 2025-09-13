@@ -26,8 +26,33 @@ DOCS_DIRECTORY = "./docs"
 # The path where to save the processed vectors
 OUTPUT_DIRECTORY = "./vectors"
 
-# Embedding model (lightweight and fast)
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+# Embedding model options (uncomment the one you want to use)
+# 
+# SPEED vs ACCURACY TRADE-OFFS:
+# 
+# 1. "all-MiniLM-L6-v2" - FASTEST
+#    - 22M parameters, ~80MB download
+#    - Fastest processing, good for quick testing
+#    - Lower accuracy but still decent
+#
+# 2. "all-mpnet-base-v2" - RECOMMENDED
+#    - 110M parameters, ~420MB download  
+#    - Good balance of speed and accuracy
+#    - Trained on 1B+ sentence pairs
+#    - Best for most use cases
+#
+# 3. "nomic-ai/nomic-embed-text-v1" - HIGHEST QUALITY
+#    - 137M parameters, ~500MB download
+#    - Best accuracy, multilingual support
+#    - Slower but most accurate results
+#    - Good for complex documentation
+#
+# 4. "sentence-transformers/all-MiniLM-L12-v2" - MIDDLE GROUND
+#    - 33M parameters, ~120MB download
+#    - Better than L6, faster than mpnet
+#    - Good compromise option
+
+EMBEDDING_MODEL = "all-mpnet-base-v2"  # Recommended: Good balance of speed and accuracy
 
 # Chunking configuration
 CHUNK_SIZE = 300

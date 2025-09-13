@@ -34,7 +34,7 @@ A Red bot cog that provides AI-powered question and answer functionality for doc
 ### Hardcoded Settings
 
 - **Vectors Path**: `./vectors` (pre-computed vectors)
-- **Chat Model**: `deepseek/deepseek-chat-v3.1:free`
+- **Chat Model**: `mistralai/mistral-small-3.2-24b-instruct:free`
 - **Moderation Roles**: `696020813299580940`, `898586656842600549`
 - **Max Chunks**: 5
 
