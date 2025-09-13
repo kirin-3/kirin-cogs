@@ -209,7 +209,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS ShopEntry (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     GuildId INTEGER,
-                    Index INTEGER,
+                    `Index` INTEGER,
                     Price INTEGER,
                     Name TEXT,
                     AuthorId INTEGER,
@@ -560,13 +560,13 @@ class DatabaseManager:
                 
                 # Migrate ShopEntry data (if exists)
                 try:
-                    async with nadeko_db.execute("SELECT Id, GuildId, Index, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command FROM ShopEntry") as cursor:
+                    async with nadeko_db.execute("SELECT Id, GuildId, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command FROM ShopEntry") as cursor:
                         async for row in cursor:
                             entry_id, guild_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command = row
                             async with self._get_connection() as db:
                                 await self._setup_wal_mode(db)
                                 await db.execute("""
-                                    INSERT OR REPLACE INTO ShopEntry (Id, GuildId, Index, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command)
+                                    INSERT OR REPLACE INTO ShopEntry (Id, GuildId, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command)
                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """, (entry_id, guild_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command))
                                 await db.commit()
@@ -630,8 +630,8 @@ class DatabaseManager:
         async with self._get_connection() as db:
             await self._setup_wal_mode(db)
             cursor = await db.execute("""
-                SELECT Id, GuildId, Index, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command
-                FROM ShopEntry WHERE GuildId = ? ORDER BY Index
+                SELECT Id, GuildId, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command
+                FROM ShopEntry WHERE GuildId = ? ORDER BY `Index`
             """, (guild_id,))
             return await cursor.fetchall()
     
@@ -651,7 +651,7 @@ class DatabaseManager:
         async with self._get_connection() as db:
             await self._setup_wal_mode(db)
             cursor = await db.execute("""
-                INSERT INTO ShopEntry (GuildId, Index, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command)
+                INSERT INTO ShopEntry (GuildId, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (guild_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command))
             await db.commit()
