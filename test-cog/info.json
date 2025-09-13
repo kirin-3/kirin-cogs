@@ -1,0 +1,13 @@
+{
+    "author": ["kirin"],
+    "install_msg": "Test cog loaded!",
+    "name": "test-cog",
+    "short": "Test Cog",
+    "description": "A simple test cog to verify structure",
+    "tags": ["test"],
+    "requirements": [],
+    "min_bot_version": "3.5.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG"
+}
