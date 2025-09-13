@@ -2,12 +2,13 @@ import os
 import json
 import asyncio
 import logging
+import pickle
 from typing import List, Dict, Any, Optional
 from pathlib import Path
+import numpy as np
 
 import discord
 import requests
-import chromadb
 from redbot.core import commands, Config
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import pagify, box
@@ -16,12 +17,12 @@ from redbot.core.utils.predicates import MessagePredicate
 log = logging.getLogger("red.unicorndocs")
 
 
-class UnicornDocs(commands.Cog):
+class UnicornDocsSimple(commands.Cog):
     """
-    Unicorn Documentation Q&A System
+    Unicorn Documentation Q&A System (Simple Version)
     
     AI-powered documentation question and answer system for the moderation team.
-    Uses RAG (Retrieval-Augmented Generation) with ChromaDB and OpenRouter API.
+    Uses a simple file-based storage instead of ChromaDB to avoid SQLite issues.
     """
 
     def __init__(self, bot: Red):
@@ -43,39 +44,56 @@ class UnicornDocs(commands.Cog):
         
         self.config.register_global(**default_global)
         
-        # Initialize ChromaDB client
-        self._client = None
-        self._collection = None
+        # Simple storage
+        self._embeddings = []
+        self._metadata = []
+        self._loaded = False
         
-    async def initialize_database(self):
-        """Initialize ChromaDB client and collection."""
-        try:
-            db_path = await self.config.database_path()
-            # Try persistent client first, fallback to in-memory if SQLite issues
-            try:
-                self._client = chromadb.PersistentClient(path=db_path)
-                log.info(f"ChromaDB initialized with persistent storage: {db_path}")
-            except RuntimeError as e:
-                if "sqlite3" in str(e).lower():
-                    log.warning("SQLite version incompatible, using in-memory database")
-                    self._client = chromadb.Client()
-                else:
-                    raise
+    async def load_database(self):
+        """Load the simple database from files."""
+        if self._loaded:
+            return
             
-            self._collection = self._client.get_or_create_collection(name="staff_documentation")
+        try:
+            db_path = Path(await self.config.database_path())
+            embeddings_file = db_path / "embeddings.pkl"
+            metadata_file = db_path / "metadata.pkl"
+            
+            if embeddings_file.exists() and metadata_file.exists():
+                with open(embeddings_file, 'rb') as f:
+                    self._embeddings = pickle.load(f)
+                with open(metadata_file, 'rb') as f:
+                    self._metadata = pickle.load(f)
+                log.info(f"Loaded {len(self._embeddings)} embeddings from database")
+            else:
+                log.info("No existing database found, starting fresh")
+                
+            self._loaded = True
         except Exception as e:
-            log.error(f"Failed to initialize ChromaDB: {e}")
-            raise
+            log.error(f"Failed to load database: {e}")
+            self._loaded = True  # Don't retry
+
+    async def save_database(self):
+        """Save the simple database to files."""
+        try:
+            db_path = Path(await self.config.database_path())
+            db_path.mkdir(exist_ok=True)
+            
+            embeddings_file = db_path / "embeddings.pkl"
+            metadata_file = db_path / "metadata.pkl"
+            
+            with open(embeddings_file, 'wb') as f:
+                pickle.dump(self._embeddings, f)
+            with open(metadata_file, 'wb') as f:
+                pickle.dump(self._metadata, f)
+                
+            log.info(f"Saved {len(self._embeddings)} embeddings to database")
+        except Exception as e:
+            log.error(f"Failed to save database: {e}")
 
     async def cog_load(self):
         """Called when the cog is loaded."""
-        await self.initialize_database()
-
-    def cog_unload(self):
-        """Called when the cog is unloaded."""
-        if self._client:
-            self._client = None
-            self._collection = None
+        await self.load_database()
 
     async def check_moderation_permission(self, ctx: commands.Context) -> bool:
         """Check if the user has moderation team permissions."""
@@ -123,10 +141,26 @@ class UnicornDocs(commands.Cog):
             log.error(f"Unexpected error getting embedding: {e}")
             return None
 
+    def cosine_similarity(self, a: List[float], b: List[float]) -> float:
+        """Calculate cosine similarity between two vectors."""
+        try:
+            a_np = np.array(a)
+            b_np = np.array(b)
+            
+            dot_product = np.dot(a_np, b_np)
+            norm_a = np.linalg.norm(a_np)
+            norm_b = np.linalg.norm(b_np)
+            
+            if norm_a == 0 or norm_b == 0:
+                return 0
+            
+            return dot_product / (norm_a * norm_b)
+        except Exception:
+            return 0
+
     async def query_database(self, question: str, max_chunks: int = None) -> List[Dict[str, Any]]:
-        """Query the ChromaDB for relevant document chunks."""
-        if not self._collection:
-            await self.initialize_database()
+        """Query the database for relevant document chunks."""
+        await self.load_database()
         
         try:
             # Get embedding for the question
@@ -134,21 +168,27 @@ class UnicornDocs(commands.Cog):
             if not question_embedding:
                 return []
             
-            # Query the database
+            # Calculate similarities
+            similarities = []
+            for i, embedding in enumerate(self._embeddings):
+                similarity = self.cosine_similarity(question_embedding, embedding)
+                similarities.append((i, similarity))
+            
+            # Sort by similarity (descending)
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            
+            # Get top results
             max_chunks = max_chunks or await self.config.max_chunks()
-            results = self._collection.query(
-                query_embeddings=[question_embedding],
-                n_results=max_chunks
-            )
+            top_indices = [idx for idx, _ in similarities[:max_chunks]]
             
             # Format results
             chunks = []
-            if results['metadatas'] and results['metadatas'][0]:
-                for i, metadata in enumerate(results['metadatas'][0]):
+            for idx in top_indices:
+                if idx < len(self._metadata):
                     chunk = {
-                        'text': metadata.get('original_text', ''),
-                        'source_file': metadata.get('source_file', 'Unknown'),
-                        'distance': results['distances'][0][i] if results['distances'] else 0
+                        'text': self._metadata[idx].get('original_text', ''),
+                        'source_file': self._metadata[idx].get('source_file', 'Unknown'),
+                        'distance': 1 - similarities[idx][1]  # Convert similarity to distance
                     }
                     chunks.append(chunk)
             
@@ -343,17 +383,14 @@ Please provide a helpful answer based on the context above."""
             return
         
         try:
-            if not self._collection:
-                await self.initialize_database()
-            
-            count = self._collection.count()
+            await self.load_database()
             
             embed = discord.Embed(
                 title="📊 Database Statistics",
                 color=0x00ff00
             )
             
-            embed.add_field(name="Total Chunks", value=str(count), inline=True)
+            embed.add_field(name="Total Chunks", value=str(len(self._embeddings)), inline=True)
             embed.add_field(name="Database Path", value=await self.config.database_path(), inline=False)
             embed.add_field(name="Embedding Model", value=await self.config.embedding_model(), inline=True)
             embed.add_field(name="Chat Model", value=await self.config.chat_model(), inline=True)
@@ -378,9 +415,9 @@ Please provide a helpful answer based on the context above."""
 
     @config_group.command(name="database")
     async def set_database_path(self, ctx: commands.Context, path: str):
-        """Set the ChromaDB database path."""
+        """Set the database path."""
         await self.config.database_path.set(path)
-        await self.initialize_database()
+        await self.load_database()
         await ctx.send(f"✅ Database path updated to: {path}")
 
     @config_group.command(name="roles")
@@ -419,3 +456,6 @@ Please provide a helpful answer based on the context above."""
         
         await ctx.send(embed=embed)
 
+
+async def setup(bot: Red):
+    await bot.add_cog(UnicornDocsSimple(bot))
