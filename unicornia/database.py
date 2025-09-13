@@ -263,6 +263,26 @@ class DatabaseManager:
             """)
             
             await db.commit()
+            
+            # Run schema updates for existing databases
+            await self._update_database_schema(db)
+    
+    async def _update_database_schema(self, db):
+        """Update existing database schema to add missing columns"""
+        try:
+            # Check if IsUsing column exists in XpShopOwnedItem table
+            cursor = await db.execute("PRAGMA table_info(XpShopOwnedItem)")
+            columns = await cursor.fetchall()
+            column_names = [col[1] for col in columns]  # Column name is at index 1
+            
+            if 'IsUsing' not in column_names:
+                log.info("Adding IsUsing column to XpShopOwnedItem table")
+                await db.execute("ALTER TABLE XpShopOwnedItem ADD COLUMN IsUsing BOOLEAN DEFAULT FALSE")
+                await db.commit()
+                log.info("Successfully added IsUsing column")
+                
+        except Exception as e:
+            log.error(f"Error updating database schema: {e}")
     
     # Level calculation methods (using Nadeko's exact formula)
     @staticmethod
