@@ -82,6 +82,7 @@ class CurrencyGeneration:
     async def _create_plant(self, guild_id: int, channel_id: int, amount: int, password: str):
         """Create a currency plant"""
         async with self.db._get_connection() as db:
+            await self.db._setup_wal_mode(db)
             await db.execute("""
                 INSERT INTO currency_plants (guild_id, channel_id, amount, password)
                 VALUES (?, ?, ?, ?)
@@ -91,6 +92,7 @@ class CurrencyGeneration:
     async def pick_plant(self, user_id: int, guild_id: int, password: str) -> bool:
         """Pick up a currency plant"""
         async with self.db._get_connection() as db:
+            await self.db._setup_wal_mode(db)
             # Find and remove the plant
             cursor = await db.execute("""
                 SELECT id, amount FROM currency_plants 
@@ -162,6 +164,7 @@ class CurrencyDecay:
             return
         
         async with self.db._get_connection() as db:
+            await self.db._setup_wal_mode(db)
             # Get all users above threshold
             cursor = await db.execute("""
                 SELECT user_id, currency_amount FROM users 
