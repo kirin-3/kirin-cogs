@@ -216,6 +216,111 @@ class DatabaseManager:
             )
             """)
             
+            # Currency Transaction table (matching Nadeko's CurrencyTransaction)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS CurrencyTransaction (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                UserId INTEGER NOT NULL,
+                Type TEXT NOT NULL,
+                Amount INTEGER NOT NULL,
+                Reason TEXT,
+                OtherId INTEGER,
+                Extra TEXT,
+                DateAdded TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # Bank User table (matching Nadeko's BankUser)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS BankUser (
+                UserId INTEGER PRIMARY KEY,
+                Balance INTEGER NOT NULL DEFAULT 0,
+                InterestRate REAL NOT NULL DEFAULT 0.02
+            )
+            """)
+            
+            # Gambling Stats table (matching Nadeko's GamblingStats)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS GamblingStats (
+                Feature TEXT PRIMARY KEY,
+                BetAmount INTEGER NOT NULL DEFAULT 0,
+                WinAmount INTEGER NOT NULL DEFAULT 0,
+                LossAmount INTEGER NOT NULL DEFAULT 0
+            )
+            """)
+            
+            # User Bet Stats table (matching Nadeko's UserBetStats)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS UserBetStats (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                UserId INTEGER NOT NULL,
+                Game TEXT NOT NULL,
+                BetAmount INTEGER NOT NULL DEFAULT 0,
+                WinAmount INTEGER NOT NULL DEFAULT 0,
+                LossAmount INTEGER NOT NULL DEFAULT 0,
+                MaxWin INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(UserId, Game)
+            )
+            """)
+            
+            # XP Excluded Item table (matching Nadeko's XpExcludedItem)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS XpExcludedItem (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                GuildId INTEGER NOT NULL,
+                ItemId INTEGER NOT NULL,
+                ItemType INTEGER NOT NULL
+            )
+            """)
+            
+            # XP Settings table (matching Nadeko's XpSettings)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS XpSettings (
+                GuildId INTEGER PRIMARY KEY,
+                XpRateMultiplier REAL NOT NULL DEFAULT 1.0,
+                XpPerMessage INTEGER NOT NULL DEFAULT 3,
+                XpMinutesTimeout INTEGER NOT NULL DEFAULT 5
+            )
+            """)
+            
+            # XP Role Reward table (matching Nadeko's XpRoleReward)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS XpRoleReward (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                GuildId INTEGER NOT NULL,
+                Level INTEGER NOT NULL,
+                RoleId INTEGER NOT NULL,
+                Remove BOOLEAN NOT NULL DEFAULT FALSE
+            )
+            """)
+            
+            # Event table for currency events (matching Nadeko's Event)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS Event (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                GuildId INTEGER NOT NULL,
+                ChannelId INTEGER NOT NULL,
+                Event TEXT NOT NULL
+            )
+            """)
+            
+            # Rakeback table (matching Nadeko's Rakeback)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS Rakeback (
+                UserId INTEGER PRIMARY KEY,
+                RakebackBalance INTEGER NOT NULL DEFAULT 0
+            )
+            """)
+            
+            # Timely Cooldown table for daily/timely rewards
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS TimelyCooldown (
+                UserId INTEGER PRIMARY KEY,
+                LastClaim TEXT NOT NULL,
+                Streak INTEGER NOT NULL DEFAULT 0
+            )
+            """)
+            
             # Shop system tables (matching Nadeko structure)
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS ShopEntry (
@@ -978,3 +1083,568 @@ class DatabaseManager:
             """, (guild_id, user_id, guild_id))
             rank = (await cursor.fetchone())[0]
             return rank
+
+    # Currency Transaction Methods
+    async def log_currency_transaction(self, user_id: int, transaction_type: str, amount: int, reason: str = None, other_id: int = None, extra: str = None):
+        """Log a currency transaction"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                INSERT INTO CurrencyTransaction (UserId, Type, Amount, Reason, OtherId, Extra, DateAdded)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            """, (user_id, transaction_type, amount, reason, other_id, extra))
+            await db.commit()
+
+    async def get_currency_transactions(self, user_id: int, limit: int = 50):
+        """Get recent currency transactions for a user"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT Type, Amount, Reason, DateAdded FROM CurrencyTransaction 
+                WHERE UserId = ? ORDER BY DateAdded DESC LIMIT ?
+            """, (user_id, limit))
+            return await cursor.fetchall()
+
+    # Bank Methods
+    async def get_bank_user(self, user_id: int):
+        """Get or create bank user"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT Balance, InterestRate FROM BankUser WHERE UserId = ?
+            """, (user_id,))
+            result = await cursor.fetchone()
+            
+            if not result:
+                await db.execute("""
+                    INSERT INTO BankUser (UserId, Balance, InterestRate) VALUES (?, 0, 0.02)
+                """, (user_id,))
+                await db.commit()
+                return (0, 0.02)
+            
+            return result
+
+    async def update_bank_balance(self, user_id: int, new_balance: int):
+        """Update bank balance"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                INSERT OR REPLACE INTO BankUser (UserId, Balance, InterestRate) 
+                VALUES (?, ?, COALESCE((SELECT InterestRate FROM BankUser WHERE UserId = ?), 0.02))
+            """, (user_id, new_balance, user_id))
+            await db.commit()
+
+    # Gambling Stats Methods
+    async def update_gambling_stats(self, feature: str, bet_amount: int, win_amount: int, loss_amount: int):
+        """Update global gambling statistics"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                INSERT OR REPLACE INTO GamblingStats (Feature, BetAmount, WinAmount, LossAmount)
+                VALUES (?, 
+                    COALESCE((SELECT BetAmount FROM GamblingStats WHERE Feature = ?), 0) + ?,
+                    COALESCE((SELECT WinAmount FROM GamblingStats WHERE Feature = ?), 0) + ?,
+                    COALESCE((SELECT LossAmount FROM GamblingStats WHERE Feature = ?), 0) + ?)
+            """, (feature, feature, bet_amount, feature, win_amount, feature, loss_amount))
+            await db.commit()
+
+    async def update_user_bet_stats(self, user_id: int, game: str, bet_amount: int, win_amount: int, loss_amount: int, current_win: int = 0):
+        """Update user betting statistics"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            
+            # Get current max win
+            cursor = await db.execute("""
+                SELECT MaxWin FROM UserBetStats WHERE UserId = ? AND Game = ?
+            """, (user_id, game))
+            result = await cursor.fetchone()
+            max_win = max(result[0] if result else 0, current_win)
+            
+            await db.execute("""
+                INSERT OR REPLACE INTO UserBetStats (UserId, Game, BetAmount, WinAmount, LossAmount, MaxWin)
+                VALUES (?, ?, 
+                    COALESCE((SELECT BetAmount FROM UserBetStats WHERE UserId = ? AND Game = ?), 0) + ?,
+                    COALESCE((SELECT WinAmount FROM UserBetStats WHERE UserId = ? AND Game = ?), 0) + ?,
+                    COALESCE((SELECT LossAmount FROM UserBetStats WHERE UserId = ? AND Game = ?), 0) + ?,
+                    ?)
+            """, (user_id, game, user_id, game, bet_amount, user_id, game, win_amount, user_id, game, loss_amount, max_win))
+            await db.commit()
+
+    async def get_user_bet_stats(self, user_id: int):
+        """Get user betting statistics"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT Game, BetAmount, WinAmount, LossAmount, MaxWin FROM UserBetStats 
+                WHERE UserId = ? ORDER BY BetAmount DESC
+            """, (user_id,))
+            return await cursor.fetchall()
+
+    # XP Settings Methods
+    async def get_xp_settings(self, guild_id: int):
+        """Get XP settings for guild"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT XpRateMultiplier, XpPerMessage, XpMinutesTimeout FROM XpSettings WHERE GuildId = ?
+            """, (guild_id,))
+            result = await cursor.fetchone()
+            
+            if not result:
+                # Create default settings
+                await db.execute("""
+                    INSERT INTO XpSettings (GuildId, XpRateMultiplier, XpPerMessage, XpMinutesTimeout) 
+                    VALUES (?, 1.0, 3, 5)
+                """, (guild_id,))
+                await db.commit()
+                return (1.0, 3, 5)
+            
+            return result
+
+    # XP Role Rewards Methods
+    async def get_xp_role_rewards(self, guild_id: int, level: int):
+        """Get role rewards for a specific level"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT RoleId, Remove FROM XpRoleReward WHERE GuildId = ? AND Level = ?
+            """, (guild_id, level))
+            return await cursor.fetchall()
+
+    async def add_xp_role_reward(self, guild_id: int, level: int, role_id: int, remove: bool = False):
+        """Add XP role reward"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove) VALUES (?, ?, ?, ?)
+            """, (guild_id, level, role_id, remove))
+            await db.commit()
+
+    # XP Exclusions Methods
+    async def is_xp_excluded(self, guild_id: int, item_id: int, item_type: int):
+        """Check if channel/role is excluded from XP"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT 1 FROM XpExcludedItem WHERE GuildId = ? AND ItemId = ? AND ItemType = ?
+            """, (guild_id, item_id, item_type))
+            return await cursor.fetchone() is not None
+
+    async def add_xp_exclusion(self, guild_id: int, item_id: int, item_type: int):
+        """Add XP exclusion"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                INSERT OR IGNORE INTO XpExcludedItem (GuildId, ItemId, ItemType) VALUES (?, ?, ?)
+            """, (guild_id, item_id, item_type))
+            await db.commit()
+
+    # Rakeback Methods
+    async def get_rakeback_balance(self, user_id: int):
+        """Get user's rakeback balance"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT RakebackBalance FROM Rakeback WHERE UserId = ?
+            """, (user_id,))
+            result = await cursor.fetchone()
+            return result[0] if result else 0
+
+    async def add_rakeback(self, user_id: int, amount: int):
+        """Add to user's rakeback balance"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                INSERT OR REPLACE INTO Rakeback (UserId, RakebackBalance) 
+                VALUES (?, COALESCE((SELECT RakebackBalance FROM Rakeback WHERE UserId = ?), 0) + ?)
+            """, (user_id, user_id, amount))
+            await db.commit()
+
+    async def claim_rakeback(self, user_id: int):
+        """Claim and reset rakeback balance"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT RakebackBalance FROM Rakeback WHERE UserId = ?
+            """, (user_id,))
+            result = await cursor.fetchone()
+            balance = result[0] if result else 0
+            
+            if balance > 0:
+                await db.execute("""
+                    UPDATE Rakeback SET RakebackBalance = 0 WHERE UserId = ?
+                """, (user_id,))
+                await db.commit()
+            
+            return balance
+
+    # Enhanced Timely Methods
+    async def get_timely_info(self, user_id: int):
+        """Get timely cooldown info"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT LastClaim, Streak FROM TimelyCooldown WHERE UserId = ?
+            """, (user_id,))
+            result = await cursor.fetchone()
+            
+            if not result:
+                return None, 0
+            
+            return result
+
+    async def update_timely_claim(self, user_id: int, streak: int):
+        """Update timely claim info"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                INSERT OR REPLACE INTO TimelyCooldown (UserId, LastClaim, Streak) 
+                VALUES (?, datetime('now'), ?)
+            """, (user_id, streak))
+            await db.commit()
+
+    # Shop Entry Methods
+    async def get_shop_entries(self, guild_id: int):
+        """Get all shop entries for a guild"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT Id, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command
+                FROM ShopEntry WHERE GuildId = ? ORDER BY `Index`
+            """, (guild_id,))
+            return await cursor.fetchall()
+
+    async def get_shop_entry(self, guild_id: int, entry_id: int):
+        """Get a specific shop entry"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT Id, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command
+                FROM ShopEntry WHERE GuildId = ? AND Id = ?
+            """, (guild_id, entry_id))
+            return await cursor.fetchone()
+
+    async def add_shop_entry(self, guild_id: int, index: int, price: int, name: str, author_id: int, 
+                           entry_type: int, role_name: str = None, role_id: int = None, 
+                           role_requirement: int = None, command: str = None):
+        """Add a new shop entry"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                INSERT INTO ShopEntry (GuildId, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (guild_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command))
+            await db.commit()
+            return cursor.lastrowid
+
+    async def update_shop_entry(self, guild_id: int, entry_id: int, price: int = None, name: str = None, 
+                              entry_type: int = None, role_name: str = None, role_id: int = None, 
+                              role_requirement: int = None, command: str = None):
+        """Update a shop entry"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            
+            # Build dynamic update query
+            updates = []
+            params = []
+            
+            if price is not None:
+                updates.append("Price = ?")
+                params.append(price)
+            if name is not None:
+                updates.append("Name = ?")
+                params.append(name)
+            if entry_type is not None:
+                updates.append("Type = ?")
+                params.append(entry_type)
+            if role_name is not None:
+                updates.append("RoleName = ?")
+                params.append(role_name)
+            if role_id is not None:
+                updates.append("RoleId = ?")
+                params.append(role_id)
+            if role_requirement is not None:
+                updates.append("RoleRequirement = ?")
+                params.append(role_requirement)
+            if command is not None:
+                updates.append("Command = ?")
+                params.append(command)
+            
+            if not updates:
+                return False
+            
+            params.extend([guild_id, entry_id])
+            query = f"UPDATE ShopEntry SET {', '.join(updates)} WHERE GuildId = ? AND Id = ?"
+            
+            await db.execute(query, params)
+            await db.commit()
+            return True
+
+    async def delete_shop_entry(self, guild_id: int, entry_id: int):
+        """Delete a shop entry"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                DELETE FROM ShopEntry WHERE GuildId = ? AND Id = ?
+            """, (guild_id, entry_id))
+            await db.commit()
+            return True
+
+    async def get_shop_entry_items(self, entry_id: int):
+        """Get items for a shop entry"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT Id, Text FROM ShopEntryItem WHERE ShopEntryId = ?
+            """, (entry_id,))
+            return await cursor.fetchall()
+
+    async def add_shop_entry_item(self, entry_id: int, text: str):
+        """Add an item to a shop entry"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                INSERT INTO ShopEntryItem (ShopEntryId, Text) VALUES (?, ?)
+            """, (entry_id, text))
+            await db.commit()
+
+    async def delete_shop_entry_item(self, item_id: int):
+        """Delete a shop entry item"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                DELETE FROM ShopEntryItem WHERE Id = ?
+            """, (item_id,))
+            await db.commit()
+
+    async def purchase_shop_item(self, user_id: int, guild_id: int, entry_id: int) -> tuple[bool, str]:
+        """Purchase a shop item"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            
+            # Get shop entry
+            entry = await self.get_shop_entry(guild_id, entry_id)
+            if not entry:
+                return False, "Shop item not found"
+            
+            entry_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command = entry
+            
+            # Check if user has enough currency
+            user_balance = await self.get_user_currency(user_id)
+            if user_balance < price:
+                return False, f"Insufficient currency. You need {price:,} but have {user_balance:,}"
+            
+            # Check if user already owns this item (for role items)
+            if entry_type == 0:  # Role item
+                # Check if user already has the role
+                # This would need to be checked in the main cog with Discord API
+                pass
+            
+            # Deduct currency
+            await self.remove_currency(user_id, price, "shop_purchase", str(entry_id), note=f"Purchased: {name}")
+            
+            # Log transaction
+            await self.log_currency_transaction(user_id, "shop_purchase", -price, f"Purchased: {name}")
+            
+            return True, f"Successfully purchased {name} for {price:,} currency"
+
+    # Shop item type constants
+    SHOP_TYPE_ROLE = 0
+    SHOP_TYPE_COMMAND = 1
+    SHOP_TYPE_EFFECT = 2
+    SHOP_TYPE_OTHER = 3
+
+    # Waifu System Methods
+    async def get_waifu_info(self, waifu_id: int):
+        """Get waifu information"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT waifu_id, claimer_id, price, affinity_id, created_at FROM waifus WHERE waifu_id = ?
+            """, (waifu_id,))
+            return await cursor.fetchone()
+
+    async def claim_waifu(self, waifu_id: int, claimer_id: int, price: int) -> bool:
+        """Claim a waifu"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            
+            # Check if waifu is already claimed
+            cursor = await db.execute("SELECT claimer_id FROM waifus WHERE waifu_id = ?", (waifu_id,))
+            result = await cursor.fetchone()
+            
+            if result and result[0] is not None:
+                return False  # Already claimed
+            
+            # Update or insert waifu claim
+            await db.execute("""
+                INSERT OR REPLACE INTO waifus (waifu_id, claimer_id, price, created_at)
+                VALUES (?, ?, ?, datetime('now'))
+            """, (waifu_id, claimer_id, price))
+            
+            # Log waifu update
+            await db.execute("""
+                INSERT INTO waifu_updates (waifu_id, old_claimer_id, new_claimer_id, update_type, created_at)
+                VALUES (?, ?, ?, 'claimed', datetime('now'))
+            """, (waifu_id, None, claimer_id))
+            
+            await db.commit()
+            return True
+
+    async def divorce_waifu(self, waifu_id: int, claimer_id: int) -> bool:
+        """Divorce a waifu"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            
+            # Check if user owns this waifu
+            cursor = await db.execute("SELECT claimer_id FROM waifus WHERE waifu_id = ?", (waifu_id,))
+            result = await cursor.fetchone()
+            
+            if not result or result[0] != claimer_id:
+                return False  # Not owned by this user
+            
+            # Log divorce
+            await db.execute("""
+                INSERT INTO waifu_updates (waifu_id, old_claimer_id, new_claimer_id, update_type, created_at)
+                VALUES (?, ?, ?, 'divorced', datetime('now'))
+            """, (waifu_id, claimer_id, None))
+            
+            # Remove claim
+            await db.execute("""
+                UPDATE waifus SET claimer_id = NULL WHERE waifu_id = ?
+            """, (waifu_id,))
+            
+            await db.commit()
+            return True
+
+    async def get_waifu_owner(self, waifu_id: int):
+        """Get waifu owner"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("SELECT claimer_id FROM waifus WHERE waifu_id = ?", (waifu_id,))
+            result = await cursor.fetchone()
+            return result[0] if result else None
+
+    async def get_user_waifus(self, user_id: int):
+        """Get all waifus owned by a user"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT waifu_id, price, affinity_id, created_at FROM waifus WHERE claimer_id = ?
+                ORDER BY created_at DESC
+            """, (user_id,))
+            return await cursor.fetchall()
+
+    async def get_waifu_price(self, waifu_id: int) -> int:
+        """Get current waifu price"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("SELECT price FROM waifus WHERE waifu_id = ?", (waifu_id,))
+            result = await cursor.fetchone()
+            return result[0] if result else 50  # Default price
+
+    async def update_waifu_price(self, waifu_id: int, new_price: int):
+        """Update waifu price"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                UPDATE waifus SET price = ? WHERE waifu_id = ?
+            """, (new_price, waifu_id))
+            await db.commit()
+
+    async def set_waifu_affinity(self, waifu_id: int, affinity_id: int):
+        """Set waifu affinity"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                UPDATE waifus SET affinity_id = ? WHERE waifu_id = ?
+            """, (affinity_id, waifu_id))
+            await db.commit()
+
+    async def get_waifu_affinity(self, waifu_id: int):
+        """Get waifu affinity"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("SELECT affinity_id FROM waifus WHERE waifu_id = ?", (waifu_id,))
+            result = await cursor.fetchone()
+            return result[0] if result else None
+
+    async def get_waifu_leaderboard(self, limit: int = 10):
+        """Get waifu leaderboard by price"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT waifu_id, claimer_id, price FROM waifus 
+                WHERE claimer_id IS NOT NULL 
+                ORDER BY price DESC LIMIT ?
+            """, (limit,))
+            return await cursor.fetchall()
+
+    async def add_waifu_item(self, waifu_id: int, name: str, emoji: str):
+        """Add item to waifu"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            await db.execute("""
+                INSERT INTO waifu_items (waifu_id, name, emoji, created_at)
+                VALUES (?, ?, ?, datetime('now'))
+            """, (waifu_id, name, emoji))
+            await db.commit()
+
+    async def get_waifu_items(self, waifu_id: int):
+        """Get waifu items"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT name, emoji FROM waifu_items WHERE waifu_id = ?
+                ORDER BY created_at DESC
+            """, (waifu_id,))
+            return await cursor.fetchall()
+
+    async def get_waifu_history(self, waifu_id: int, limit: int = 10):
+        """Get waifu transaction history"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            cursor = await db.execute("""
+                SELECT old_claimer_id, new_claimer_id, update_type, created_at 
+                FROM waifu_updates WHERE waifu_id = ? 
+                ORDER BY created_at DESC LIMIT ?
+            """, (waifu_id, limit))
+            return await cursor.fetchall()
+
+    # Data deletion methods for Red bot compliance
+    async def delete_user_data(self, user_id: int):
+        """Delete all data for a user (Red bot requirement)"""
+        async with self._get_connection() as db:
+            await self._setup_wal_mode(db)
+            
+            # Delete from all user-related tables
+            tables_to_clean = [
+                "UserXpStats",
+                "CurrencyTransaction", 
+                "BankUser",
+                "TimelyCooldown",
+                "waifus",  # Remove waifu claims
+                "waifu_updates",  # Remove waifu history
+                "XpShopOwnedItem"
+            ]
+            
+            for table in tables_to_clean:
+                try:
+                    await db.execute(f"DELETE FROM {table} WHERE UserId = ?", (user_id,))
+                except Exception as e:
+                    # Some tables might not exist or have different column names
+                    log.warning(f"Could not clean table {table} for user {user_id}: {e}")
+            
+            # Clean waifu tables with different column names
+            try:
+                await db.execute("DELETE FROM waifus WHERE claimer_id = ?", (user_id,))
+            except Exception:
+                pass
+                
+            try:
+                await db.execute("DELETE FROM waifu_updates WHERE old_claimer_id = ? OR new_claimer_id = ?", (user_id, user_id))
+            except Exception:
+                pass
+            
+            await db.commit()
+            log.info(f"Deleted all data for user {user_id}")

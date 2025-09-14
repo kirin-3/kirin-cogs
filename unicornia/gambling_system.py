@@ -17,6 +17,23 @@ class GamblingSystem:
         self.config = config
         self.bot = bot
     
+    async def _log_gambling_result(self, user_id: int, game: str, bet_amount: int, won: bool, win_amount: int = 0):
+        """Log gambling result and update statistics"""
+        if won:
+            net_gain = win_amount - bet_amount
+            await self.db.update_gambling_stats(game, bet_amount, win_amount, 0)
+            await self.db.update_user_bet_stats(user_id, game, bet_amount, win_amount, 0, win_amount)
+            await self.db.log_currency_transaction(user_id, "gambling_win", net_gain, f"{game} win")
+        else:
+            await self.db.update_gambling_stats(game, bet_amount, 0, bet_amount)
+            await self.db.update_user_bet_stats(user_id, game, bet_amount, 0, bet_amount, 0)
+            await self.db.log_currency_transaction(user_id, "gambling_loss", -bet_amount, f"{game} loss")
+            
+            # Add to rakeback (5% of losses)
+            rakeback_amount = int(bet_amount * 0.05)
+            if rakeback_amount > 0:
+                await self.db.add_rakeback(user_id, rakeback_amount)
+    
     async def betroll(self, user_id: int, amount: int) -> Tuple[bool, Dict[str, Any]]:
         """Play betroll game"""
         # Check if user has enough currency

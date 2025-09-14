@@ -21,6 +21,7 @@ from .xp_system import XPSystem
 from .economy_system import EconomySystem
 from .gambling_system import GamblingSystem
 from .currency_systems import CurrencyGeneration, CurrencyDecay
+from .shop_system import ShopSystem
 
 log = logging.getLogger("red.unicornia")
 
@@ -99,6 +100,7 @@ class Unicornia(commands.Cog):
             self.gambling_system = GamblingSystem(self.db, self.config, self.bot)
             self.currency_generation = CurrencyGeneration(self.db, self.config, self.bot)
             self.currency_decay = CurrencyDecay(self.db, self.config, self.bot)
+            self.shop_system = ShopSystem(self.db, self.config, self.bot)
             
             # Start background tasks
             await self.currency_decay.start_decay_loop()
@@ -119,6 +121,83 @@ class Unicornia(commands.Cog):
             log.info("Unicornia: Cog unloaded successfully")
         except Exception as e:
             log.error(f"Unicornia: Error during unload: {e}")
+    
+    async def cog_command_error(self, ctx, error):
+        """Handle command errors with proper Red bot patterns"""
+        # See: https://docs.discord-red.com/en/stable/framework_commands.html
+        if isinstance(error, commands.CommandOnCooldown):
+            await ctx.send(f"❌ Command is on cooldown. Try again in {error.retry_after:.1f} seconds.")
+        elif isinstance(error, commands.MissingPermissions):
+            await ctx.send("❌ You don't have permission to use this command.")
+        elif isinstance(error, commands.BotMissingPermissions):
+            await ctx.send("❌ I don't have the required permissions to execute this command.")
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send(f"❌ Missing required argument: {error.param.name}")
+        elif isinstance(error, commands.BadArgument):
+            await ctx.send(f"❌ Invalid argument: {error}")
+        elif isinstance(error, commands.CommandNotFound):
+            return  # Don't respond to unknown commands
+        else:
+            # Log unexpected errors
+            log.error(f"Unexpected error in {ctx.command}: {error}", exc_info=True)
+            await ctx.send("❌ An unexpected error occurred. Please try again later.")
+    
+    async def red_get_data_for_user(self, *, user_id: int):
+        """Get user data for data export/deletion (Red bot requirement)"""
+        # See: https://docs.discord-red.com/en/stable/framework_commands.html
+        try:
+            if not self._check_systems_ready():
+                return {}
+            
+            # Get user's data from all systems
+            data = {}
+            
+            # XP data
+            xp_data = await self.db.get_user_xp_stats(user_id)
+            if xp_data:
+                data['xp_stats'] = xp_data
+            
+            # Currency data
+            currency = await self.db.get_user_currency(user_id)
+            if currency > 0:
+                data['currency'] = currency
+            
+            # Bank data
+            bank_data = await self.db.get_bank_user(user_id)
+            if bank_data:
+                data['bank'] = bank_data
+            
+            # Waifu data
+            waifus = await self.db.get_user_waifus(user_id)
+            if waifus:
+                data['waifus'] = waifus
+            
+            # Transaction history
+            transactions = await self.db.get_user_transactions(user_id, limit=100)
+            if transactions:
+                data['transactions'] = transactions
+            
+            return data
+            
+        except Exception as e:
+            log.error(f"Error getting user data for {user_id}: {e}")
+            return {}
+    
+    async def red_delete_data_for_user(self, *, requester: str, user_id: int):
+        """Delete user data (Red bot requirement)"""
+        # See: https://docs.discord-red.com/en/stable/framework_commands.html
+        try:
+            if not self._check_systems_ready():
+                return
+            
+            # Delete user data from all systems
+            await self.db.delete_user_data(user_id)
+            
+            log.info(f"Deleted data for user {user_id} (requested by {requester})")
+            
+        except Exception as e:
+            log.error(f"Error deleting user data for {user_id}: {e}")
+            raise
     
     def _check_systems_ready(self) -> bool:
         """Check if all systems are properly initialized"""
@@ -212,8 +291,12 @@ class Unicornia(commands.Cog):
             
             await ctx.send(embed=embed)
             
+        except (OSError, IOError) as e:
+            log.error(f"Error loading XP backgrounds: {e}")
+            await ctx.send("❌ Error loading backgrounds. Please check the configuration file.")
         except Exception as e:
-            await ctx.send(f"❌ Error loading backgrounds: {e}")
+            log.error(f"Unexpected error loading backgrounds: {e}", exc_info=True)
+            await ctx.send("❌ An unexpected error occurred while loading backgrounds.")
     
     @xp_shop_group.command(name="buy")
     async def shop_buy(self, ctx, item_key: str):
@@ -573,6 +656,7 @@ class Unicornia(commands.Cog):
             await ctx.send(f"❌ Error transferring currency: {e}")
     
     @economy_group.command(name="timely", aliases=["daily"])
+    @commands.cooldown(1, 86400, commands.BucketType.user)  # 24 hours cooldown
     async def economy_timely(self, ctx):
         """Claim your daily currency reward"""
         if not await self.config.economy_enabled():
@@ -590,6 +674,672 @@ class Unicornia(commands.Cog):
                 
         except Exception as e:
             await ctx.send(f"❌ Error claiming daily reward: {e}")
+    
+    @economy_group.command(name="history", aliases=["transactions", "tx"])
+    async def economy_history(self, ctx, member: discord.Member = None):
+        """View transaction history"""
+        target = member or ctx.author
+        
+        try:
+            transactions = await self.economy_system.get_transaction_history(target.id, 20)
+            if not transactions:
+                await ctx.send(f"{target.display_name} has no transaction history.")
+                return
+            
+            embed = discord.Embed(
+                title=f"💰 Transaction History - {target.display_name}",
+                color=discord.Color.blue()
+            )
+            
+            history_text = ""
+            for tx_type, amount, reason, date in transactions[:10]:
+                emoji = "📈" if amount > 0 else "📉"
+                sign = "+" if amount > 0 else ""
+                history_text += f"{emoji} {sign}{amount:,} - {tx_type}"
+                if reason:
+                    history_text += f" ({reason})"
+                history_text += f"\n*{date}*\n\n"
+            
+            embed.description = history_text[:2000]  # Discord limit
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error retrieving transaction history: {e}")
+    
+    @economy_group.command(name="stats", aliases=["gambling"])
+    async def gambling_stats(self, ctx, member: discord.Member = None):
+        """View gambling statistics"""
+        target = member or ctx.author
+        
+        try:
+            stats = await self.economy_system.get_gambling_stats(target.id)
+            if not stats:
+                await ctx.send(f"{target.display_name} has no gambling statistics.")
+                return
+            
+            embed = discord.Embed(
+                title=f"🎲 Gambling Statistics - {target.display_name}",
+                color=discord.Color.gold()
+            )
+            
+            total_bet = 0
+            total_won = 0
+            total_lost = 0
+            
+            for game, bet_amount, win_amount, loss_amount, max_win in stats:
+                total_bet += bet_amount
+                total_won += win_amount
+                total_lost += loss_amount
+                
+                net = win_amount - loss_amount
+                embed.add_field(
+                    name=f"🎮 {game.title()}",
+                    value=f"Bet: {bet_amount:,}\nWon: {win_amount:,}\nLost: {loss_amount:,}\nNet: {net:+,}\nMax Win: {max_win:,}",
+                    inline=True
+                )
+            
+            embed.add_field(
+                name="📊 Overall",
+                value=f"Total Bet: {total_bet:,}\nTotal Won: {total_won:,}\nTotal Lost: {total_lost:,}\nNet P/L: {(total_won - total_lost):+,}",
+                inline=False
+            )
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error retrieving gambling statistics: {e}")
+    
+    @economy_group.command(name="rakeback", aliases=["rb"])
+    async def rakeback_command(self, ctx):
+        """Check and claim rakeback balance"""
+        try:
+            balance = await self.economy_system.get_rakeback_info(ctx.author.id)
+            
+            if balance <= 0:
+                await ctx.send("💸 You don't have any rakeback to claim.")
+                return
+            
+            claimed = await self.economy_system.claim_rakeback(ctx.author.id)
+            currency_symbol = await self.config.currency_symbol()
+            
+            embed = discord.Embed(
+                title="💰 Rakeback Claimed!",
+                description=f"You received {currency_symbol}{claimed:,} in rakeback!",
+                color=discord.Color.green()
+            )
+            embed.add_field(
+                name="ℹ️ About Rakeback",
+                value="You earn 5% rakeback on gambling losses. Claim it anytime!",
+                inline=False
+            )
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error with rakeback: {e}")
+    
+    @economy_group.command(name="bank")
+    async def bank_info(self, ctx, member: discord.Member = None):
+        """View bank information"""
+        target = member or ctx.author
+        
+        try:
+            balance, interest_rate = await self.economy_system.get_bank_info(target.id)
+            currency_symbol = await self.config.currency_symbol()
+            
+            embed = discord.Embed(
+                title=f"🏦 Bank Account - {target.display_name}",
+                color=discord.Color.blue()
+            )
+            embed.add_field(name="Balance", value=f"{currency_symbol}{balance:,}", inline=True)
+            embed.add_field(name="Interest Rate", value=f"{interest_rate:.1%} per day", inline=True)
+            
+            # Calculate daily interest
+            daily_interest = int(balance * interest_rate)
+            if daily_interest > 0:
+                embed.add_field(name="Daily Interest", value=f"{currency_symbol}{daily_interest:,}", inline=True)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error retrieving bank information: {e}")
+    
+    # Shop commands
+    @commands.group(name="shop", aliases=["store"])
+    async def shop_group(self, ctx):
+        """Shop commands - Buy roles and items with currency"""
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+    
+    @shop_group.command(name="list", aliases=["items", "view"])
+    async def shop_list(self, ctx):
+        """View all available shop items"""
+        if not await self.config.shop_enabled():
+            await ctx.send("❌ Shop system is disabled.")
+            return
+        
+        if not self._check_systems_ready():
+            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
+            return
+        
+        try:
+            items = await self.shop_system.get_shop_items(ctx.guild.id)
+            if not items:
+                await ctx.send("🛒 The shop is empty! Admins can add items with `[p]shop add`.")
+                return
+            
+            currency_symbol = await self.config.currency_symbol()
+            embed = discord.Embed(
+                title="🛒 Shop Items",
+                description="Purchase items with your currency!",
+                color=discord.Color.green()
+            )
+            
+            for item in items[:10]:  # Limit to 10 items per page
+                item_type = self.shop_system.get_type_name(item['type'])
+                emoji = self.shop_system.get_type_emoji(item['type'])
+                
+                description = f"**{emoji} {item['name']}** - {currency_symbol}{item['price']:,}\n"
+                description += f"Type: {item_type}\n"
+                
+                if item['type'] == self.db.SHOP_TYPE_ROLE and item['role_name']:
+                    description += f"Role: {item['role_name']}\n"
+                elif item['type'] == self.db.SHOP_TYPE_COMMAND and item['command']:
+                    description += f"Command: `{item['command']}`\n"
+                
+                if item['additional_items']:
+                    description += f"Items: {len(item['additional_items'])} additional items\n"
+                
+                embed.add_field(
+                    name=f"#{item['index']} - {item['name']}",
+                    value=description,
+                    inline=True
+                )
+            
+            embed.set_footer(text=f"Use '[p]shop buy <item_id>' to purchase an item")
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error retrieving shop items: {e}")
+    
+    @shop_group.command(name="buy")
+    async def shop_buy(self, ctx, item_id: int):
+        """Buy a shop item"""
+        if not await self.config.shop_enabled():
+            await ctx.send("❌ Shop system is disabled.")
+            return
+        
+        if not self._check_systems_ready():
+            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
+            return
+        
+        try:
+            success, message = await self.shop_system.purchase_item(ctx.author, ctx.guild.id, item_id)
+            if success:
+                currency_symbol = await self.config.currency_symbol()
+                embed = discord.Embed(
+                    title="✅ Purchase Successful!",
+                    description=message,
+                    color=discord.Color.green()
+                )
+                embed.add_field(
+                    name="💡 Tip",
+                    value="Use `[p]shop list` to see all available items!",
+                    inline=False
+                )
+                await ctx.send(embed=embed)
+            else:
+                await ctx.send(f"❌ {message}")
+                
+        except Exception as e:
+            await ctx.send(f"❌ Error purchasing item: {e}")
+    
+    @shop_group.command(name="info")
+    async def shop_info(self, ctx, item_id: int):
+        """Get detailed information about a shop item"""
+        if not await self.config.shop_enabled():
+            await ctx.send("❌ Shop system is disabled.")
+            return
+        
+        if not self._check_systems_ready():
+            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
+            return
+        
+        try:
+            item = await self.shop_system.get_shop_item(ctx.guild.id, item_id)
+            if not item:
+                await ctx.send("❌ Shop item not found.")
+                return
+            
+            currency_symbol = await self.config.currency_symbol()
+            item_type = self.shop_system.get_type_name(item['type'])
+            emoji = self.shop_system.get_type_emoji(item['type'])
+            
+            embed = discord.Embed(
+                title=f"{emoji} {item['name']}",
+                description=f"**Price:** {currency_symbol}{item['price']:,}\n**Type:** {item_type}",
+                color=discord.Color.blue()
+            )
+            
+            if item['type'] == self.db.SHOP_TYPE_ROLE:
+                if item['role_name']:
+                    embed.add_field(name="Role", value=item['role_name'], inline=True)
+                if item['role_requirement']:
+                    req_role = ctx.guild.get_role(item['role_requirement'])
+                    if req_role:
+                        embed.add_field(name="Requirement", value=f"Must have {req_role.name}", inline=True)
+            
+            elif item['type'] == self.db.SHOP_TYPE_COMMAND:
+                if item['command']:
+                    embed.add_field(name="Command", value=f"`{item['command']}`", inline=True)
+            
+            if item['additional_items']:
+                items_text = "\n".join([f"• {item_text}" for _, item_text in item['additional_items']])
+                embed.add_field(name="Additional Items", value=items_text[:1000], inline=False)
+            
+            embed.set_footer(text=f"Use '[p]shop buy {item_id}' to purchase this item")
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error retrieving item info: {e}")
+    
+    # Admin shop commands
+    @shop_group.command(name="add")
+    @commands.admin_or_permissions(manage_roles=True)
+    async def shop_add(self, ctx, item_type: str, price: int, name: str, *, details: str = ""):
+        """Add a new shop item (Admin only)
+        
+        Types: role, command, effect, other
+        Usage: [p]shop add role 1000 "VIP Role" @VIPRole
+        """
+        if not await self.config.shop_enabled():
+            await ctx.send("❌ Shop system is disabled.")
+            return
+        
+        try:
+            # Parse item type
+            type_map = {
+                'role': self.db.SHOP_TYPE_ROLE,
+                'command': self.db.SHOP_TYPE_COMMAND,
+                'effect': self.db.SHOP_TYPE_EFFECT,
+                'other': self.db.SHOP_TYPE_OTHER
+            }
+            
+            if item_type.lower() not in type_map:
+                await ctx.send("❌ Invalid item type. Use: role, command, effect, or other")
+                return
+            
+            entry_type = type_map[item_type.lower()]
+            
+            # Get next index
+            items = await self.shop_system.get_shop_items(ctx.guild.id)
+            next_index = max([item['index'] for item in items], default=0) + 1
+            
+            role_id = None
+            role_name = None
+            command = None
+            
+            if entry_type == self.db.SHOP_TYPE_ROLE:
+                # Parse role from details
+                if not details:
+                    await ctx.send("❌ Please specify a role for role items. Usage: `[p]shop add role 1000 \"VIP Role\" @VIPRole`")
+                    return
+                
+                # Try to find role mention or name
+                role = None
+                if ctx.message.role_mentions:
+                    role = ctx.message.role_mentions[0]
+                else:
+                    # Try to find by name
+                    role = discord.utils.get(ctx.guild.roles, name=details.strip())
+                
+                if not role:
+                    await ctx.send("❌ Role not found. Please mention the role or use the exact name.")
+                    return
+                
+                role_id = role.id
+                role_name = role.name
+            
+            elif entry_type == self.db.SHOP_TYPE_COMMAND:
+                command = details.strip()
+                if not command:
+                    await ctx.send("❌ Please specify a command for command items.")
+                    return
+            
+            # Add shop item
+            item_id = await self.shop_system.add_shop_item(
+                ctx.guild.id, next_index, price, name, ctx.author.id,
+                entry_type, role_name, role_id, None, command
+            )
+            
+            currency_symbol = await self.config.currency_symbol()
+            embed = discord.Embed(
+                title="✅ Shop Item Added!",
+                description=f"**{name}** - {currency_symbol}{price:,}",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="Type", value=item_type.title(), inline=True)
+            embed.add_field(name="ID", value=str(item_id), inline=True)
+            embed.add_field(name="Index", value=str(next_index), inline=True)
+            
+            if role_name:
+                embed.add_field(name="Role", value=role_name, inline=True)
+            if command:
+                embed.add_field(name="Command", value=f"`{command}`", inline=True)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error adding shop item: {e}")
+    
+    @shop_group.command(name="remove", aliases=["delete", "del"])
+    @commands.admin_or_permissions(manage_roles=True)
+    async def shop_remove(self, ctx, item_id: int):
+        """Remove a shop item (Admin only)"""
+        if not await self.config.shop_enabled():
+            await ctx.send("❌ Shop system is disabled.")
+            return
+        
+        try:
+            # Get item info before deleting
+            item = await self.shop_system.get_shop_item(ctx.guild.id, item_id)
+            if not item:
+                await ctx.send("❌ Shop item not found.")
+                return
+            
+            success = await self.shop_system.delete_shop_item(ctx.guild.id, item_id)
+            if success:
+                await ctx.send(f"✅ Removed shop item: **{item['name']}**")
+            else:
+                await ctx.send("❌ Failed to remove shop item.")
+                
+        except Exception as e:
+            await ctx.send(f"❌ Error removing shop item: {e}")
+    
+    # Waifu commands
+    @commands.group(name="waifu", aliases=["wf"])
+    async def waifu_group(self, ctx):
+        """Waifu system - Claim and manage virtual waifus"""
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+    
+    @waifu_group.command(name="claim")
+    async def waifu_claim(self, ctx, member: discord.Member, price: int = None):
+        """Claim a user as your waifu
+        
+        Usage: [p]waifu claim @user [price]
+        """
+        if not await self.config.economy_enabled():
+            await ctx.send("❌ Economy system is disabled.")
+            return
+        
+        if not self._check_systems_ready():
+            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
+            return
+        
+        if member.bot:
+            await ctx.send("❌ You can't claim bots as waifus!")
+            return
+        
+        if member == ctx.author:
+            await ctx.send("❌ You can't claim yourself as a waifu!")
+            return
+        
+        try:
+            # Check if user is already claimed
+            current_owner = await self.db.get_waifu_owner(member.id)
+            if current_owner:
+                if current_owner == ctx.author.id:
+                    await ctx.send("❌ You already own this waifu!")
+                    return
+                else:
+                    await ctx.send("❌ This user is already claimed by someone else!")
+                    return
+            
+            # Set default price if not provided
+            if price is None:
+                price = await self.db.get_waifu_price(member.id)
+            
+            # Check if user has enough currency
+            user_balance = await self.db.get_user_currency(ctx.author.id)
+            if user_balance < price:
+                currency_symbol = await self.config.currency_symbol()
+                await ctx.send(f"❌ You need {currency_symbol}{price:,} but only have {currency_symbol}{user_balance:,}!")
+                return
+            
+            # Claim the waifu
+            success = await self.db.claim_waifu(member.id, ctx.author.id, price)
+            if success:
+                # Deduct currency
+                await self.db.remove_currency(ctx.author.id, price, "waifu_claim", str(member.id), note=f"Claimed {member.display_name}")
+                await self.db.log_currency_transaction(ctx.author.id, "waifu_claim", -price, f"Claimed {member.display_name}")
+                
+                currency_symbol = await self.config.currency_symbol()
+                embed = discord.Embed(
+                    title="💕 Waifu Claimed!",
+                    description=f"You successfully claimed **{member.display_name}** as your waifu!",
+                    color=discord.Color.pink()
+                )
+                embed.add_field(name="Price Paid", value=f"{currency_symbol}{price:,}", inline=True)
+                embed.add_field(name="New Owner", value=ctx.author.display_name, inline=True)
+                embed.set_thumbnail(url=member.display_avatar.url)
+                await ctx.send(embed=embed)
+            else:
+                await ctx.send("❌ Failed to claim waifu. Please try again.")
+                
+        except Exception as e:
+            await ctx.send(f"❌ Error claiming waifu: {e}")
+    
+    @waifu_group.command(name="divorce")
+    async def waifu_divorce(self, ctx, member: discord.Member):
+        """Divorce your waifu
+        
+        Usage: [p]waifu divorce @user
+        """
+        if not self._check_systems_ready():
+            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
+            return
+        
+        try:
+            success = await self.db.divorce_waifu(member.id, ctx.author.id)
+            if success:
+                embed = discord.Embed(
+                    title="💔 Waifu Divorced",
+                    description=f"You divorced **{member.display_name}**. They are now available for claiming again.",
+                    color=discord.Color.red()
+                )
+                embed.set_thumbnail(url=member.display_avatar.url)
+                await ctx.send(embed=embed)
+            else:
+                await ctx.send("❌ You don't own this waifu or they're not claimed!")
+                
+        except Exception as e:
+            await ctx.send(f"❌ Error divorcing waifu: {e}")
+    
+    @waifu_group.command(name="info")
+    async def waifu_info(self, ctx, member: discord.Member):
+        """Get information about a waifu
+        
+        Usage: [p]waifu info @user
+        """
+        if not self._check_systems_ready():
+            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
+            return
+        
+        try:
+            waifu_info = await self.db.get_waifu_info(member.id)
+            if not waifu_info:
+                await ctx.send("❌ This user is not claimed as a waifu.")
+                return
+            
+            waifu_id, claimer_id, price, affinity_id, created_at = waifu_info
+            
+            # Get owner info
+            owner = ctx.guild.get_member(claimer_id) if claimer_id else None
+            affinity = ctx.guild.get_member(affinity_id) if affinity_id else None
+            
+            # Get waifu items
+            items = await self.db.get_waifu_items(member.id)
+            
+            currency_symbol = await self.config.currency_symbol()
+            embed = discord.Embed(
+                title=f"💕 {member.display_name}'s Waifu Info",
+                color=discord.Color.pink()
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+            
+            if owner:
+                embed.add_field(name="Owner", value=owner.display_name, inline=True)
+            else:
+                embed.add_field(name="Status", value="Unclaimed", inline=True)
+            
+            embed.add_field(name="Price", value=f"{currency_symbol}{price:,}", inline=True)
+            
+            if affinity:
+                embed.add_field(name="Affinity", value=affinity.display_name, inline=True)
+            
+            if items:
+                items_text = "\n".join([f"{emoji} {name}" for name, emoji in items[:5]])
+                if len(items) > 5:
+                    items_text += f"\n... and {len(items) - 5} more"
+                embed.add_field(name="Items", value=items_text, inline=False)
+            
+            embed.add_field(name="Claimed", value=f"<t:{int(created_at.timestamp())}:R>", inline=True)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error getting waifu info: {e}")
+    
+    @waifu_group.command(name="list", aliases=["my"])
+    async def waifu_list(self, ctx, member: discord.Member = None):
+        """List your waifus or someone else's waifus
+        
+        Usage: [p]waifu list [@user]
+        """
+        if not self._check_systems_ready():
+            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
+            return
+        
+        target = member or ctx.author
+        
+        try:
+            waifus = await self.db.get_user_waifus(target.id)
+            if not waifus:
+                await ctx.send(f"❌ {target.display_name} doesn't have any waifus.")
+                return
+            
+            currency_symbol = await self.config.currency_symbol()
+            embed = discord.Embed(
+                title=f"💕 {target.display_name}'s Waifus",
+                color=discord.Color.pink()
+            )
+            
+            for waifu_id, price, affinity_id, created_at in waifus[:10]:  # Limit to 10
+                waifu_member = ctx.guild.get_member(waifu_id)
+                if waifu_member:
+                    affinity = ctx.guild.get_member(affinity_id) if affinity_id else None
+                    value = f"Price: {currency_symbol}{price:,}"
+                    if affinity:
+                        value += f"\nAffinity: {affinity.display_name}"
+                    embed.add_field(
+                        name=waifu_member.display_name,
+                        value=value,
+                        inline=True
+                    )
+            
+            if len(waifus) > 10:
+                embed.set_footer(text=f"Showing 10 of {len(waifus)} waifus")
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error listing waifus: {e}")
+    
+    @waifu_group.command(name="leaderboard", aliases=["lb", "top"])
+    async def waifu_leaderboard(self, ctx):
+        """View waifu leaderboard by price
+        
+        Usage: [p]waifu leaderboard
+        """
+        if not self._check_systems_ready():
+            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
+            return
+        
+        try:
+            leaderboard = await self.db.get_waifu_leaderboard(10)
+            if not leaderboard:
+                await ctx.send("❌ No waifus found.")
+                return
+            
+            currency_symbol = await self.config.currency_symbol()
+            embed = discord.Embed(
+                title="💕 Waifu Leaderboard",
+                description="Most expensive waifus",
+                color=discord.Color.pink()
+            )
+            
+            for i, (waifu_id, claimer_id, price) in enumerate(leaderboard, 1):
+                waifu_member = ctx.guild.get_member(waifu_id)
+                owner = ctx.guild.get_member(claimer_id)
+                
+                if waifu_member and owner:
+                    embed.add_field(
+                        name=f"#{i} {waifu_member.display_name}",
+                        value=f"Owner: {owner.display_name}\nPrice: {currency_symbol}{price:,}",
+                        inline=True
+                    )
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error getting leaderboard: {e}")
+    
+    @waifu_group.command(name="price")
+    async def waifu_price(self, ctx, member: discord.Member, new_price: int):
+        """Set the price for your waifu (Owner only)
+        
+        Usage: [p]waifu price @user <new_price>
+        """
+        if not self._check_systems_ready():
+            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
+            return
+        
+        try:
+            # Check if user owns this waifu
+            current_owner = await self.db.get_waifu_owner(member.id)
+            if current_owner != ctx.author.id:
+                await ctx.send("❌ You don't own this waifu!")
+                return
+            
+            await self.db.update_waifu_price(member.id, new_price)
+            currency_symbol = await self.config.currency_symbol()
+            await ctx.send(f"✅ Set {member.display_name}'s price to {currency_symbol}{new_price:,}")
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error updating waifu price: {e}")
+    
+    @waifu_group.command(name="affinity")
+    async def waifu_affinity(self, ctx, member: discord.Member, affinity_user: discord.Member):
+        """Set affinity for your waifu (Owner only)
+        
+        Usage: [p]waifu affinity @waifu @affinity_user
+        """
+        if not self._check_systems_ready():
+            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
+            return
+        
+        try:
+            # Check if user owns this waifu
+            current_owner = await self.db.get_waifu_owner(member.id)
+            if current_owner != ctx.author.id:
+                await ctx.send("❌ You don't own this waifu!")
+                return
+            
+            await self.db.set_waifu_affinity(member.id, affinity_user.id)
+            await ctx.send(f"✅ Set {member.display_name}'s affinity to {affinity_user.display_name}")
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error setting waifu affinity: {e}")
     
     @economy_group.command(name="award")
     @checks.is_owner()
@@ -774,6 +1524,7 @@ class Unicornia(commands.Cog):
             await ctx.send(f"❌ Error in gambling: {e}")
     
     @gambling_group.command(name="rps", aliases=["rockpaperscissors"])
+    @commands.cooldown(1, 5, commands.BucketType.user)  # 5 second cooldown
     async def gambling_rps(self, ctx, choice: str, amount: int = 0):
         """Play rock paper scissors"""
         if not await self.config.gambling_enabled():
@@ -816,6 +1567,7 @@ class Unicornia(commands.Cog):
             await ctx.send(f"❌ Error in RPS: {e}")
     
     @gambling_group.command(name="slots")
+    @commands.cooldown(1, 3, commands.BucketType.user)  # 3 second cooldown
     async def gambling_slots(self, ctx, amount: int):
         """Play slots"""
         if not await self.config.gambling_enabled():

@@ -44,7 +44,7 @@ class XPSystem:
             if current_time - self.xp_cooldowns[user_id] < await self.config.xp_cooldown():
                 return
         
-        # Check exclusions
+        # Check exclusions (both config and database)
         excluded_channels = await self.config.guild(message.guild).excluded_channels()
         excluded_roles = await self.config.guild(message.guild).excluded_roles()
         
@@ -53,6 +53,14 @@ class XPSystem:
         
         if any(role.id in excluded_roles for role in message.author.roles):
             return
+            
+        # Also check database exclusions
+        if await self.db.is_xp_excluded(message.guild.id, message.channel.id, 0):  # 0 = Channel
+            return
+            
+        for role in message.author.roles:
+            if await self.db.is_xp_excluded(message.guild.id, role.id, 1):  # 1 = Role
+                return
         
         # Add XP
         xp_amount = await self.config.xp_per_message()
@@ -67,9 +75,36 @@ class XPSystem:
         
         if new_level > old_level:
             await self._handle_level_up(message, old_level, new_level)
+            await self._handle_role_rewards(message, new_level)
         
         # Update cooldown
         self.xp_cooldowns[user_id] = current_time
+    
+    async def _handle_role_rewards(self, message, level: int):
+        """Handle role rewards for reaching a level"""
+        try:
+            # Get role rewards for this level
+            role_rewards = await self.db.get_xp_role_rewards(message.guild.id, level)
+            
+            for role_id, remove in role_rewards:
+                role = message.guild.get_role(role_id)
+                if not role:
+                    continue
+                    
+                try:
+                    if remove and role in message.author.roles:
+                        await message.author.remove_roles(role, reason=f"XP level {level} role removal")
+                    elif not remove and role not in message.author.roles:
+                        await message.author.add_roles(role, reason=f"XP level {level} role reward")
+                except discord.Forbidden:
+                    pass  # Bot lacks permissions
+                except discord.HTTPException:
+                    pass  # Other Discord API error
+                    
+        except Exception as e:
+            import logging
+            log = logging.getLogger("red.unicornia.xp")
+            log.error(f"Error handling role rewards for level {level}: {e}")
     
     async def _handle_level_up(self, message, old_level: int, new_level: int):
         """Handle level up rewards and notifications"""

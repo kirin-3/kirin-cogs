@@ -286,10 +286,10 @@ class XPCardGenerator:
         default_avatar.putalpha(mask)
         return default_avatar
     
-    def _create_xp_bar(self, current_xp: int, required_xp: int, width: int = 225, height: int = 20) -> Image.Image:
-        """Create XP progress bar matching Nadeko template"""
-        # Nadeko template uses color "00000066" for bar background (semi-transparent black)
-        bar = Image.new('RGBA', (width, height), (0, 0, 0, 102))  # 66 hex = 102 decimal alpha
+    def _create_xp_bar(self, current_xp: int, required_xp: int, width: int = 275, height: int = 20) -> Image.Image:
+        """Create XP progress bar matching Nadeko C# template"""
+        # C# template uses Color(0, 0, 0, 0.4f) = 40% transparency = 102 alpha
+        bar = Image.new('RGBA', (width, height), (0, 0, 0, 102))
         draw = ImageDraw.Draw(bar)
         
         if required_xp > 0:
@@ -358,10 +358,9 @@ class XPCardGenerator:
         # Draw rank
         draw.text((100, 115), f"Rank #{rank}", font=rank_font, fill=(255, 255, 255, 255))
         
-        # Draw XP bar based on Nadeko template
-        # Template: PointA(202,66) to PointB(180,145), Length=225, Direction=3
-        # This appears to be a diagonal bar, but we'll simplify to horizontal
-        xp_bar = self._create_xp_bar(current_xp, required_xp)
+        # Draw XP bar based on Nadeko C# template
+        # C# Template: PointA(202,66), Length=275, Direction=Right
+        xp_bar = self._create_xp_bar(current_xp, required_xp, width=275)
         card.paste(xp_bar, (202, 66), xp_bar)
         
         # Draw XP text
