@@ -1,5 +1,6 @@
 from redbot.core import commands, Config
 import discord
+from datetime import datetime
 
 class rulesaccept(commands.Cog):
     """Cog for rule acceptance with button and modal."""
@@ -70,6 +71,33 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        # --- Start of new logging code ---
+        log_channel_id = 1422656113077256322  # Your specified logging channel ID
+        log_channel = self.cog.bot.get_channel(log_channel_id)
+
+        if log_channel:
+            member = interaction.user
+            typed_text = self.answer.value
+            
+            # Create a rich embed for logging
+            embed = discord.Embed(
+                title="Rule Acceptance Log",
+                color=discord.Color.blue(),
+                timestamp=datetime.utcnow()
+            )
+            embed.add_field(name="Member", value=f"{member.mention} (`{member.id}`)", inline=False)
+            embed.add_field(name="What they typed", value=f"```{typed_text}```", inline=False)
+            
+            try:
+                await log_channel.send(embed=embed)
+            except discord.Forbidden:
+                print(f"I don't have permissions to send messages in the log channel: {log_channel_id}")
+            except Exception as e:
+                print(f"Failed to send log message: {e}")
+        else:
+            print(f"Could not find the log channel with ID: {log_channel_id}")
+        # --- End of new logging code ---
+
         valid_responses = ["I agree to the rules.", "I Agree To The Rules."]
         if self.answer.value.strip() in valid_responses:
             guild = interaction.guild
