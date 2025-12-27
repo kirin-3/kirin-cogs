@@ -4,19 +4,24 @@ import inspect
 from PIL import Image, ImageDraw, ImageFont
 import io
 from functools import partial
+import math
 
 PALETTE_COLORS = [
-    ("Red", "#FF0000"), ("Orange", "#FFA500"), ("Yellow", "#FFFF00"), ("Green", "#008000"),
-    ("Blue", "#0000FF"), ("Purple", "#800080"), ("Pink", "#FFC0CB"), ("White", "#FFFFFF"),
-    ("Black", "#000000"), ("Grey", "#808080"), ("Cyan", "#00FFFF"), ("Lime", "#00FF00"),
-    ("Magenta", "#FF00FF"), ("Teal", "#008080"), ("Maroon", "#800000"), ("Navy", "#000080")
+    ("Red", "#FF0000"), ("Crimson", "#DC143C"), ("Tomato", "#FF6347"), ("Coral", "#FF7F50"),
+    ("Pink", "#FFC0CB"), ("HotPink", "#FF69B4"), ("Magenta", "#FF00FF"), ("Maroon", "#800000"),
+    ("Orange", "#FFA500"), ("Gold", "#FFD700"), ("Yellow", "#FFFF00"), ("Khaki", "#F0E68C"),
+    ("Lime", "#00FF00"), ("Green", "#008000"), ("Forest", "#228B22"), ("Olive", "#808000"),
+    ("Teal", "#008080"), ("Cyan", "#00FFFF"), ("SkyBlue", "#87CEEB"), ("Turquoise", "#40E0D0"),
+    ("Blue", "#0000FF"), ("RoyalBlue", "#4169E1"), ("Navy", "#000080"), ("Indigo", "#4B0082"),
+    ("Lavender", "#E6E6FA"), ("Purple", "#800080"), ("Violet", "#EE82EE"), ("Brown", "#A52A2A"),
+    ("White", "#FFFFFF"), ("Silver", "#C0C0C0"), ("Grey", "#808080"), ("Black", "#000000")
 ]
 
 def generate_palette_image():
     # Grid settings
-    rows = 4
     cols = 4
-    cell_w, cell_h = 150, 80
+    rows = math.ceil(len(PALETTE_COLORS) / cols)
+    cell_w, cell_h = 160, 80
     width = cols * cell_w
     height = rows * cell_h
     
@@ -25,12 +30,11 @@ def generate_palette_image():
     
     try:
         # Try to load a nicer font if available, else default
-        font = ImageFont.truetype("arial.ttf", 20)
+        font = ImageFont.truetype("arial.ttf", 16)
     except IOError:
         font = ImageFont.load_default()
         
     for i, (name, hex_code) in enumerate(PALETTE_COLORS):
-        if i >= rows * cols: break
         row = i // cols
         col = i % cols
         x = col * cell_w
@@ -125,10 +129,11 @@ class CustomRoleColor(commands.Cog):
 
         # Helper to validate and parse hex color
         def parse_hex(c):
-            if not c.startswith("#") or len(c) != 7:
+            c = c.strip("#")
+            if len(c) != 6:
                 return None
             try:
-                return discord.Color(int(c[1:], 16))
+                return discord.Color(int(c, 16))
             except ValueError:
                 return None
 
@@ -310,12 +315,13 @@ class CustomRoleColor(commands.Cog):
         Preview a color to see how it looks.
         Usage: [p]colorpreview #ff0000
         """
-        if not color.startswith("#") or len(color) != 7:
+        c_clean = color.strip("#")
+        if len(c_clean) != 6:
             await ctx.send("Please provide a valid hex color (e.g., #ff0000).")
             return
             
         try:
-            parsed = discord.Color(int(color[1:], 16))
+            parsed = discord.Color(int(c_clean, 16))
         except ValueError:
             await ctx.send("Invalid hex color.")
             return
@@ -350,9 +356,35 @@ class CustomRoleColor(commands.Cog):
             file_buffer = await self.bot.loop.run_in_executor(None, generate_palette_image)
             filename = "palette.png"
             file = discord.File(file_buffer, filename=filename)
-            embed = discord.Embed(title="Color Palette", description="Here are some common colors. You can pick a hex code from the image below.")
+            
+            # Generate copyable text list
+            desc_lines = []
+            for name, hex_code in PALETTE_COLORS:
+                desc_lines.append(f"`{hex_code}` **{name}**")
+            
+            description = "Here are some common colors. You can copy the code from the list below.\n\n" + " | ".join(desc_lines)
+            
+            # If description is too long (over 4096), we might need to truncate or split.
+            # 32 colors * ~25 chars = ~800 chars. It fits easily.
+            # Using " | " separator might be dense. Let's use newlines or grouped.
+            # Newlines are easier to scan.
+            description = "Here are some common colors. You can copy the code from the list below.\n\n" + "\n".join(desc_lines)
+            
+            # To save vertical space, maybe 2 columns? Embeds don't support columns in description.
+            # Fields can work.
+            
+            embed = discord.Embed(title="Color Palette", description="Here are some common colors. You can copy the code from the list below.")
             embed.set_image(url=f"attachment://{filename}")
-            embed.add_field(name="More Colors", value="[HTML Color Codes](https://htmlcolorcodes.com)")
+            
+            # Add fields for text list to make it compact but copyable
+            # Group into chunks of 8
+            chunk_size = 8
+            for i in range(0, len(PALETTE_COLORS), chunk_size):
+                chunk = PALETTE_COLORS[i:i + chunk_size]
+                value = "\n".join([f"`{code}` {name}" for name, code in chunk])
+                embed.add_field(name="\u200b", value=value, inline=True)
+
+            embed.add_field(name="More Colors", value="[HTML Color Codes](https://htmlcolorcodes.com)", inline=False)
             await ctx.send(file=file, embed=embed)
         except Exception as e:
             await ctx.send(f"Failed to generate palette: {e}")

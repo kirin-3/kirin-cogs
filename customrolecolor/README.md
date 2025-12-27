@@ -43,7 +43,7 @@ Generate a preview image of a specific color to see how it looks.
 - **Usage**: `[p]colorpreview #00FF00`
 
 #### `[p]colorpalette`
-View a generated image of common colors and their hex codes to help you choose.
+View a generated image of common colors and a copyable text list of hex codes.
 - **Usage**: `[p]colorpalette`
 
 ## Requirements
