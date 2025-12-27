@@ -1,0 +1,29 @@
+{
+  "author": [
+    "Vertyco"
+  ],
+  "description": "Moderation cog with a papers please theme.",
+  "disabled": false,
+  "end_user_data_statement": "This cog stores user warnings and moderation history.",
+  "hidden": false,
+  "install_msg": "Thank you for installing Unicorn Moderation!",
+  "min_bot_version": "3.5.0",
+  "min_python_version": [3, 10, 0],
+  "permissions": [
+    "ban_members",
+    "kick_members",
+    "manage_roles",
+    "manage_messages"
+  ],
+  "required_cogs": {},
+  "requirements": [
+    "pillow"
+  ],
+  "short": "Papers, Please themed moderation",
+  "tags": [
+    "moderation",
+    "utility",
+    "fun"
+  ],
+  "type": "COG"
+}

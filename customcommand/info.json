@@ -1,0 +1,11 @@
+{
+    "name": "customcommand",
+    "short": "Custom Command",
+    "description": "Allows users with a specific role to create a single custom command.",
+    "author": ["Unicornia Team"],
+    "version": "1.0.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "license": "MIT"
+}

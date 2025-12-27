@@ -36,10 +36,14 @@ class CustomRoleColor(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
-    async def myrolecolor(self, ctx, color: str):
+    async def myrolecolor(self, ctx, color: str, secondary_color: str = None):
         """
         Change the color of your assigned role.
-        Usage: [p]myrolecolor #ff0000
+
+        Usage:
+        [p]myrolecolor #ff0000             (Flat color)
+        [p]myrolecolor #ff0000 #00ff00     (Gradient color)
+        [p]myrolecolor holographic         (Holographic style)
         """
         assignments = await self.config.guild(ctx.guild).assignments()
         role_id = assignments.get(str(ctx.author.id))
@@ -52,23 +56,60 @@ class CustomRoleColor(commands.Cog):
             await ctx.send("The assigned role no longer exists.")
             return
 
-        if not color.startswith("#") or len(color) != 7:
-            await ctx.send("Please provide a valid hex color (e.g., #ff0000). You can use [this](https://htmlcolorcodes.com) site for getting the code.")
-            return
-
-        try:
-            new_color = discord.Color(int(color[1:], 16))
-        except ValueError:
-            await ctx.send("Invalid hex color. You can use [this](https://htmlcolorcodes.com) site for getting the code.")
-            return
-
         if role >= ctx.guild.me.top_role:
             await ctx.send("I can't edit that role (it's higher than my top role).")
             return
 
+        # Check for holographic preset
+        if color.lower() == "holographic":
+            try:
+                await role.edit(
+                    colour=discord.Colour(11127295),
+                    secondary_colour=discord.Colour(16759788),
+                    tertiary_colour=discord.Colour(16761760),
+                    reason=f"Changed by {ctx.author}"
+                )
+                await ctx.send(f"Changed color of {role.mention} to holographic.")
+            except discord.Forbidden:
+                await ctx.send("I don't have permission to edit that role.")
+            except Exception as e:
+                await ctx.send(f"An error occurred: {e}")
+            return
+
+        # Helper to validate and parse hex color
+        def parse_hex(c):
+            if not c.startswith("#") or len(c) != 7:
+                return None
+            try:
+                return discord.Color(int(c[1:], 16))
+            except ValueError:
+                return None
+
+        primary_parsed = parse_hex(color)
+        if not primary_parsed:
+            await ctx.send("Please provide a valid hex color (e.g., #ff0000) or 'holographic'. You can use [this](https://htmlcolorcodes.com) site for getting the code.")
+            return
+
+        secondary_parsed = None
+        if secondary_color:
+            secondary_parsed = parse_hex(secondary_color)
+            if not secondary_parsed:
+                await ctx.send(f"Invalid secondary hex color: {secondary_color}")
+                return
+
         try:
-            await role.edit(color=new_color, reason=f"Changed by {ctx.author}")
-            await ctx.send(f"Changed color of {role.mention} to {color}.")
+            # We explicitly set tertiary_colour to None to remove holographic effect if it was present
+            # We set secondary_colour to None if not provided to remove gradient if it was present
+            await role.edit(
+                colour=primary_parsed,
+                secondary_colour=secondary_parsed,
+                tertiary_colour=None,
+                reason=f"Changed by {ctx.author}"
+            )
+            if secondary_parsed:
+                await ctx.send(f"Changed color of {role.mention} to gradient: {color} -> {secondary_color}.")
+            else:
+                await ctx.send(f"Changed color of {role.mention} to {color}.")
         except discord.Forbidden:
             await ctx.send("I don't have permission to edit that role.")
         except Exception as e:

@@ -14,6 +14,7 @@ pnpm-debug.log*
 lerna-debug.log*
 unicorn_docs/docs/*
 nadeko/*
+nadeko/
 unicornia/Nadeko_Bot_Comprehensive_Documentation.md
 
 # Dependency directories
