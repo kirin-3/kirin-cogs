@@ -23,10 +23,15 @@ Delete your custom command.
 (Admin only) Set the custom command limit for a specific user.
 - **Example**: `[p]cc limit @User 5`
 
+### `[p]customcommand list`
+(Admin only) List all custom commands and their owners.
+- **Example**: `[p]cc list`
+
 ## Features
 - **Dynamic Limits**: Admins can assign different command limits to specific users.
 - **Multi-word Triggers**: Supports triggers with spaces (e.g., "hello world").
 - **Image Support**: Supports adding images via attachments or URLs.
+- **Logging**: Logs command creations and deletions to the configured channel.
 - **Cooldowns**: Commands have a cooldown to prevent spam.
 
 ## Requirements

@@ -1,11 +1,14 @@
 from redbot.core import commands, Config
 import discord
 from typing import Optional
+from redbot.core.utils.chat_formatting import pagify, box
 
 class CustomCommand(commands.Cog):
     """
     Allows users with a specific role to create custom commands.
     """
+
+    LOG_CHANNEL_ID = 757582829571014737
 
     def __init__(self, bot):
         self.bot = bot
@@ -18,6 +21,29 @@ class CustomCommand(commands.Cog):
         self.config.register_guild(**default_guild)
         self.role_id = 700121551483437128
         self._cooldown = commands.CooldownMapping.from_cooldown(1, 60, commands.BucketType.user)
+
+    async def log_action(self, ctx, action: str, trigger: str, response: str = None):
+        """Log custom command actions to the hardcoded channel."""
+        channel = self.bot.get_channel(self.LOG_CHANNEL_ID)
+        if not channel:
+            return
+
+        embed = discord.Embed(
+            title=f"Custom Command {action}",
+            color=discord.Color.green() if action == "Created" else discord.Color.red(),
+            timestamp=ctx.message.created_at
+        )
+        embed.set_author(name=f"{ctx.author} ({ctx.author.id})", icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
+        embed.add_field(name="Trigger", value=trigger, inline=True)
+        if response:
+            if len(response) > 1024:
+                response = response[:1021] + "..."
+            embed.add_field(name="Response", value=response, inline=False)
+        
+        try:
+            await channel.send(embed=embed)
+        except discord.HTTPException:
+            pass # Fail silently if permission error or other issue
 
     @commands.group(aliases=["cc"])
     @commands.guild_only()
@@ -34,6 +60,37 @@ class CustomCommand(commands.Cog):
             return
         await self.config.guild(ctx.guild).user_limits.set_raw(str(member.id), value=limit)
         await ctx.send(f"Custom command limit for {member.display_name} set to {limit}.")
+
+    @customcommand.command(name="list")
+    @commands.has_permissions(administrator=True)
+    async def customcommand_list(self, ctx):
+        """List all custom commands and their owners."""
+        command_owners = await self.config.guild(ctx.guild).command_owners()
+        all_commands = await self.config.guild(ctx.guild).commands()
+        
+        if not command_owners:
+            await ctx.send("No custom commands found.")
+            return
+            
+        text = ""
+        for user_id, triggers in command_owners.items():
+            user = ctx.guild.get_member(int(user_id))
+            username = str(user) if user else f"User ID: {user_id}"
+            
+            if isinstance(triggers, str):
+                triggers = [triggers]
+                
+            for trigger in triggers:
+                response = all_commands.get(trigger, "Response not found (Error)")
+                text += f"Trigger: {trigger}\nOwner: {username}\nResponse: {response}\n\n"
+        
+        if not text:
+            await ctx.send("No commands to list.")
+            return
+
+        pages = list(pagify(text))
+        for page in pages:
+            await ctx.send(box(page))
 
     @customcommand.command(name="create")
     @commands.cooldown(1, 60, commands.BucketType.user)
@@ -96,6 +153,7 @@ class CustomCommand(commands.Cog):
         user_commands.append(trigger.lower())
         await self.config.guild(guild).command_owners.set_raw(str(author.id), value=user_commands)
 
+        await self.log_action(ctx, "Created", trigger.lower(), response)
         await ctx.send(f"Custom command `{trigger}` has been created.")
 
     @customcommand.command(name="delete")
@@ -137,6 +195,7 @@ class CustomCommand(commands.Cog):
         else:
             await self.config.guild(guild).command_owners.set_raw(str(author.id), value=user_commands)
 
+        await self.log_action(ctx, "Deleted", trigger)
         await ctx.send(f"Your custom command `{trigger}` has been deleted.")
 
     @commands.Cog.listener()
