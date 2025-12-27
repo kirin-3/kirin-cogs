@@ -122,6 +122,11 @@ class CustomCommand(commands.Cog):
             await ctx.send("Please provide a response or attach an image.")
             return
 
+        # Prevent bot triggers
+        if response.strip().startswith(('.', '-', '&')):
+            await ctx.send("Responses cannot start with '.', '-', or '&' to prevent bot conflicts.")
+            return
+
         # Check limit
         limits = await self.config.guild(guild).user_limits()
         limit = limits.get(str(author.id), 1)
