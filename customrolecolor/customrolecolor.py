@@ -1,6 +1,53 @@
 from redbot.core import commands, Config, checks
 import discord
 import inspect
+from PIL import Image, ImageDraw, ImageFont
+import io
+from functools import partial
+
+PALETTE_COLORS = [
+    ("Red", "#FF0000"), ("Orange", "#FFA500"), ("Yellow", "#FFFF00"), ("Green", "#008000"),
+    ("Blue", "#0000FF"), ("Purple", "#800080"), ("Pink", "#FFC0CB"), ("White", "#FFFFFF"),
+    ("Black", "#000000"), ("Grey", "#808080"), ("Cyan", "#00FFFF"), ("Lime", "#00FF00"),
+    ("Magenta", "#FF00FF"), ("Teal", "#008080"), ("Maroon", "#800000"), ("Navy", "#000080")
+]
+
+def generate_palette_image():
+    # Grid settings
+    rows = 4
+    cols = 4
+    cell_w, cell_h = 150, 80
+    width = cols * cell_w
+    height = rows * cell_h
+    
+    image = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(image)
+    
+    try:
+        # Try to load a nicer font if available, else default
+        font = ImageFont.truetype("arial.ttf", 20)
+    except IOError:
+        font = ImageFont.load_default()
+        
+    for i, (name, hex_code) in enumerate(PALETTE_COLORS):
+        if i >= rows * cols: break
+        row = i // cols
+        col = i % cols
+        x = col * cell_w
+        y = row * cell_h
+        
+        # Draw color box
+        rect_h = 50
+        draw.rectangle([x + 5, y + 5, x + cell_w - 5, y + rect_h], fill=hex_code, outline="black")
+        
+        # Draw text
+        text_fill = "black"
+        draw.text((x + 10, y + rect_h + 8), f"{name} {hex_code}", fill=text_fill, font=font)
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
 
 class CustomRoleColor(commands.Cog):
     """
@@ -256,6 +303,59 @@ class CustomRoleColor(commands.Cog):
             await ctx.send("I don't have permission to edit that role.")
         except Exception as e:
             await ctx.send(f"An error occurred: {e}")
+
+    @commands.command()
+    async def colorpreview(self, ctx, color: str):
+        """
+        Preview a color to see how it looks.
+        Usage: [p]colorpreview #ff0000
+        """
+        if not color.startswith("#") or len(color) != 7:
+            await ctx.send("Please provide a valid hex color (e.g., #ff0000).")
+            return
+            
+        try:
+            parsed = discord.Color(int(color[1:], 16))
+        except ValueError:
+            await ctx.send("Invalid hex color.")
+            return
+
+        rgb = parsed.to_rgb()
+
+        def _generate():
+            image = Image.new("RGB", (150, 150), rgb)
+            buffer = io.BytesIO()
+            image.save(buffer, format="PNG")
+            buffer.seek(0)
+            return buffer
+
+        try:
+            file_buffer = await self.bot.loop.run_in_executor(None, _generate)
+            filename = "preview.png"
+            file = discord.File(file_buffer, filename=filename)
+            embed = discord.Embed(title=f"Color Preview: {color}", color=parsed)
+            embed.add_field(name="Hex", value=str(parsed))
+            embed.add_field(name="RGB", value=str(rgb))
+            embed.set_thumbnail(url=f"attachment://{filename}")
+            await ctx.send(file=file, embed=embed)
+        except Exception as e:
+            await ctx.send(f"Failed to generate preview: {e}")
+
+    @commands.command()
+    async def colorpalette(self, ctx):
+        """
+        View a color palette to choose a color.
+        """
+        try:
+            file_buffer = await self.bot.loop.run_in_executor(None, generate_palette_image)
+            filename = "palette.png"
+            file = discord.File(file_buffer, filename=filename)
+            embed = discord.Embed(title="Color Palette", description="Here are some common colors. You can pick a hex code from the image below.")
+            embed.set_image(url=f"attachment://{filename}")
+            embed.add_field(name="More Colors", value="[HTML Color Codes](https://htmlcolorcodes.com)")
+            await ctx.send(file=file, embed=embed)
+        except Exception as e:
+            await ctx.send(f"Failed to generate palette: {e}")
 
 async def setup(bot):
     await bot.add_cog(CustomRoleColor(bot))
