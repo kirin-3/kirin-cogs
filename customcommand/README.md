@@ -4,10 +4,11 @@ Allows users with a specific role to create custom commands.
 
 ## Commands
 
-### `[p]customcommand create <trigger> <response>`
+### `[p]customcommand create <trigger> [response]`
 Create a custom command.
 - **Trigger**: The phrase that triggers the command.
-- **Response**: The text the bot will reply with.
+- **Response**: The text the bot will reply with. Optional if an image is attached.
+- **Attachments**: You can attach an image to this command to have it sent as part of the response.
 - **Note**: To use multi-word triggers or responses, wrap them in quotes.
 - **Example**: `[p]cc create "hello world" "Hello there!"`
 - **Aliases**: `[p]cc create`
@@ -25,6 +26,7 @@ Delete your custom command.
 ## Features
 - **Dynamic Limits**: Admins can assign different command limits to specific users.
 - **Multi-word Triggers**: Supports triggers with spaces (e.g., "hello world").
+- **Image Support**: Supports adding images via attachments or URLs.
 - **Cooldowns**: Commands have a cooldown to prevent spam.
 
 ## Requirements

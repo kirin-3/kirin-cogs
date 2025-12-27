@@ -1,5 +1,6 @@
 from redbot.core import commands, Config
 import discord
+from typing import Optional
 
 class CustomCommand(commands.Cog):
     """
@@ -36,12 +37,13 @@ class CustomCommand(commands.Cog):
 
     @customcommand.command(name="create")
     @commands.cooldown(1, 60, commands.BucketType.user)
-    async def customcommand_create(self, ctx, trigger: str, response: str):
+    async def customcommand_create(self, ctx, trigger: str, response: Optional[str] = None):
         """
         Create a custom command.
 
         The trigger must be a single word and not conflict with existing commands.
         To use multi-word triggers or responses, wrap them in quotes.
+        You can also attach an image to this command.
         Example: `[p]cc create "hello world" "Hello there!"`
         """
         author = ctx.author
@@ -49,6 +51,18 @@ class CustomCommand(commands.Cog):
 
         if not any(role.id == self.role_id for role in author.roles):
             await ctx.send("You don't have the required role to create a custom command.")
+            return
+
+        # Handle attachments
+        if ctx.message.attachments:
+            attachment_url = ctx.message.attachments[0].url
+            if response:
+                response = f"{response}\n{attachment_url}"
+            else:
+                response = attachment_url
+
+        if not response:
+            await ctx.send("Please provide a response or attach an image.")
             return
 
         # Check limit
