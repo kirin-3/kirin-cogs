@@ -158,10 +158,55 @@ class CustomCommand(commands.Cog):
 
     @customcommand.command(name="delete")
     async def customcommand_delete(self, ctx, trigger: str = None):
-        """Delete your custom command."""
+        """
+        Delete a custom command.
+        
+        If you have ban permissions, you can delete any command.
+        Otherwise, you can only delete your own commands.
+        """
         author = ctx.author
         guild = ctx.guild
+        is_mod = author.guild_permissions.ban_members
 
+        # Mod deletion logic
+        if is_mod and trigger:
+            trigger = trigger.lower()
+            all_commands = await self.config.guild(guild).commands()
+            
+            if trigger in all_commands:
+                # Find owner to clean up
+                command_owners = await self.config.guild(guild).command_owners()
+                owner_found = None
+                
+                for user_id, triggers in command_owners.items():
+                    if isinstance(triggers, str): triggers = [triggers]
+                    if trigger in triggers:
+                        owner_found = user_id
+                        break
+                
+                # Delete
+                await self.config.guild(guild).commands.clear_raw(trigger)
+                
+                if owner_found:
+                    triggers = command_owners[owner_found]
+                    if isinstance(triggers, str): triggers = [triggers]
+                    if trigger in triggers:
+                        triggers.remove(trigger)
+                        if not triggers:
+                            await self.config.guild(guild).command_owners.clear_raw(owner_found)
+                        else:
+                            await self.config.guild(guild).command_owners.set_raw(owner_found, value=triggers)
+                
+                await self.log_action(ctx, "Deleted (Mod)", trigger)
+                await ctx.send(f"Custom command `{trigger}` has been deleted by moderator.")
+                return
+            # If trigger provided but not found, check if it's user's own command (fall through)
+            # Actually, if it's not in all_commands, it doesn't exist at all.
+            elif trigger not in all_commands:
+                 await ctx.send("Command not found.")
+                 return
+
+        # Regular user logic (or mod deleting own without args)
         command_owners = await self.config.guild(guild).command_owners()
         user_commands = command_owners.get(str(author.id))
 

@@ -16,6 +16,7 @@ Create a custom command.
 ### `[p]customcommand delete [trigger]`
 Delete your custom command.
 - If you have multiple commands, you must specify the trigger.
+- **Moderators**: Users with Ban Members permission can delete any custom command by specifying the trigger.
 - **Example**: `[p]cc delete "hello world"`
 - **Aliases**: `[p]cc delete`
 
@@ -32,6 +33,7 @@ Delete your custom command.
 - **Multi-word Triggers**: Supports triggers with spaces (e.g., "hello world").
 - **Image Support**: Supports adding images via attachments or URLs.
 - **Logging**: Logs command creations and deletions to the configured channel.
+- **Moderation**: Moderators can delete any custom command.
 - **Cooldowns**: Commands have a cooldown to prevent spam.
 
 ## Requirements
