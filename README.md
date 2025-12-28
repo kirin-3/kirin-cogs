@@ -19,9 +19,6 @@ Lets users accept rules via a button and modal, and assigns a role upon acceptan
 ### TabooAccess
 Manages access to taboo content through a button and modal system, assigning appropriate roles upon acceptance.
 
-### Tickets
-Multi-Panel Discord support ticket system with buttons!
-
 ### UnicornDocs
 AI-powered documentation question and answer system for moderation team using RAG and OpenRouter.
 
