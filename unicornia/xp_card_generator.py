@@ -403,28 +403,29 @@ class XPCardGenerator:
         club_font = fonts.get('club')
         
         # Draw username (position from template)
+        draw.text((66, 9), username, font=name_font, fill=(0, 0, 0, 128)) # Shadow
         draw.text((65, 8), username, font=name_font, fill=(255, 255, 255, 255))
         
-        # Draw level (Hierarchy: "lv." label + Big Number)
-        # 1. Draw the small "lv." label
-        draw.text((22, 125), "lv.", font=label_font, fill=(255, 255, 255, 220))
+        # Draw Level Number ONLY (Remove "lv." label drawing)
+        # Position: Left side, big number
+        draw.text((45, 95), str(level), font=level_big_font, fill=(255, 255, 255, 255))
         
-        # 2. Draw the big level number separately
-        draw.text((50, 102), str(level), font=level_big_font, fill=(255, 255, 255, 255))
+        # Draw Rank Number ONLY (Remove "Rank" word)
+        # Position: Slightly to the right of Level, smaller
+        draw.text((115, 155), f"#{rank}", font=rank_font, fill=(255, 255, 255, 255))
         
-        # Draw rank
-        draw.text((100, 145), f"Rank #{rank}", font=rank_font, fill=(255, 255, 255, 255))
-        
-        # Draw Skewed XP bar
+        # Draw XP Bar
         progress = 0
         if required_xp > 0:
             progress = current_xp / required_xp
         
-        self._draw_skewed_bar(draw, x=202, y=66, width=275, height=20, progress=progress)
+        # Updated coordinates to fill the whole box
+        self._draw_skewed_bar(draw, x=205, y=70, width=260, height=92, progress=progress)
         
-        # Draw XP text
+        # Draw XP Text (Centered in the large bar)
         xp_text = f"{current_xp}/{required_xp} XP"
-        draw.text((330, 104), xp_text, font=xp_font, fill=(255, 255, 255, 255))
+        # Calculate rough center of the bar
+        draw.text((320, 100), xp_text, font=xp_font, fill=(255, 255, 255, 255))
         
         # Draw Club Info
         if club_icon:
