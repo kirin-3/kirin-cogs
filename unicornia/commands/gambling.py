@@ -1,0 +1,245 @@
+import discord
+from redbot.core import commands, checks
+from typing import Optional
+from ..utils import systems_ready
+
+class GamblingCommands:
+    # Gambling commands
+    @commands.group(name="gambling", aliases=["gamble"])
+    async def gambling_group(self, ctx):
+        """Gambling commands"""
+        pass
+    
+    @gambling_group.command(name="betroll", aliases=["roll"])
+    @systems_ready
+    async def gambling_betroll(self, ctx, amount: int):
+        """Bet on a dice roll (1-100)"""
+        if not await self.config.gambling_enabled():
+            await ctx.send("❌ Gambling is disabled.")
+            return
+        
+        if not await self.config.economy_enabled():
+            await ctx.send("❌ Economy system is disabled.")
+            return
+        
+        if amount <= 0:
+            await ctx.send("❌ Amount must be positive.")
+            return
+        
+        try:
+            success, result = await self.gambling_system.betroll(ctx.author.id, amount)
+            if not success:
+                if result.get("error") == "insufficient_funds":
+                    currency_symbol = await self.config.currency_symbol()
+                    await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{result['balance']:,}.")
+                else:
+                    await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
+                return
+            
+            currency_symbol = await self.config.currency_symbol()
+            if result["won"]:
+                await ctx.send(f"🎲 You rolled **{result['roll']}** (needed {result['threshold']}+) and won {currency_symbol}{result['win_amount']:,}!")
+            else:
+                await ctx.send(f"🎲 You rolled **{result['roll']}** (needed {result['threshold']}+) and lost {currency_symbol}{result['loss_amount']:,}. Better luck next time!")
+                
+        except Exception as e:
+            await ctx.send(f"❌ Error in gambling: {e}")
+    
+    @gambling_group.command(name="rps", aliases=["rockpaperscissors"])
+    @commands.cooldown(1, 5, commands.BucketType.user)  # 5 second cooldown
+    @systems_ready
+    async def gambling_rps(self, ctx, choice: str, amount: int = 0):
+        """Play rock paper scissors"""
+        if not await self.config.gambling_enabled():
+            await ctx.send("❌ Gambling is disabled.")
+            return
+        
+        if not await self.config.economy_enabled():
+            await ctx.send("❌ Economy system is disabled.")
+            return
+        
+        try:
+            success, result = await self.gambling_system.rock_paper_scissors(ctx.author.id, choice, amount)
+            if not success:
+                if result.get("error") == "insufficient_funds":
+                    currency_symbol = await self.config.currency_symbol()
+                    await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{result['balance']:,}.")
+                elif result.get("error") == "invalid_choice":
+                    await ctx.send("❌ Please choose: rock, paper, or scissors")
+                else:
+                    await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
+                return
+            
+            currency_symbol = await self.config.currency_symbol()
+            if amount > 0:
+                if result["result"] == "win":
+                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - You won {currency_symbol}{result['win_amount']:,}!")
+                elif result["result"] == "lose":
+                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - You lost {currency_symbol}{result['loss_amount']:,}!")
+                else:
+                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - It's a draw! No money lost.")
+            else:
+                if result["result"] == "win":
+                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - You win!")
+                elif result["result"] == "lose":
+                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - You lose!")
+                else:
+                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - It's a draw!")
+                
+        except Exception as e:
+            await ctx.send(f"❌ Error in RPS: {e}")
+    
+    @gambling_group.command(name="slots")
+    @commands.cooldown(1, 3, commands.BucketType.user)  # 3 second cooldown
+    @systems_ready
+    async def gambling_slots(self, ctx, amount: int):
+        """Play slots"""
+        if not await self.config.gambling_enabled():
+            await ctx.send("❌ Gambling is disabled.")
+            return
+        
+        if not await self.config.economy_enabled():
+            await ctx.send("❌ Economy system is disabled.")
+            return
+        
+        if amount <= 0:
+            await ctx.send("❌ Amount must be positive.")
+            return
+        
+        try:
+            success, result = await self.gambling_system.slots(ctx.author.id, amount)
+            if not success:
+                if result.get("error") == "insufficient_funds":
+                    currency_symbol = await self.config.currency_symbol()
+                    await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{result['balance']:,}.")
+                else:
+                    await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
+                return
+            
+            currency_symbol = await self.config.currency_symbol()
+            rolls_str = "".join(map(str, result['rolls']))
+            
+            if result['won_amount'] > 0:
+                await ctx.send(f"🎰 **{rolls_str}** - {result['win_type'].replace('_', ' ').title()}! You won {currency_symbol}{result['won_amount']:,}!")
+            else:
+                await ctx.send(f"🎰 **{rolls_str}** - Better luck next time! You lost {currency_symbol}{amount:,}.")
+                
+        except Exception as e:
+            await ctx.send(f"❌ Error in slots: {e}")
+
+    @gambling_group.command(name="blackjack", aliases=["bj", "21"])
+    @commands.cooldown(1, 5, commands.BucketType.user) # 5 second cooldown
+    @systems_ready
+    async def gambling_blackjack(self, ctx, amount: int):
+        """Play blackjack"""
+        if not await self.config.gambling_enabled():
+            await ctx.send("❌ Gambling is disabled.")
+            return
+        
+        if not await self.config.economy_enabled():
+            await ctx.send("❌ Economy system is disabled.")
+            return
+        
+        if amount <= 0:
+            await ctx.send("❌ Amount must be positive.")
+            return
+            
+            
+        try:
+            # Note: play_blackjack handles interaction and responses internally
+            await self.gambling_system.play_blackjack(ctx, amount)
+        except Exception as e:
+            await ctx.send(f"❌ Error in blackjack: {e}")
+
+    @gambling_group.command(name="betflip", aliases=["bf"])
+    @commands.cooldown(1, 2, commands.BucketType.user) # 2 second cooldown
+    @systems_ready
+    async def gambling_betflip(self, ctx, amount: int, guess: str):
+        """Bet on a coin flip (Heads or Tails)
+        
+        Usage: [p]gambling betflip 100 heads
+        """
+        if not await self.config.gambling_enabled():
+            await ctx.send("❌ Gambling is disabled.")
+            return
+        
+        if not await self.config.economy_enabled():
+            await ctx.send("❌ Economy system is disabled.")
+            return
+        
+        if amount <= 0:
+            await ctx.send("❌ Amount must be positive.")
+            return
+            
+            
+        try:
+            success, result = await self.gambling_system.bet_flip(ctx.author.id, amount, guess)
+            
+            if not success:
+                if result.get("error") == "insufficient_funds":
+                    currency_symbol = await self.config.currency_symbol()
+                    await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{result['balance']:,}.")
+                elif result.get("error") == "invalid_guess":
+                    await ctx.send("❌ Invalid guess. Please choose 'heads' or 'tails'.")
+                else:
+                    await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
+                return
+            
+            currency_symbol = await self.config.currency_symbol()
+            
+            # Create embed
+            embed = discord.Embed(title="🪙 Coin Flip", color=discord.Color.gold())
+            
+            # Simple visualization with emojis
+            if result["result"] == "Heads":
+                embed.description = "The coin landed on **Heads**!"
+                # Could add image url here if configured
+            else:
+                embed.description = "The coin landed on **Tails**!"
+                
+            if result["won"]:
+                embed.color = discord.Color.green()
+                embed.add_field(name="Result", value=f"You guessed {result['guess']} and won {currency_symbol}{result['win_amount']:,}!", inline=False)
+            else:
+                embed.color = discord.Color.red()
+                embed.add_field(name="Result", value=f"You guessed {result['guess']} and lost {currency_symbol}{result['loss_amount']:,}.", inline=False)
+                
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error in betflip: {e}")
+    
+    @gambling_group.command(name="luckyladder", aliases=["ladder"])
+    @systems_ready
+    async def gambling_lucky_ladder(self, ctx, amount: int):
+        """Play lucky ladder"""
+        if not await self.config.gambling_enabled():
+            await ctx.send("❌ Gambling is disabled.")
+            return
+        
+        if not await self.config.economy_enabled():
+            await ctx.send("❌ Economy system is disabled.")
+            return
+        
+        if amount <= 0:
+            await ctx.send("❌ Amount must be positive.")
+            return
+        
+        try:
+            success, result = await self.gambling_system.lucky_ladder(ctx.author.id, amount)
+            if not success:
+                if result.get("error") == "insufficient_funds":
+                    currency_symbol = await self.config.currency_symbol()
+                    await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{result['balance']:,}.")
+                else:
+                    await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
+                return
+            
+            currency_symbol = await self.config.currency_symbol()
+            if result['won_amount'] > amount:
+                await ctx.send(f"🪜 Rung {result['rung']} - {result['multiplier']}x multiplier! You won {currency_symbol}{result['won_amount']:,}!")
+            else:
+                await ctx.send(f"🪜 Rung {result['rung']} - {result['multiplier']}x multiplier. You lost {currency_symbol}{amount - result['won_amount']:,}.")
+                
+        except Exception as e:
+            await ctx.send(f"❌ Error in lucky ladder: {e}")

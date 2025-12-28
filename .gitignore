@@ -37,6 +37,7 @@ node_modules/
 *.sw?
 .cursor/
 .roo/
+.kilocode/
 *.sublime-project
 *.sublime-workspace
 .project

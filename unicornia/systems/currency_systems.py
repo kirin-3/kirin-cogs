@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 import discord
 from redbot.core import commands
-from .database import DatabaseManager
+from ..database import DatabaseManager
 
 
 class CurrencyGeneration:
@@ -65,7 +65,7 @@ class CurrencyGeneration:
             await message.channel.send(embed=embed)
         else:
             # Direct currency award
-            await self.db.add_currency(user_id, amount, "generation", "message", note="Random currency generation")
+            await self.db.economy.add_currency(user_id, amount, "generation", "message", note="Random currency generation")
             
             currency_symbol = await self.config.currency_symbol()
             await message.channel.send(f"💰 {message.author.mention} found {currency_symbol}{amount}!")
@@ -95,8 +95,8 @@ class CurrencyGeneration:
             await self.db._setup_wal_mode(db)
             # Find and remove the plant
             cursor = await db.execute("""
-                SELECT Id, Amount FROM PlantedCurrency 
-                WHERE GuildId = ? AND Password = ? 
+                SELECT Id, Amount FROM PlantedCurrency
+                WHERE GuildId = ? AND Password = ?
                 ORDER BY Id DESC LIMIT 1
             """, (guild_id, password))
             
@@ -110,7 +110,7 @@ class CurrencyGeneration:
             await db.execute("DELETE FROM PlantedCurrency WHERE Id = ?", (plant_id,))
             
             # Give currency to user
-            await self.db.add_currency(user_id, amount, "plant_pick", password, note=f"Picked plant with password {password}")
+            await self.db.economy.add_currency(user_id, amount, "plant_pick", password, note=f"Picked plant with password {password}")
             
             await db.commit()
             return True
@@ -155,7 +155,7 @@ class CurrencyDecay:
                 await asyncio.sleep(3600)  # Wait 1 hour before retrying
     
     async def _process_decay(self):
-        """Process currency decay for all users"""
+        """Process currency decay for all users (Batch optimized)"""
         decay_percent = await self.config.decay_percent()
         max_decay = await self.config.decay_max_amount()
         min_threshold = await self.config.decay_min_threshold()
@@ -173,6 +173,10 @@ class CurrencyDecay:
             
             users = await cursor.fetchall()
             
+            updates = []
+            transactions = []
+            timestamp = datetime.now().isoformat()
+            
             for user_id, current_amount in users:
                 # Calculate decay amount
                 decay_amount = int(current_amount * decay_percent)
@@ -181,20 +185,25 @@ class CurrencyDecay:
                     decay_amount = min(decay_amount, max_decay)
                 
                 if decay_amount > 0:
-                    # Apply decay
-                    await db.execute("""
-                        UPDATE DiscordUser 
-                        SET CurrencyAmount = CurrencyAmount - ? 
-                        WHERE UserId = ?
-                    """, (decay_amount, user_id))
-                    
-                    # Log decay transaction
-                    await db.execute("""
-                        INSERT INTO currency_transactions (user_id, amount, type, extra, note)
-                        VALUES (?, ?, 'decay', 'system', ?)
-                    """, (user_id, -decay_amount, f"Currency decay: {decay_percent:.1%}"))
+                    # Add to batch
+                    updates.append((decay_amount, user_id))
+                    transactions.append((user_id, -decay_amount, 'decay', 'system', f"Currency decay: {decay_percent:.1%}"))
             
-            await db.commit()
+            if updates:
+                # Execute batch updates
+                await db.executemany("""
+                    UPDATE DiscordUser 
+                    SET CurrencyAmount = CurrencyAmount - ? 
+                    WHERE UserId = ?
+                """, updates)
+                
+                await db.executemany("""
+                    INSERT INTO currency_transactions (user_id, amount, type, extra, note)
+                    VALUES (?, ?, ?, ?, ?)
+                """, transactions)
+                
+                await db.commit()
+                # print(f"Processed decay for {len(updates)} users")
     
     async def get_decay_stats(self) -> Dict[str, Any]:
         """Get decay statistics"""

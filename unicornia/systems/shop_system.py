@@ -6,7 +6,7 @@ import discord
 from typing import Optional, List, Dict, Any, Tuple
 from redbot.core import commands
 from redbot.core.utils.chat_formatting import humanize_number
-from .database import DatabaseManager
+from ..database import DatabaseManager
 
 
 class ShopSystem:
@@ -19,14 +19,14 @@ class ShopSystem:
     
     async def get_shop_items(self, guild_id: int) -> List[Dict[str, Any]]:
         """Get all shop items for a guild"""
-        entries = await self.db.get_shop_entries(guild_id)
+        entries = await self.db.shop.get_shop_entries(guild_id)
         items = []
         
         for entry in entries:
             entry_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command = entry
             
             # Get additional items for this entry
-            additional_items = await self.db.get_shop_entry_items(entry_id)
+            additional_items = await self.db.shop.get_shop_entry_items(entry_id)
             
             item = {
                 'id': entry_id,
@@ -47,12 +47,12 @@ class ShopSystem:
     
     async def get_shop_item(self, guild_id: int, item_id: int) -> Optional[Dict[str, Any]]:
         """Get a specific shop item"""
-        entry = await self.db.get_shop_entry(guild_id, item_id)
+        entry = await self.db.shop.get_shop_entry(guild_id, item_id)
         if not entry:
             return None
         
         entry_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command = entry
-        additional_items = await self.db.get_shop_entry_items(entry_id)
+        additional_items = await self.db.shop.get_shop_entry_items(entry_id)
         
         return {
             'id': entry_id,
@@ -75,12 +75,12 @@ class ShopSystem:
             return False, "Shop item not found"
         
         # Check if user has enough currency
-        user_balance = await self.db.get_user_currency(user.id)
+        user_balance = await self.db.economy.get_user_currency(user.id)
         if user_balance < item['price']:
             return False, f"Insufficient currency. You need {item['price']:,} but have {user_balance:,}"
         
         # Handle different item types
-        if item['type'] == self.db.SHOP_TYPE_ROLE:
+        if item['type'] == self.db.shop.SHOP_TYPE_ROLE:
             # Role item
             if item['role_id']:
                 role = user.guild.get_role(item['role_id'])
@@ -104,13 +104,13 @@ class ShopSystem:
                 except discord.HTTPException:
                     return False, "Failed to assign role"
         
-        elif item['type'] == self.db.SHOP_TYPE_COMMAND:
+        elif item['type'] == self.db.shop.SHOP_TYPE_COMMAND:
             # Command item - this would need special handling
             # For now, just log the purchase
             pass
         
         # Deduct currency
-        success, message = await self.db.purchase_shop_item(user.id, guild_id, item_id)
+        success, message = await self.db.shop.purchase_shop_item(user.id, guild_id, item_id)
         if not success:
             return False, message
         
@@ -120,35 +120,35 @@ class ShopSystem:
                           item_type: int, role_name: str = None, role_id: int = None,
                           role_requirement: int = None, command: str = None) -> int:
         """Add a new shop item"""
-        return await self.db.add_shop_entry(
+        return await self.db.shop.add_shop_entry(
             guild_id, index, price, name, author_id, item_type,
             role_name, role_id, role_requirement, command
         )
     
     async def update_shop_item(self, guild_id: int, item_id: int, **kwargs) -> bool:
         """Update a shop item"""
-        return await self.db.update_shop_entry(guild_id, item_id, **kwargs)
+        return await self.db.shop.update_shop_entry(guild_id, item_id, **kwargs)
     
     async def delete_shop_item(self, guild_id: int, item_id: int) -> bool:
         """Delete a shop item"""
-        return await self.db.delete_shop_entry(guild_id, item_id)
+        return await self.db.shop.delete_shop_entry(guild_id, item_id)
     
     def get_type_name(self, item_type: int) -> str:
         """Get human-readable type name"""
         type_names = {
-            self.db.SHOP_TYPE_ROLE: "Role",
-            self.db.SHOP_TYPE_COMMAND: "Command",
-            self.db.SHOP_TYPE_EFFECT: "Effect",
-            self.db.SHOP_TYPE_OTHER: "Other"
+            self.db.shop.SHOP_TYPE_ROLE: "Role",
+            self.db.shop.SHOP_TYPE_COMMAND: "Command",
+            self.db.shop.SHOP_TYPE_EFFECT: "Effect",
+            self.db.shop.SHOP_TYPE_OTHER: "Other"
         }
         return type_names.get(item_type, "Unknown")
     
     def get_type_emoji(self, item_type: int) -> str:
         """Get emoji for item type"""
         type_emojis = {
-            self.db.SHOP_TYPE_ROLE: "🎭",
-            self.db.SHOP_TYPE_COMMAND: "⚡",
-            self.db.SHOP_TYPE_EFFECT: "✨",
-            self.db.SHOP_TYPE_OTHER: "📦"
+            self.db.shop.SHOP_TYPE_ROLE: "🎭",
+            self.db.shop.SHOP_TYPE_COMMAND: "⚡",
+            self.db.shop.SHOP_TYPE_EFFECT: "✨",
+            self.db.shop.SHOP_TYPE_OTHER: "📦"
         }
         return type_emojis.get(item_type, "❓")

@@ -8,8 +8,13 @@ import asyncio
 import io
 import os
 import yaml
+import functools
+import socket
+import ipaddress
+from urllib.parse import urlparse
 from PIL import Image, ImageDraw, ImageFont
-from typing import Optional, Dict, Any, Tuple
+from typing import Dict, Any, Tuple
+from collections import OrderedDict
 import logging
 
 log = logging.getLogger("red.unicornia.xp_card")
@@ -21,7 +26,7 @@ class XPCardGenerator:
         self.cog_dir = cog_dir
         self.xp_config = None
         self.fonts_cache = {}
-        self.images_cache = {}
+        self.images_cache = OrderedDict()
         self.default_font_size = 25
         
         # Card dimensions (matching Nadeko's template)
@@ -240,12 +245,39 @@ class XPCardGenerator:
         self.fonts_cache[size] = font
         return font
     
-    async def _download_image(self, url: str) -> Optional[Image.Image]:
-        """Download and cache an image from URL"""
+    async def _download_image(self, url: str) -> Image.Image | None:
+        """Download and cache an image from URL (with SSRF protection and Cache Limit)"""
+        if not url:
+            return None
+
+        # Check cache (LRU)
         if url in self.images_cache:
+            # Move to end to mark as recently used
+            self.images_cache.move_to_end(url)
             return self.images_cache[url]
         
-        if not url:
+        # Evict oldest if cache is full
+        if len(self.images_cache) > 100:
+            self.images_cache.popitem(last=False)
+            
+        # SSRF Protection
+        try:
+            parsed = urlparse(url)
+            if not parsed.hostname:
+                return None
+            
+            # Resolve hostname (run in executor to avoid blocking)
+            loop = asyncio.get_running_loop()
+            addr_info = await loop.run_in_executor(None, socket.getaddrinfo, parsed.hostname, None)
+            
+            for family, _, _, _, sockaddr in addr_info:
+                ip = ipaddress.ip_address(sockaddr[0])
+                if ip.is_private or ip.is_loopback or ip.is_link_local:
+                    log.warning(f"Blocked potential SSRF attempt to {url} ({ip})")
+                    return None
+                    
+        except Exception as e:
+            log.warning(f"Invalid URL or resolution failed: {url} - {e}")
             return None
             
         try:
@@ -256,6 +288,7 @@ class XPCardGenerator:
                         image = Image.open(io.BytesIO(image_data))
                         image = image.convert("RGBA")
                         self.images_cache[url] = image
+                        self.images_cache.move_to_end(url)
                         return image
         except Exception as e:
             log.error(f"Error downloading image from {url}: {e}")
@@ -301,6 +334,79 @@ class XPCardGenerator:
                 draw.rectangle([0, 0, progress_width, height], fill=(255, 255, 255, 200))
         
         return bar
+
+    def _draw_card_sync(
+        self,
+        username: str,
+        avatar: Image.Image,
+        background: Image.Image | None,
+        club_icon: Image.Image | None,
+        level: int,
+        current_xp: int,
+        required_xp: int,
+        total_xp: int,
+        rank: int,
+        club_name: str | None,
+        fonts: Dict[str, ImageFont.FreeTypeFont]
+    ) -> io.BytesIO:
+        """Synchronous method to draw the XP card (runs in thread)"""
+        # Create base card
+        card = Image.new('RGBA', (self.card_width, self.card_height), (47, 49, 54, 255))
+        
+        # Draw background
+        if background:
+            # Resize background to fit card
+            # Note: background might be already resized if we did it in async, but let's do it here to be safe if not
+            if background.size != (self.card_width, self.card_height):
+                background = background.resize((self.card_width, self.card_height), Image.Resampling.LANCZOS)
+            card = Image.alpha_composite(card, background)
+            
+        # Draw user avatar
+        card.paste(avatar, (11, 11), avatar)
+        
+        # Create drawing context
+        draw = ImageDraw.Draw(card)
+        
+        # Use passed fonts
+        name_font = fonts['name']
+        level_font = fonts['level']
+        rank_font = fonts['rank']
+        xp_font = fonts['xp']
+        club_font = fonts.get('club')
+        
+        # Draw username (position from template)
+        draw.text((65, 8), username, font=name_font, fill=(255, 255, 255, 255))
+        
+        # Draw level
+        draw.text((35, 101), f"Level {level}", font=level_font, fill=(255, 255, 255, 255))
+        
+        # Draw rank
+        draw.text((100, 115), f"Rank #{rank}", font=rank_font, fill=(255, 255, 255, 255))
+        
+        # Draw XP bar
+        xp_bar = self._create_xp_bar(current_xp, required_xp, width=275)
+        card.paste(xp_bar, (202, 66), xp_bar)
+        
+        # Draw XP text
+        xp_text = f"{current_xp}/{required_xp} XP"
+        draw.text((330, 104), xp_text, font=xp_font, fill=(255, 255, 255, 255))
+        
+        # Draw Club Info
+        if club_icon:
+            # Resize to 29x29 if needed
+            if club_icon.size != (29, 29):
+                club_icon = club_icon.resize((29, 29), Image.Resampling.LANCZOS)
+            card.paste(club_icon, (451, 15), club_icon)
+        
+        if club_name and club_font:
+            draw.text((394, 40), club_name, font=club_font, fill=(255, 255, 255, 255))
+            
+        # Convert to bytes
+        output = io.BytesIO()
+        card.save(output, format='PNG')
+        output.seek(0)
+        
+        return output
     
     async def generate_xp_card(
         self, 
@@ -313,68 +419,57 @@ class XPCardGenerator:
         total_xp: int,
         rank: int,
         background_key: str = "default",
+        club_icon_url: str = None,
+        club_name: str = None
     ) -> io.BytesIO:
-        """Generate XP card image"""
+        """Generate XP card image (Non-blocking)"""
         
         # Ensure config is loaded
         if not self.xp_config:
             await self._load_xp_config()
         
-        # Create base card
-        card = Image.new('RGBA', (self.card_width, self.card_height), (47, 49, 54, 255))
-        
-        # Get background
+        # 1. Fetch all resources asynchronously (I/O bound)
         bg_config = self.xp_config.get("shop", {}).get("bgs", {}).get(background_key, {})
         bg_url = bg_config.get("url", "")
         
-        if bg_url:
-            background = await self._download_image(bg_url)
-            if background:
-                # Resize background to fit card
-                background = background.resize((self.card_width, self.card_height), Image.Resampling.LANCZOS)
-                card = Image.alpha_composite(card, background)
+        # Parallel downloads
+        tasks = [
+            self._get_user_avatar(avatar_url),
+            self._download_image(bg_url) if bg_url else asyncio.sleep(0, result=None),
+            self._download_image(club_icon_url) if club_icon_url else asyncio.sleep(0, result=None)
+        ]
         
-        # Frames removed - no longer needed
+        avatar, background, club_icon = await asyncio.gather(*tasks)
         
-        # Create drawing context
-        draw = ImageDraw.Draw(card)
+        # Get fonts (likely cached, but keep async interface)
+        fonts = {
+            'name': await self._get_font(25),
+            'level': await self._get_font(22),
+            'rank': await self._get_font(20),
+            'xp': await self._get_font(25),
+            'club': await self._get_font(20) if club_name else None
+        }
         
-        # Get fonts
-        name_font = await self._get_font(25)
-        level_font = await self._get_font(22) 
-        rank_font = await self._get_font(20)
-        xp_font = await self._get_font(25)
+        # 2. Run blocking image manipulation in executor (CPU bound)
+        loop = asyncio.get_running_loop()
         
-        # Draw user avatar
-        avatar = await self._get_user_avatar(avatar_url)
-        card.paste(avatar, (11, 11), avatar)
+        # Use functools.partial to pass arguments to the synchronous function
+        draw_func = functools.partial(
+            self._draw_card_sync,
+            username=username,
+            avatar=avatar,
+            background=background,
+            club_icon=club_icon,
+            level=level,
+            current_xp=current_xp,
+            required_xp=required_xp,
+            total_xp=total_xp,
+            rank=rank,
+            club_name=club_name,
+            fonts=fonts
+        )
         
-        # Draw username (position from template)
-        draw.text((65, 8), username, font=name_font, fill=(255, 255, 255, 255))
-        
-        # Draw level
-        draw.text((35, 101), f"Level {level}", font=level_font, fill=(255, 255, 255, 255))
-        
-        # Draw rank
-        draw.text((100, 115), f"Rank #{rank}", font=rank_font, fill=(255, 255, 255, 255))
-        
-        # Draw XP bar based on Nadeko C# template
-        # C# Template: PointA(202,66), Length=275, Direction=Right
-        xp_bar = self._create_xp_bar(current_xp, required_xp, width=275)
-        card.paste(xp_bar, (202, 66), xp_bar)
-        
-        # Draw XP text
-        xp_text = f"{current_xp}/{required_xp} XP"
-        draw.text((330, 104), xp_text, font=xp_font, fill=(255, 255, 255, 255))
-        
-        # Frames removed - no overlay needed
-        
-        # Convert to bytes
-        output = io.BytesIO()
-        card.save(output, format='PNG')
-        output.seek(0)
-        
-        return output
+        return await loop.run_in_executor(None, draw_func)
     
     def get_available_backgrounds(self) -> Dict[str, Dict[str, Any]]:
         """Get available backgrounds from config"""
