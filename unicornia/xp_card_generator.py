@@ -381,7 +381,7 @@ class XPCardGenerator:
         draw.text((35, 101), f"Level {level}", font=level_font, fill=(255, 255, 255, 255))
         
         # Draw rank
-        draw.text((100, 115), f"Rank #{rank}", font=rank_font, fill=(255, 255, 255, 255))
+        draw.text((100, 145), f"Rank #{rank}", font=rank_font, fill=(255, 255, 255, 255))
         
         # Draw XP bar
         xp_bar = self._create_xp_bar(current_xp, required_xp, width=275)
