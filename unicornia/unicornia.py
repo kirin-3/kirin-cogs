@@ -23,9 +23,9 @@ from .systems import (
     CurrencyGeneration, CurrencyDecay, ShopSystem,
     ClubSystem, WaifuSystem
 )
-from .utils import SystemNotReady, systems_ready
+from .utils import systems_ready
 from .commands import (
-    ClubCommands, EconomyCommands, GamblingCommands, 
+    ClubCommands, EconomyCommands, GamblingCommands,
     LevelCommands, WaifuCommands, ShopCommands, 
     AdminCommands, CurrencyCommands
 )
@@ -33,15 +33,17 @@ from .commands import (
 log = logging.getLogger("red.unicornia")
 
 
+# See: https://docs.discord-red.com/en/stable/framework_commands.html
 class Unicornia(
-    ClubCommands, EconomyCommands, GamblingCommands, 
-    LevelCommands, WaifuCommands, ShopCommands, 
+    ClubCommands, EconomyCommands, GamblingCommands,
+    LevelCommands, WaifuCommands, ShopCommands,
     AdminCommands, CurrencyCommands, commands.Cog
 ):
     """Full-featured leveling and economy cog with Nadeko-like functionality"""
     
     def __init__(self, bot: Red):
         self.bot = bot
+        # See: https://docs.discord-red.com/en/stable/framework_config.html
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
         
         # Default configuration
@@ -142,28 +144,6 @@ class Unicornia(
             log.info("Unicornia: Cog unloaded successfully")
         except Exception as e:
             log.error(f"Unicornia: Error during unload: {e}")
-    
-    async def cog_command_error(self, ctx, error):
-        """Handle command errors with proper Red bot patterns"""
-        # See: https://docs.discord-red.com/en/stable/framework_commands.html
-        if isinstance(error, SystemNotReady):
-            await ctx.send("❌ Systems are still initializing. Please try again in a moment.")
-        elif isinstance(error, commands.CommandOnCooldown):
-            await ctx.send(f"❌ Command is on cooldown. Try again in {error.retry_after:.1f} seconds.")
-        elif isinstance(error, commands.MissingPermissions):
-            await ctx.send("❌ You don't have permission to use this command.")
-        elif isinstance(error, commands.BotMissingPermissions):
-            await ctx.send("❌ I don't have the required permissions to execute this command.")
-        elif isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send(f"❌ Missing required argument: {error.param.name}")
-        elif isinstance(error, commands.BadArgument):
-            await ctx.send(f"❌ Invalid argument: {error}")
-        elif isinstance(error, commands.CommandNotFound):
-            return  # Don't respond to unknown commands
-        else:
-            # Log unexpected errors
-            log.error(f"Unexpected error in {ctx.command}: {error}", exc_info=True)
-            await ctx.send("❌ An unexpected error occurred. Please try again later.")
     
     async def red_get_data_for_user(self, *, user_id: int):
         """Get user data for data export/deletion (Red bot requirement)"""

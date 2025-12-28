@@ -12,6 +12,6 @@
     "type": "COG",
     "permissions": [],
     "min_python_version": [3, 8, 0],
-    "requirements": ["aiosqlite"],
+    "requirements": ["aiosqlite", "Pillow", "PyYAML"],
     "end_user_data_statement": "This cog reads from an existing Nadeko SQLite database and does not store additional user data."
 }
