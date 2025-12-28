@@ -192,6 +192,7 @@ This document provides a comprehensive comparison of **ALL** Nadeko Bot commands
 | `.leaderboard` | Currency LB | ✅ | `[p]economy leaderboard` |
 | `.rps` | Rock Paper Scissors | ✅ | `[p]gambling rps` |
 | `.luckyladder` | Lucky Ladder | ✅ | `[p]gambling luckyladder` |
+| `.rakeback` | Rakeback | ✅ | `[p]economy rakeback` |
 | `.bettest` | Test betting | ❌ | |
 | `.race` | Animal Race | ❌ | |
 | `.joinrace` | Join Race | ❌ | |
@@ -222,6 +223,7 @@ This document provides a comprehensive comparison of **ALL** Nadeko Bot commands
 | `.shopadd` | Add item | ✅ | `[p]shop add` |
 | `.shoplistadd` | Add list item | ❌ | |
 | `.shopremove` | Remove item | ✅ | `[p]shop remove` |
+| `.shopinfo` | Shop item info | ✅ | `[p]shop info` |
 | `.shopchangeprice` | Change price | ❌ | Use update/remove+add |
 | `.shopchangename` | Change name | ❌ | Use update/remove+add |
 | `.shopswap` | Swap index | ❌ | |
@@ -236,6 +238,7 @@ This document provides a comprehensive comparison of **ALL** Nadeko Bot commands
 | `.waifulb` | Waifu LB | ✅ | `[p]waifu leaderboard` |
 | `.waifuinfo` | Waifu stats | ✅ | `[p]waifu info` |
 | `.waifugift` | Gift item | ✅ | `[p]waifu gift` / `[p]gifts` |
+| `.waifulist` | List waifus | ✅ | `[p]waifu list` |
 
 ## 4. Games Module
 
@@ -348,7 +351,7 @@ This document provides a comprehensive comparison of **ALL** Nadeko Bot commands
 | Nadeko Alias | Description | Unicornia Status | Notes |
 | :--- | :--- | :---: | :--- |
 | `.experience` | XP Check | ✅ | `[p]level check` |
-| `.xpnotify` | XP Notify | ❌ | Server setting only |
+| `.xpnotify` | XP Notify | ✅ | `[p]unicornia guild levelupmessages` |
 | `.xpexclude` | XP Exclude | ⚠️ | `[p]unicornia guild excludechannel` |
 | `.xpexclusionlist`| List excluded | ❌ | |
 | `.xpleaderboard` | XP LB | ✅ | `[p]level leaderboard` |
@@ -361,6 +364,7 @@ This document provides a comprehensive comparison of **ALL** Nadeko Bot commands
 | `.xpshopuse` | Use XP item | ✅ | `[p]xpshop use` |
 | `.clubcreate` | Create club | ✅ | `[p]club create` |
 | `.clubicon` | Club icon | ✅ | `[p]club icon` |
+| `.clubbanner` | Club banner | ✅ | `[p]club banner` |
 | `.clubinfo` | Club info | ✅ | `[p]club info` |
 | `.clubbans` | Club bans | ❌ | |
 | `.clubapps` | Club apps | ❌ | |
@@ -381,3 +385,60 @@ This document provides a comprehensive comparison of **ALL** Nadeko Bot commands
 | `.xplvluprewards` | List rewards | ❌ | |
 | `.xprolereward` | Role reward | ✅ | `[p]unicornia guild rolereward` |
 | `.xpcurreward` | Currency reward | ✅ | `[p]unicornia guild currencyreward` |
+
+## Implementation Comparison
+
+This section details how the core systems (XP, Economy) are implemented in the Unicornia cog compared to the original Nadeko Bot architecture.
+
+### 1. Architecture & Language
+*   **Nadeko Bot:** Built with **C# (.NET)** using Dependency Injection and a Service-based architecture. It is a standalone application.
+*   **Unicornia:** Built as a **Python** cog for Red-DiscordBot. It integrates with Red's event loop and command framework but maintains its own internal service layer (`systems/`) to mirror Nadeko's modularity.
+
+### 2. Database Strategy
+*   **Nadeko Bot:** Uses **Entity Framework Core (EF Core)**, an ORM that supports multiple database providers (SQLite, PostgreSQL). It relies on EF Core for schema management and migrations.
+*   **Unicornia:** Uses **aiosqlite** with raw SQL queries.
+    *   **Direct Control:** All queries are written in SQL (`db/core.py`) to ensure maximum performance and exact control over execution plans.
+    *   **Optimization:** It explicitly enables **WAL mode** (`PRAGMA journal_mode=WAL`) and other SQLite optimizations (mmap_size, cache_size) to handle high write throughput.
+    *   **Schema Compatibility:** The database schema (`DiscordUser`, `UserXpStats`, etc.) is designed to be structurally compatible with Nadeko's SQLite database, facilitating direct data migration.
+
+### 3. XP System Optimization
+*   **Nadeko Bot:** Checks for level-ups on every message. This can be resource-intensive on large servers.
+*   **Unicornia:** Implements a **Write-Back Buffer** strategy (`systems/xp_system.py`).
+    *   **Buffering:** XP gains are stored in an in-memory buffer (`self.xp_buffer`) instead of writing to the database immediately.
+    *   **Batching:** A background task (`_message_xp_loop`) flushes this buffer to the database in bulk transactions every 30 seconds.
+    *   **Performance:** This significantly reduces disk I/O and prevents database locks during high-traffic periods (e.g., active chat in multiple channels).
+    *   **Voice XP:** Handled by a separate loop (`_voice_xp_loop`) that awards XP periodically to users in voice channels, similar to Nadeko but optimized for Python's async event loop.
+
+### 4. Economy & Transactions
+*   **Nadeko Bot:** Uses `IUnitOfWork` pattern to ensure transactional integrity across multiple repository operations.
+*   **Unicornia:** Implements **Atomic SQL Updates** (`db/economy.py`).
+    *   **Concurrency:** Instead of locking, it uses atomic update queries (e.g., `UPDATE DiscordUser SET CurrencyAmount = CurrencyAmount - ? WHERE UserId = ? AND CurrencyAmount >= ?`) to handle balance changes safely. This prevents race conditions where a user might spend money twice.
+    *   **Transaction Logging:** Every currency change is strictly logged to the `CurrencyTransaction` table within the same SQLite transaction commit, ensuring the audit trail is always accurate.
+
+## Database Compatibility Analysis
+
+For Unicornia to function as a drop-in replacement using an existing Nadeko SQLite database, table names and schemas must match exactly. Below is an analysis of the current compatibility status:
+
+| Table Function | Nadeko Table Name | Unicornia Table Usage | Compatibility |
+| :--- | :--- | :--- | :---: |
+| User Data | `DiscordUser` | `DiscordUser` | ✅ |
+| XP Stats | `UserXpStats` | `UserXpStats` | ✅ |
+| XP Club | `ClubInfo` | `ClubInfo` | ✅ |
+| Club Members | `ClubApplicants` | `ClubApplicants` | ✅ |
+| Club Bans | `ClubBans` | `ClubBans` | ✅ |
+| Shop Items | `ShopEntry` | `ShopEntry` | ✅ |
+| Shop Entry Items | `ShopEntryItem` | `ShopEntryItem` | ✅ |
+| XP Shop Items | `XpShopOwnedItem` | `XpShopOwnedItem` | ✅ |
+| XP Role Rewards | `XpRoleReward` | `XpRoleReward` | ✅ |
+| XP Currency Rewards | `XpCurrencyReward` | `XpCurrencyReward` | ✅ |
+| XP Settings | `XpSettings` | `XpSettings` | ✅ |
+| XP Exclusions | `XpExcludedItem` | `XpExcludedItem` | ✅ |
+| Rakeback | `Rakeback` | `Rakeback` | ✅ |
+| Gambling Stats | `GamblingStats` | `GamblingStats` | ✅ |
+| User Bet Stats | `UserBetStats` | `UserBetStats` | ✅ |
+| Waifus | `WaifuInfo` | `WaifuInfo` | ✅ |
+| Waifu Items | `WaifuItem` | `WaifuItem` | ✅ |
+| Waifu Updates | `WaifuUpdate` | `WaifuUpdate` | ✅ |
+| Currency Transactions | `CurrencyTransaction` | `CurrencyTransaction` | ✅ |
+| Bank Users | `BankUser` | `BankUser` | ✅ |
+| Timely Claims | `TimelyCooldown` | `TimelyCooldown` | ✅ |

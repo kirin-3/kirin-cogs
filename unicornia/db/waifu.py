@@ -11,7 +11,7 @@ class WaifuRepository:
         """Get waifu information"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT waifu_id, claimer_id, price, affinity_id, created_at FROM waifus WHERE waifu_id = ?
+                SELECT WaifuId, ClaimerId, Price, Affinity, DateAdded FROM WaifuInfo WHERE WaifuId = ?
             """, (waifu_id,))
             return await cursor.fetchone()
 
@@ -20,7 +20,7 @@ class WaifuRepository:
         async with self.db._get_connection() as db:
             
             # Check if waifu is already claimed
-            cursor = await db.execute("SELECT claimer_id FROM waifus WHERE waifu_id = ?", (waifu_id,))
+            cursor = await db.execute("SELECT ClaimerId FROM WaifuInfo WHERE WaifuId = ?", (waifu_id,))
             result = await cursor.fetchone()
             
             if result and result[0] is not None:
@@ -28,15 +28,15 @@ class WaifuRepository:
             
             # Update or insert waifu claim
             await db.execute("""
-                INSERT OR REPLACE INTO waifus (waifu_id, claimer_id, price, created_at)
+                INSERT OR REPLACE INTO WaifuInfo (WaifuId, ClaimerId, Price, DateAdded)
                 VALUES (?, ?, ?, datetime('now'))
             """, (waifu_id, claimer_id, price))
             
-            # Log waifu update
+            # Log waifu update (Claimed = 0)
             await db.execute("""
-                INSERT INTO waifu_updates (waifu_id, old_claimer_id, new_claimer_id, update_type, created_at)
-                VALUES (?, ?, ?, 'claimed', datetime('now'))
-            """, (waifu_id, None, claimer_id))
+                INSERT INTO WaifuUpdate (UserId, OldId, NewId, UpdateType, DateAdded)
+                VALUES (?, ?, ?, 0, datetime('now'))
+            """, (waifu_id, 0, claimer_id))
             
             await db.commit()
             return True
@@ -46,21 +46,21 @@ class WaifuRepository:
         async with self.db._get_connection() as db:
             
             # Check if user owns this waifu
-            cursor = await db.execute("SELECT claimer_id FROM waifus WHERE waifu_id = ?", (waifu_id,))
+            cursor = await db.execute("SELECT ClaimerId FROM WaifuInfo WHERE WaifuId = ?", (waifu_id,))
             result = await cursor.fetchone()
             
             if not result or result[0] != claimer_id:
                 return False  # Not owned by this user
             
-            # Log divorce
+            # Log divorce (Divorced = 1) - Note: Nadeko likely uses UserId as the Waifu ID here
             await db.execute("""
-                INSERT INTO waifu_updates (waifu_id, old_claimer_id, new_claimer_id, update_type, created_at)
-                VALUES (?, ?, ?, 'divorced', datetime('now'))
-            """, (waifu_id, claimer_id, None))
+                INSERT INTO WaifuUpdate (UserId, OldId, NewId, UpdateType, DateAdded)
+                VALUES (?, ?, ?, 1, datetime('now'))
+            """, (waifu_id, claimer_id, 0))
             
             # Remove claim
             await db.execute("""
-                UPDATE waifus SET claimer_id = NULL WHERE waifu_id = ?
+                UPDATE WaifuInfo SET ClaimerId = NULL WHERE WaifuId = ?
             """, (waifu_id,))
             
             await db.commit()
@@ -71,21 +71,21 @@ class WaifuRepository:
         async with self.db._get_connection() as db:
             
             # Get old owner
-            cursor = await db.execute("SELECT claimer_id FROM waifus WHERE waifu_id = ?", (waifu_id,))
+            cursor = await db.execute("SELECT ClaimerId FROM WaifuInfo WHERE WaifuId = ?", (waifu_id,))
             result = await cursor.fetchone()
-            old_owner_id = result[0] if result else None
+            old_owner_id = result[0] if result else 0
             
             # Update waifu
             await db.execute("""
-                UPDATE waifus 
-                SET claimer_id = ?, price = ? 
-                WHERE waifu_id = ?
+                UPDATE WaifuInfo
+                SET ClaimerId = ?, Price = ?
+                WHERE WaifuId = ?
             """, (new_owner_id, price, waifu_id))
             
-            # Log update
+            # Log update (Transfer = 2? Assuming UpdateType enum)
             await db.execute("""
-                INSERT INTO waifu_updates (waifu_id, old_claimer_id, new_claimer_id, update_type, created_at)
-                VALUES (?, ?, ?, 'transfer', datetime('now'))
+                INSERT INTO WaifuUpdate (UserId, OldId, NewId, UpdateType, DateAdded)
+                VALUES (?, ?, ?, 2, datetime('now'))
             """, (waifu_id, old_owner_id, new_owner_id))
             
             await db.commit()
@@ -95,21 +95,21 @@ class WaifuRepository:
         async with self.db._get_connection() as db:
             
             # Get old owner for logs
-            cursor = await db.execute("SELECT claimer_id FROM waifus WHERE waifu_id = ?", (waifu_id,))
+            cursor = await db.execute("SELECT ClaimerId FROM WaifuInfo WHERE WaifuId = ?", (waifu_id,))
             result = await cursor.fetchone()
-            old_owner_id = result[0] if result else None
+            old_owner_id = result[0] if result else 0
             
             # Update waifu
             await db.execute("""
-                UPDATE waifus 
-                SET claimer_id = NULL, price = 50 
-                WHERE waifu_id = ?
+                UPDATE WaifuInfo
+                SET ClaimerId = NULL, Price = 50
+                WHERE WaifuId = ?
             """, (waifu_id,))
             
             # Log update
             await db.execute("""
-                INSERT INTO waifu_updates (waifu_id, old_claimer_id, new_claimer_id, update_type, created_at)
-                VALUES (?, ?, NULL, 'admin_reset', datetime('now'))
+                INSERT INTO WaifuUpdate (UserId, OldId, NewId, UpdateType, DateAdded)
+                VALUES (?, ?, 0, 99, datetime('now'))
             """, (waifu_id, old_owner_id))
             
             await db.commit()
@@ -118,7 +118,7 @@ class WaifuRepository:
     async def get_waifu_owner(self, waifu_id: int):
         """Get waifu owner"""
         async with self.db._get_connection() as db:
-            cursor = await db.execute("SELECT claimer_id FROM waifus WHERE waifu_id = ?", (waifu_id,))
+            cursor = await db.execute("SELECT ClaimerId FROM WaifuInfo WHERE WaifuId = ?", (waifu_id,))
             result = await cursor.fetchone()
             return result[0] if result else None
 
@@ -126,15 +126,15 @@ class WaifuRepository:
         """Get all waifus owned by a user"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT waifu_id, price, affinity_id, created_at FROM waifus WHERE claimer_id = ?
-                ORDER BY created_at DESC
+                SELECT WaifuId, Price, Affinity, DateAdded FROM WaifuInfo WHERE ClaimerId = ?
+                ORDER BY DateAdded DESC
             """, (user_id,))
             return await cursor.fetchall()
 
     async def get_waifu_price(self, waifu_id: int) -> int:
         """Get current waifu price"""
         async with self.db._get_connection() as db:
-            cursor = await db.execute("SELECT price FROM waifus WHERE waifu_id = ?", (waifu_id,))
+            cursor = await db.execute("SELECT Price FROM WaifuInfo WHERE WaifuId = ?", (waifu_id,))
             result = await cursor.fetchone()
             return result[0] if result else 50  # Default price
 
@@ -142,7 +142,7 @@ class WaifuRepository:
         """Update waifu price"""
         async with self.db._get_connection() as db:
             await db.execute("""
-                UPDATE waifus SET price = ? WHERE waifu_id = ?
+                UPDATE WaifuInfo SET Price = ? WHERE WaifuId = ?
             """, (new_price, waifu_id))
             await db.commit()
 
@@ -150,14 +150,14 @@ class WaifuRepository:
         """Set waifu affinity"""
         async with self.db._get_connection() as db:
             await db.execute("""
-                UPDATE waifus SET affinity_id = ? WHERE waifu_id = ?
+                UPDATE WaifuInfo SET Affinity = ? WHERE WaifuId = ?
             """, (affinity_id, waifu_id))
             await db.commit()
 
     async def get_waifu_affinity(self, waifu_id: int):
         """Get waifu affinity"""
         async with self.db._get_connection() as db:
-            cursor = await db.execute("SELECT affinity_id FROM waifus WHERE waifu_id = ?", (waifu_id,))
+            cursor = await db.execute("SELECT Affinity FROM WaifuInfo WHERE WaifuId = ?", (waifu_id,))
             result = await cursor.fetchone()
             return result[0] if result else None
 
@@ -165,9 +165,9 @@ class WaifuRepository:
         """Get waifu leaderboard by price"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT waifu_id, claimer_id, price FROM waifus 
-                WHERE claimer_id IS NOT NULL 
-                ORDER BY price DESC LIMIT ?
+                SELECT WaifuId, ClaimerId, Price FROM WaifuInfo
+                WHERE ClaimerId IS NOT NULL
+                ORDER BY Price DESC LIMIT ?
             """, (limit,))
             return await cursor.fetchall()
 
@@ -175,7 +175,7 @@ class WaifuRepository:
         """Add item to waifu"""
         async with self.db._get_connection() as db:
             await db.execute("""
-                INSERT INTO waifu_items (waifu_id, name, emoji, created_at)
+                INSERT INTO WaifuItem (WaifuInfoId, Name, ItemEmoji, DateAdded)
                 VALUES (?, ?, ?, datetime('now'))
             """, (waifu_id, name, emoji))
             await db.commit()
@@ -184,8 +184,8 @@ class WaifuRepository:
         """Get waifu items"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT name, emoji FROM waifu_items WHERE waifu_id = ?
-                ORDER BY created_at DESC
+                SELECT Name, ItemEmoji FROM WaifuItem WHERE WaifuInfoId = ?
+                ORDER BY DateAdded DESC
             """, (waifu_id,))
             return await cursor.fetchall()
 
@@ -193,8 +193,8 @@ class WaifuRepository:
         """Get waifu transaction history"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT old_claimer_id, new_claimer_id, update_type, created_at 
-                FROM waifu_updates WHERE waifu_id = ? 
-                ORDER BY created_at DESC LIMIT ?
+                SELECT OldId, NewId, UpdateType, DateAdded
+                FROM WaifuUpdate WHERE UserId = ?
+                ORDER BY DateAdded DESC LIMIT ?
             """, (waifu_id, limit))
             return await cursor.fetchall()

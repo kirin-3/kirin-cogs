@@ -26,8 +26,8 @@ class EconomyRepository:
             
             # Log transaction
             await db.execute("""
-                INSERT INTO currency_transactions (user_id, amount, type, extra, other_id, note)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO CurrencyTransaction (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
             """, (user_id, amount, transaction_type, extra, other_id, note))
             
             await db.commit()
@@ -39,8 +39,8 @@ class EconomyRepository:
             
             # Atomic update with WHERE clause to prevent race conditions
             cursor = await db.execute("""
-                UPDATE DiscordUser 
-                SET CurrencyAmount = CurrencyAmount - ? 
+                UPDATE DiscordUser
+                SET CurrencyAmount = CurrencyAmount - ?
                 WHERE UserId = ? AND CurrencyAmount >= ?
             """, (amount, user_id, amount))
             
@@ -55,8 +55,8 @@ class EconomyRepository:
             
             # Log transaction
             await db.execute("""
-                INSERT INTO currency_transactions (user_id, amount, type, extra, other_id, note)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO CurrencyTransaction (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
             """, (user_id, -amount, transaction_type, extra, other_id, note))
             
             await db.commit()
@@ -66,7 +66,7 @@ class EconomyRepository:
     async def get_bank_balance(self, user_id: int) -> int:
         """Get user's bank balance"""
         async with self.db._get_connection() as db:
-            cursor = await db.execute("SELECT Balance FROM BankUsers WHERE UserId = ?", (user_id,))
+            cursor = await db.execute("SELECT Balance FROM BankUser WHERE UserId = ?", (user_id,))
             row = await cursor.fetchone()
             return row[0] if row else 0
     
@@ -76,8 +76,8 @@ class EconomyRepository:
             
             # Atomic deduct from wallet
             cursor = await db.execute("""
-                UPDATE DiscordUser 
-                SET CurrencyAmount = CurrencyAmount - ? 
+                UPDATE DiscordUser
+                SET CurrencyAmount = CurrencyAmount - ?
                 WHERE UserId = ? AND CurrencyAmount >= ?
             """, (amount, user_id, amount))
             
@@ -86,14 +86,14 @@ class EconomyRepository:
             
             # Add to bank
             await db.execute("""
-                INSERT INTO BankUsers (UserId, Balance) VALUES (?, ?)
+                INSERT INTO BankUser (UserId, Balance) VALUES (?, ?)
                 ON CONFLICT(UserId) DO UPDATE SET Balance = Balance + ?
             """, (user_id, amount, amount))
             
             # Log transaction
             await db.execute("""
-                INSERT INTO currency_transactions (user_id, amount, type, extra, note)
-                VALUES (?, ?, 'bank_deposit', 'bank', ?)
+                INSERT INTO CurrencyTransaction (UserId, Amount, Type, Extra, Reason, DateAdded)
+                VALUES (?, ?, 'bank_deposit', 'bank', ?, datetime('now'))
             """, (user_id, -amount, f"Deposited {amount} to bank"))
             
             await db.commit()
@@ -105,8 +105,8 @@ class EconomyRepository:
             
             # Atomic deduct from bank
             cursor = await db.execute("""
-                UPDATE BankUsers 
-                SET Balance = Balance - ? 
+                UPDATE BankUser
+                SET Balance = Balance - ?
                 WHERE UserId = ? AND Balance >= ?
             """, (amount, user_id, amount))
             
@@ -121,8 +121,8 @@ class EconomyRepository:
             
             # Log transaction
             await db.execute("""
-                INSERT INTO currency_transactions (user_id, amount, type, extra, note)
-                VALUES (?, ?, 'bank_withdraw', 'bank', ?)
+                INSERT INTO CurrencyTransaction (UserId, Amount, Type, Extra, Reason, DateAdded)
+                VALUES (?, ?, 'bank_withdraw', 'bank', ?, datetime('now'))
             """, (user_id, amount, f"Withdrew {amount} from bank"))
             
             await db.commit()
@@ -149,7 +149,7 @@ class EconomyRepository:
         """Update bank balance"""
         async with self.db._get_connection() as db:
             await db.execute("""
-                INSERT OR REPLACE INTO BankUser (UserId, Balance, InterestRate) 
+                INSERT OR REPLACE INTO BankUser (UserId, Balance, InterestRate)
                 VALUES (?, ?, COALESCE((SELECT InterestRate FROM BankUser WHERE UserId = ?), 0.02))
             """, (user_id, new_balance, user_id))
             await db.commit()
@@ -160,7 +160,7 @@ class EconomyRepository:
         cooldown_seconds = cooldown_hours * 3600
         
         async with self.db._get_connection() as db:
-            cursor = await db.execute("SELECT last_claim FROM timely_claims WHERE user_id = ?", (user_id,))
+            cursor = await db.execute("SELECT LastClaim FROM TimelyCooldown WHERE UserId = ?", (user_id,))
             row = await cursor.fetchone()
             
             if not row:
@@ -178,8 +178,8 @@ class EconomyRepository:
         
         async with self.db._get_connection() as db:
             await db.execute("""
-                INSERT INTO timely_claims (user_id, last_claim) VALUES (?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET last_claim = ?
+                INSERT INTO TimelyCooldown (UserId, LastClaim) VALUES (?, ?)
+                ON CONFLICT(UserId) DO UPDATE SET LastClaim = ?
             """, (user_id, datetime.now().isoformat(), datetime.now().isoformat()))
             await db.commit()
         

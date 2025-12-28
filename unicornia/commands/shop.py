@@ -40,9 +40,9 @@ class ShopCommands:
                 description = f"**{emoji} {item['name']}** - {currency_symbol}{item['price']:,}\n"
                 description += f"Type: {item_type}\n"
                 
-                if item['type'] == self.db.SHOP_TYPE_ROLE and item['role_name']:
+                if item['type'] == self.db.shop.SHOP_TYPE_ROLE and item['role_name']:
                     description += f"Role: {item['role_name']}\n"
-                elif item['type'] == self.db.SHOP_TYPE_COMMAND and item['command']:
+                elif item['type'] == self.db.shop.SHOP_TYPE_COMMAND and item['command']:
                     description += f"Command: `{item['command']}`\n"
                 
                 if item['additional_items']:
@@ -266,7 +266,7 @@ class ShopCommands:
         
         try:
             backgrounds = self.xp_system.card_generator.get_available_backgrounds()
-            user_owned = await self.db.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
+            user_owned = await self.db.xp.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
             owned_keys = {item[3] for item in user_owned}  # ItemKey
             
             embed = discord.Embed(
@@ -292,7 +292,7 @@ class ShopCommands:
                     inline=True
                 )
             
-            user_currency = await self.db.get_user_currency(ctx.author.id)
+            user_currency = await self.db.economy.get_user_currency(ctx.author.id)
             embed.set_footer(text=f"Your currency: {user_currency:,} 🪙")
             
             await ctx.send(embed=embed)
@@ -332,7 +332,7 @@ class ShopCommands:
                 return
             
             # Attempt purchase (item_type_id = 1 for backgrounds)
-            success = await self.db.purchase_xp_item(ctx.author.id, 1, item_key, price)
+            success = await self.db.xp.purchase_xp_item(ctx.author.id, 1, item_key, price)
             
             if success:
                 item_name = items[item_key].get('name', item_key)
@@ -340,10 +340,10 @@ class ShopCommands:
                 await ctx.send(f"✅ Successfully purchased **{item_name}** for {price_text}!")
             else:
                 # Check why it failed
-                if await self.db.user_owns_xp_item(ctx.author.id, 1, item_key):
+                if await self.db.xp.user_owns_xp_item(ctx.author.id, 1, item_key):
                     await ctx.send(f"❌ You already own this background!")
                 else:
-                    user_currency = await self.db.get_user_currency(ctx.author.id)
+                    user_currency = await self.db.economy.get_user_currency(ctx.author.id)
                     await ctx.send(f"❌ Insufficient currency! You have {user_currency:,} 🪙 but need {price:,} 🪙.")
             
         except Exception as e:
@@ -361,12 +361,12 @@ class ShopCommands:
         
         try:
             # Check if user owns the background
-            if not await self.db.user_owns_xp_item(ctx.author.id, 1, item_key):
+            if not await self.db.xp.user_owns_xp_item(ctx.author.id, 1, item_key):
                 await ctx.send(f"❌ You don't own the background `{item_key}`. Purchase it first with `[p]xpshop buy {item_key}`.")
                 return
             
             # Set as active
-            success = await self.db.set_active_xp_item(ctx.author.id, 1, item_key)
+            success = await self.db.xp.set_active_xp_item(ctx.author.id, 1, item_key)
             
             if success:
                 backgrounds = self.xp_system.card_generator.get_available_backgrounds()
@@ -384,7 +384,7 @@ class ShopCommands:
         """View your owned XP backgrounds"""
         
         try:
-            owned_items = await self.db.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
+            owned_items = await self.db.xp.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
             backgrounds = self.xp_system.card_generator.get_available_backgrounds()
             
             if not owned_items:
@@ -397,7 +397,7 @@ class ShopCommands:
                 color=discord.Color.green()
             )
             
-            active_background = await self.db.get_active_xp_item(ctx.author.id, 1)
+            active_background = await self.db.xp.get_active_xp_item(ctx.author.id, 1)
             
             for item in owned_items:
                 item_key = item[3]  # ItemKey from database

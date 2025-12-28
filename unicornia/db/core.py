@@ -121,86 +121,6 @@ class CoreDB:
             """)
             
             await db.execute("""
-                CREATE TABLE IF NOT EXISTS BankUsers (
-                    UserId INTEGER PRIMARY KEY,
-                    Balance INTEGER DEFAULT 0
-                )
-            """)
-            
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS currency_transactions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    amount INTEGER,
-                    type TEXT,
-                    extra TEXT,
-                    other_id INTEGER,
-                    note TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS timely_claims (
-                    user_id INTEGER PRIMARY KEY,
-                    last_claim TIMESTAMP
-                )
-            """)
-            
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS shop_items (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT,
-                    description TEXT,
-                    price INTEGER,
-                    item_type TEXT,
-                    item_data TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS user_shop_items (
-                    user_id INTEGER,
-                    item_id INTEGER,
-                    purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (user_id, item_id)
-                )
-            """)
-            
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS waifus (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    waifu_id INTEGER,
-                    claimer_id INTEGER,
-                    price INTEGER DEFAULT 50,
-                    affinity_id INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS waifu_items (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    waifu_id INTEGER,
-                    name TEXT,
-                    emoji TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS waifu_updates (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    waifu_id INTEGER,
-                    old_claimer_id INTEGER,
-                    new_claimer_id INTEGER,
-                    update_type TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            await db.execute("""
                 CREATE TABLE IF NOT EXISTS PlantedCurrency (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     GuildId INTEGER,
@@ -209,17 +129,6 @@ class CoreDB:
                     MessageId INTEGER,
                     Amount INTEGER,
                     Password TEXT
-                )
-            """)
-            
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS xp_shop_items (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    item_type TEXT,
-                    item_key TEXT,
-                    is_using BOOLEAN DEFAULT FALSE,
-                    purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             
@@ -400,6 +309,39 @@ class CoreDB:
                     ShopEntryId INTEGER,
                     Text TEXT,
                     FOREIGN KEY (ShopEntryId) REFERENCES ShopEntry(Id) ON DELETE CASCADE
+                )
+            """)
+
+            # Waifu tables (matching Nadeko structure)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS WaifuInfo (
+                    WaifuId INTEGER PRIMARY KEY,
+                    ClaimerId INTEGER,
+                    Affinity INTEGER,
+                    Price INTEGER DEFAULT 50,
+                    DateAdded TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS WaifuItem (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    WaifuInfoId INTEGER,
+                    ItemEmoji TEXT,
+                    Name TEXT,
+                    DateAdded TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (WaifuInfoId) REFERENCES WaifuInfo(WaifuId) ON DELETE CASCADE
+                )
+            """)
+
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS WaifuUpdate (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    UserId INTEGER,
+                    OldId INTEGER,
+                    NewId INTEGER,
+                    UpdateType INTEGER,
+                    DateAdded TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             
@@ -589,12 +531,12 @@ class CoreDB:
                 log.info(f"Completed UserXpStats migration: {migrated_xp} entries")
                 
                 # Migrate BankUsers data
-                async with nadeko_db.execute("SELECT UserId, Balance FROM BankUsers") as cursor:
+                async with nadeko_db.execute("SELECT UserId, Balance FROM BankUser") as cursor:
                     async for row in cursor:
                         user_id, balance = row
                         async with self._get_connection() as db:
                             await db.execute("""
-                                INSERT OR REPLACE INTO BankUsers (UserId, Balance)
+                                INSERT OR REPLACE INTO BankUser (UserId, Balance)
                                 VALUES (?, ?)
                             """, (user_id, balance))
                             await db.commit()
@@ -683,8 +625,8 @@ class CoreDB:
                 "CurrencyTransaction", 
                 "BankUser",
                 "TimelyCooldown",
-                "waifus",  # Remove waifu claims
-                "waifu_updates",  # Remove waifu history
+                "WaifuInfo",  # Remove waifu claims
+                "WaifuUpdate",  # Remove waifu history
                 "XpShopOwnedItem"
             ]
             
@@ -697,12 +639,12 @@ class CoreDB:
             
             # Clean waifu tables with different column names
             try:
-                await db.execute("DELETE FROM waifus WHERE claimer_id = ?", (user_id,))
+                await db.execute("DELETE FROM WaifuInfo WHERE ClaimerId = ?", (user_id,))
             except Exception:
                 pass
                 
             try:
-                await db.execute("DELETE FROM waifu_updates WHERE old_claimer_id = ? OR new_claimer_id = ?", (user_id, user_id))
+                await db.execute("DELETE FROM WaifuUpdate WHERE OldId = ? OR NewId = ?", (user_id, user_id))
             except Exception:
                 pass
             

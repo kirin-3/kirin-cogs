@@ -12,7 +12,7 @@ import functools
 import socket
 import ipaddress
 from urllib.parse import urlparse
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from typing import Dict, Any, Tuple
 from collections import OrderedDict
 import logging
@@ -215,21 +215,30 @@ class XPCardGenerator:
             }
         }
     
-    async def _get_font(self, size: int = None) -> ImageFont.FreeTypeFont:
+    async def _get_font(self, size: int = None, bold: bool = False) -> ImageFont.FreeTypeFont:
         """Get font for text rendering"""
         if size is None:
             size = self.default_font_size
             
-        if size in self.fonts_cache:
-            return self.fonts_cache[size]
+        cache_key = (size, bold)
+        if cache_key in self.fonts_cache:
+            return self.fonts_cache[cache_key]
         
         # Try to load fonts in order of preference
-        font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/TTF/arial.ttf", 
+        font_paths = []
+        if bold:
+            font_paths.extend([
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/TTF/arialbd.ttf",
+                "arialbd.ttf"
+            ])
+            
+        font_paths.extend([
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/arial.ttf",
             "/System/Library/Fonts/Arial.ttf",
             "arial.ttf"
-        ]
+        ])
         
         font = None
         for font_path in font_paths:
@@ -240,9 +249,14 @@ class XPCardGenerator:
                 continue
         
         if font is None:
-            font = ImageFont.load_default()
+            # Fallback to default, though default doesn't support size on older Pillow versions
+            # But let's assume standard environment
+            try:
+                font = ImageFont.truetype("arial.ttf", size)
+            except IOError:
+                font = ImageFont.load_default()
             
-        self.fonts_cache[size] = font
+        self.fonts_cache[cache_key] = font
         return font
     
     async def _download_image(self, url: str) -> Image.Image | None:
@@ -319,21 +333,36 @@ class XPCardGenerator:
         default_avatar.putalpha(mask)
         return default_avatar
     
-    def _create_xp_bar(self, current_xp: int, required_xp: int, width: int = 275, height: int = 20) -> Image.Image:
-        """Create XP progress bar matching Nadeko C# template"""
-        # C# template uses Color(0, 0, 0, 0.4f) = 40% transparency = 102 alpha
-        bar = Image.new('RGBA', (width, height), (0, 0, 0, 102))
-        draw = ImageDraw.Draw(bar)
+    def _draw_skewed_bar(self, draw: ImageDraw.Draw, x: int, y: int, width: int, height: int, progress: float):
+        """Draws a skewed XP bar directly onto the card"""
+        skew_offset = 20  # This controls how much the bar leans to the right
         
-        if required_xp > 0:
-            progress = min(current_xp / required_xp, 1.0)
-            progress_width = int(width * progress)
+        # 1. Draw the background track (Dark, semi-transparent)
+        # We need the full width polygon for the background
+        track_poly = [
+            (x + skew_offset, y),              # Top Left
+            (x + width + skew_offset, y),      # Top Right
+            (x + width, y + height),           # Bottom Right
+            (x, y + height)                    # Bottom Left
+        ]
+        draw.polygon(track_poly, fill=(0, 0, 0, 102)) # Matches original 40% transparency
+        
+        # 2. Draw the progress fill (White, semi-transparent)
+        if progress > 0:
+            # Ensure progress doesn't exceed 1.0
+            progress = min(progress, 1.0)
+            fill_w = int(width * progress)
             
-            # Draw progress bar with white fill to match template text color
-            if progress_width > 0:
-                draw.rectangle([0, 0, progress_width, height], fill=(255, 255, 255, 200))
-        
-        return bar
+            # Define points for the filled portion
+            fill_poly = [
+                (x + skew_offset, y),              # Top Left
+                (x + fill_w + skew_offset, y),     # Top Right (variable)
+                (x + fill_w, y + height),          # Bottom Right (variable)
+                (x, y + height)                    # Bottom Left
+            ]
+            
+            # Draw the shape with transparency (White with ~70% opacity)
+            draw.polygon(fill_poly, fill=(255, 255, 255, 180))
 
     def _draw_card_sync(
         self,
@@ -355,11 +384,9 @@ class XPCardGenerator:
         
         # Draw background
         if background:
-            # Resize background to fit card
-            # Note: background might be already resized if we did it in async, but let's do it here to be safe if not
-            if background.size != (self.card_width, self.card_height):
-                background = background.resize((self.card_width, self.card_height), Image.Resampling.LANCZOS)
-            card = Image.alpha_composite(card, background)
+            # Use ImageOps.fit to prevent stretching
+            bg_resized = ImageOps.fit(background, (self.card_width, self.card_height))
+            card.paste(bg_resized, (0, 0))
             
         # Draw user avatar
         card.paste(avatar, (11, 11), avatar)
@@ -369,7 +396,8 @@ class XPCardGenerator:
         
         # Use passed fonts
         name_font = fonts['name']
-        level_font = fonts['level']
+        level_big_font = fonts.get('level_big', fonts['level']) # Fallback if missing
+        label_font = fonts.get('label', fonts['level'])
         rank_font = fonts['rank']
         xp_font = fonts['xp']
         club_font = fonts.get('club')
@@ -377,15 +405,22 @@ class XPCardGenerator:
         # Draw username (position from template)
         draw.text((65, 8), username, font=name_font, fill=(255, 255, 255, 255))
         
-        # Draw level
-        draw.text((35, 101), f"Level {level}", font=level_font, fill=(255, 255, 255, 255))
+        # Draw level (Hierarchy: "lv." label + Big Number)
+        # 1. Draw the small "lv." label
+        draw.text((22, 125), "lv.", font=label_font, fill=(255, 255, 255, 220))
+        
+        # 2. Draw the big level number separately
+        draw.text((50, 102), str(level), font=level_big_font, fill=(255, 255, 255, 255))
         
         # Draw rank
         draw.text((100, 145), f"Rank #{rank}", font=rank_font, fill=(255, 255, 255, 255))
         
-        # Draw XP bar
-        xp_bar = self._create_xp_bar(current_xp, required_xp, width=275)
-        card.paste(xp_bar, (202, 66), xp_bar)
+        # Draw Skewed XP bar
+        progress = 0
+        if required_xp > 0:
+            progress = current_xp / required_xp
+        
+        self._draw_skewed_bar(draw, x=202, y=66, width=275, height=20, progress=progress)
         
         # Draw XP text
         xp_text = f"{current_xp}/{required_xp} XP"
@@ -397,9 +432,21 @@ class XPCardGenerator:
             if club_icon.size != (29, 29):
                 club_icon = club_icon.resize((29, 29), Image.Resampling.LANCZOS)
             card.paste(club_icon, (451, 15), club_icon)
-        
-        if club_name and club_font:
-            draw.text((394, 40), club_name, font=club_font, fill=(255, 255, 255, 255))
+            
+            # Draw Club Name (Right Aligned)
+            if club_name and club_font:
+                icon_x = 451 # The X position of the club icon
+                icon_y = 15
+                
+                # "rs" anchor = Right align, baseline vertical alignment
+                # We draw the text slightly to the left of the icon
+                draw.text(
+                    (icon_x - 10, icon_y + 10),
+                    club_name,
+                    font=club_font,
+                    fill=(255, 255, 255, 255),
+                    anchor="rs"
+                )
             
         # Convert to bytes
         output = io.BytesIO()
@@ -445,6 +492,8 @@ class XPCardGenerator:
         fonts = {
             'name': await self._get_font(25),
             'level': await self._get_font(22),
+            'level_big': await self._get_font(52, bold=True), # Big size for the number
+            'label': await self._get_font(20),                # Small size for "lv."
             'rank': await self._get_font(20),
             'xp': await self._get_font(25),
             'club': await self._get_font(20) if club_name else None

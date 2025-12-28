@@ -33,7 +33,7 @@ class WaifuCommands:
         
         try:
             # Check if user is already claimed
-            current_owner = await self.db.get_waifu_owner(member.id)
+            current_owner = await self.db.waifu.get_waifu_owner(member.id)
             if current_owner:
                 if current_owner == ctx.author.id:
                     await ctx.send("❌ You already own this waifu!")
@@ -44,21 +44,30 @@ class WaifuCommands:
             
             # Set default price if not provided
             if price is None:
-                price = await self.db.get_waifu_price(member.id)
+                price = await self.db.waifu.get_waifu_price(member.id)
             
             # Check if user has enough currency
-            user_balance = await self.db.get_user_currency(ctx.author.id)
+            user_balance = await self.db.economy.get_user_currency(ctx.author.id)
             if user_balance < price:
                 currency_symbol = await self.config.currency_symbol()
                 await ctx.send(f"❌ You need {currency_symbol}{price:,} but only have {currency_symbol}{user_balance:,}!")
                 return
             
             # Claim the waifu
-            success = await self.db.claim_waifu(member.id, ctx.author.id, price)
+            success = await self.db.waifu.claim_waifu(member.id, ctx.author.id, price)
             if success:
                 # Deduct currency
-                await self.db.remove_currency(ctx.author.id, price, "waifu_claim", str(member.id), note=f"Claimed {member.display_name}")
-                await self.db.log_currency_transaction(ctx.author.id, "waifu_claim", -price, f"Claimed {member.display_name}")
+                await self.db.economy.remove_currency(ctx.author.id, price, "waifu_claim", str(member.id), note=f"Claimed {member.display_name}")
+                # log_currency_transaction is handled internally by remove_currency usually, but if it was called explicitly before:
+                # Looking at economy.py: remove_currency calls log transaction.
+                # However, the original code called log_currency_transaction explicitly too.
+                # It might be duplicate logging, but to be safe I will just update the call path.
+                # WAIT: economy.py remove_currency DOES log the transaction. Double logging?
+                # Line 60 in waifu.py calls remove_currency. Line 61 calls log_currency_transaction.
+                # I'll update the path for both for now to preserve behavior, even if redundant.
+                # Actually, wait. I can't easily see if log_currency_transaction is in economy repository.
+                # Checking economy.py... yes, line 222: log_currency_transaction is in EconomyRepository.
+                await self.db.economy.log_currency_transaction(ctx.author.id, "waifu_claim", -price, f"Claimed {member.display_name}")
                 
                 currency_symbol = await self.config.currency_symbol()
                 embed = discord.Embed(
@@ -115,7 +124,7 @@ class WaifuCommands:
         """
         
         try:
-            success = await self.db.divorce_waifu(member.id, ctx.author.id)
+            success = await self.db.waifu.divorce_waifu(member.id, ctx.author.id)
             if success:
                 embed = discord.Embed(
                     title="💔 Waifu Divorced",
@@ -177,7 +186,7 @@ class WaifuCommands:
         """
         
         try:
-            waifu_info = await self.db.get_waifu_info(member.id)
+            waifu_info = await self.db.waifu.get_waifu_info(member.id)
             if not waifu_info:
                 await ctx.send("❌ This user is not claimed as a waifu.")
                 return
@@ -189,7 +198,7 @@ class WaifuCommands:
             affinity = ctx.guild.get_member(affinity_id) if affinity_id else None
             
             # Get waifu items
-            items = await self.db.get_waifu_items(member.id)
+            items = await self.db.waifu.get_waifu_items(member.id)
             
             currency_symbol = await self.config.currency_symbol()
             embed = discord.Embed(
@@ -232,7 +241,7 @@ class WaifuCommands:
         target = member or ctx.author
         
         try:
-            waifus = await self.db.get_user_waifus(target.id)
+            waifus = await self.db.waifu.get_user_waifus(target.id)
             if not waifus:
                 await ctx.send(f"❌ {target.display_name} doesn't have any waifus.")
                 return
@@ -273,7 +282,7 @@ class WaifuCommands:
         """
         
         try:
-            leaderboard = await self.db.get_waifu_leaderboard(10)
+            leaderboard = await self.db.waifu.get_waifu_leaderboard(10)
             if not leaderboard:
                 await ctx.send("❌ No waifus found.")
                 return
@@ -311,12 +320,12 @@ class WaifuCommands:
         
         try:
             # Check if user owns this waifu
-            current_owner = await self.db.get_waifu_owner(member.id)
+            current_owner = await self.db.waifu.get_waifu_owner(member.id)
             if current_owner != ctx.author.id:
                 await ctx.send("❌ You don't own this waifu!")
                 return
             
-            await self.db.update_waifu_price(member.id, new_price)
+            await self.db.waifu.update_waifu_price(member.id, new_price)
             currency_symbol = await self.config.currency_symbol()
             await ctx.send(f"✅ Set {member.display_name}'s price to {currency_symbol}{new_price:,}")
             
@@ -333,12 +342,12 @@ class WaifuCommands:
         
         try:
             # Check if user owns this waifu
-            current_owner = await self.db.get_waifu_owner(member.id)
+            current_owner = await self.db.waifu.get_waifu_owner(member.id)
             if current_owner != ctx.author.id:
                 await ctx.send("❌ You don't own this waifu!")
                 return
             
-            await self.db.set_waifu_affinity(member.id, affinity_user.id)
+            await self.db.waifu.set_waifu_affinity(member.id, affinity_user.id)
             await ctx.send(f"✅ Set {member.display_name}'s affinity to {affinity_user.display_name}")
             
         except Exception as e:
