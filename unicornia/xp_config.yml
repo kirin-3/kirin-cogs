@@ -1,0 +1,123 @@
+shop:
+  bgs:
+    aki-csm:
+      desc: ''
+      name: Aki
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/aki-csm.gif
+    archer:
+      desc: ''
+      name: Archer
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/archer.gif
+    astolfo:
+      desc: ''
+      name: Astolfo
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/Astolfo.gif
+    butt:
+      desc: ''
+      name: Butt
+      preview: ''
+      price: 25000
+      url: https://unicornia.net/botimages/butt.gif
+    butts-jiggle:
+      desc: ''
+      name: Butts jiggle
+      preview: ''
+      price: 25000
+      url: https://unicornia.net/botimages/butts-jiggle.gif
+    chainsawman:
+      desc: ''
+      name: Chainsaw Man
+      preview: ''
+      price: 15000
+      url: https://unicornia.net/botimages/chainsawman.gif
+    dandadan:
+      desc: ''
+      name: Dan Da Dan
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/dandadan.gif
+    default:
+      desc: Free default background for everyone
+      name: Default Background
+      preview: ''
+      price: 0
+      url: https://unicornia.net/botimages/defaultxp1.png
+    edward:
+      desc: ''
+      name: Edward Elric
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/edward-elric.gif
+    hypno-femdom:
+      desc: ''
+      name: Femdom Hypno
+      preview: ''
+      price: 25000
+      url: https://unicornia.net/botimages/hypno-femdom.gif
+    jinwoo:
+      desc: ''
+      name: jin-woo
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/jinwoo.gif
+    light:
+      desc: ''
+      name: Light Yagami
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/light-yagami.gif
+    lucy:
+      desc: ''
+      name: Lucyna Kushinada
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/Lucyna-Kushinada.gif
+    makima1:
+      desc: ''
+      name: Makima 1
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/makima1.gif
+    makima2:
+      desc: ''
+      name: Makima 2
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/makima2.gif
+    pindown:
+      desc: ''
+      name: Pindown
+      preview: ''
+      price: 25000
+      url: https://unicornia.net/botimages/pin-down.gif
+    rintohsaka:
+      desc: ''
+      name: Rin Tohsaka
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/rintohsaka.gif
+    saber:
+      desc: ''
+      name: Saber
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/saber.gif
+    saber2:
+      desc: ''
+      name: Saber 2
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/saber2.gif
+    shadow:
+      desc: Shadow from the Eminence in Shadow
+      name: Shadow
+      preview: ''
+      price: 20000
+      url: https://unicornia.net/botimages/shadow1.gif
+  isEnabled: true

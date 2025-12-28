@@ -337,17 +337,18 @@ class XPCardGenerator:
         """Draws a skewed XP bar directly onto the card"""
         skew_offset = 20  # This controls how much the bar leans to the right
         
-        # 1. Draw the background track (Dark, semi-transparent)
-        # We need the full width polygon for the background
+        # 1. Draw the background track (Unfilled/Remaining XP)
+        # White with low opacity (~10%)
         track_poly = [
             (x + skew_offset, y),              # Top Left
             (x + width + skew_offset, y),      # Top Right
             (x + width, y + height),           # Bottom Right
             (x, y + height)                    # Bottom Left
         ]
-        draw.polygon(track_poly, fill=(0, 0, 0, 102)) # Matches original 40% transparency
+        draw.polygon(track_poly, fill=(255, 255, 255, 25))
         
-        # 2. Draw the progress fill (White, semi-transparent)
+        # 2. Draw the progress fill (Earned XP)
+        # Black with medium opacity (~50%)
         if progress > 0:
             # Ensure progress doesn't exceed 1.0
             progress = min(progress, 1.0)
@@ -361,8 +362,8 @@ class XPCardGenerator:
                 (x, y + height)                    # Bottom Left
             ]
             
-            # Draw the shape with transparency (White with ~70% opacity)
-            draw.polygon(fill_poly, fill=(255, 255, 255, 180))
+            # Draw the shape with transparency (Black with ~50% opacity)
+            draw.polygon(fill_poly, fill=(0, 0, 0, 128))
 
     def _draw_card_sync(
         self,
@@ -403,29 +404,52 @@ class XPCardGenerator:
         club_font = fonts.get('club')
         
         # Draw username (position from template)
-        draw.text((66, 9), username, font=name_font, fill=(0, 0, 0, 128)) # Shadow
-        draw.text((65, 8), username, font=name_font, fill=(255, 255, 255, 255))
+        draw.text((66, 10), username, font=name_font, fill=(0, 0, 0, 128)) # Shadow
+        draw.text((65, 9), username, font=name_font, fill=(255, 255, 255, 255))
         
         # Draw Level Number ONLY (Remove "lv." label drawing)
         # Position: Left side, big number
-        draw.text((45, 95), str(level), font=level_big_font, fill=(255, 255, 255, 255))
+        draw.text((29, 95), str(level), font=level_big_font, fill=(255, 255, 255, 255))
         
         # Draw Rank Number ONLY (Remove "Rank" word)
         # Position: Slightly to the right of Level, smaller
-        draw.text((115, 155), f"#{rank}", font=rank_font, fill=(255, 255, 255, 255))
+        draw.text((90, 107), f"{rank}", font=rank_font, fill=(255, 255, 255, 255))
         
         # Draw XP Bar
         progress = 0
         if required_xp > 0:
             progress = current_xp / required_xp
         
+        # Create overlay for transparent elements (XP Bar)
+        overlay = Image.new('RGBA', card.size, (0, 0, 0, 0))
+        overlay_draw = ImageDraw.Draw(overlay)
+
         # Updated coordinates to fill the whole box
-        self._draw_skewed_bar(draw, x=205, y=70, width=260, height=92, progress=progress)
+        # Shifted left to match the background track outline
+        bar_x = 181
+        bar_y = 67
+        bar_w = 279
+        bar_h = 79
+        self._draw_skewed_bar(overlay_draw, x=bar_x, y=bar_y, width=bar_w, height=bar_h, progress=progress)
         
+        # Composite overlay onto card (This ensures proper transparency)
+        card = Image.alpha_composite(card, overlay)
+        
+        # Re-create draw context for text (to draw on top of everything)
+        draw = ImageDraw.Draw(card)
+
         # Draw XP Text (Centered in the large bar)
         xp_text = f"{current_xp}/{required_xp} XP"
-        # Calculate rough center of the bar
-        draw.text((320, 100), xp_text, font=xp_font, fill=(255, 255, 255, 255))
+        
+        # Calculate center of the bar for text placement
+        # skew_offset is 20, so we add half of it (10) to center horizontally
+        text_x = bar_x + (bar_w // 2) + 10
+        text_y = bar_y + (bar_h // 2)
+        
+        # Draw shadow/outline for readability (Black shadow)
+        draw.text((text_x + 1, text_y + 1), xp_text, font=xp_font, fill=(0, 0, 0, 128), anchor="mm")
+        # Draw main text
+        draw.text((text_x, text_y), xp_text, font=xp_font, fill=(255, 255, 255, 255), anchor="mm")
         
         # Draw Club Info
         if club_icon:
@@ -437,7 +461,7 @@ class XPCardGenerator:
             # Draw Club Name (Right Aligned)
             if club_name and club_font:
                 icon_x = 451 # The X position of the club icon
-                icon_y = 15
+                icon_y = 34
                 
                 # "rs" anchor = Right align, baseline vertical alignment
                 # We draw the text slightly to the left of the icon
@@ -493,7 +517,7 @@ class XPCardGenerator:
         fonts = {
             'name': await self._get_font(25),
             'level': await self._get_font(22),
-            'level_big': await self._get_font(52, bold=True), # Big size for the number
+            'level_big': await self._get_font(30, bold=True), # Big size for the number
             'label': await self._get_font(20),                # Small size for "lv."
             'rank': await self._get_font(20),
             'xp': await self._get_font(25),
