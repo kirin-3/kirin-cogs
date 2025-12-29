@@ -9,6 +9,9 @@ class WaifuCommands:
     async def waifu_group(self, ctx):
         """Waifu system - Claim and manage virtual waifus"""
         if ctx.invoked_subcommand is None:
+            import logging
+            log = logging.getLogger("red.unicornia.debug")
+            log.info(f"Waifu group invoked without subcommand by {ctx.author}. Sending help manually.")
             await ctx.send_help(ctx.command)
     
     @waifu_group.command(name="claim")

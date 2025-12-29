@@ -259,6 +259,9 @@ class ShopCommands:
     async def xp_shop_group(self, ctx):
         """XP Shop - Buy custom backgrounds with currency"""
         if ctx.invoked_subcommand is None:
+            import logging
+            log = logging.getLogger("red.unicornia.debug")
+            log.info(f"XPShop group invoked without subcommand by {ctx.author}. Sending help manually.")
             await ctx.send_help(ctx.command)
     
     @xp_shop_group.command(name="backgrounds", aliases=["bg", "bgs"])
