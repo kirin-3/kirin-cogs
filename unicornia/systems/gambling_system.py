@@ -2,14 +2,14 @@
 Gambling system for Unicornia
 """
 
-import random
+import secrets
 import discord
 from typing import Optional, List, Dict, Any, Tuple
 from redbot.core import commands
-from discord.ui import View, button
+from discord import ui
 from ..database import DatabaseManager
 
-class BlackjackView(View):
+class BlackjackView(ui.LayoutView):
     def __init__(self, ctx, system, user_id, amount, user_hand, dealer_hand, deck, currency_symbol):
         super().__init__(timeout=60)
         self.ctx = ctx
@@ -62,7 +62,7 @@ class BlackjackView(View):
                 pass
             await self.do_stand_logic()
 
-    @button(label="Hit", style=discord.ButtonStyle.primary)
+    @ui.button(label="Hit", style=discord.ButtonStyle.primary, row=0)
     async def hit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This is not your game!", ephemeral=True)
@@ -91,7 +91,7 @@ class BlackjackView(View):
             except discord.HTTPException:
                 pass
 
-    @button(label="Stand", style=discord.ButtonStyle.secondary)
+    @ui.button(label="Stand", style=discord.ButtonStyle.secondary, row=0)
     async def stand_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This is not your game!", ephemeral=True)
@@ -202,8 +202,8 @@ class GamblingSystem:
             return False, {"error": "insufficient_funds", "balance": balance}
         
         # Roll dice
-        roll = random.randint(1, 100)
-        threshold = random.randint(1, 100)
+        roll = secrets.randbelow(100) + 1
+        threshold = secrets.randbelow(100) + 1
         
         if roll >= threshold:
             # Win
@@ -249,7 +249,7 @@ class GamblingSystem:
         choices = ["🪨 Rock", "📄 Paper", "✂️ Scissors"]
         
         # Bot choice
-        bot_choice = random.randint(0, 2)
+        bot_choice = secrets.randbelow(3)
         
         # Determine winner
         if user_choice == bot_choice:
@@ -304,7 +304,7 @@ class GamblingSystem:
             return False, {"error": "insufficient_funds", "balance": balance}
         
         # Generate slot results
-        rolls = [random.randint(0, 9) for _ in range(3)]
+        rolls = [secrets.randbelow(10) for _ in range(3)]
         
         # Calculate winnings based on Nadeko's slot logic
         won_amount = 0
@@ -359,7 +359,12 @@ class GamblingSystem:
         
         # Deck logic
         deck = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 4 # 11 is Ace
-        random.shuffle(deck)
+        
+        # Secure shuffle
+        # secrets module doesn't have shuffle, so we implement Fisher-Yates with secrets
+        for i in range(len(deck) - 1, 0, -1):
+            j = secrets.randbelow(i + 1)
+            deck[i], deck[j] = deck[j], deck[i]
         
         def calculate_hand(hand):
             total = sum(hand)
@@ -417,7 +422,7 @@ class GamblingSystem:
             return False, {"error": "insufficient_funds", "balance": balance}
             
         # Flip coin
-        result_val = random.randint(0, 1)
+        result_val = secrets.randbelow(2)
         result_str = "Heads" if result_val == 0 else "Tails"
         
         # Calculate result
@@ -463,7 +468,7 @@ class GamblingSystem:
         
         # Lucky ladder has 8 rungs with different multipliers
         multipliers = [2.4, 1.7, 1.5, 1.1, 0.5, 0.3, 0.2, 0.1]
-        rung = random.randint(0, 7)
+        rung = secrets.randbelow(8)
         multiplier = multipliers[rung]
         
         won_amount = int(amount * multiplier)

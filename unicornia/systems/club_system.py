@@ -3,9 +3,10 @@ Club system for Unicornia - Logic for club management
 """
 
 import discord
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, Any
 from redbot.core import commands
 from ..database import DatabaseManager
+from ..utils import validate_club_name
 
 class ClubSystem:
     """Handles club logic and management"""
@@ -14,12 +15,20 @@ class ClubSystem:
         self.db = db
         self.config = config
         self.bot = bot
+
+    def _check_permission(self, user: discord.Member, club_owner_id: int, admin_override: bool = False) -> bool:
+        """Check if user has permission to manage the club"""
+        if user.id == club_owner_id:
+            return True
+        if admin_override and user.guild_permissions.manage_guild:
+            return True
+        return False
     
-    async def create_club(self, user: discord.Member, club_name: str) -> Tuple[bool, str]:
+    async def create_club(self, user: discord.Member, club_name: str) -> tuple[bool, str]:
         """Create a new club"""
         # Check if name is valid
-        if len(club_name) > 20:
-            return False, "Club name is too long (max 20 chars)."
+        if not validate_club_name(club_name):
+            return False, "Club name is invalid. Max 20 chars, alphanumeric and simple symbols only."
         
         # Check if user is already in a club
         user_club = await self.db.club.get_club_by_member(user.id)
@@ -38,7 +47,7 @@ class ClubSystem:
         except Exception as e:
             return False, f"Error creating club: {e}"
 
-    async def get_club_info(self, club_identifier: str = None, user: discord.Member = None) -> Tuple[Optional[Dict[str, Any]], str]:
+    async def get_club_info(self, club_identifier: str = None, user: discord.Member = None) -> tuple[dict[str, Any] | None, str]:
         """Get club info by name or member"""
         club = None
         
@@ -67,7 +76,7 @@ class ClubSystem:
         
         return club_data, "Success"
 
-    async def transfer_club(self, owner: discord.Member, new_owner: discord.Member) -> Tuple[bool, str]:
+    async def transfer_club(self, owner: discord.Member, new_owner: discord.Member) -> tuple[bool, str]:
         """Transfer club ownership"""
         club = await self.db.club.get_club_by_member(owner.id)
         if not club:
@@ -88,39 +97,37 @@ class ClubSystem:
         
         return True, f"Club ownership transferred to **{new_owner.display_name}**."
 
-    async def set_club_icon(self, user: discord.Member, url: str, is_admin: bool = False) -> Tuple[bool, str]:
+    async def set_club_icon(self, user: discord.Member, url: str, is_admin: bool = False) -> tuple[bool, str]:
         """Set club icon"""
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return False, "You are not in a club."
             
-        # is_admin passed from command is ctx.author.guild_permissions.administrator
-        # We should also check manage_guild if passed or check owner
-        if not is_admin and not user.guild_permissions.manage_guild and club[6] != user.id:
+        if not self._check_permission(user, club[6], is_admin):
             return False, "You are not the owner of this club."
             
         await self.db.club.update_club_settings(club[0], ImageUrl=url)
         return True, "Club icon updated."
 
-    async def set_club_banner(self, user: discord.Member, url: str, is_admin: bool = False) -> Tuple[bool, str]:
+    async def set_club_banner(self, user: discord.Member, url: str, is_admin: bool = False) -> tuple[bool, str]:
         """Set club banner"""
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return False, "You are not in a club."
             
-        if not is_admin and not user.guild_permissions.manage_guild and club[6] != user.id:
+        if not self._check_permission(user, club[6], is_admin):
             return False, "You are not the owner of this club."
             
         await self.db.club.update_club_settings(club[0], BannerUrl=url)
         return True, "Club banner updated."
 
-    async def set_club_description(self, user: discord.Member, desc: str, is_admin: bool = False) -> Tuple[bool, str]:
+    async def set_club_description(self, user: discord.Member, desc: str, is_admin: bool = False) -> tuple[bool, str]:
         """Set club description"""
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return False, "You are not in a club."
             
-        if not is_admin and not user.guild_permissions.manage_guild and club[6] != user.id:
+        if not self._check_permission(user, club[6], is_admin):
             return False, "You are not the owner of this club."
             
         if len(desc) > 150:
@@ -132,17 +139,17 @@ class ClubSystem:
         await self.db.club.update_club_settings(club[0], Description=desc)
         return True, "Club description updated."
 
-    async def rename_club(self, user: discord.Member, new_name: str, is_admin: bool = False) -> Tuple[bool, str]:
+    async def rename_club(self, user: discord.Member, new_name: str, is_admin: bool = False) -> tuple[bool, str]:
         """Rename club"""
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return False, "You are not in a club."
             
-        if not is_admin and not user.guild_permissions.manage_guild and club[6] != user.id:
+        if not self._check_permission(user, club[6], is_admin):
             return False, "You are not the owner of this club."
             
-        if len(new_name) > 20:
-            return False, "Name is too long (max 20 chars)."
+        if not validate_club_name(new_name):
+            return False, "Club name is invalid. Max 20 chars, alphanumeric and simple symbols only."
             
         # Sanitize input
         new_name = discord.utils.escape_mentions(new_name)
@@ -154,21 +161,20 @@ class ClubSystem:
         await self.db.club.update_club_settings(club[0], Name=new_name)
         return True, f"Club renamed to **{new_name}**."
 
-    async def disband_club(self, user: discord.Member) -> Tuple[bool, str]:
+    async def disband_club(self, user: discord.Member) -> tuple[bool, str]:
         """Disband club"""
         club = await self.db.club.get_club_by_member(user.id)
         
-        is_server_mod = user.guild_permissions.manage_guild
         if not club:
              return False, "You are not in a club."
 
-        if not is_server_mod and club[6] != user.id:
+        if not self._check_permission(user, club[6], True):
             return False, "You are not the owner of this club."
             
         await self.db.club.disband_club(club[0])
         return True, f"Club **{club[1]}** has been disbanded."
 
-    async def leave_club(self, user: discord.Member) -> Tuple[bool, str]:
+    async def leave_club(self, user: discord.Member) -> tuple[bool, str]:
         """Leave club"""
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
@@ -180,7 +186,7 @@ class ClubSystem:
         await self.db.club.leave_club(user.id)
         return True, f"You have left **{club[1]}**."
 
-    async def apply_to_club(self, user: discord.Member, club_name: str) -> Tuple[bool, str]:
+    async def apply_to_club(self, user: discord.Member, club_name: str) -> tuple[bool, str]:
         """Apply to a club"""
         user_club = await self.db.club.get_club_by_member(user.id)
         if user_club:
@@ -199,16 +205,13 @@ class ClubSystem:
         await self.db.club.apply_to_club(user.id, target_club[0])
         return True, f"Applied to **{target_club[1]}**."
 
-    async def accept_application(self, admin: discord.Member, applicant_name: str) -> Tuple[bool, str]:
+    async def accept_application(self, admin: discord.Member, applicant_name: str) -> tuple[bool, str]:
         """Accept a club application"""
         club = await self.db.club.get_club_by_member(admin.id)
         if not club:
             return False, "You are not in a club."
             
-        is_server_mod = admin.guild_permissions.manage_guild
-        
-        # Perms: Club Owner OR Server Mod
-        if not is_server_mod and club[6] != admin.id:
+        if not self._check_permission(admin, club[6], True):
             return False, "Only the club owner can accept applications."
             
         # Find applicant by name (simple search)
@@ -222,16 +225,13 @@ class ClubSystem:
         await self.db.club.accept_club_application(club[0], target[0])
         return True, f"Accepted **{target[1]}** into the club."
 
-    async def reject_application(self, admin: discord.Member, applicant_name: str) -> Tuple[bool, str]:
+    async def reject_application(self, admin: discord.Member, applicant_name: str) -> tuple[bool, str]:
         """Reject a club application"""
         club = await self.db.club.get_club_by_member(admin.id)
         if not club:
             return False, "You are not in a club."
             
-        is_server_mod = admin.guild_permissions.manage_guild
-        
-        # Perms: Club Owner OR Server Mod
-        if not is_server_mod and club[6] != admin.id:
+        if not self._check_permission(admin, club[6], True):
             return False, "Only the club owner can reject applications."
             
         applicants = await self.db.club.get_club_applicants(club[0])
@@ -243,15 +243,14 @@ class ClubSystem:
         await self.db.club.reject_club_application(club[0], target[0])
         return True, f"Rejected application from **{target[1]}**."
 
-    async def kick_member(self, admin: discord.Member, member_name: str) -> Tuple[bool, str]:
+    async def kick_member(self, admin: discord.Member, member_name: str) -> tuple[bool, str]:
         """Kick a member"""
         club = await self.db.club.get_club_by_member(admin.id)
         
         if not club:
             return False, "You are not in a club."
             
-        is_server_mod = admin.guild_permissions.manage_guild
-        if not is_server_mod and club[6] != admin.id:
+        if not self._check_permission(admin, club[6], True):
             return False, "Only the club owner can kick members."
             
         members = await self.db.club.get_club_members(club[0])
@@ -266,15 +265,13 @@ class ClubSystem:
         await self.db.club.kick_club_member(target[0])
         return True, f"Kicked **{target[1]}** from the club."
 
-    async def ban_member(self, admin: discord.Member, member_name: str) -> Tuple[bool, str]:
+    async def ban_member(self, admin: discord.Member, member_name: str) -> tuple[bool, str]:
         """Ban a member"""
         club = await self.db.club.get_club_by_member(admin.id)
         if not club:
             return False, "You are not in a club."
             
-        is_server_mod = admin.guild_permissions.manage_guild
-        
-        if not is_server_mod and club[6] != admin.id:
+        if not self._check_permission(admin, club[6], True):
             return False, "Only the club owner can ban members."
             
         members = await self.db.club.get_club_members(club[0])
@@ -289,15 +286,13 @@ class ClubSystem:
         await self.db.club.ban_club_member(club[0], target[0])
         return True, f"Banned **{target[1]}** from the club."
 
-    async def unban_member(self, admin: discord.Member, member_name: str) -> Tuple[bool, str]:
+    async def unban_member(self, admin: discord.Member, member_name: str) -> tuple[bool, str]:
         """Unban a member"""
         club = await self.db.club.get_club_by_member(admin.id)
         if not club:
             return False, "You are not in a club."
             
-        is_server_mod = admin.guild_permissions.manage_guild
-        
-        if not is_server_mod and club[6] != admin.id:
+        if not self._check_permission(admin, club[6], True):
             return False, "Only the club owner can unban members."
             
         bans = await self.db.club.get_club_bans(club[0])
@@ -309,7 +304,7 @@ class ClubSystem:
         await self.db.club.unban_club_member(club[0], target[0])
         return True, f"Unbanned **{target[1]}**."
 
-    async def get_members(self, club_id: int) -> List[Dict[str, Any]]:
+    async def get_members(self, club_id: int) -> list[dict[str, Any]]:
         """Get formatted list of members"""
         members = await self.db.club.get_club_members(club_id)
         # Tuple: UserId, Username, AvatarId, TotalXp, IsClubAdmin
@@ -324,21 +319,20 @@ class ClubSystem:
             for m in members
         ]
 
-    async def get_leaderboard(self, page: int = 1) -> List[Tuple[str, int]]:
+    async def get_leaderboard(self, page: int = 1) -> list[tuple[str, int]]:
         """Get club leaderboard"""
         # page is 1-based index
         data = await self.db.club.get_club_leaderboard_page(page - 1)
         # Tuple: Id, Name, Xp
         return [(d[1], d[2]) for d in data]
 
-    async def get_applicants(self, user: discord.Member) -> Tuple[Optional[List[Dict]], str]:
+    async def get_applicants(self, user: discord.Member) -> tuple[list[dict] | None, str]:
         """Get list of club applicants"""
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return None, "You are not in a club."
             
-        is_server_mod = user.guild_permissions.manage_guild
-        if not is_server_mod and club[6] != user.id:
+        if not self._check_permission(user, club[6], True):
             return None, "Only the club owner can view applicants."
             
         applicants = await self.db.club.get_club_applicants(club[0])
@@ -354,14 +348,13 @@ class ClubSystem:
             for a in applicants
         ], "Success"
 
-    async def get_banned_members(self, user: discord.Member) -> Tuple[Optional[List[Dict]], str]:
+    async def get_banned_members(self, user: discord.Member) -> tuple[list[dict] | None, str]:
         """Get list of banned members"""
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return None, "You are not in a club."
             
-        is_server_mod = user.guild_permissions.manage_guild
-        if not is_server_mod and club[6] != user.id:
+        if not self._check_permission(user, club[6], True):
             return None, "Only the club owner can view bans."
             
         bans = await self.db.club.get_club_bans(club[0])

@@ -28,23 +28,8 @@ class EconomySystem:
         if from_user == to_user:
             return False
         
-        # Check if sender has enough currency
-        sender_balance = await self.db.economy.get_user_currency(from_user)
-        if sender_balance < amount:
-            return False
-        
-        # Transfer currency
-        success = await self.db.economy.remove_currency(from_user, amount, "give", str(to_user), to_user, note)
-        if not success:
-            return False
-        
-        await self.db.economy.add_currency(to_user, amount, "receive", str(from_user), from_user, note)
-        
-        # Log transactions
-        await self.db.economy.log_currency_transaction(from_user, "give", -amount, f"Given to user {to_user}: {note}", to_user)
-        await self.db.economy.log_currency_transaction(to_user, "receive", amount, f"Received from user {from_user}: {note}", from_user)
-        
-        return True
+        # Use atomic transfer
+        return await self.db.economy.transfer_currency(from_user, to_user, amount, note)
     
     async def award_currency(self, user_id: int, amount: int, note: str = "") -> bool:
         """Award currency to a user (admin only)"""

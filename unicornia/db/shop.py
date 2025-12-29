@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Tuple
+from typing import Any
 
 class ShopRepository:
     """Repository for Shop system database operations"""
@@ -20,6 +20,22 @@ class ShopRepository:
                 SELECT Id, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command
                 FROM ShopEntry WHERE GuildId = ? ORDER BY `Index`
             """, (guild_id,))
+            return await cursor.fetchall()
+
+    async def get_shop_entries_with_items(self, guild_id: int):
+        """Get all shop entries with their items for a guild (Optimized N+1)"""
+        async with self.db._get_connection() as db:
+            query = """
+                SELECT
+                    se.Id, se.`Index`, se.Price, se.Name, se.AuthorId, se.Type,
+                    se.RoleName, se.RoleId, se.RoleRequirement, se.Command,
+                    sei.Id, sei.Text
+                FROM ShopEntry se
+                LEFT JOIN ShopEntryItem sei ON se.Id = sei.ShopEntryId
+                WHERE se.GuildId = ?
+                ORDER BY se.`Index`
+            """
+            cursor = await db.execute(query, (guild_id,))
             return await cursor.fetchall()
 
     async def get_shop_entry(self, guild_id: int, entry_id: int):

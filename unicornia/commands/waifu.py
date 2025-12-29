@@ -1,7 +1,6 @@
 import discord
 from redbot.core import commands, checks
 from typing import Optional
-from ..utils import systems_ready
 
 class WaifuCommands:
     # Waifu commands
@@ -11,7 +10,6 @@ class WaifuCommands:
         pass
     
     @waifu_group.command(name="claim")
-    @systems_ready
     async def waifu_claim(self, ctx, member: discord.Member, price: int = None):
         """Claim a user as your waifu
         
@@ -89,7 +87,6 @@ class WaifuCommands:
     
     @waifu_group.command(name="transfer")
     @commands.cooldown(1, 86400, commands.BucketType.user)
-    @systems_ready
     async def waifu_transfer(self, ctx, member: discord.Member, new_owner: discord.Member):
         """Transfer a waifu to another user (1 day cooldown)
         
@@ -104,7 +101,6 @@ class WaifuCommands:
 
     @waifu_group.command(name="reset")
     @checks.is_owner()
-    @systems_ready
     async def waifu_reset(self, ctx, member: discord.Member):
         """Reset a waifu (Owner only)
         
@@ -118,7 +114,6 @@ class WaifuCommands:
             await ctx.send(f"❌ {message}")
 
     @waifu_group.command(name="divorce")
-    @systems_ready
     async def waifu_divorce(self, ctx, member: discord.Member):
         """Divorce your waifu
         
@@ -142,7 +137,6 @@ class WaifuCommands:
             await ctx.send(f"❌ Error divorcing waifu: {e}")
     
     @waifu_group.command(name="gift")
-    @systems_ready
     async def waifu_gift(self, ctx, gift_name: str, member: discord.Member):
         """Gift an item to a waifu
         
@@ -156,7 +150,6 @@ class WaifuCommands:
             await ctx.send(f"❌ {message}")
 
     @waifu_group.command(name="gifts")
-    @systems_ready
     async def waifu_gifts_list(self, ctx):
         """List all available waifu gifts
         
@@ -165,7 +158,6 @@ class WaifuCommands:
         await self.gifts_list(ctx)
 
     @commands.command(name="gifts")
-    @systems_ready
     async def gifts_list(self, ctx):
         """List all available waifu gifts"""
             
@@ -189,7 +181,6 @@ class WaifuCommands:
         await ctx.send(embed=embed)
 
     @waifu_group.command(name="info")
-    @systems_ready
     async def waifu_info(self, ctx, member: discord.Member = None):
         """Get information about a waifu
         
@@ -294,7 +285,6 @@ class WaifuCommands:
             await ctx.send(f"❌ Error getting waifu info: {e}")
     
     @waifu_group.command(name="list", aliases=["my"])
-    @systems_ready
     async def waifu_list(self, ctx, member: discord.Member = None):
         """List your waifus or someone else's waifus
         
@@ -337,7 +327,6 @@ class WaifuCommands:
             await ctx.send(f"❌ Error listing waifus: {e}")
     
     @waifu_group.command(name="leaderboard", aliases=["lb", "top"])
-    @systems_ready
     async def waifu_leaderboard(self, ctx):
         """View waifu leaderboard by price
         
@@ -374,7 +363,6 @@ class WaifuCommands:
             await ctx.send(f"❌ Error getting leaderboard: {e}")
     
     @waifu_group.command(name="price")
-    @systems_ready
     async def waifu_price(self, ctx, member: discord.Member, new_price: int):
         """Set the price for your waifu (Owner only)
         
@@ -396,7 +384,6 @@ class WaifuCommands:
             await ctx.send(f"❌ Error updating waifu price: {e}")
     
     @waifu_group.command(name="affinity")
-    @systems_ready
     async def waifu_affinity(self, ctx, affinity_user: discord.Member = None):
         """Set your affinity to someone
         

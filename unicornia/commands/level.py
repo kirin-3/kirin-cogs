@@ -1,12 +1,10 @@
 import discord
 from redbot.core import commands, checks
 from typing import Optional
-from ..utils import systems_ready
 
 class LevelCommands:
     # Level commands
     @commands.group(name="level", aliases=["lvl", "xp"], invoke_without_command=True)
-    @systems_ready
     async def level_group(self, ctx, member: Optional[discord.Member] = None):
         """Level and XP commands"""
         # If no subcommand is invoked, behave like the check command
@@ -14,7 +12,6 @@ class LevelCommands:
             await self._level_check_logic(ctx, member)
     
     @level_group.command(name="check", aliases=["me"])
-    @systems_ready
     async def level_check(self, ctx, member: discord.Member = None):
         """Check your or another user's level and XP"""
         await self._level_check_logic(ctx, member)
@@ -95,7 +92,6 @@ class LevelCommands:
             await ctx.send(f"❌ Error retrieving level data: {e}")
     
     @level_group.command(name="leaderboard", aliases=["lb", "top"])
-    @systems_ready
     async def level_leaderboard(self, ctx, limit: int = 10):
         """Show the XP leaderboard for this server"""
         if not await self.config.xp_enabled():

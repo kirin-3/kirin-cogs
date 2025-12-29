@@ -8,20 +8,41 @@ class XPRepository:
 
     # XP methods
     async def get_user_xp(self, user_id: int, guild_id: int) -> int:
-        """Get user's XP in a guild"""
+        """Get user's XP in a guild.
+        
+        Args:
+            user_id: Discord user ID
+            guild_id: Discord guild ID
+            
+        Returns:
+            int: The user's XP amount, or 0 if not found.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("SELECT Xp FROM UserXpStats WHERE UserId = ? AND GuildId = ?", (user_id, guild_id))
             row = await cursor.fetchone()
             return row[0] if row else 0
             
-    async def get_all_user_xp(self, user_id: int) -> List[Tuple[int, int]]:
-        """Get user's XP across all guilds (GuildId, XP)"""
+    async def get_all_user_xp(self, user_id: int) -> list[tuple[int, int]]:
+        """Get user's XP across all guilds.
+        
+        Args:
+            user_id: Discord user ID
+            
+        Returns:
+            list[tuple[int, int]]: A list of (GuildId, XP) tuples.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("SELECT GuildId, Xp FROM UserXpStats WHERE UserId = ?", (user_id,))
             return await cursor.fetchall()
     
-    async def add_xp(self, user_id: int, guild_id: int, amount: int):
-        """Add XP to user in a guild"""
+    async def add_xp(self, user_id: int, guild_id: int, amount: int) -> None:
+        """Add XP to user in a guild.
+        
+        Args:
+            user_id: Discord user ID
+            guild_id: Discord guild ID
+            amount: Amount of XP to add
+        """
         async with self.db._get_connection() as db:
             await db.execute("""
                 INSERT INTO UserXpStats (UserId, GuildId, Xp) VALUES (?, ?, ?)

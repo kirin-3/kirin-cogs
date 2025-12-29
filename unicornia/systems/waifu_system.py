@@ -3,7 +3,7 @@ Waifu System for Unicornia - Logic for waifu gifts and management
 """
 
 import discord
-from typing import List, Dict, Any, Tuple, Optional
+from typing import Optional, Any
 from redbot.core import commands
 from ..database import DatabaseManager
 
@@ -43,11 +43,11 @@ class WaifuSystem:
         # Map for easier lookup
         self.gifts_map = {g["name"].lower(): g for g in self.gifts}
 
-    def get_gifts(self) -> List[Dict[str, Any]]:
+    def get_gifts(self) -> list[dict[str, Any]]:
         """Get list of available gifts"""
         return self.gifts
 
-    async def gift_waifu(self, giver: discord.Member, target: discord.Member, gift_name: str) -> Tuple[bool, str]:
+    async def gift_waifu(self, giver: discord.Member, target: discord.Member, gift_name: str) -> tuple[bool, str]:
         """Process gifting a waifu"""
         gift = self.gifts_map.get(gift_name.lower())
         if not gift:
@@ -85,7 +85,7 @@ class WaifuSystem:
         
         return True, f"Gifted {gift['emoji']} **{gift['name']}** to **{target.display_name}**. Their price {effect_desc} to {new_price}."
 
-    async def transfer_waifu(self, user: discord.Member, waifu_id: int, new_owner: discord.Member) -> Tuple[bool, str]:
+    async def transfer_waifu(self, user: discord.Member, waifu_id: int, new_owner: discord.Member) -> tuple[bool, str]:
         """Transfer waifu ownership"""
         # Check if user owns the waifu
         waifu = await self.db.waifu.get_waifu_info(waifu_id)
@@ -116,7 +116,7 @@ class WaifuSystem:
         
         return True, f"Successfully transferred waifu to {new_owner.display_name}. Fee paid: {fee}. New price: {new_price}."
 
-    async def reset_waifu(self, waifu_id: int) -> Tuple[bool, str]:
+    async def reset_waifu(self, waifu_id: int) -> tuple[bool, str]:
         """Admin reset waifu"""
         await self.db.waifu.admin_reset_waifu(waifu_id)
         return True, "Waifu has been reset (unclaimed and price set to 50)."

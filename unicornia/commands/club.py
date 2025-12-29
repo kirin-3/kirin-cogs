@@ -1,7 +1,86 @@
 import discord
 from redbot.core import commands
+from discord import ui
 from typing import Optional
-from ..utils import systems_ready
+from ..utils import validate_club_name, validate_url, validate_text_input
+import asyncio
+
+class ClubManageModal(ui.Modal, title="Manage Club"):
+    name = ui.TextInput(label="Club Name", style=discord.TextStyle.short, max_length=20, required=True)
+    description = ui.TextInput(label="Description", style=discord.TextStyle.paragraph, max_length=150, required=False)
+    
+    # We can add a Select here if we had options like "Banner Color" or "Privacy"
+    # For now, let's keep it simple with text inputs which covers rename/desc
+    
+    def __init__(self, cog, ctx, current_name, current_desc):
+        super().__init__()
+        self.cog = cog
+        self.ctx = ctx
+        self.name.default = current_name
+        self.description.default = current_desc
+
+    async def on_submit(self, interaction: discord.Interaction):
+        new_name = self.name.value
+        new_desc = self.description.value
+        
+        # Validate name
+        if not validate_club_name(new_name):
+            await interaction.response.send_message("❌ Invalid club name.", ephemeral=True)
+            return
+
+        # Pass True for admin_override because Modal is only accessible if checks passed?
+        # Actually, ClubInfoView handles the button visibility logic:
+        # is_owner = ctx.author.id == club_data['owner_id']
+        # is_admin = ctx.author.guild_permissions.manage_guild
+        # So if they see the button, they are authorized.
+        # We can safely pass True for admin_override here.
+        
+        # Update Name
+        if new_name != self.name.default:
+            success, msg = await self.cog.club_system.rename_club(self.ctx.author, new_name, True)
+            if not success:
+                await interaction.response.send_message(f"❌ Failed to rename: {msg}", ephemeral=True)
+                return
+        
+        # Update Description
+        if new_desc != self.description.default:
+            success, msg = await self.cog.club_system.set_club_description(self.ctx.author, new_desc, True)
+            if not success:
+                await interaction.response.send_message(f"❌ Failed to update description: {msg}", ephemeral=True)
+                return
+                
+        await interaction.response.send_message("✅ Club updated successfully!", ephemeral=True)
+
+class ClubInfoView(ui.View):
+    def __init__(self, cog, ctx, club_data):
+        super().__init__(timeout=60)
+        self.cog = cog
+        self.ctx = ctx
+        self.club_data = club_data
+        
+        # Only show Manage button if owner or admin
+        is_owner = ctx.author.id == club_data['owner_id']
+        is_admin = ctx.author.guild_permissions.manage_guild
+        
+        if not (is_owner or is_admin):
+            # Remove the manage button if not authorized
+            # Note: We need to find the item associated with the callback
+            # self.manage_button is the method.
+            # In dpy 2.0+, we can just remove the item from self.children if we didn't save a ref?
+            # Or simpler:
+            for item in self.children:
+                if isinstance(item, ui.Button) and item.custom_id == "manage_club":
+                    self.remove_item(item)
+                    break
+
+    @ui.button(label="Manage Club", style=discord.ButtonStyle.primary, custom_id="manage_club")
+    async def manage_button(self, interaction: discord.Interaction, button: ui.Button):
+        if interaction.user.id != self.ctx.author.id:
+            await interaction.response.send_message("This is not your session.", ephemeral=True)
+            return
+            
+        modal = ClubManageModal(self.cog, self.ctx, self.club_data['name'], self.club_data['description'])
+        await interaction.response.send_modal(modal)
 
 class ClubCommands:
     @commands.group(name="club")
@@ -11,11 +90,10 @@ class ClubCommands:
 
     @club_group.command(name="create")
     @commands.cooldown(1, 86400, commands.BucketType.user)
-    @systems_ready
     async def club_create(self, ctx, club_name: str):
         """Create a new club"""
             
-        if not self._validate_club_name(club_name):
+        if not validate_club_name(club_name):
             await ctx.send("❌ Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols.")
             return
 
@@ -26,7 +104,6 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="info", aliases=["profile"])
-    @systems_ready
     async def club_info(self, ctx, club_name: Optional[str] = None):
         """Get club information"""
             
@@ -67,10 +144,10 @@ class ClubCommands:
             
         embed.add_field(name=f"Members ({len(members)})", value="\n".join(member_list) if member_list else "None", inline=False)
         
-        await ctx.send(embed=embed)
+        view = ClubInfoView(self, ctx, data)
+        await ctx.send(embed=embed, view=view)
 
     @club_group.command(name="leave")
-    @systems_ready
     async def club_leave(self, ctx):
         """Leave your current club"""
             
@@ -81,7 +158,6 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="apply")
-    @systems_ready
     async def club_apply(self, ctx, club_name: str):
         """Apply to join a club"""
             
@@ -92,7 +168,6 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="accept")
-    @systems_ready
     async def club_accept(self, ctx, user: discord.Member):
         """Accept a user's application (Owner only)"""
             
@@ -103,7 +178,6 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="reject", aliases=["deny"])
-    @systems_ready
     async def club_reject(self, ctx, user: discord.Member):
         """Reject a user's application (Owner only)"""
             
@@ -114,7 +188,6 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="kick")
-    @systems_ready
     async def club_kick(self, ctx, user: discord.Member):
         """Kick a user from the club (Owner/Server Mod)"""
             
@@ -125,7 +198,6 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="ban")
-    @systems_ready
     async def club_ban(self, ctx, user: discord.Member):
         """Ban a user from the club (Owner/Server Mod)"""
             
@@ -136,7 +208,6 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="unban")
-    @systems_ready
     async def club_unban(self, ctx, user: discord.Member):
         """Unban a user from the club (Owner/Server Mod)"""
             
@@ -147,7 +218,6 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="transfer")
-    @systems_ready
     async def club_transfer(self, ctx, new_owner: discord.Member):
         """Transfer club ownership (Owner only)"""
             
@@ -158,7 +228,6 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="applicants", aliases=["apps"])
-    @systems_ready
     async def club_applicants(self, ctx):
         """View pending club applications (Owner only)"""
             
@@ -187,7 +256,6 @@ class ClubCommands:
         await ctx.send(embed=embed)
 
     @club_group.command(name="bans")
-    @systems_ready
     async def club_bans(self, ctx):
         """View banned members (Owner only)"""
             
@@ -218,16 +286,16 @@ class ClubCommands:
     @club_group.command(name="rename")
     @commands.cooldown(1, 86400, commands.BucketType.user)
     @commands.admin_or_permissions(manage_guild=True)
-    @systems_ready
     async def club_rename(self, ctx, *, new_name: str):
         """Rename the club (Owner/Server Mod)"""
             
-        if not self._validate_club_name(new_name):
+        if not validate_club_name(new_name):
             await ctx.send("❌ Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols.")
             return
 
-        is_admin = ctx.author.guild_permissions.administrator
-        success, message = await self.club_system.rename_club(ctx.author, new_name, is_admin)
+        # Passed checks (Owner via logic or Mod via permission decorator)
+        # We pass True to allow override if they have permissions
+        success, message = await self.club_system.rename_club(ctx.author, new_name, True)
         if success:
             await ctx.send(f"✅ {message}")
         else:
@@ -235,16 +303,14 @@ class ClubCommands:
 
     @club_group.command(name="icon")
     @commands.admin_or_permissions(manage_guild=True)
-    @systems_ready
     async def club_icon(self, ctx, url: str):
         """Set club icon URL (Owner/Server Mod)"""
             
-        if not self._validate_url(url):
+        if not validate_url(url):
             await ctx.send("❌ Invalid URL. Please provide a valid HTTP/HTTPS image URL.")
             return
 
-        is_admin = ctx.author.guild_permissions.administrator
-        success, message = await self.club_system.set_club_icon(ctx.author, url, is_admin)
+        success, message = await self.club_system.set_club_icon(ctx.author, url, True)
         if success:
             await ctx.send(f"✅ {message}")
         else:
@@ -252,16 +318,14 @@ class ClubCommands:
 
     @club_group.command(name="banner")
     @commands.admin_or_permissions(manage_guild=True)
-    @systems_ready
     async def club_banner(self, ctx, url: str):
         """Set club banner URL (Owner/Server Mod)"""
             
-        if not self._validate_url(url):
+        if not validate_url(url):
             await ctx.send("❌ Invalid URL. Please provide a valid HTTP/HTTPS image URL.")
             return
 
-        is_admin = ctx.author.guild_permissions.administrator
-        success, message = await self.club_system.set_club_banner(ctx.author, url, is_admin)
+        success, message = await self.club_system.set_club_banner(ctx.author, url, True)
         if success:
             await ctx.send(f"✅ {message}")
         else:
@@ -269,12 +333,14 @@ class ClubCommands:
 
     @club_group.command(name="desc")
     @commands.admin_or_permissions(manage_guild=True)
-    @systems_ready
     async def club_desc(self, ctx, *, description: str):
         """Set club description (Owner/Server Mod)"""
             
-        is_admin = ctx.author.guild_permissions.administrator
-        success, message = await self.club_system.set_club_description(ctx.author, description, is_admin)
+        if not validate_text_input(description, max_length=150):
+            await ctx.send("❌ Description is too long (max 150 chars).")
+            return
+
+        success, message = await self.club_system.set_club_description(ctx.author, description, True)
         if success:
             await ctx.send(f"✅ {message}")
         else:
@@ -283,7 +349,6 @@ class ClubCommands:
     @club_group.command(name="disband")
     @commands.cooldown(1, 86400, commands.BucketType.user)
     @commands.admin_or_permissions(manage_guild=True)
-    @systems_ready
     async def club_disband(self, ctx):
         """Disband the club (Owner/Server Mod)"""
             
@@ -304,7 +369,6 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="leaderboard", aliases=["lb"])
-    @systems_ready
     async def club_leaderboard(self, ctx, page: int = 1):
         """Show club leaderboard"""
             

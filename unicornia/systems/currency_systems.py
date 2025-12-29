@@ -23,18 +23,39 @@ class CurrencyGeneration:
         self.bot = bot
         self.generation_cooldowns = {}  # {user_id: timestamp}
         self.active_plants = {}  # {guild_id: {channel_id: plant_data}}
-    
+        
+        # Config cache
+        self.gen_enabled = False
+        self.gen_channels = set()
+        self.gen_cooldown = 10
+        self.gen_chance = 0.005
+        self.gen_min = 60
+        self.gen_max = 140
+        self.currency_symbol = ""
+        
+        # Initialize cache
+        asyncio.create_task(self.refresh_config_cache())
+
+    async def refresh_config_cache(self):
+        """Refresh configuration cache"""
+        self.gen_enabled = await self.config.currency_generation_enabled()
+        self.gen_channels = set(await self.config.generation_channels())
+        self.gen_cooldown = await self.config.generation_cooldown()
+        self.gen_chance = await self.config.generation_chance()
+        self.gen_min = await self.config.generation_min_amount()
+        self.gen_max = await self.config.generation_max_amount()
+        self.currency_symbol = await self.config.currency_symbol()
+
     async def process_message(self, message: discord.Message):
         """Process a message for potential currency generation"""
         if message.author.bot or not message.guild:
             return
         
-        if not await self.config.currency_generation_enabled():
+        # Fast checks using cache
+        if not self.gen_enabled:
             return
         
-        # Check if channel is in the allowed list
-        generation_channels = await self.config.generation_channels()
-        if message.channel.id not in generation_channels:
+        if message.channel.id not in self.gen_channels:
             return
 
         # Check cooldown
@@ -42,18 +63,15 @@ class CurrencyGeneration:
         current_time = time.time()
         
         if user_id in self.generation_cooldowns:
-            if current_time - self.generation_cooldowns[user_id] < await self.config.generation_cooldown():
+            if current_time - self.generation_cooldowns[user_id] < self.gen_cooldown:
                 return
         
         # Check generation chance
-        chance = await self.config.generation_chance()
-        if random.random() > chance:
+        if random.random() > self.gen_chance:
             return
         
         # Generate currency
-        min_amount = await self.config.generation_min_amount()
-        max_amount = await self.config.generation_max_amount()
-        amount = random.randint(min_amount, max_amount)
+        amount = random.randint(self.gen_min, self.gen_max)
         
         # Store the plant for pickup (no password)
         await self._create_plant(message.guild.id, message.channel.id, amount)
@@ -67,10 +85,8 @@ class CurrencyGeneration:
             images = [f for f in os.listdir(images_dir) if f.lower().endswith('.png')]
             if images:
                 image_file = random.choice(images)
-                
-        currency_symbol = await self.config.currency_symbol()
         
-        msg_content = f"A wild {amount}{currency_symbol} has appeared! Pick them up by typing `&pick`"
+        msg_content = f"A wild {amount}{self.currency_symbol} has appeared! Pick them up by typing `&pick`"
         
         if image_file:
             image_path = os.path.join(images_dir, image_file)

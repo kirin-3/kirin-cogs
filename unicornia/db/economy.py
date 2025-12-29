@@ -9,14 +9,33 @@ class EconomyRepository:
 
     # Currency methods
     async def get_user_currency(self, user_id: int) -> int:
-        """Get user's wallet currency"""
+        """Get user's wallet currency.
+        
+        Args:
+            user_id: Discord user ID
+            
+        Returns:
+            int: Current wallet balance (or 0 if new user).
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("SELECT CurrencyAmount FROM DiscordUser WHERE UserId = ?", (user_id,))
             row = await cursor.fetchone()
             return row[0] if row else 0
     
-    async def add_currency(self, user_id: int, amount: int, transaction_type: str, extra: str = "", other_id: int = None, note: str = ""):
-        """Add currency to user's wallet"""
+    async def add_currency(self, user_id: int, amount: int, transaction_type: str, extra: str = "", other_id: int = None, note: str = "") -> bool:
+        """Add currency to user's wallet.
+        
+        Args:
+            user_id: Discord user ID
+            amount: Amount to add
+            transaction_type: Type of transaction (e.g. "award", "shop")
+            extra: Additional metadata
+            other_id: Related user ID (if transfer)
+            note: Human readable note
+            
+        Returns:
+            bool: Always True (success)
+        """
         async with self.db._get_connection() as db:
             # Update user currency
             await db.execute("""
@@ -34,7 +53,19 @@ class EconomyRepository:
             return True
     
     async def remove_currency(self, user_id: int, amount: int, transaction_type: str, extra: str = "", other_id: int = None, note: str = "") -> bool:
-        """Remove currency from user's wallet"""
+        """Remove currency from user's wallet.
+        
+        Args:
+            user_id: Discord user ID
+            amount: Amount to remove
+            transaction_type: Type of transaction
+            extra: Metadata
+            other_id: Related user ID
+            note: Human readable note
+            
+        Returns:
+            bool: True if successful, False if insufficient funds.
+        """
         async with self.db._get_connection() as db:
             
             # Atomic update with WHERE clause to prevent race conditions
@@ -58,6 +89,50 @@ class EconomyRepository:
                 INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
                 VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
             """, (user_id, -amount, transaction_type, extra, other_id, note))
+            
+            await db.commit()
+            return True
+
+    async def transfer_currency(self, from_user: int, to_user: int, amount: int, note: str = "") -> bool:
+        """Atomically transfer currency between two users.
+        
+        Args:
+            from_user: Sender Discord ID
+            to_user: Receiver Discord ID
+            amount: Amount to transfer
+            note: Transfer note
+            
+        Returns:
+            bool: True if successful, False if insufficient funds.
+        """
+        async with self.db._get_connection() as db:
+            # Atomic update with WHERE clause to prevent race conditions
+            cursor = await db.execute("""
+                UPDATE DiscordUser
+                SET CurrencyAmount = CurrencyAmount - ?
+                WHERE UserId = ? AND CurrencyAmount >= ?
+            """, (amount, from_user, amount))
+            
+            if cursor.rowcount == 0:
+                # Update failed - insufficient funds or user doesn't exist
+                return False
+            
+            # Add to receiver
+            await db.execute("""
+                INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
+                ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount + ?
+            """, (to_user, amount, amount))
+            
+            # Log transactions for both
+            await db.execute("""
+                INSERT INTO CurrencyTransactions (UserId, Amount, Type, OtherId, Reason, DateAdded)
+                VALUES (?, ?, 'give', ?, ?, datetime('now'))
+            """, (from_user, -amount, to_user, f"Given to user {to_user}: {note}"))
+            
+            await db.execute("""
+                INSERT INTO CurrencyTransactions (UserId, Amount, Type, OtherId, Reason, DateAdded)
+                VALUES (?, ?, 'receive', ?, ?, datetime('now'))
+            """, (to_user, amount, from_user, f"Received from user {from_user}: {note}"))
             
             await db.commit()
             return True

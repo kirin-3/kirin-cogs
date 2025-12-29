@@ -1,7 +1,6 @@
 import discord
 from redbot.core import commands, checks
 from typing import Optional
-from ..utils import systems_ready
 
 class BackgroundShopView(discord.ui.View):
     def __init__(self, ctx, backgrounds, user_owned, timeout=60):
@@ -129,7 +128,6 @@ class ShopCommands:
         pass
     
     @shop_group.command(name="list", aliases=["items", "view"])
-    @systems_ready
     async def shop_list(self, ctx):
         """View all available shop items"""
         if not await self.config.shop_enabled():
@@ -178,7 +176,6 @@ class ShopCommands:
             await ctx.send(f"❌ Error retrieving shop items: {e}")
     
     @shop_group.command(name="buy")
-    @systems_ready
     async def shop_buy(self, ctx, index_or_id: int):
         """Buy a shop item by Index (recommended) or ID"""
         if not await self.config.shop_enabled():
@@ -209,7 +206,6 @@ class ShopCommands:
             await ctx.send(f"❌ Error purchasing item: {e}")
     
     @shop_group.command(name="info")
-    @systems_ready
     async def shop_info(self, ctx, index_or_id: int):
         """Get detailed information about a shop item (by Index or ID)"""
         if not await self.config.shop_enabled():
@@ -257,7 +253,6 @@ class ShopCommands:
     # Admin shop commands
     @shop_group.command(name="add")
     @commands.admin_or_permissions(manage_roles=True)
-    @systems_ready
     async def shop_add(self, ctx, item_type: str, price: int, name: str, *, details: str = ""):
         """Add a new shop item (Admin only)
         
@@ -346,7 +341,6 @@ class ShopCommands:
     
     @shop_group.command(name="edit")
     @commands.admin_or_permissions(manage_roles=True)
-    @systems_ready
     async def shop_edit(self, ctx, item_id: int, field: str, *, value: str):
         """Edit a shop item (Admin only)
         
@@ -489,7 +483,6 @@ class ShopCommands:
 
     @shop_group.command(name="remove", aliases=["delete", "del"])
     @commands.admin_or_permissions(manage_roles=True)
-    @systems_ready
     async def shop_remove(self, ctx, item_id: int):
         """Remove a shop item (Admin only)"""
         if not await self.config.shop_enabled():
@@ -519,7 +512,6 @@ class ShopCommands:
         pass
     
     @xp_shop_group.command(name="backgrounds", aliases=["bg", "bgs"])
-    @systems_ready
     async def shop_backgrounds(self, ctx):
         """View available XP backgrounds"""
         
@@ -556,7 +548,6 @@ class ShopCommands:
             await ctx.send("❌ An unexpected error occurred while loading backgrounds.")
     
     @xp_shop_group.command(name="buy")
-    @systems_ready
     async def shop_buy_bg(self, ctx, item_key: str):
         """Buy an XP background
         
@@ -618,7 +609,6 @@ class ShopCommands:
             await ctx.send(f"❌ Error processing purchase: {e}")
     
     @xp_shop_group.command(name="use")
-    @systems_ready
     async def shop_use(self, ctx, item_key: str):
         """Set an XP background as active
         
@@ -647,7 +637,6 @@ class ShopCommands:
             await ctx.send(f"❌ Error setting background: {e}")
     
     @xp_shop_group.command(name="owned", aliases=["inventory", "inv"])
-    @systems_ready
     async def shop_owned(self, ctx):
         """View your owned XP backgrounds"""
         
@@ -675,7 +664,6 @@ class ShopCommands:
     
     @xp_shop_group.command(name="reload")
     @commands.is_owner()
-    @systems_ready
     async def shop_reload_config(self, ctx):
         """Reload XP shop configuration (Owner only)"""
         try:
@@ -686,7 +674,6 @@ class ShopCommands:
     
     @xp_shop_group.command(name="give")
     @commands.is_owner()
-    @systems_ready
     async def shop_give_bg(self, ctx, user: discord.Member, item_key: str):
         """Give an XP background to a user (Owner only)"""
         try:

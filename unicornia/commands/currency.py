@@ -1,7 +1,6 @@
 import discord
 from redbot.core import commands, checks
 from typing import Optional
-from ..utils import systems_ready
 
 class CurrencyCommands:
     # Currency generation commands
@@ -11,7 +10,6 @@ class CurrencyCommands:
         pass
     
     @commands.command(name="pick")
-    @systems_ready
     async def pick_cmd(self, ctx):
         """Pick up generated currency"""
         if not await self.config.economy_enabled():
@@ -32,7 +30,6 @@ class CurrencyCommands:
     # Keep the old command as an alias or redirect if needed, or remove it.
     # For now, let's redirect it to the new one if they provide a password (ignore it)
     @currency_group.command(name="pick")
-    @systems_ready
     async def currency_pick(self, ctx, password: str = None):
         """Pick up currency (alias for [p]pick)"""
         await self.pick_cmd(ctx)

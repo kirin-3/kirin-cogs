@@ -242,6 +242,11 @@ class XPCardGenerator:
         anchor: str = None
     ):
         """Draw text handling missing glyphs by switching to fallback fonts"""
+        # Fast Path: If text is purely ASCII, skip expensive checks and draw directly
+        if text.isascii():
+            draw.text(xy, text, font=primary_font, fill=fill, anchor=anchor)
+            return
+
         x, y = xy
         
         # Current drawing position
@@ -371,13 +376,44 @@ class XPCardGenerator:
             return self.images_cache[url]
         
         # Evict oldest if cache is full
-        if len(self.images_cache) > 100:
+        if len(self.images_cache) > 30:
             self.images_cache.popitem(last=False)
             
-        # SSRF Protection
+        # Check if URL is actually a local file path or filename in xpimages
+        # 1. Check if it's a file in unicornia/data/xpimages
+        local_images_dir = os.path.join(self.cog_dir, "data", "xpimages")
+        
+        # Helper to try loading local file
+        def load_local_file(path):
+            try:
+                if os.path.exists(path) and os.path.isfile(path):
+                    with open(path, "rb") as f:
+                        data = f.read()
+                        self.images_cache[url] = data
+                        self.images_cache.move_to_end(url)
+                        return data
+            except Exception as e:
+                log.error(f"Error reading local file {path}: {e}")
+            return None
+
+        # Check direct filename match in xpimages
+        filename = os.path.basename(url)
+        local_path = os.path.join(local_images_dir, filename)
+        local_data = load_local_file(local_path)
+        if local_data:
+            return local_data
+            
+        # Check if the URL string itself is a path relative to cog_dir
+        relative_path = os.path.join(self.cog_dir, url)
+        local_data = load_local_file(relative_path)
+        if local_data:
+            return local_data
+
+        # If not local, proceed with network download
         try:
             parsed = urlparse(url)
             if not parsed.hostname:
+                # If no hostname and we didn't find it locally, fail
                 return None
             
             # Resolve hostname (run in executor to avoid blocking)
@@ -401,6 +437,10 @@ class XPCardGenerator:
                         image_data = await response.read()
                         self.images_cache[url] = image_data
                         self.images_cache.move_to_end(url)
+                        
+                        # Optional: Save to local storage for future use?
+                        # For now, we only read if it exists.
+                        
                         return image_data
         except Exception as e:
             log.error(f"Error downloading image from {url}: {e}")

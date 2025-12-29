@@ -23,10 +23,11 @@ from .systems import (
     CurrencyGeneration, CurrencyDecay, ShopSystem,
     ClubSystem, WaifuSystem
 )
-from .utils import systems_ready
+from .utils import validate_url, validate_club_name
+from .errors import UnicorniaError, SystemNotReadyError
 from .commands import (
     ClubCommands, EconomyCommands, GamblingCommands,
-    LevelCommands, WaifuCommands, ShopCommands, 
+    LevelCommands, WaifuCommands, ShopCommands,
     AdminCommands, CurrencyCommands
 )
 
@@ -199,6 +200,12 @@ class Unicornia(
             log.error(f"Error deleting user data for {user_id}: {e}")
             raise
     
+    async def cog_check(self, ctx: commands.Context) -> bool:
+        """Global check for all commands in this cog"""
+        if not self._check_systems_ready():
+            raise SystemNotReadyError()
+        return True
+
     def _check_systems_ready(self) -> bool:
         """Check if all systems are properly initialized"""
         return all([
@@ -224,6 +231,27 @@ class Unicornia(
                 await asyncio.sleep(300)  # Wait 5 minutes before retrying
     
     @commands.Cog.listener()
+    async def on_command_error(self, ctx: commands.Context, error: Exception):
+        """Global error handler for Unicornia commands"""
+        # Only handle errors for commands in this cog
+        if ctx.command and ctx.command.cog_name == self.qualified_name:
+            
+            # Unwrap CommandInvokeError
+            if isinstance(error, commands.CommandInvokeError):
+                error = error.original
+            
+            # Handle Custom Errors
+            if isinstance(error, UnicorniaError):
+                await ctx.send(str(error))
+                # Mark as handled to prevent Red's default handler from firing
+                ctx.command_failed = False
+            elif isinstance(error, commands.UserFeedbackCheckFailure):
+                # Let Red handle standard feedback checks (includes our custom ones if we didn't catch them above)
+                pass
+            elif isinstance(error, commands.CommandInvokeError): # Should be unwrapped already, but just in case
+                log.error(f"Error in command '{ctx.command.qualified_name}': {error}", exc_info=error)
+    
+    @commands.Cog.listener()
     async def on_message(self, message):
         """Handle XP gain and currency generation from messages"""
         if message.author.bot or not message.guild:
@@ -239,14 +267,3 @@ class Unicornia(
         # Process currency generation
         await self.currency_generation.process_message(message)
     
-    def _validate_url(self, url: str) -> bool:
-        """Validate if a string is a valid HTTP/HTTPS URL"""
-        return url.startswith(("http://", "https://")) and len(url) < 2000
-
-    def _validate_club_name(self, name: str) -> bool:
-        """Validate club name (alphanumeric and some symbols, max 20 chars)"""
-        if len(name) > 20:
-            return False
-        # Allow alphanumeric, spaces, and common safe symbols
-        allowed_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_!@#$*")
-        return all(c in allowed_chars for c in name)

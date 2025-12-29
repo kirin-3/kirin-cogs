@@ -6,7 +6,7 @@ import aiosqlite
 import math
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, Any
 from dataclasses import dataclass
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -32,16 +32,20 @@ class CoreDB:
         self.nadeko_db_path = nadeko_db_path
         self._conn = None
 
-    async def connect(self):
-        """Establish a persistent database connection"""
+    async def connect(self) -> None:
+        """Establish a persistent database connection.
+        
+        Raises:
+            sqlite3.Error: If connection fails.
+        """
         if self._conn is None:
             self._conn = await aiosqlite.connect(self.db_path)
             # Set up WAL mode immediately on connection
             await self._setup_wal_mode(self._conn)
             log.info(f"Connected to database at {self.db_path}")
 
-    async def close(self):
-        """Close the persistent database connection"""
+    async def close(self) -> None:
+        """Close the persistent database connection."""
         if self._conn:
             await self._conn.close()
             self._conn = None
@@ -54,18 +58,26 @@ class CoreDB:
             await self.connect()
         yield self._conn
     
-    async def _setup_wal_mode(self, db):
-        """Set up WAL mode and optimizations for a database connection"""
+    async def _setup_wal_mode(self, db: aiosqlite.Connection) -> None:
+        """Set up WAL mode and optimizations for a database connection.
+        
+        Args:
+            db: The database connection to configure.
+        """
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA synchronous=NORMAL")
-        await db.execute("PRAGMA cache_size=1000")
+        await db.execute("PRAGMA cache_size=-4000") # Negative value = pages in KiB (4000KB ~ 4MB) -> actually let's use pages. Positive = pages. 4000 pages * 4KB = 16MB.
         await db.execute("PRAGMA temp_store=MEMORY")
         await db.execute("PRAGMA mmap_size=33554432")  # 32MB memory mapping (Safe for 1GB VPS)
         await db.execute("PRAGMA page_size=4096")  # 4KB page size
         await db.execute("PRAGMA auto_vacuum=INCREMENTAL")  # Incremental vacuum
     
     async def check_wal_integrity(self) -> bool:
-        """Check WAL mode integrity and perform maintenance if needed"""
+        """Check WAL mode integrity and perform maintenance if needed.
+        
+        Returns:
+            bool: True if integrity check passed, False otherwise.
+        """
         try:
             async with self._get_connection() as db:
                 # Set up WAL mode and optimizations
@@ -95,8 +107,8 @@ class CoreDB:
             log.error(f"WAL integrity check failed: {e}")
             return False
     
-    async def initialize(self):
-        """Initialize the database with all required tables"""
+    async def initialize(self) -> None:
+        """Initialize the database with all required tables."""
         async with self._get_connection() as db:
             # Create tables matching Nadeko's structure
             await db.execute("""
@@ -371,6 +383,11 @@ class CoreDB:
             await db.execute("CREATE INDEX IF NOT EXISTS idx_club_xp ON Clubs(Xp DESC)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_user_club ON DiscordUser(ClubId)")
             
+            # Optimized indices for Shop System and XP Caching
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_shop_entry_items ON ShopEntryItem(ShopEntryId)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_xp_exclusions ON XpExcludedItem(GuildId, ItemId, ItemType)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_shop_entry_guild ON ShopEntry(GuildId, `Index`)")
+
             await db.commit()
             
             # Run schema updates for existing databases

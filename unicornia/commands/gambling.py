@@ -1,7 +1,6 @@
 import discord
 from redbot.core import commands, checks
 from typing import Optional
-from ..utils import systems_ready
 
 class GamblingCommands:
     # Gambling commands
@@ -11,7 +10,6 @@ class GamblingCommands:
         pass
     
     @gambling_group.command(name="betroll", aliases=["roll"])
-    @systems_ready
     async def gambling_betroll(self, ctx, amount: int):
         """Bet on a dice roll (1-100)"""
         if not await self.config.gambling_enabled():
@@ -47,7 +45,6 @@ class GamblingCommands:
     
     @gambling_group.command(name="rps", aliases=["rockpaperscissors"])
     @commands.cooldown(1, 5, commands.BucketType.user)  # 5 second cooldown
-    @systems_ready
     async def gambling_rps(self, ctx, choice: str, amount: int = 0):
         """Play rock paper scissors"""
         if not await self.config.gambling_enabled():
@@ -91,7 +88,6 @@ class GamblingCommands:
     
     @gambling_group.command(name="slots")
     @commands.cooldown(1, 3, commands.BucketType.user)  # 3 second cooldown
-    @systems_ready
     async def gambling_slots(self, ctx, amount: int):
         """Play slots"""
         if not await self.config.gambling_enabled():
@@ -129,7 +125,6 @@ class GamblingCommands:
 
     @gambling_group.command(name="blackjack", aliases=["bj", "21"])
     @commands.cooldown(1, 5, commands.BucketType.user) # 5 second cooldown
-    @systems_ready
     async def gambling_blackjack(self, ctx, amount: int):
         """Play blackjack"""
         if not await self.config.gambling_enabled():
@@ -153,7 +148,6 @@ class GamblingCommands:
 
     @gambling_group.command(name="betflip", aliases=["bf"])
     @commands.cooldown(1, 2, commands.BucketType.user) # 2 second cooldown
-    @systems_ready
     async def gambling_betflip(self, ctx, amount: int, guess: str):
         """Bet on a coin flip (Heads or Tails)
         
@@ -210,7 +204,6 @@ class GamblingCommands:
             await ctx.send(f"❌ Error in betflip: {e}")
     
     @gambling_group.command(name="luckyladder", aliases=["ladder"])
-    @systems_ready
     async def gambling_lucky_ladder(self, ctx, amount: int):
         """Play lucky ladder"""
         if not await self.config.gambling_enabled():

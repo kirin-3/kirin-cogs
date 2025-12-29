@@ -1,7 +1,7 @@
 import discord
 from redbot.core import commands, checks
 from typing import Optional
-from ..utils import systems_ready
+from ..utils import validate_text_input
 
 class EconomyCommands:
     # Economy commands
@@ -11,13 +11,11 @@ class EconomyCommands:
         pass
     
     @economy_group.command(name="balance", aliases=["bal", "wallet"])
-    @systems_ready
     async def economy_balance(self, ctx, member: discord.Member = None):
         """Check your or another user's Slut points balance"""
         await self._balance_logic(ctx, member)
 
     @commands.command(name="balance", aliases=["bal", "$", "€", "£"])
-    @systems_ready
     async def global_balance(self, ctx, member: discord.Member = None):
         """Check your or another user's balance"""
         await self._balance_logic(ctx, member)
@@ -48,7 +46,6 @@ class EconomyCommands:
             await ctx.send(f"❌ Error retrieving balance: {e}")
     
     @economy_group.command(name="give")
-    @systems_ready
     async def economy_give(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
         """Give Slut points to another user"""
         if not await self.config.economy_enabled():
@@ -66,6 +63,10 @@ class EconomyCommands:
         if member == ctx.author:
             await ctx.send("❌ You can't give Slut points to yourself.")
             return
+            
+        if not validate_text_input(note, max_length=200):
+            await ctx.send("❌ Note is too long (max 200 chars).")
+            return
         
         try:
             success = await self.economy_system.give_currency(ctx.author.id, member.id, amount, note)
@@ -81,14 +82,12 @@ class EconomyCommands:
     
     @economy_group.command(name="timely", aliases=["daily"])
     @commands.cooldown(1, 86400, commands.BucketType.user)  # 24 hours cooldown
-    @systems_ready
     async def economy_timely(self, ctx):
         """Claim your daily Slut points reward"""
         await self._timely_logic(ctx)
 
     @commands.command(name="timely", aliases=["daily"])
     @commands.cooldown(1, 86400, commands.BucketType.user)  # 24 hours cooldown
-    @systems_ready
     async def global_timely(self, ctx):
         """Claim your daily reward"""
         await self._timely_logic(ctx)
@@ -138,7 +137,6 @@ class EconomyCommands:
             await ctx.send(f"❌ Error claiming daily reward: {e}")
 
     @economy_group.command(name="history", aliases=["transactions", "tx"])
-    @systems_ready
     async def economy_history(self, ctx, member: discord.Member = None):
         """View transaction history"""
         target = member or ctx.author
@@ -170,7 +168,6 @@ class EconomyCommands:
             await ctx.send(f"❌ Error retrieving transaction history: {e}")
     
     @economy_group.command(name="stats", aliases=["gambling"])
-    @systems_ready
     async def gambling_stats(self, ctx, member: discord.Member = None):
         """View gambling statistics"""
         target = member or ctx.author
@@ -214,7 +211,6 @@ class EconomyCommands:
             await ctx.send(f"❌ Error retrieving gambling statistics: {e}")
     
     @economy_group.command(name="rakeback", aliases=["rb"])
-    @systems_ready
     async def rakeback_command(self, ctx):
         """Check and claim rakeback balance"""
         try:
@@ -243,7 +239,6 @@ class EconomyCommands:
             await ctx.send(f"❌ Error with rakeback: {e}")
     
     @economy_group.command(name="bank")
-    @systems_ready
     async def bank_info(self, ctx, member: discord.Member = None):
         """View bank information"""
         target = member or ctx.author
@@ -265,7 +260,6 @@ class EconomyCommands:
 
     @economy_group.command(name="award")
     @checks.is_owner()
-    @systems_ready
     async def economy_award(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
         """Award Slut points to a user (owner only)"""
         if not await self.config.economy_enabled():
@@ -286,7 +280,6 @@ class EconomyCommands:
     
     @economy_group.command(name="take")
     @checks.is_owner()
-    @systems_ready
     async def economy_take(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
         """Take Slut points from a user (owner only)"""
         if not await self.config.economy_enabled():
@@ -310,7 +303,6 @@ class EconomyCommands:
             await ctx.send(f"❌ Error taking Slut points: {e}")
     
     @economy_group.command(name="leaderboard", aliases=["lb", "top"])
-    @systems_ready
     async def economy_leaderboard(self, ctx, limit: int = 10):
         """Show the Slut points leaderboard"""
         if not await self.config.economy_enabled():
@@ -348,7 +340,6 @@ class EconomyCommands:
         pass
     
     @bank_group.command(name="deposit", aliases=["dep"])
-    @systems_ready
     async def bank_deposit(self, ctx, amount: int):
         """Deposit Slut points into your bank account"""
         if not await self.config.economy_enabled():
@@ -372,7 +363,6 @@ class EconomyCommands:
             await ctx.send(f"❌ Error depositing Slut points: {e}")
     
     @bank_group.command(name="withdraw", aliases=["with"])
-    @systems_ready
     async def bank_withdraw(self, ctx, amount: int):
         """Withdraw Slut points from your bank account"""
         if not await self.config.economy_enabled():
@@ -396,7 +386,6 @@ class EconomyCommands:
             await ctx.send(f"❌ Error withdrawing Slut points: {e}")
     
     @bank_group.command(name="balance", aliases=["bal"])
-    @systems_ready
     async def bank_balance(self, ctx):
         """Check your bank balance"""
         if not await self.config.economy_enabled():

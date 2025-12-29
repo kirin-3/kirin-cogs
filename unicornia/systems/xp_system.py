@@ -4,11 +4,12 @@ XP and Leveling system for Unicornia
 
 import time
 import discord
-from typing import Optional, Dict, Any
+from typing import Optional, Any
+from collections import OrderedDict
 from redbot.core import commands
 from redbot.core.utils.chat_formatting import humanize_number
 from ..database import DatabaseManager, LevelStats
-from ..xp_card_generator import XPCardGenerator
+from .card_generator import XPCardGenerator
 import os
 import asyncio
 
@@ -22,17 +23,40 @@ class XPSystem:
         self.bot = bot
         self.xp_cooldowns = {}  # {user_id: timestamp}
         self.xp_buffer = {} # {(user_id, guild_id): amount}
+        # Cache structure: {guild_id: ({excluded_channel_ids}, {excluded_role_ids})}
+        self.exclusion_cache = {}
+        
+        # Config Cache
+        self._config_cache = {
+            "xp_enabled": True,
+            "xp_cooldown": 60,
+            "xp_per_message": 1
+        }
+        self._guild_config_cache = {} # {guild_id: {'excluded_channels': set(), 'excluded_roles': set()}}
+        
+        # User XP Cache (LRU) - Stores { (user_id, guild_id): {'xp': int, 'level': int, 'req_xp': int} }
+        self.user_xp_cache = OrderedDict()
+        self.user_xp_cache_size = 5000
+        
         self._voice_xp_task = None
         self._message_xp_task = None
         
         # Initialize XP card generator
-        # Note: We need to point to the correct directory now that we moved the file
-        # Assuming xp_card_generator is still in unicornia/
+        # Pass the cog root directory (parent of 'systems')
         cog_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.card_generator = XPCardGenerator(cog_dir)
         
         # Start loops
         self.start_loops()
+        
+        # Initialize Config Cache
+        asyncio.create_task(self._init_config_cache())
+
+    async def _init_config_cache(self):
+        """Initialize configuration cache"""
+        self._config_cache["xp_enabled"] = await self.config.xp_enabled()
+        self._config_cache["xp_cooldown"] = await self.config.xp_cooldown()
+        self._config_cache["xp_per_message"] = await self.config.xp_per_message()
 
     def start_loops(self):
         """Start XP loops"""
@@ -63,20 +87,27 @@ class XPSystem:
                 # Wait for 1 minute
                 await asyncio.sleep(60)
                 
-                # Check global enable
-                if not await self.config.xp_enabled():
+                # Check global enable (Cached)
+                if not self._config_cache.get("xp_enabled", True):
                     continue
                 
                 xp_amount = 1 # Trickle amount per minute
                 pending_updates = []
                 
                 for guild in self.bot.guilds:
-                    # Get exclusions (Config)
+                    # Get exclusions (Config) - Optimized with cache check
+                    # We check config occasionally or rely on commands updating the cache (not implemented yet for commands, so fetch)
+                    # For now, fetching per guild per minute is fine, much better than per message.
+                    # Ideally we'd cache this too, but let's stick to the high-impact stuff first.
                     config_excluded_channels = set(await self.config.guild(guild).excluded_channels())
                     config_excluded_roles = set(await self.config.guild(guild).excluded_roles())
                     
-                    # Get exclusions (Database) - Cached for this iteration
-                    db_excluded_channels, db_excluded_roles = await self.db.xp.get_guild_exclusions(guild.id)
+                    # Get exclusions (Database) - Use/Update Cache
+                    if guild.id not in self.exclusion_cache:
+                        channels, roles = await self.db.xp.get_guild_exclusions(guild.id)
+                        self.exclusion_cache[guild.id] = (set(channels), set(roles))
+                    
+                    db_excluded_channels, db_excluded_roles = self.exclusion_cache[guild.id]
                     
                     # Combine exclusions
                     all_excluded_channels = config_excluded_channels.union(db_excluded_channels)
@@ -160,67 +191,135 @@ class XPSystem:
         # Convert to list for bulk update: (user_id, guild_id, amount)
         updates = [(uid, gid, amount) for (uid, gid), amount in current_buffer.items()]
         
+        # We assume cache is already updated during process_message
         await self.db.xp.add_xp_bulk(updates)
+
+    def _get_user_cache_data(self, user_id: int, guild_id: int):
+        """Get user data from cache, handling LRU"""
+        key = (user_id, guild_id)
+        if key in self.user_xp_cache:
+            self.user_xp_cache.move_to_end(key)
+            return self.user_xp_cache[key]
+        return None
+
+    def _set_user_cache_data(self, user_id: int, guild_id: int, data: dict):
+        """Set user data in cache, handling LRU eviction"""
+        key = (user_id, guild_id)
+        self.user_xp_cache[key] = data
+        self.user_xp_cache.move_to_end(key)
         
-        # Handle level ups check (Optional - expensive to check every flush, maybe skip for bulk?)
+        if len(self.user_xp_cache) > self.user_xp_cache_size:
+            self.user_xp_cache.popitem(last=False)
 
     async def process_message(self, message: discord.Message):
-        """Process a message for XP gain"""
+        """Process a message for XP gain (Optimized)"""
         if message.author.bot or not message.guild:
             return
         
-        if not await self.config.xp_enabled():
+        # Check cached config
+        if not self._config_cache.get("xp_enabled", True):
             return
         
         # Check cooldown
         user_id = message.author.id
         current_time = time.time()
+        cooldown = self._config_cache.get("xp_cooldown", 60)
         
         if user_id in self.xp_cooldowns:
-            if current_time - self.xp_cooldowns[user_id] < await self.config.xp_cooldown():
+            if current_time - self.xp_cooldowns[user_id] < cooldown:
                 return
         
-        # Check exclusions (both config and database)
-        excluded_channels = await self.config.guild(message.guild).excluded_channels()
-        excluded_roles = await self.config.guild(message.guild).excluded_roles()
+        guild_id = message.guild.id
         
-        if message.channel.id in excluded_channels:
+        # --- EXCLUSION CHECKS (Cache First) ---
+        
+        # 1. Database Exclusions (Memory Cached)
+        if guild_id not in self.exclusion_cache:
+            channels, roles = await self.db.xp.get_guild_exclusions(guild_id)
+            self.exclusion_cache[guild_id] = (set(channels), set(roles))
+            
+        db_excluded_channels, db_excluded_roles = self.exclusion_cache[guild_id]
+        
+        if message.channel.id in db_excluded_channels:
             return
-        
-        if any(role.id in excluded_roles for role in message.author.roles):
+        if any(role.id in db_excluded_roles for role in message.author.roles):
+            return
+
+        # 2. Config Exclusions (Red Config Cache is reasonably fast, but we could optimize further if needed)
+        # For now, let's trust Red's internal caching for guild settings
+        excluded_channels_config = await self.config.guild(message.guild).excluded_channels()
+        if message.channel.id in excluded_channels_config:
+            return
+
+        excluded_roles_config = await self.config.guild(message.guild).excluded_roles()
+        if any(role.id in excluded_roles_config for role in message.author.roles):
             return
             
-        # Also check database exclusions
-        if await self.db.xp.is_xp_excluded(message.guild.id, message.channel.id, 0):  # 0 = Channel
-            return
+        # --- XP CALCULATION (LRU Cache) ---
+        
+        xp_amount = self._config_cache.get("xp_per_message", 1)
+        
+        # Check cache
+        cache_data = self._get_user_cache_data(user_id, guild_id)
+        
+        if cache_data:
+            # Hit! Use cached data
+            current_xp = cache_data['xp']
+            # Add buffered XP not yet in DB/Cache base?
+            # Actually, let's keep cache as "Total XP including buffer"
             
-        for role in message.author.roles:
-            if await self.db.xp.is_xp_excluded(message.guild.id, role.id, 1):  # 1 = Role
-                return
+            new_total_xp = current_xp + xp_amount
+            
+            # Check level up using cached threshold
+            if new_total_xp >= cache_data['req_xp']:
+                # Potential level up - Recalculate everything to be sure
+                new_stats = self.db.calculate_level_stats(new_total_xp)
+                if new_stats.level > cache_data['level']:
+                    await self._handle_level_up(message, cache_data['level'], new_stats.level)
+                    
+                # Update cache
+                self._set_user_cache_data(user_id, guild_id, {
+                    'xp': new_total_xp,
+                    'level': new_stats.level,
+                    'req_xp': new_stats.required_xp
+                })
+            else:
+                # No level up, just update XP in cache
+                cache_data['xp'] = new_total_xp
+                # No need to move_to_end again, getter did it
         
-        # Check current level before adding XP
-        old_xp = await self.db.xp.get_user_xp(user_id, message.guild.id)
-        # Add buffered XP for this user if any (to get accurate current state)
-        key = (user_id, message.guild.id)
-        buffered_xp = self.xp_buffer.get(key, 0)
-        
-        current_total_xp = old_xp + buffered_xp
-        old_level = self.db.calculate_level_stats(current_total_xp).level
-        
-        # Add XP to buffer
-        xp_amount = await self.config.xp_per_message()
-        
+        else:
+            # Miss! Fetch from DB
+            old_xp = await self.db.xp.get_user_xp(user_id, guild_id)
+            
+            # Check buffer (in case we have pending writes)
+            key = (user_id, guild_id)
+            buffered_xp = self.xp_buffer.get(key, 0)
+            
+            current_total_xp = old_xp + buffered_xp
+            
+            # Calculate stats
+            stats = self.db.calculate_level_stats(current_total_xp)
+            
+            new_total_xp = current_total_xp + xp_amount
+            new_stats = self.db.calculate_level_stats(new_total_xp)
+            
+            if new_stats.level > stats.level:
+                await self._handle_level_up(message, stats.level, new_stats.level)
+            
+            # Populate cache
+            self._set_user_cache_data(user_id, guild_id, {
+                'xp': new_total_xp,
+                'level': new_stats.level,
+                'req_xp': new_stats.required_xp
+            })
+
+        # Add to write buffer
+        key = (user_id, guild_id)
         if key in self.xp_buffer:
             self.xp_buffer[key] += xp_amount
         else:
             self.xp_buffer[key] = xp_amount
-            
-        # Check for level up
-        new_total_xp = current_total_xp + xp_amount
-        new_level = self.db.calculate_level_stats(new_total_xp).level
-        
-        if new_level > old_level:
-            await self._handle_level_up(message, old_level, new_level)
         
         # Update cooldown
         self.xp_cooldowns[user_id] = current_time

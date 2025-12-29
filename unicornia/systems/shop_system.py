@@ -3,7 +3,7 @@ Shop system for Unicornia - handles role and command items
 """
 
 import discord
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, Any
 from redbot.core import commands
 from redbot.core.utils.chat_formatting import humanize_number
 from ..database import DatabaseManager
@@ -17,35 +17,45 @@ class ShopSystem:
         self.config = config
         self.bot = bot
     
-    async def get_shop_items(self, guild_id: int) -> List[Dict[str, Any]]:
+    async def get_shop_items(self, guild_id: int) -> list[dict[str, Any]]:
         """Get all shop items for a guild"""
-        entries = await self.db.shop.get_shop_entries(guild_id)
-        items = []
+        # Use optimized query to fetch everything in one go
+        rows = await self.db.shop.get_shop_entries_with_items(guild_id)
         
-        for entry in entries:
-            entry_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command = entry
+        items_map = {}
+        
+        for row in rows:
+            # row: 0=Id, 1=Index, 2=Price, 3=Name, 4=AuthorId, 5=Type,
+            #      6=RoleName, 7=RoleId, 8=RoleRequirement, 9=Command,
+            #      10=ItemId, 11=ItemText
+            entry_id = row[0]
             
-            # Get additional items for this entry
-            additional_items = await self.db.shop.get_shop_entry_items(entry_id)
+            if entry_id not in items_map:
+                items_map[entry_id] = {
+                    'id': entry_id,
+                    'index': row[1],
+                    'price': row[2],
+                    'name': row[3],
+                    'author_id': row[4],
+                    'type': row[5],
+                    'role_name': row[6],
+                    'role_id': row[7],
+                    'role_requirement': row[8],
+                    'command': row[9],
+                    'additional_items': []
+                }
             
-            item = {
-                'id': entry_id,
-                'index': index,
-                'price': price,
-                'name': name,
-                'author_id': author_id,
-                'type': entry_type,
-                'role_name': role_name,
-                'role_id': role_id,
-                'role_requirement': role_requirement,
-                'command': command,
-                'additional_items': additional_items
-            }
-            items.append(item)
+            # If there's an associated item (ItemId is not None)
+            if row[10] is not None:
+                items_map[entry_id]['additional_items'].append((row[10], row[11]))
+        
+        # Convert map to list and sort by index
+        items = list(items_map.values())
+        items.sort(key=lambda x: x['index'])
         
         return items
     
-    async def get_shop_item(self, guild_id: int, item_id: int) -> Optional[Dict[str, Any]]:
+    async def get_shop_item(self, guild_id: int, item_id: int) -> dict[str, Any] | None:
         """Get a specific shop item (by Index or ID)"""
         # Try by Index first
         entry = await self.db.shop.get_shop_entry_by_index(guild_id, item_id)
@@ -74,7 +84,7 @@ class ShopSystem:
             'additional_items': additional_items
         }
     
-    async def purchase_item(self, user: discord.Member, guild_id: int, item_id: int) -> Tuple[bool, str]:
+    async def purchase_item(self, user: discord.Member, guild_id: int, item_id: int) -> tuple[bool, str]:
         """Purchase a shop item"""
         item = await self.get_shop_item(guild_id, item_id)
         if not item:

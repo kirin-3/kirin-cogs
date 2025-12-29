@@ -2,7 +2,6 @@ import discord
 from redbot.core import commands, checks
 from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
 from typing import Optional
-from ..utils import systems_ready
 
 class AdminCommands:
     # Configuration commands
@@ -40,6 +39,10 @@ class AdminCommands:
                 await ctx.send(f"✅ Removed {channel.mention} from currency generation channels.")
             else:
                 await ctx.send(f"❌ {channel.mention} is not in the list.")
+        
+        # Refresh cache
+        if self.currency_generation:
+            await self.currency_generation.refresh_config_cache()
 
     @gen_group.command(name="list")
     async def gen_list(self, ctx):
@@ -54,7 +57,6 @@ class AdminCommands:
 
     @unicornia_group.command(name="config")
     @checks.is_owner()
-    @systems_ready
     async def config_cmd(self, ctx, setting: str, *, value: str):
         """Configure Unicornia settings"""
         valid_settings = [
@@ -100,6 +102,12 @@ class AdminCommands:
             else:
                 await getattr(self.config, setting).set(value)
                 await ctx.send(f"✅ {setting} updated to {value}")
+            
+            # Refresh caches
+            if self.currency_generation:
+                await self.currency_generation.refresh_config_cache()
+            if self.xp_system:
+                await self.xp_system._init_config_cache()
                 
         except ValueError:
             await ctx.send("❌ Invalid value type for this setting.")
@@ -107,7 +115,6 @@ class AdminCommands:
             await ctx.send(f"❌ Error updating setting: {e}")
     
     @unicornia_group.command(name="status")
-    @systems_ready
     async def status(self, ctx):
         """Check Unicornia status and configuration"""
         embed = discord.Embed(
@@ -143,7 +150,6 @@ class AdminCommands:
         pass
     
     @guild_config.command(name="excludechannel")
-    @systems_ready
     async def guild_exclude_channel(self, ctx, channel: discord.TextChannel):
         """Exclude a channel from XP gain"""
         excluded = await self.config.guild(ctx.guild).excluded_channels()
@@ -155,7 +161,6 @@ class AdminCommands:
             await ctx.send(f"❌ {channel.mention} is already excluded from XP gain.")
     
     @guild_config.command(name="includechannel")
-    @systems_ready
     async def guild_include_channel(self, ctx, channel: discord.TextChannel):
         """Include a channel in XP gain"""
         excluded = await self.config.guild(ctx.guild).excluded_channels()
@@ -167,7 +172,6 @@ class AdminCommands:
             await ctx.send(f"❌ {channel.mention} is not excluded from XP gain.")
     
     @guild_config.command(name="rolereward")
-    @systems_ready
     async def guild_role_reward(self, ctx, level: int, role: discord.Role, remove: bool = False):
         """Set a role reward for reaching a level (remove=True to remove role from user)"""
         if level < 1:
@@ -179,14 +183,12 @@ class AdminCommands:
         await ctx.send(f"✅ Users reaching level {level} will have {role.mention} {action} them.")
 
     @guild_config.command(name="removerolereward")
-    @systems_ready
     async def guild_remove_role_reward(self, ctx, level: int, role: discord.Role):
         """Remove a configured role reward"""
         await self.db.xp.remove_xp_role_reward(ctx.guild.id, level, role.id)
         await ctx.send(f"✅ Removed role reward {role.mention} at level {level}.")
     
     @guild_config.command(name="currencyreward")
-    @systems_ready
     async def guild_currency_reward(self, ctx, level: int, amount: int):
         """Set a currency reward for reaching a level (0 to remove)"""
         if level < 1:
@@ -206,7 +208,6 @@ class AdminCommands:
             await ctx.send(f"✅ Users reaching level {level} will receive {currency_symbol}{amount:,}.")
 
     @guild_config.command(name="listcurrencyrewards")
-    @systems_ready
     async def guild_list_currency_rewards(self, ctx):
         """List currency rewards (paginated)"""
         currency_rewards = await self.db.xp.get_xp_currency_rewards(ctx.guild.id)
@@ -243,7 +244,6 @@ class AdminCommands:
             await menu(ctx, pages, DEFAULT_CONTROLS)
 
     @guild_config.command(name="listrolerewards")
-    @systems_ready
     async def guild_list_role_rewards(self, ctx):
         """List role rewards (paginated)"""
         role_rewards = await self.db.xp.get_all_xp_role_rewards(ctx.guild.id)
