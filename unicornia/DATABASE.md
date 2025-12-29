@@ -5,7 +5,7 @@ This document explains the database architecture, file location, and migration p
 ## Database Location
 
 The Unicornia database is an SQLite database located at:
-`unicornia/unicornia.db` (Relative to the bot's root directory, inside the cog folder)
+`unicornia/data/unicornia.db` (Relative to the bot's root directory, inside the cog folder)
 
 This file stores all user data, including XP, currency, clubs, and waifus.
 

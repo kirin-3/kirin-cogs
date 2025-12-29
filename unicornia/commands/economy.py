@@ -114,14 +114,19 @@ class EconomyCommands:
                 details = []
                 details.append(f"• Base Pay: {currency_symbol}{breakdown.get('base', 0):,}")
                 
-                if breakdown.get('streak', 0) > 0:
-                    details.append(f"• Streak Bonus: {currency_symbol}{breakdown['streak']:,} (Day {streak})")
+                # Streak
+                streak_bonus = breakdown.get('streak', 0)
+                details.append(f"• Streak: {streak} days (+{currency_symbol}{streak_bonus:,})")
                 
-                if breakdown.get('supporter', 0) > 0:
-                    details.append(f"• Supporter Bonus: {currency_symbol}{breakdown['supporter']:,}")
+                # Supporter
+                supporter_amount = breakdown.get('supporter', 0)
+                supporter_mark = "✅" if supporter_amount > 0 else "❌"
+                details.append(f"• Supporter Bonus: {supporter_mark} {currency_symbol}{supporter_amount:,}")
                 
-                if breakdown.get('booster', 0) > 0:
-                    details.append(f"• Booster Bonus: {currency_symbol}{breakdown['booster']:,}")
+                # Booster
+                booster_amount = breakdown.get('booster', 0)
+                booster_mark = "✅" if booster_amount > 0 else "❌"
+                details.append(f"• Booster Bonus: {booster_mark} {currency_symbol}{booster_amount:,}")
                 
                 embed.add_field(name="Reward Breakdown", value="\n".join(details), inline=False)
                 await ctx.send(embed=embed)
