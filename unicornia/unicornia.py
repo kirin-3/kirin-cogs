@@ -59,12 +59,13 @@ class Unicornia(
             "xp_per_message": 1,
             "xp_cooldown": 60,  # seconds
             # Currency generation
-            "currency_generation_enabled": False,
-            "generation_chance": 0.02,  # 2%
+            "currency_generation_enabled": True,
+            "generation_chance": 0.005,  # 0.5%
             "generation_cooldown": 10,  # seconds
-            "generation_min_amount": 1,
-            "generation_max_amount": 1,
-            "generation_has_password": True,
+            "generation_min_amount": 60,
+            "generation_max_amount": 140,
+            "generation_has_password": False,
+            "generation_channels": [],  # List of channel IDs (Global)
             # Currency decay
             "decay_percent": 0.0,  # 0% (disabled by default)
             "decay_max_amount": 0,  # unlimited

@@ -5,6 +5,7 @@ Currency generation and decay systems for Unicornia
 import random
 import asyncio
 import time
+import os
 import aiosqlite
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
@@ -31,6 +32,11 @@ class CurrencyGeneration:
         if not await self.config.currency_generation_enabled():
             return
         
+        # Check if channel is in the allowed list
+        generation_channels = await self.config.generation_channels()
+        if message.channel.id not in generation_channels:
+            return
+
         # Check cooldown
         user_id = message.author.id
         current_time = time.time()
@@ -49,60 +55,61 @@ class CurrencyGeneration:
         max_amount = await self.config.generation_max_amount()
         amount = random.randint(min_amount, max_amount)
         
-        # Check if password is required
-        has_password = await self.config.generation_has_password()
-        if has_password:
-            password = self._generate_password()
-            # Store the plant for pickup
-            await self._create_plant(message.guild.id, message.channel.id, amount, password)
-            
-            # Send plant message
-            embed = discord.Embed(
-                title="<:slut:686148402941001730> Slut points Planted!",
-                description=f"Someone planted {amount} Slut points! Use `[p]pick {password}` to claim it!",
-                color=discord.Color.gold()
-            )
-            await message.channel.send(embed=embed)
-        else:
-            # Direct currency award
-            await self.db.economy.add_currency(user_id, amount, "generation", "message", note="Random Slut points generation")
-            
-            currency_symbol = await self.config.currency_symbol()
-            await message.channel.send(f"<:slut:686148402941001730> {message.author.mention} found {currency_symbol}{amount}!")
+        # Store the plant for pickup (no password)
+        await self._create_plant(message.guild.id, message.channel.id, amount)
         
+        # Get random image
+        cog_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        images_dir = os.path.join(cog_dir, "data", "currency_images")
+        image_file = None
+        
+        if os.path.exists(images_dir):
+            images = [f for f in os.listdir(images_dir) if f.lower().endswith('.png')]
+            if images:
+                image_file = random.choice(images)
+                
+        currency_symbol = await self.config.currency_symbol()
+        
+        msg_content = f"A wild {amount}{currency_symbol} has appeared! Pick them up by typing `&pick`"
+        
+        if image_file:
+            image_path = os.path.join(images_dir, image_file)
+            try:
+                file = discord.File(image_path, filename="currency.png")
+                await message.channel.send(content=msg_content, file=file)
+            except Exception as e:
+                print(f"Error sending currency generation image: {e}")
+                await message.channel.send(content=msg_content)
+        else:
+            await message.channel.send(content=msg_content)
+
         # Update cooldown
         self.generation_cooldowns[user_id] = current_time
     
-    def _generate_password(self) -> str:
-        """Generate a random password for currency plants"""
-        # Simple password generation - can be made more complex
-        chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-        return ''.join(random.choice(chars) for _ in range(6))
-    
-    async def _create_plant(self, guild_id: int, channel_id: int, amount: int, password: str):
+    async def _create_plant(self, guild_id: int, channel_id: int, amount: int):
         """Create a currency plant"""
         async with self.db._get_connection() as db:
             await self.db._setup_wal_mode(db)
             await db.execute("""
                 INSERT INTO PlantedCurrency (GuildId, ChannelId, Amount, Password)
                 VALUES (?, ?, ?, ?)
-            """, (guild_id, channel_id, amount, password))
+            """, (guild_id, channel_id, amount, "")) # Empty password
             await db.commit()
     
-    async def pick_plant(self, user_id: int, guild_id: int, password: str) -> bool:
-        """Pick up a currency plant"""
+    async def pick_plant(self, user_id: int, channel_id: int) -> Optional[int]:
+        """Pick up the last currency plant in the channel"""
         async with self.db._get_connection() as db:
             await self.db._setup_wal_mode(db)
-            # Find and remove the plant
+            # Find the last plant in this channel
             cursor = await db.execute("""
                 SELECT Id, Amount FROM PlantedCurrency
-                WHERE GuildId = ? AND Password = ?
+                WHERE ChannelId = ?
                 ORDER BY Id DESC LIMIT 1
-            """, (guild_id, password))
+            """, (channel_id,))
             
             plant = await cursor.fetchone()
             if not plant:
-                return False
+                return None
             
             plant_id, amount = plant
             
@@ -110,10 +117,10 @@ class CurrencyGeneration:
             await db.execute("DELETE FROM PlantedCurrency WHERE Id = ?", (plant_id,))
             
             # Give currency to user
-            await self.db.economy.add_currency(user_id, amount, "plant_pick", password, note=f"Picked plant with password {password}")
+            await self.db.economy.add_currency(user_id, amount, "plant_pick", str(plant_id), note=f"Picked plant {plant_id}")
             
             await db.commit()
-            return True
+            return amount
 
 
 class CurrencyDecay:

@@ -10,14 +10,55 @@ class AdminCommands:
         """Unicornia - Full-featured leveling and economy system"""
         pass
 
+    @unicornia_group.group(name="gen")
+    @checks.is_owner()
+    async def gen_group(self, ctx):
+        """Currency generation configuration"""
+        pass
+
+    @gen_group.command(name="channel")
+    async def gen_channel(self, ctx, operation: str, channel: discord.TextChannel):
+        """Add or remove a channel for currency generation (add/remove)"""
+        if operation.lower() not in ["add", "remove"]:
+            await ctx.send("❌ Operation must be 'add' or 'remove'.")
+            return
+            
+        channels = await self.config.generation_channels()
+        
+        if operation.lower() == "add":
+            if channel.id not in channels:
+                channels.append(channel.id)
+                await self.config.generation_channels.set(channels)
+                await ctx.send(f"✅ Added {channel.mention} to currency generation channels.")
+            else:
+                await ctx.send(f"❌ {channel.mention} is already in the list.")
+        else:
+            if channel.id in channels:
+                channels.remove(channel.id)
+                await self.config.generation_channels.set(channels)
+                await ctx.send(f"✅ Removed {channel.mention} from currency generation channels.")
+            else:
+                await ctx.send(f"❌ {channel.mention} is not in the list.")
+
+    @gen_group.command(name="list")
+    async def gen_list(self, ctx):
+        """List currency generation channels"""
+        channels = await self.config.generation_channels()
+        if not channels:
+            await ctx.send("No channels configured for currency generation.")
+            return
+            
+        channel_mentions = [f"<#{cid}>" for cid in channels]
+        await ctx.send(f"**Generation Channels:**\n{', '.join(channel_mentions)}")
+
     @unicornia_group.command(name="config")
     @checks.is_owner()
     @systems_ready
     async def config_cmd(self, ctx, setting: str, *, value: str):
         """Configure Unicornia settings"""
         valid_settings = [
-            "currency_name", "currency_symbol", "xp_enabled", "economy_enabled", 
-            "gambling_enabled", "shop_enabled", "timely_amount", "timely_cooldown", 
+            "currency_name", "currency_symbol", "xp_enabled", "economy_enabled",
+            "gambling_enabled", "shop_enabled", "timely_amount", "timely_cooldown",
             "xp_per_message", "xp_cooldown", "currency_generation_enabled",
             "generation_chance", "generation_cooldown", "generation_min_amount",
             "generation_max_amount", "generation_has_password", "decay_percent",

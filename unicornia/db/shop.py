@@ -139,7 +139,7 @@ class ShopRepository:
             entry_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command = entry
             
             # Check if user has enough currency
-            user_balance = await self.get_user_currency(user_id)
+            user_balance = await self.db.economy.get_user_currency(user_id)
             if user_balance < price:
                 return False, f"Insufficient currency. You need {price:,} but have {user_balance:,}"
             
@@ -150,7 +150,7 @@ class ShopRepository:
                 pass
             
             # Deduct currency (Atomic check via remove_currency)
-            success = await self.remove_currency(user_id, price, "shop_purchase", str(entry_id), note=f"Purchased: {name}")
+            success = await self.db.economy.remove_currency(user_id, price, "shop_purchase", str(entry_id), note=f"Purchased: {name}")
             
             if not success:
                 return False, f"Insufficient currency or transaction failed."
