@@ -104,7 +104,8 @@ class Unicornia(
             import os
             cog_dir = os.path.dirname(os.path.abspath(__file__))
             nadeko_db_path = os.path.join(cog_dir, "nadeko.db")
-            self.db = DatabaseManager("data/unicornia.db", nadeko_db_path)
+            db_path = os.path.join(cog_dir, "unicornia.db")
+            self.db = DatabaseManager(db_path, nadeko_db_path)
             await self.db.connect()  # Establish persistent connection
             await self.db.initialize()
             
