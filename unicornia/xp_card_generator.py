@@ -28,6 +28,7 @@ class XPCardGenerator:
         self.fonts_cache = {}
         self.images_cache = OrderedDict()
         self.default_font_size = 25
+        self.fallback_fonts_cache = {}
         
         # Card dimensions (matching Nadeko's template)
         self.card_width = 500
@@ -126,6 +127,196 @@ class XPCardGenerator:
         self.fonts_cache[cache_key] = font
         return font
     
+    async def _get_fallback_fonts(self, size: int) -> list[ImageFont.FreeTypeFont]:
+        """Get a list of fallback fonts for special characters"""
+        if size in self.fallback_fonts_cache:
+            return self.fallback_fonts_cache[size]
+            
+        # List of fonts known to have good unicode support (Linux & Windows)
+        fallback_paths = [
+            # Linux / Standard
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+            "/usr/share/fonts/truetype/unifont/unifont.ttf",
+            # Windows
+            "C:\\Windows\\Fonts\\seguiemj.ttf", # Segoe UI Emoji
+            "C:\\Windows\\Fonts\\seguisym.ttf", # Segoe UI Symbol
+            "C:\\Windows\\Fonts\\arialuni.ttf", # Arial Unicode MS
+            "arialuni.ttf"
+        ]
+        
+        loaded_fonts = []
+        for path in fallback_paths:
+            try:
+                # Try to load
+                font = ImageFont.truetype(path, size)
+                loaded_fonts.append(font)
+            except (OSError, IOError):
+                continue
+                
+        self.fallback_fonts_cache[size] = loaded_fonts
+        return loaded_fonts
+
+    def _has_glyph(self, font: ImageFont.FreeTypeFont, char: str) -> bool:
+        """Check if a font supports a specific character"""
+        if not hasattr(self, "_missing_glyph_mask"):
+            # Cache the mask of a definitely missing character (Private Use Area)
+            try:
+                # Use a dummy font for the baseline if possible, or just the current font
+                # We assume the missing glyph representation is consistent for the font instance
+                pass
+            except:
+                pass
+
+        try:
+            # Get mask of the character
+            mask = font.getmask(char)
+            
+            # If mask is empty/zero size, it might be whitespace (valid) or missing
+            # But usually missing glyph is a box (tofu) which has a size
+            
+            # Compare with a definitely missing character for THIS font
+            # \U0010FFFF is Max Unicode, likely missing
+            mask_missing = font.getmask("\U0010FFFF")
+            
+            # If the masks are identical, it's likely using the fallback 'tofu' or empty glyph
+            if mask.size == mask_missing.size and mask.tobytes() == mask_missing.tobytes():
+                return False
+                
+            return True
+        except Exception:
+            return False
+
+    def _draw_text_with_fallback(
+        self,
+        draw: ImageDraw.Draw,
+        xy: Tuple[int, int],
+        text: str,
+        primary_font: ImageFont.FreeTypeFont,
+        fallback_fonts: list[ImageFont.FreeTypeFont],
+        fill: Any,
+        anchor: str = None
+    ):
+        """Draw text handling missing glyphs by switching to fallback fonts"""
+        x, y = xy
+        
+        # Current drawing position
+        current_x = x
+        
+        # We need to handle anchors manually if we draw segment by segment
+        # For simplicity, we'll calculate total width first if anchor is involved
+        # But 'mm' (middle-middle) and 'rs' (right-baseline) are used in this file
+        
+        # 1. Segment the text by font availability
+        segments = [] # List of (text_chunk, font_to_use)
+        
+        current_segment = ""
+        current_font = primary_font
+        
+        for char in text:
+            # Check if current font has it
+            if self._has_glyph(current_font, char):
+                current_segment += char
+            else:
+                # Push previous segment
+                if current_segment:
+                    segments.append((current_segment, current_font))
+                    current_segment = ""
+                
+                # Find a font that has it
+                found_font = primary_font # Default back to primary if none found
+                
+                # Check primary again (redundant but clean logic) -> already checked above
+                # Check fallbacks
+                for fb_font in fallback_fonts:
+                    if self._has_glyph(fb_font, char):
+                        found_font = fb_font
+                        break
+                
+                # Start new segment with this char and this font
+                current_segment = char
+                current_font = found_font
+                
+        # Append last segment
+        if current_segment:
+            segments.append((current_segment, current_font))
+            
+        # 2. Calculate offsets for anchors
+        total_width = 0
+        max_height = 0
+        segment_widths = []
+        
+        for seg_text, seg_font in segments:
+            w = seg_font.getlength(seg_text)
+            segment_widths.append(w)
+            total_width += w
+            
+            # Height approximation (ascent - descent)
+            # ascent, descent = seg_font.getmetrics()
+            # max_height = max(max_height, ascent + descent)
+            
+        # Adjust starting X based on anchor
+        # Pillow anchors:
+        # 'mm': Middle horizontal, Middle vertical
+        # 'rs': Right horizontal, Baseline vertical (Standard for text)
+        # None/Default: Left, Top (or baseline depending on mode)
+        
+        start_x = x
+        start_y = y
+        
+        if anchor:
+            if 'm' in anchor[0]: # Middle horizontal
+                start_x = x - (total_width / 2)
+            elif 'r' in anchor[0]: # Right horizontal
+                start_x = x - total_width
+                
+            # Vertical alignment handling is tricky with mixed fonts
+            # We will trust the passed Y and anchor for the primary font's baseline
+            # and align other fonts to that baseline
+            
+        # 3. Draw segments
+        current_draw_x = start_x
+        
+        for i, (seg_text, seg_font) in enumerate(segments):
+            # We use 'ls' (Left, Baseline) or 'la' (Left, Ascender) equivalent
+            # But since we already adjusted start_x, we can just use default position with specific anchor?
+            # No, 'draw.text' with anchor applies to the whole string relative to xy.
+            # Here we are drawing parts. We must draw them left-aligned at the calculated position.
+            
+            # To match the vertical alignment of the requested anchor (e.g. 'mm'),
+            # we need to know the baseline.
+            # If anchor was 'mm', y was the middle.
+            # If anchor was 'rs', y was the baseline.
+            
+            # Simplification: Assume most text is single line and we want baseline alignment.
+            # If anchor was 'mm', we need to shift y down by half height to get baseline?
+            # Pillow's 'mm' centers the bounding box.
+            
+            draw_anchor = "ls" # Left, Baseline (standard)
+            draw_y = y
+            
+            if anchor == "mm":
+                # If original request was Center-Middle, we calculated start_x.
+                # But Y is still Middle. We need to shift to baseline?
+                # Actually, if we use 'lm' (Left-Middle) for each segment, they might jitter if fonts have diff heights.
+                # Better to align by baseline.
+                # But we don't know the exact baseline offset from 'mm' center easily without metrics.
+                # Let's fallback to 'lm' (Left-Middle) if input was 'mm' to keep it vertically centered?
+                draw_anchor = "lm"
+                draw_y = y
+            elif anchor == "rs":
+                draw_anchor = "ls"
+                draw_y = y
+            elif anchor is None: # Default top-left
+                draw_anchor = "lt" # Left-Top? Or 'la'?
+                # Pillow default is Top-Left of bounding box
+                pass
+            
+            draw.text((current_draw_x, draw_y), seg_text, font=seg_font, fill=fill, anchor=draw_anchor)
+            current_draw_x += segment_widths[i]
+
     async def _download_image(self, url: str) -> bytes | None:
         """Download and cache image bytes from URL (with SSRF protection and Cache Limit)"""
         if not url:
@@ -246,9 +437,13 @@ class XPCardGenerator:
         username: str,
         club_icon: Image.Image | None,
         club_name: str | None,
-        fonts: Dict[str, ImageFont.FreeTypeFont]
+        fonts: Dict[str, ImageFont.FreeTypeFont],
+        fallback_fonts: Dict[str, list[ImageFont.FreeTypeFont]] = None
     ) -> Image.Image:
         """Create the overlay with user info (Avatar, Text, XP Bar)"""
+        if fallback_fonts is None:
+            fallback_fonts = {}
+
         # Create transparent overlay
         overlay = Image.new('RGBA', (self.card_width, self.card_height), (0, 0, 0, 0))
         
@@ -266,8 +461,10 @@ class XPCardGenerator:
         club_font = fonts.get('club')
         
         # Draw username (position from template)
-        draw.text((66, 10), username, font=name_font, fill=(0, 0, 0, 128)) # Shadow
-        draw.text((65, 9), username, font=name_font, fill=(255, 255, 255, 255))
+        # Use fallback drawing for username to support special chars
+        name_fallbacks = fallback_fonts.get('name', [])
+        self._draw_text_with_fallback(draw, (66, 10), username, name_font, name_fallbacks, (0, 0, 0, 128)) # Shadow
+        self._draw_text_with_fallback(draw, (65, 9), username, name_font, name_fallbacks, (255, 255, 255, 255))
         
         # Draw Level Number ONLY (Remove "lv." label drawing)
         # Position: Left side, big number
@@ -317,10 +514,13 @@ class XPCardGenerator:
                 
                 # "rs" anchor = Right align, baseline vertical alignment
                 # We draw the text slightly to the left of the icon
-                draw.text(
+                club_fallbacks = fallback_fonts.get('club', [])
+                self._draw_text_with_fallback(
+                    draw,
                     (icon_x - 10, icon_y + 10),
                     club_name,
-                    font=club_font,
+                    club_font,
+                    club_fallbacks,
                     fill=(255, 255, 255, 255),
                     anchor="rs"
                 )
@@ -339,13 +539,14 @@ class XPCardGenerator:
         total_xp: int,
         rank: int,
         club_name: str | None,
-        fonts: Dict[str, ImageFont.FreeTypeFont]
+        fonts: Dict[str, ImageFont.FreeTypeFont],
+        fallback_fonts: Dict[str, list[ImageFont.FreeTypeFont]] = None
     ) -> Tuple[io.BytesIO, str]:
         """Synchronous method to draw the XP card (runs in thread)"""
         
         # 1. Create the overlay with all static content
         overlay = self._create_card_overlay(
-            avatar, level, current_xp, required_xp, rank, username, club_icon, club_name, fonts
+            avatar, level, current_xp, required_xp, rank, username, club_icon, club_name, fonts, fallback_fonts
         )
         
         # 2. Handle Background
@@ -465,6 +666,12 @@ class XPCardGenerator:
             'club': await self._get_font(20) if club_name else None
         }
         
+        # Prepare fallback fonts (matched to sizes used in overlay)
+        fallback_fonts = {
+            'name': await self._get_fallback_fonts(25),
+            'club': await self._get_fallback_fonts(20) if club_name else []
+        }
+
         # 2. Run blocking image manipulation in executor (CPU bound)
         loop = asyncio.get_running_loop()
         
@@ -481,7 +688,8 @@ class XPCardGenerator:
             total_xp=total_xp,
             rank=rank,
             club_name=club_name,
-            fonts=fonts
+            fonts=fonts,
+            fallback_fonts=fallback_fonts
         )
         
         return await loop.run_in_executor(None, draw_func)

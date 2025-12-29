@@ -583,6 +583,12 @@ class ShopCommands:
                 await ctx.send(f"❌ Background `{item_key}` is no longer available for purchase.")
                 return
             
+            # Check balance
+            user_balance = await self.db.economy.get_user_currency(ctx.author.id)
+            if user_balance < price:
+                await ctx.send(f"❌ Insufficient Slut points! You have {user_balance:,} <:slut:686148402941001730> but need {price:,} <:slut:686148402941001730>.")
+                return
+
             # Attempt purchase (item_type_id = 1 for backgrounds)
             success = await self.db.xp.purchase_xp_item(ctx.author.id, 1, item_key, price)
             
