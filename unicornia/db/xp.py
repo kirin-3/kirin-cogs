@@ -94,12 +94,29 @@ class XPRepository:
             """, (guild_id, level))
             return await cursor.fetchall()
 
+    async def get_all_xp_role_rewards(self, guild_id: int):
+        """Get all role rewards for a guild"""
+        async with self.db._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT Level, RoleId, Remove FROM XpRoleReward WHERE GuildId = ? ORDER BY Level ASC
+            """, (guild_id,))
+            return await cursor.fetchall()
+
     async def add_xp_role_reward(self, guild_id: int, level: int, role_id: int, remove: bool = False):
         """Add XP role reward"""
         async with self.db._get_connection() as db:
-            await db.execute("""
-                INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove) VALUES (?, ?, ?, ?)
-            """, (guild_id, level, role_id, remove))
+            # Prevent duplicates
+            cursor = await db.execute("SELECT Id FROM XpRoleReward WHERE GuildId = ? AND Level = ? AND RoleId = ?", (guild_id, level, role_id))
+            if not await cursor.fetchone():
+                await db.execute("""
+                    INSERT INTO XpRoleReward (GuildId, Level, RoleId, Remove) VALUES (?, ?, ?, ?)
+                """, (guild_id, level, role_id, remove))
+                await db.commit()
+
+    async def remove_xp_role_reward(self, guild_id: int, level: int, role_id: int):
+        """Remove XP role reward"""
+        async with self.db._get_connection() as db:
+            await db.execute("DELETE FROM XpRoleReward WHERE GuildId = ? AND Level = ? AND RoleId = ?", (guild_id, level, role_id))
             await db.commit()
 
     # XP Exclusions Methods
@@ -130,25 +147,32 @@ class XPRepository:
             await db.commit()
 
     # XP currency reward methods
-    async def get_xp_currency_rewards(self, xp_settings_id: int = None):
-        """Get XP currency rewards"""
+    async def get_xp_currency_rewards(self, guild_id: int):
+        """Get XP currency rewards for a guild (XpSettingsId is GuildId)"""
         async with self.db._get_connection() as db:
-            if xp_settings_id:
-                cursor = await db.execute("""
-                    SELECT Id, XpSettingsId, Level, Amount FROM XpCurrencyReward WHERE XpSettingsId = ?
-                """, (xp_settings_id,))
-            else:
-                cursor = await db.execute("""
-                    SELECT Id, XpSettingsId, Level, Amount FROM XpCurrencyReward
-                """)
+            cursor = await db.execute("""
+                SELECT Level, Amount FROM XpCurrencyReward WHERE XpSettingsId = ? ORDER BY Level ASC
+            """, (guild_id,))
             return await cursor.fetchall()
     
-    async def add_xp_currency_reward(self, xp_settings_id: int, level: int, amount: int):
-        """Add an XP currency reward"""
+    async def add_xp_currency_reward(self, guild_id: int, level: int, amount: int):
+        """Add or update an XP currency reward"""
         async with self.db._get_connection() as db:
-            await db.execute("""
-                INSERT INTO XpCurrencyReward (XpSettingsId, Level, Amount) VALUES (?, ?, ?)
-            """, (xp_settings_id, level, amount))
+            # Check if exists
+            cursor = await db.execute("SELECT Id FROM XpCurrencyReward WHERE XpSettingsId = ? AND Level = ?", (guild_id, level))
+            existing = await cursor.fetchone()
+            
+            if amount <= 0:
+                if existing:
+                    await db.execute("DELETE FROM XpCurrencyReward WHERE Id = ?", (existing[0],))
+            else:
+                if existing:
+                    await db.execute("UPDATE XpCurrencyReward SET Amount = ? WHERE Id = ?", (amount, existing[0]))
+                else:
+                    await db.execute("""
+                        INSERT INTO XpCurrencyReward (XpSettingsId, Level, Amount) VALUES (?, ?, ?)
+                    """, (guild_id, level, amount))
+            
             await db.commit()
 
     # XP Shop methods

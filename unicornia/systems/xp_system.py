@@ -71,10 +71,6 @@ class XPSystem:
                 pending_updates = []
                 
                 for guild in self.bot.guilds:
-                    # Check guild enable
-                    if not await self.config.guild(guild).xp_enabled():
-                        continue
-                        
                     # Get exclusions (Config)
                     config_excluded_channels = set(await self.config.guild(guild).excluded_channels())
                     config_excluded_roles = set(await self.config.guild(guild).excluded_roles())
@@ -186,9 +182,6 @@ class XPSystem:
         if not await self.config.xp_enabled():
             return
         
-        if not await self.config.guild(message.guild).xp_enabled():
-            return
-        
         # Check cooldown
         user_id = message.author.id
         current_time = time.time()
@@ -262,47 +255,56 @@ class XPSystem:
         user = message.author
         guild = message.guild
         
-        # Check if level up messages are enabled
-        if not await self.config.guild(guild).level_up_messages():
-            return
+        channel = message.channel
         
-        # Get level up channel
-        level_up_channel_id = await self.config.guild(guild).level_up_channel()
-        if level_up_channel_id:
-            channel = guild.get_channel(level_up_channel_id)
-        else:
-            channel = message.channel
-        
-        if not channel:
-            return
-        
+        # Random Color for Embed
+        import random
+        embed_color = discord.Color(random.randint(0, 0xFFFFFF))
+
         # Send level up message
         embed = discord.Embed(
-            title="🎉 Level Up!",
-            description=f"{user.mention} has reached level **{new_level}**!",
-            color=discord.Color.gold()
+            description=f"Congratulations {user.mention}, you have reached level **{new_level}**!",
+            color=embed_color
         )
-        embed.set_thumbnail(url=user.avatar.url if user.avatar else user.default_avatar.url)
         
-        # Check for role rewards
-        role_rewards = await self.config.guild(guild).role_rewards()
-        for level, role_id in role_rewards.items():
-            if new_level >= int(level):
-                role = guild.get_role(role_id)
-                if role and role not in user.roles:
-                    try:
-                        await user.add_roles(role, reason=f"Level {new_level} reward")
-                        embed.add_field(name="🎁 Role Reward", value=f"You received the {role.mention} role!", inline=False)
-                    except discord.Forbidden:
-                        embed.add_field(name="⚠️ Role Reward", value=f"You earned the {role.name} role, but I couldn't assign it.", inline=False)
+        # Footer text building
+        footer_texts = []
+
+        # Check for role rewards (from DB)
+        # Note: _handle_role_rewards handles logic, here we just want to notify?
+        # Actually _handle_role_rewards is not called automatically here in original code, it was called in loop separately maybe?
+        # No, it was missing. Let's integrate it.
         
-        # Check for currency rewards
-        currency_rewards = await self.config.guild(guild).currency_rewards()
-        for level, amount in currency_rewards.items():
-            if new_level >= int(level):
-                await self.db.economy.add_currency(user.id, amount, "level_reward", f"level_{level}", note=f"Level {level} reward")
-                currency_symbol = await self.config.currency_symbol()
-                embed.add_field(name="<:slut:686148402941001730> Slut points Reward", value=f"You received {currency_symbol}{amount:,}!", inline=False)
+        role_rewards = await self.db.xp.get_xp_role_rewards(guild.id, new_level)
+        for role_id, remove in role_rewards:
+            role = guild.get_role(role_id)
+            if not role:
+                continue
+            
+            try:
+                if remove and role in user.roles:
+                    await user.remove_roles(role, reason=f"XP level {new_level} role removal")
+                    footer_texts.append(f"Removed role: {role.name}")
+                elif not remove and role not in user.roles:
+                    await user.add_roles(role, reason=f"XP level {new_level} role reward")
+                    footer_texts.append(f"Gained role: {role.name}")
+            except discord.Forbidden:
+                pass
+        
+        # Check for currency rewards (from DB)
+        currency_rewards = await self.db.xp.get_xp_currency_rewards(guild.id)
+        currency_gained = 0
+        for level, amount in currency_rewards:
+            if level == new_level:
+                await self.db.economy.add_currency(user.id, amount, "level_reward", f"level_{new_level}", note=f"Level {new_level} reward")
+                currency_gained += amount
+        
+        if currency_gained > 0:
+            currency_symbol = await self.config.currency_symbol()
+            footer_texts.append(f"Gained {currency_gained} {currency_symbol}")
+
+        if footer_texts:
+            embed.set_footer(text=" • ".join(footer_texts))
         
         await channel.send(embed=embed)
     

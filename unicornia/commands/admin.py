@@ -141,28 +141,6 @@ class AdminCommands:
         """Guild-specific configuration"""
         pass
     
-    @guild_config.command(name="xpenabled")
-    @systems_ready
-    async def guild_xp_enabled(self, ctx, enabled: bool):
-        """Enable/disable XP system for this guild"""
-        await self.config.guild(ctx.guild).xp_enabled.set(enabled)
-        await ctx.send(f"✅ XP system {'enabled' if enabled else 'disabled'} for this guild.")
-    
-    @guild_config.command(name="levelupmessages")
-    @systems_ready
-    async def guild_level_up_messages(self, ctx, enabled: bool):
-        """Enable/disable level up messages for this guild"""
-        await self.config.guild(ctx.guild).level_up_messages.set(enabled)
-        await ctx.send(f"✅ Level up messages {'enabled' if enabled else 'disabled'} for this guild.")
-    
-    @guild_config.command(name="levelupchannel")
-    @systems_ready
-    async def guild_level_up_channel(self, ctx, channel: discord.TextChannel = None):
-        """Set the channel for level up messages (leave empty for current channel)"""
-        channel = channel or ctx.channel
-        await self.config.guild(ctx.guild).level_up_channel.set(channel.id)
-        await ctx.send(f"✅ Level up messages will be sent to {channel.mention}")
-    
     @guild_config.command(name="excludechannel")
     @systems_ready
     async def guild_exclude_channel(self, ctx, channel: discord.TextChannel):
@@ -189,21 +167,27 @@ class AdminCommands:
     
     @guild_config.command(name="rolereward")
     @systems_ready
-    async def guild_role_reward(self, ctx, level: int, role: discord.Role):
-        """Set a role reward for reaching a level"""
+    async def guild_role_reward(self, ctx, level: int, role: discord.Role, remove: bool = False):
+        """Set a role reward for reaching a level (remove=True to remove role from user)"""
         if level < 1:
             await ctx.send("❌ Level must be at least 1.")
             return
         
-        role_rewards = await self.config.guild(ctx.guild).role_rewards()
-        role_rewards[str(level)] = role.id
-        await self.config.guild(ctx.guild).role_rewards.set(role_rewards)
-        await ctx.send(f"✅ Users reaching level {level} will receive the {role.mention} role.")
+        await self.db.xp.add_xp_role_reward(ctx.guild.id, level, role.id, remove)
+        action = "removed from" if remove else "given to"
+        await ctx.send(f"✅ Users reaching level {level} will have {role.mention} {action} them.")
+
+    @guild_config.command(name="removerolereward")
+    @systems_ready
+    async def guild_remove_role_reward(self, ctx, level: int, role: discord.Role):
+        """Remove a configured role reward"""
+        await self.db.xp.remove_xp_role_reward(ctx.guild.id, level, role.id)
+        await ctx.send(f"✅ Removed role reward {role.mention} at level {level}.")
     
     @guild_config.command(name="currencyreward")
     @systems_ready
     async def guild_currency_reward(self, ctx, level: int, amount: int):
-        """Set a Slut points reward for reaching a level"""
+        """Set a currency reward for reaching a level (0 to remove)"""
         if level < 1:
             await ctx.send("❌ Level must be at least 1.")
             return
@@ -212,8 +196,44 @@ class AdminCommands:
             await ctx.send("❌ Amount must be positive.")
             return
         
-        currency_rewards = await self.config.guild(ctx.guild).currency_rewards()
-        currency_rewards[str(level)] = amount
-        await self.config.guild(ctx.guild).currency_rewards.set(currency_rewards)
+        await self.db.xp.add_xp_currency_reward(ctx.guild.id, level, amount)
         currency_symbol = await self.config.currency_symbol()
-        await ctx.send(f"✅ Users reaching level {level} will receive {currency_symbol}{amount:,}.")
+        
+        if amount == 0:
+             await ctx.send(f"✅ Removed currency reward for level {level}.")
+        else:
+            await ctx.send(f"✅ Users reaching level {level} will receive {currency_symbol}{amount:,}.")
+
+    @guild_config.command(name="listrewards")
+    @systems_ready
+    async def guild_list_rewards(self, ctx):
+        """List all current level rewards for the server"""
+        embed = discord.Embed(title=f"Level Rewards for {ctx.guild.name}", color=discord.Color.blue())
+        
+        # Currency Rewards
+        currency_rewards = await self.db.xp.get_xp_currency_rewards(ctx.guild.id)
+        currency_symbol = await self.config.currency_symbol()
+        
+        curr_text = ""
+        for level, amount in currency_rewards:
+            curr_text += f"**Level {level}:** {currency_symbol}{amount:,}\n"
+        
+        if not curr_text:
+            curr_text = "No currency rewards configured."
+        embed.add_field(name="<:slut:686148402941001730> Currency Rewards", value=curr_text, inline=False)
+        
+        # Role Rewards
+        role_rewards = await self.db.xp.get_all_xp_role_rewards(ctx.guild.id)
+        
+        role_text = ""
+        for level, role_id, remove in role_rewards:
+            role = ctx.guild.get_role(role_id)
+            role_name = role.mention if role else f"Deleted Role ({role_id})"
+            action = "Remove" if remove else "Add"
+            role_text += f"**Level {level}:** {action} {role_name}\n"
+            
+        if not role_text:
+            role_text = "No role rewards configured."
+        embed.add_field(name="🎭 Role Rewards", value=role_text, inline=False)
+        
+        await ctx.send(embed=embed)

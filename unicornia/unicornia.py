@@ -77,11 +77,6 @@ class Unicornia(
         }
         
         default_guild = {
-            "xp_enabled": True,
-            "level_up_messages": True,
-            "level_up_channel": None,
-            "role_rewards": {},  # {level: role_id}
-            "currency_rewards": {},  # {level: amount}
             "excluded_channels": [],
             "excluded_roles": []
         }
