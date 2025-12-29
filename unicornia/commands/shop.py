@@ -635,36 +635,22 @@ class ShopCommands:
         
         try:
             owned_items = await self.db.xp.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
-            backgrounds = self.xp_system.card_generator.get_available_backgrounds()
-            
             if not owned_items:
                 await ctx.send("❌ You don't own any backgrounds yet. Use `[p]xpshop backgrounds` to see what's available!")
                 return
+
+            backgrounds = self.xp_system.card_generator.get_available_backgrounds()
+            owned_keys = {item[3] for item in owned_items}  # ItemKey
             
-            embed = discord.Embed(
-                title="🎒 Your XP Backgrounds",
-                description="Backgrounds you own",
-                color=discord.Color.green()
-            )
+            # Filter backgrounds to only show owned ones
+            owned_backgrounds = {k: v for k, v in backgrounds.items() if k in owned_keys}
             
-            active_background = await self.db.xp.get_active_xp_item(ctx.author.id, 1)
+            # Use the interactive view
+            view = BackgroundShopView(ctx, owned_backgrounds, owned_keys)
+            embed = await view.get_embed()
+            embed.title = "🎒 Your XP Backgrounds" # Override title
             
-            for item in owned_items:
-                item_key = item[3]  # ItemKey from database
-                bg_data = backgrounds.get(item_key, {})
-                name = bg_data.get('name', item_key)
-                desc = bg_data.get('desc', '')
-                
-                status = " 🌟 **ACTIVE**" if item_key == active_background else ""
-                
-                embed.add_field(
-                    name=f"{name}{status}",
-                    value=f"Key: `{item_key}`\n{desc}" if desc else f"Key: `{item_key}`",
-                    inline=True
-                )
-            
-            embed.set_footer(text=f"Use '[p]xpshop use <key>' to change your active background")
-            await ctx.send(embed=embed)
+            view.message = await ctx.send(embed=embed, view=view)
             
         except Exception as e:
             await ctx.send(f"❌ Error loading owned backgrounds: {e}")

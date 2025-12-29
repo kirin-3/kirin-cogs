@@ -230,7 +230,7 @@ class XPRepository:
             
             # Log transaction
             await db.execute("""
-                INSERT INTO CurrencyTransaction (UserId, Amount, Type, Extra, Reason, DateAdded)
+                INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, Reason, DateAdded)
                 VALUES (?, ?, 'xp_shop_purchase', ?, ?, datetime('now'))
             """, (user_id, -price, item_key, f"Purchased XP item: {item_key}"))
             
