@@ -404,7 +404,7 @@ class XPCardGenerator:
         
         # Draw Level Number ONLY (Remove "lv." label drawing)
         # Position: Left side, big number
-        draw.text((33, 95), str(level), font=level_big_font, fill=(255, 255, 255, 255))
+        draw.text((29, 97), str(level), font=level_big_font, fill=(255, 255, 255, 255))
         
         # Draw Rank Number ONLY (Remove "Rank" word)
         # Position: Slightly to the right of Level, smaller
