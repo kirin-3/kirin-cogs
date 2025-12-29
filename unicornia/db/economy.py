@@ -132,16 +132,16 @@ class EconomyRepository:
         """Get or create bank user"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT Balance, InterestRate FROM BankUsers WHERE UserId = ?
+                SELECT Balance FROM BankUsers WHERE UserId = ?
             """, (user_id,))
             result = await cursor.fetchone()
             
             if not result:
                 await db.execute("""
-                    INSERT INTO BankUsers (UserId, Balance, InterestRate) VALUES (?, 0, 0.02)
+                    INSERT INTO BankUsers (UserId, Balance) VALUES (?, 0)
                 """, (user_id,))
                 await db.commit()
-                return (0, 0.02)
+                return (0,)
             
             return result
 
@@ -149,9 +149,9 @@ class EconomyRepository:
         """Update bank balance"""
         async with self.db._get_connection() as db:
             await db.execute("""
-                INSERT OR REPLACE INTO BankUsers (UserId, Balance, InterestRate)
-                VALUES (?, ?, COALESCE((SELECT InterestRate FROM BankUsers WHERE UserId = ?), 0.02))
-            """, (user_id, new_balance, user_id))
+                INSERT OR REPLACE INTO BankUsers (UserId, Balance)
+                VALUES (?, ?)
+            """, (user_id, new_balance))
             await db.commit()
 
     # Timely methods

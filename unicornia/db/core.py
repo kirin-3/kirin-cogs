@@ -162,8 +162,7 @@ class CoreDB:
             await db.execute("""
             CREATE TABLE IF NOT EXISTS BankUsers (
                 UserId INTEGER PRIMARY KEY,
-                Balance INTEGER NOT NULL DEFAULT 0,
-                InterestRate REAL NOT NULL DEFAULT 0.02
+                Balance INTEGER NOT NULL DEFAULT 0
             )
             """)
             
@@ -466,18 +465,18 @@ class CoreDB:
                 batch_size = 1000
                 batch_data = []
                 
-                async with nadeko_db.execute("SELECT UserId, Username, AvatarId, TotalXp, CurrencyAmount FROM DiscordUser") as cursor:
+                async with nadeko_db.execute("SELECT UserId, Username, AvatarId, TotalXp, CurrencyAmount, ClubId, IsClubAdmin FROM DiscordUser") as cursor:
                     async for row in cursor:
-                        user_id, username, avatar_id, total_xp, currency_amount = row
-                        batch_data.append((user_id, username, avatar_id, total_xp, currency_amount))
+                        # row = (user_id, username, avatar_id, total_xp, currency_amount, club_id, is_club_admin)
+                        batch_data.append(row)
                         migrated_users += 1
                         
                         # Process batch when it reaches batch_size
                         if len(batch_data) >= batch_size:
                             async with self._get_connection() as db:
                                 await db.executemany("""
-                                    INSERT OR REPLACE INTO DiscordUser (UserId, Username, AvatarId, TotalXp, CurrencyAmount)
-                                    VALUES (?, ?, ?, ?, ?)
+                                    INSERT OR REPLACE INTO DiscordUser (UserId, Username, AvatarId, TotalXp, CurrencyAmount, ClubId, IsClubAdmin)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
                                 """, batch_data)
                                 await db.commit()
                             log.info(f"Migrated {migrated_users}/{user_count} users...")
@@ -487,8 +486,8 @@ class CoreDB:
                 if batch_data:
                     async with self._get_connection() as db:
                         await db.executemany("""
-                            INSERT OR REPLACE INTO DiscordUser (UserId, Username, AvatarId, TotalXp, CurrencyAmount)
-                            VALUES (?, ?, ?, ?, ?)
+                            INSERT OR REPLACE INTO DiscordUser (UserId, Username, AvatarId, TotalXp, CurrencyAmount, ClubId, IsClubAdmin)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
                         """, batch_data)
                         await db.commit()
                 
@@ -610,8 +609,21 @@ class CoreDB:
 
                 # Migrate Waifu Tables
                 try:
-                    # WaifuInfo
-                    async with nadeko_db.execute("SELECT WaifuId, ClaimerId, AffinityId, Price, DateAdded FROM WaifuInfo") as cursor:
+                    # WaifuInfo - Join with DiscordUser to get Snowflakes
+                    # Note: Nadeko stores Internal IDs (int) in WaifuInfo, but Unicornia uses Snowflakes (ulong)
+                    query = """
+                        SELECT
+                            w.UserId as WaifuId,
+                            c.UserId as ClaimerId,
+                            a.UserId as AffinityId,
+                            wi.Price,
+                            wi.DateAdded
+                        FROM WaifuInfo wi
+                        JOIN DiscordUser w ON wi.WaifuId = w.Id
+                        LEFT JOIN DiscordUser c ON wi.ClaimerId = c.Id
+                        LEFT JOIN DiscordUser a ON wi.AffinityId = a.Id
+                    """
+                    async with nadeko_db.execute(query) as cursor:
                         async for row in cursor:
                             async with self._get_connection() as db:
                                 await db.execute("""
@@ -621,8 +633,19 @@ class CoreDB:
                                 await db.commit()
                     log.info("Migrated WaifuInfo")
 
-                    # WaifuItem
-                    async with nadeko_db.execute("SELECT WaifuInfoId, ItemEmoji, Name, DateAdded FROM WaifuItem") as cursor:
+                    # WaifuItem - Join to get Snowflake WaifuId via WaifuInfo relation
+                    # Nadeko: WaifuItem.WaifuInfoId -> WaifuInfo.Id -> WaifuInfo.WaifuId (internal) -> DiscordUser.Id -> DiscordUser.UserId
+                    query = """
+                        SELECT
+                            w.UserId as WaifuId,
+                            itm.ItemEmoji,
+                            itm.Name,
+                            itm.DateAdded
+                        FROM WaifuItem itm
+                        JOIN WaifuInfo wi ON itm.WaifuInfoId = wi.Id
+                        JOIN DiscordUser w ON wi.WaifuId = w.Id
+                    """
+                    async with nadeko_db.execute(query) as cursor:
                         async for row in cursor:
                             async with self._get_connection() as db:
                                 await db.execute("""
@@ -632,8 +655,20 @@ class CoreDB:
                                 await db.commit()
                     log.info("Migrated WaifuItem")
 
-                    # WaifuUpdate
-                    async with nadeko_db.execute("SELECT UserId, OldId, NewId, UpdateType, DateAdded FROM WaifuUpdates") as cursor:
+                    # WaifuUpdates - Join to get Snowflakes
+                    query = """
+                        SELECT
+                            u.UserId as UserId,
+                            o.UserId as OldId,
+                            n.UserId as NewId,
+                            wu.UpdateType,
+                            wu.DateAdded
+                        FROM WaifuUpdates wu
+                        JOIN DiscordUser u ON wu.UserId = u.Id
+                        LEFT JOIN DiscordUser o ON wu.OldId = o.Id
+                        LEFT JOIN DiscordUser n ON wu.NewId = n.Id
+                    """
+                    async with nadeko_db.execute(query) as cursor:
                         async for row in cursor:
                             async with self._get_connection() as db:
                                 await db.execute("""
@@ -647,8 +682,12 @@ class CoreDB:
 
                 # Migrate Club Tables
                 try:
-                    # ClubInfo - We need to handle potential schema differences if any, but standard Nadeko is consistent
-                    async with nadeko_db.execute("SELECT Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded FROM Clubs") as cursor:
+                    # ClubInfo - Join with DiscordUser to get Snowflake OwnerId
+                    async with nadeko_db.execute("""
+                        SELECT c.Id, c.Name, c.Description, c.ImageUrl, c.BannerUrl, c.Xp, u.UserId, c.DateAdded
+                        FROM Clubs c
+                        LEFT JOIN DiscordUser u ON c.OwnerId = u.Id
+                    """) as cursor:
                         async for row in cursor:
                             async with self._get_connection() as db:
                                 await db.execute("""
@@ -658,24 +697,32 @@ class CoreDB:
                                 await db.commit()
                     log.info("Migrated Clubs")
 
-                    # ClubApplicants
-                    async with nadeko_db.execute("SELECT ClubId, UserId, DateAdded FROM ClubApplicants") as cursor:
+                    # ClubApplicants - Join with DiscordUser to get Snowflake UserId
+                    async with nadeko_db.execute("""
+                        SELECT ca.ClubId, u.UserId
+                        FROM ClubApplicants ca
+                        JOIN DiscordUser u ON ca.UserId = u.Id
+                    """) as cursor:
                         async for row in cursor:
                             async with self._get_connection() as db:
                                 await db.execute("""
-                                    INSERT OR REPLACE INTO ClubApplicants (ClubId, UserId, DateAdded)
-                                    VALUES (?, ?, ?)
+                                    INSERT OR REPLACE INTO ClubApplicants (ClubId, UserId)
+                                    VALUES (?, ?)
                                 """, row)
                                 await db.commit()
                     log.info("Migrated ClubApplicants")
 
-                    # ClubBans
-                    async with nadeko_db.execute("SELECT ClubId, UserId, DateAdded FROM ClubBans") as cursor:
+                    # ClubBans - Join with DiscordUser to get Snowflake UserId
+                    async with nadeko_db.execute("""
+                        SELECT cb.ClubId, u.UserId
+                        FROM ClubBans cb
+                        JOIN DiscordUser u ON cb.UserId = u.Id
+                    """) as cursor:
                         async for row in cursor:
                             async with self._get_connection() as db:
                                 await db.execute("""
-                                    INSERT OR REPLACE INTO ClubBans (ClubId, UserId, DateAdded)
-                                    VALUES (?, ?, ?)
+                                    INSERT OR REPLACE INTO ClubBans (ClubId, UserId)
+                                    VALUES (?, ?)
                                 """, row)
                                 await db.commit()
                     log.info("Migrated ClubBans")

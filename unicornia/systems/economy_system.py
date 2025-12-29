@@ -76,9 +76,10 @@ class EconomySystem:
             await self.db.economy.log_currency_transaction(user_id, "bank_withdraw", amount, f"Withdrew {amount} from bank")
         return success
     
-    async def get_bank_info(self, user_id: int) -> tuple[int, float]:
-        """Get bank balance and interest rate"""
-        return await self.db.economy.get_bank_user(user_id)
+    async def get_bank_info(self, user_id: int) -> int:
+        """Get bank balance"""
+        result = await self.db.economy.get_bank_user(user_id)
+        return result[0]
     
     async def claim_timely(self, user: discord.Member) -> tuple[bool, int, int, dict]:
         """Claim daily timely reward with streak tracking"""

@@ -244,7 +244,7 @@ class EconomyCommands:
         target = member or ctx.author
         
         try:
-            balance, interest_rate = await self.economy_system.get_bank_info(target.id)
+            balance = await self.economy_system.get_bank_info(target.id)
             currency_symbol = await self.config.currency_symbol()
             
             embed = discord.Embed(
@@ -252,12 +252,6 @@ class EconomyCommands:
                 color=discord.Color.blue()
             )
             embed.add_field(name="Balance", value=f"{currency_symbol}{balance:,}", inline=True)
-            embed.add_field(name="Interest Rate", value=f"{interest_rate:.1%} per day", inline=True)
-            
-            # Calculate daily interest
-            daily_interest = int(balance * interest_rate)
-            if daily_interest > 0:
-                embed.add_field(name="Daily Interest", value=f"{currency_symbol}{daily_interest:,}", inline=True)
             
             await ctx.send(embed=embed)
             
