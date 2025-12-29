@@ -580,10 +580,14 @@ class CoreDB:
                     log.info(f"ShopEntryItem table not found or empty: {e}")
                 
                 # Migrate XpCurrencyReward data (if exists)
-                # Note: Nadeko uses 'XpSettingsId' which is a FK to XpSettings (GuildId).
-                # We need to ensure we migrate this correctly.
                 try:
-                    async with nadeko_db.execute("SELECT Id, XpSettingsId, Level, Amount FROM XpCurrencyReward") as cursor:
+                    # Join with XpSettings to get GuildId
+                    query = """
+                        SELECT xcr.Id, xs.GuildId, xcr.Level, xcr.Amount 
+                        FROM XpCurrencyReward xcr
+                        JOIN XpSettings xs ON xcr.XpSettingsId = xs.Id
+                    """
+                    async with nadeko_db.execute(query) as cursor:
                         async for row in cursor:
                             reward_id, guild_id, level, amount = row
                             async with self._get_connection() as db:
@@ -594,7 +598,7 @@ class CoreDB:
                                 await db.commit()
                     log.info("Migrated XP Currency Rewards")
                 except Exception as e:
-                    log.info(f"XpCurrencyReward table not found or empty: {e}")
+                    log.info(f"XpCurrencyReward migration failed (table might be missing): {e}")
                 
                 # Migrate GCChannelId data (if exists)
                 try:
@@ -745,14 +749,25 @@ class CoreDB:
                                 await db.commit()
 
                     # XpRoleReward
-                    async with nadeko_db.execute("SELECT GuildId, Level, RoleId, Remove FROM XpRoleReward") as cursor:
-                        async for row in cursor:
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove)
-                                    VALUES (?, ?, ?, ?)
-                                """, row)
-                                await db.commit()
+                    try:
+                        # Join with XpSettings to get GuildId
+                        query = """
+                            SELECT xs.GuildId, xrr.Level, xrr.RoleId, xrr.Remove 
+                            FROM XpRoleReward xrr
+                            JOIN XpSettings xs ON xrr.XpSettingsId = xs.Id
+                        """
+                        async with nadeko_db.execute(query) as cursor:
+                            async for row in cursor:
+                                guild_id, level, role_id, remove = row
+                                async with self._get_connection() as db:
+                                    await db.execute("""
+                                        INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove)
+                                        VALUES (?, ?, ?, ?)
+                                    """, (guild_id, level, role_id, remove))
+                                    await db.commit()
+                        log.info("Migrated XP Role Rewards")
+                    except Exception as e:
+                        log.warning(f"XP Role Rewards migration partial failure: {e}")
                     
                     # XpExcludedItem
                     async with nadeko_db.execute("SELECT GuildId, ItemId, ItemType FROM XpExcludedItem") as cursor:
@@ -760,7 +775,7 @@ class CoreDB:
                             async with self._get_connection() as db:
                                 await db.execute("""
                                     INSERT OR REPLACE INTO XpExcludedItem (GuildId, ItemId, ItemType)
-                                    VALUES (?, ?, ?)
+                                    VALUES (?, ?, ?, ?)
                                 """, row)
                                 await db.commit()
                     log.info("Migrated XP Settings")

@@ -198,18 +198,29 @@ class XPSystem:
             if await self.db.xp.is_xp_excluded(message.guild.id, role.id, 1):  # 1 = Role
                 return
         
+        # Check current level before adding XP
+        old_xp = await self.db.xp.get_user_xp(user_id, message.guild.id)
+        # Add buffered XP for this user if any (to get accurate current state)
+        key = (user_id, message.guild.id)
+        buffered_xp = self.xp_buffer.get(key, 0)
+        
+        current_total_xp = old_xp + buffered_xp
+        old_level = self.db.calculate_level_stats(current_total_xp).level
+        
         # Add XP to buffer
         xp_amount = await self.config.xp_per_message()
-        key = (user_id, message.guild.id)
         
         if key in self.xp_buffer:
             self.xp_buffer[key] += xp_amount
         else:
             self.xp_buffer[key] = xp_amount
             
-        # Note: Level up checks are delayed/skipped for buffered messages to improve performance.
-        # Users will see their new level when checking !level or on next non-buffered interaction.
-        # If real-time level up alerts are critical, we would need to check here, but that defeats the purpose of buffering DB writes.
+        # Check for level up
+        new_total_xp = current_total_xp + xp_amount
+        new_level = self.db.calculate_level_stats(new_total_xp).level
+        
+        if new_level > old_level:
+            await self._handle_level_up(message, old_level, new_level)
         
         # Update cooldown
         self.xp_cooldowns[user_id] = current_time
