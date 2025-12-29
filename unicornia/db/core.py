@@ -752,7 +752,7 @@ class CoreDB:
                     try:
                         # Join with XpSettings to get GuildId
                         query = """
-                            SELECT xs.GuildId, xrr.Level, xrr.RoleId, xrr.Remove 
+                            SELECT xs.GuildId, xrr.Level, xrr.RoleId, xrr.Remove
                             FROM XpRoleReward xrr
                             JOIN XpSettings xs ON xrr.XpSettingsId = xs.Id
                         """
@@ -760,10 +760,12 @@ class CoreDB:
                             async for row in cursor:
                                 guild_id, level, role_id, remove = row
                                 async with self._get_connection() as db:
+                                    # Ensure Remove is boolean (0 or 1)
+                                    remove_bool = 1 if remove else 0
                                     await db.execute("""
                                         INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove)
                                         VALUES (?, ?, ?, ?)
-                                    """, (guild_id, level, role_id, remove))
+                                    """, (guild_id, level, role_id, remove_bool))
                                     await db.commit()
                         log.info("Migrated XP Role Rewards")
                     except Exception as e:
