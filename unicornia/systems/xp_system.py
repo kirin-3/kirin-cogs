@@ -302,7 +302,7 @@ class XPSystem:
             if new_level >= int(level):
                 await self.db.economy.add_currency(user.id, amount, "level_reward", f"level_{level}", note=f"Level {level} reward")
                 currency_symbol = await self.config.currency_symbol()
-                embed.add_field(name="💰 Currency Reward", value=f"You received {currency_symbol}{amount:,}!", inline=False)
+                embed.add_field(name="<:slut:686148402941001730> Slut points Reward", value=f"You received {currency_symbol}{amount:,}!", inline=False)
         
         await channel.send(embed=embed)
     

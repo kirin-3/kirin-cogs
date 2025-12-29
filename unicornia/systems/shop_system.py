@@ -77,7 +77,7 @@ class ShopSystem:
         # Check if user has enough currency
         user_balance = await self.db.economy.get_user_currency(user.id)
         if user_balance < item['price']:
-            return False, f"Insufficient currency. You need {item['price']:,} but have {user_balance:,}"
+            return False, f"Insufficient Slut points. You need {item['price']:,} but have {user_balance:,}"
         
         # Handle different item types
         if item['type'] == self.db.shop.SHOP_TYPE_ROLE:
@@ -114,7 +114,7 @@ class ShopSystem:
         if not success:
             return False, message
         
-        return True, f"Successfully purchased {item['name']} for {item['price']:,} currency"
+        return True, f"Successfully purchased {item['name']} for {item['price']:,} Slut points"
     
     async def add_shop_item(self, guild_id: int, index: int, price: int, name: str, author_id: int,
                           item_type: int, role_name: str = None, role_id: int = None,

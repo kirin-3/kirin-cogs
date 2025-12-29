@@ -13,7 +13,7 @@ class EconomyCommands:
     @economy_group.command(name="balance", aliases=["bal", "wallet"])
     @systems_ready
     async def economy_balance(self, ctx, member: discord.Member = None):
-        """Check your or another user's wallet and bank balance"""
+        """Check your or another user's Slut points balance"""
         
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
@@ -29,7 +29,7 @@ class EconomyCommands:
                 title=f"{member.display_name}'s Balance",
                 color=member.color or discord.Color.green()
             )
-            embed.add_field(name="💰 Wallet", value=f"{currency_symbol}{wallet_balance:,}", inline=True)
+            embed.add_field(name="<:slut:686148402941001730> Slut points", value=f"{currency_symbol}{wallet_balance:,}", inline=True)
             embed.add_field(name="🏦 Bank", value=f"{currency_symbol}{bank_balance:,}", inline=True)
             embed.add_field(name="💎 Total", value=f"{currency_symbol}{wallet_balance + bank_balance:,}", inline=True)
             
@@ -41,7 +41,7 @@ class EconomyCommands:
     @economy_group.command(name="give")
     @systems_ready
     async def economy_give(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
-        """Give currency to another user"""
+        """Give Slut points to another user"""
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
             return
@@ -51,11 +51,11 @@ class EconomyCommands:
             return
         
         if member.bot:
-            await ctx.send("❌ You can't give currency to bots.")
+            await ctx.send("❌ You can't give Slut points to bots.")
             return
         
         if member == ctx.author:
-            await ctx.send("❌ You can't give currency to yourself.")
+            await ctx.send("❌ You can't give Slut points to yourself.")
             return
         
         try:
@@ -65,25 +65,46 @@ class EconomyCommands:
                 await ctx.send(f"✅ You gave {currency_symbol}{amount:,} to {member.mention}!")
             else:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"❌ You don't have enough {currency_symbol}currency.")
+                await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points.")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error transferring currency: {e}")
+            await ctx.send(f"❌ Error transferring Slut points: {e}")
     
     @economy_group.command(name="timely", aliases=["daily"])
     @commands.cooldown(1, 86400, commands.BucketType.user)  # 24 hours cooldown
     @systems_ready
     async def economy_timely(self, ctx):
-        """Claim your daily currency reward"""
+        """Claim your daily Slut points reward"""
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
             return
         
         try:
-            if await self.economy_system.claim_timely(ctx.author.id):
-                amount = await self.config.timely_amount()
+            success, amount, streak, breakdown = await self.economy_system.claim_timely(ctx.author)
+            
+            if success:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"✅ You claimed your daily reward of {currency_symbol}{amount:,}!")
+                
+                embed = discord.Embed(
+                    title="💰 Daily Reward Claimed!",
+                    description=f"You received **{currency_symbol}{amount:,}**!",
+                    color=discord.Color.green()
+                )
+                
+                details = []
+                details.append(f"• Base Pay: {currency_symbol}{breakdown.get('base', 0):,}")
+                
+                if breakdown.get('streak', 0) > 0:
+                    details.append(f"• Streak Bonus: {currency_symbol}{breakdown['streak']:,} (Day {streak})")
+                
+                if breakdown.get('supporter', 0) > 0:
+                    details.append(f"• Supporter Bonus: {currency_symbol}{breakdown['supporter']:,}")
+                
+                if breakdown.get('booster', 0) > 0:
+                    details.append(f"• Booster Bonus: {currency_symbol}{breakdown['booster']:,}")
+                
+                embed.add_field(name="Reward Breakdown", value="\n".join(details), inline=False)
+                await ctx.send(embed=embed)
             else:
                 cooldown_hours = await self.config.timely_cooldown()
                 await ctx.send(f"❌ You can claim your daily reward in {cooldown_hours} hours.")
@@ -227,7 +248,7 @@ class EconomyCommands:
     @checks.is_owner()
     @systems_ready
     async def economy_award(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
-        """Award currency to a user (owner only)"""
+        """Award Slut points to a user (owner only)"""
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
             return
@@ -242,13 +263,13 @@ class EconomyCommands:
             await ctx.send(f"✅ Awarded {currency_symbol}{amount:,} to {member.mention}!")
             
         except Exception as e:
-            await ctx.send(f"❌ Error awarding currency: {e}")
+            await ctx.send(f"❌ Error awarding Slut points: {e}")
     
     @economy_group.command(name="take")
     @checks.is_owner()
     @systems_ready
     async def economy_take(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
-        """Take currency from a user (owner only)"""
+        """Take Slut points from a user (owner only)"""
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
             return
@@ -264,15 +285,15 @@ class EconomyCommands:
                 await ctx.send(f"✅ Took {currency_symbol}{amount:,} from {member.mention}!")
             else:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"❌ {member.mention} doesn't have enough {currency_symbol}currency.")
+                await ctx.send(f"❌ {member.mention} doesn't have enough {currency_symbol} Slut points.")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error taking currency: {e}")
+            await ctx.send(f"❌ Error taking Slut points: {e}")
     
     @economy_group.command(name="leaderboard", aliases=["lb", "top"])
     @systems_ready
     async def economy_leaderboard(self, ctx, limit: int = 10):
-        """Show the currency leaderboard"""
+        """Show the Slut points leaderboard"""
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
             return
@@ -292,7 +313,7 @@ class EconomyCommands:
                 entries.append(f"**{i + 1}.** {username} - {currency_symbol}{balance:,}")
             
             embed = discord.Embed(
-                title="Currency Leaderboard",
+                title="<:slut:686148402941001730> Slut points Leaderboard",
                 description="\n".join(entries),
                 color=discord.Color.gold()
             )
@@ -310,7 +331,7 @@ class EconomyCommands:
     @bank_group.command(name="deposit", aliases=["dep"])
     @systems_ready
     async def bank_deposit(self, ctx, amount: int):
-        """Deposit currency into your bank account"""
+        """Deposit Slut points into your bank account"""
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
             return
@@ -326,15 +347,15 @@ class EconomyCommands:
                 await ctx.send(f"✅ Deposited {currency_symbol}{amount:,} into your bank account!")
             else:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"❌ You don't have enough {currency_symbol}currency to deposit.")
+                await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points to deposit.")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error depositing currency: {e}")
+            await ctx.send(f"❌ Error depositing Slut points: {e}")
     
     @bank_group.command(name="withdraw", aliases=["with"])
     @systems_ready
     async def bank_withdraw(self, ctx, amount: int):
-        """Withdraw currency from your bank account"""
+        """Withdraw Slut points from your bank account"""
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
             return
@@ -350,10 +371,10 @@ class EconomyCommands:
                 await ctx.send(f"✅ Withdrew {currency_symbol}{amount:,} from your bank account!")
             else:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"❌ You don't have enough {currency_symbol}currency in your bank account.")
+                await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points in your bank account.")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error withdrawing currency: {e}")
+            await ctx.send(f"❌ Error withdrawing Slut points: {e}")
     
     @bank_group.command(name="balance", aliases=["bal"])
     @systems_ready

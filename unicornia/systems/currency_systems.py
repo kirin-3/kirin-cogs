@@ -58,17 +58,17 @@ class CurrencyGeneration:
             
             # Send plant message
             embed = discord.Embed(
-                title="💰 Currency Planted!",
-                description=f"Someone planted {amount} currency! Use `[p]pick {password}` to claim it!",
+                title="<:slut:686148402941001730> Slut points Planted!",
+                description=f"Someone planted {amount} Slut points! Use `[p]pick {password}` to claim it!",
                 color=discord.Color.gold()
             )
             await message.channel.send(embed=embed)
         else:
             # Direct currency award
-            await self.db.economy.add_currency(user_id, amount, "generation", "message", note="Random currency generation")
+            await self.db.economy.add_currency(user_id, amount, "generation", "message", note="Random Slut points generation")
             
             currency_symbol = await self.config.currency_symbol()
-            await message.channel.send(f"💰 {message.author.mention} found {currency_symbol}{amount}!")
+            await message.channel.send(f"<:slut:686148402941001730> {message.author.mention} found {currency_symbol}{amount}!")
         
         # Update cooldown
         self.generation_cooldowns[user_id] = current_time
@@ -187,7 +187,7 @@ class CurrencyDecay:
                 if decay_amount > 0:
                     # Add to batch
                     updates.append((decay_amount, user_id))
-                    transactions.append((user_id, -decay_amount, 'decay', 'system', f"Currency decay: {decay_percent:.1%}"))
+                    transactions.append((user_id, -decay_amount, 'decay', 'system', f"Slut points decay: {decay_percent:.1%}"))
             
             if updates:
                 # Execute batch updates

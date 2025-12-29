@@ -80,8 +80,9 @@ class EconomySystem:
         """Get bank balance and interest rate"""
         return await self.db.economy.get_bank_user(user_id)
     
-    async def claim_timely(self, user_id: int) -> tuple[bool, int, int]:
+    async def claim_timely(self, user: discord.Member) -> tuple[bool, int, int, dict]:
         """Claim daily timely reward with streak tracking"""
+        user_id = user.id
         # Get timely info
         last_claim, streak = await self.db.economy.get_timely_info(user_id)
         
@@ -93,7 +94,7 @@ class EconomySystem:
             last_claim_dt = datetime.fromisoformat(last_claim)
             if now - last_claim_dt < timedelta(hours=24):
                 # Still on cooldown
-                return False, 0, streak
+                return False, 0, streak, {}
         
         # Calculate new streak
         if last_claim:
@@ -107,15 +108,34 @@ class EconomySystem:
         
         # Calculate reward amount (base + streak bonus)
         base_amount = await self.config.timely_amount()
-        streak_bonus = min(new_streak * 10, 500)  # Max 500 bonus
-        total_amount = base_amount + streak_bonus
+        streak_bonus = min(new_streak * 10, 300)  # Max 300 bonus
+        
+        # Supporter Bonus
+        supporter_bonus = 0
+        supporter_role_id = 700121551483437128
+        if any(r.id == supporter_role_id for r in user.roles):
+            supporter_bonus = 100
+            
+        # Server Booster Bonus
+        booster_bonus = 0
+        if user.premium_since is not None:
+            booster_bonus = 100
+        
+        total_amount = base_amount + streak_bonus + supporter_bonus + booster_bonus
+        
+        breakdown = {
+            "base": base_amount,
+            "streak": streak_bonus,
+            "supporter": supporter_bonus,
+            "booster": booster_bonus
+        }
         
         # Award currency
         await self.db.economy.add_currency(user_id, total_amount, "timely", "system")
         await self.db.economy.update_timely_claim(user_id, new_streak)
         await self.db.economy.log_currency_transaction(user_id, "timely", total_amount, f"Daily reward (streak: {new_streak})")
         
-        return True, total_amount, new_streak
+        return True, total_amount, new_streak, breakdown
     
     async def get_leaderboard(self, limit: int = 10, offset: int = 0):
         """Get currency leaderboard"""

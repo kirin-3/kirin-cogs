@@ -31,7 +31,7 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{result['balance']:,}.")
+                    await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.")
                 else:
                     await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
                 return
@@ -63,7 +63,7 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{result['balance']:,}.")
+                    await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.")
                 elif result.get("error") == "invalid_choice":
                     await ctx.send("❌ Please choose: rock, paper, or scissors")
                 else:
@@ -77,7 +77,7 @@ class GamblingCommands:
                 elif result["result"] == "lose":
                     await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - You lost {currency_symbol}{result['loss_amount']:,}!")
                 else:
-                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - It's a draw! No money lost.")
+                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - It's a draw! No Slut points lost.")
             else:
                 if result["result"] == "win":
                     await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - You win!")
@@ -111,7 +111,7 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{result['balance']:,}.")
+                    await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.")
                 else:
                     await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
                 return
@@ -178,7 +178,7 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{result['balance']:,}.")
+                    await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.")
                 elif result.get("error") == "invalid_guess":
                     await ctx.send("❌ Invalid guess. Please choose 'heads' or 'tails'.")
                 else:
@@ -230,7 +230,7 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{result['balance']:,}.")
+                    await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.")
                 else:
                     await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
                 return

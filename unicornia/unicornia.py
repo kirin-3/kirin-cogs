@@ -48,13 +48,13 @@ class Unicornia(
         
         # Default configuration
         default_global = {
-            "currency_name": "Unicorn Coins",
-            "currency_symbol": "🦄",
+            "currency_name": "Slut points",
+            "currency_symbol": "<:slut:686148402941001730>",
             "xp_enabled": True,
             "economy_enabled": True,
             "gambling_enabled": True,
             "shop_enabled": True,
-            "timely_amount": 100,
+            "timely_amount": 500,
             "timely_cooldown": 24,  # hours
             "xp_per_message": 1,
             "xp_cooldown": 60,  # seconds

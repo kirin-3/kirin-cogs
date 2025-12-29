@@ -29,7 +29,7 @@ class ShopCommands:
             currency_symbol = await self.config.currency_symbol()
             embed = discord.Embed(
                 title="🛒 Shop Items",
-                description="Purchase items with your currency!",
+                description="Purchase items with your Slut points!",
                 color=discord.Color.green()
             )
             
@@ -73,6 +73,8 @@ class ShopCommands:
             success, message = await self.shop_system.purchase_item(ctx.author, ctx.guild.id, item_id)
             if success:
                 currency_symbol = await self.config.currency_symbol()
+                # Replace currency in message if it comes from system with generic term
+                message = message.replace("currency", "Slut points")
                 embed = discord.Embed(
                     title="✅ Purchase Successful!",
                     description=message,
@@ -271,7 +273,7 @@ class ShopCommands:
             
             embed = discord.Embed(
                 title="🖼️ XP Backgrounds Shop",
-                description="Purchase backgrounds with your currency!",
+                description="Purchase backgrounds with your Slut points!",
                 color=discord.Color.blue()
             )
             
@@ -293,7 +295,7 @@ class ShopCommands:
                 )
             
             user_currency = await self.db.economy.get_user_currency(ctx.author.id)
-            embed.set_footer(text=f"Your currency: {user_currency:,} 🪙")
+            embed.set_footer(text=f"Your Slut points: {user_currency:,} <:slut:686148402941001730>")
             
             await ctx.send(embed=embed)
             
@@ -354,7 +356,7 @@ class ShopCommands:
                     await ctx.send(f"❌ You already own this background!")
                 else:
                     user_currency = await self.db.economy.get_user_currency(ctx.author.id)
-                    await ctx.send(f"❌ Insufficient currency! You have {user_currency:,} 🪙 but need {price:,} 🪙.")
+                    await ctx.send(f"❌ Insufficient Slut points! You have {user_currency:,} <:slut:686148402941001730> but need {price:,} <:slut:686148402941001730>.")
             
         except Exception as e:
             await ctx.send(f"❌ Error processing purchase: {e}")
@@ -469,7 +471,7 @@ class ShopCommands:
         )
         embed.add_field(
             name="Note:",
-            value="All users start with the 'default' background. Purchase backgrounds with currency, then use `[p]xpshop use <key>` to activate them!",
+            value="All users start with the 'default' background. Purchase backgrounds with Slut points, then use `[p]xpshop use <key>` to activate them!",
             inline=False
         )
         await ctx.send(embed=embed)

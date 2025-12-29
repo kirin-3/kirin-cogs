@@ -86,7 +86,7 @@ class AdminCommands:
         
         currency_name = await self.config.currency_name()
         currency_symbol = await self.config.currency_symbol()
-        embed.add_field(name="Currency", value=f"{currency_symbol} {currency_name}", inline=True)
+        embed.add_field(name="<:slut:686148402941001730> Slut points", value=f"{currency_symbol} {currency_name}", inline=True)
         
         timely_amount = await self.config.timely_amount()
         timely_cooldown = await self.config.timely_cooldown()
@@ -162,7 +162,7 @@ class AdminCommands:
     @guild_config.command(name="currencyreward")
     @systems_ready
     async def guild_currency_reward(self, ctx, level: int, amount: int):
-        """Set a currency reward for reaching a level"""
+        """Set a Slut points reward for reaching a level"""
         if level < 1:
             await ctx.send("❌ Level must be at least 1.")
             return
