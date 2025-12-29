@@ -3,6 +3,124 @@ from redbot.core import commands, checks
 from typing import Optional
 from ..utils import systems_ready
 
+class BackgroundShopView(discord.ui.View):
+    def __init__(self, ctx, backgrounds, user_owned, timeout=60):
+        super().__init__(timeout=timeout)
+        self.ctx = ctx
+        self.backgrounds = list(backgrounds.items()) # List of (key, data)
+        self.user_owned = user_owned # Set of owned keys
+        self.index = 0
+        self.message = None
+        self.update_buttons()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.ctx.author.id:
+            await interaction.response.send_message("This shop session is not for you.", ephemeral=True)
+            return False
+        return True
+
+    def get_current_bg(self):
+        return self.backgrounds[self.index]
+
+    def update_buttons(self):
+        self.children[0].disabled = (self.index == 0) # Previous
+        self.children[2].disabled = (self.index == len(self.backgrounds) - 1) # Next
+        
+        key, data = self.get_current_bg()
+        
+        # Purchase button state
+        price = data.get('price', -1)
+        if key in self.user_owned:
+            self.children[1].label = "Owned (Use)"
+            self.children[1].style = discord.ButtonStyle.success
+            self.children[1].disabled = False
+        elif price == -1:
+            self.children[1].label = "Unavailable"
+            self.children[1].style = discord.ButtonStyle.secondary
+            self.children[1].disabled = True
+        else:
+            self.children[1].label = f"Purchase ({price:,})"
+            self.children[1].style = discord.ButtonStyle.primary
+            self.children[1].disabled = False
+
+    async def get_embed(self):
+        key, data = self.get_current_bg()
+        name = data.get('name', key)
+        price = data.get('price', -1)
+        desc = data.get('desc', '')
+        url = data.get('url', '')
+        
+        price_text = "FREE" if price == 0 else f"{price:,} <:slut:686148402941001730>"
+        if key in self.user_owned:
+            price_text = "Owned"
+            
+        embed = discord.Embed(
+            title=f"🖼️ XP Background: {name}",
+            description=f"**Price:** {price_text}\n{desc}",
+            color=discord.Color.blue()
+        )
+        if url:
+            embed.set_image(url=url)
+        
+        embed.set_footer(text=f"Page {self.index + 1}/{len(self.backgrounds)} | Key: {key}")
+        return embed
+
+    @discord.ui.button(label="◀️ Previous", style=discord.ButtonStyle.secondary)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.index = max(0, self.index - 1)
+        self.update_buttons()
+        embed = await self.get_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Purchase", style=discord.ButtonStyle.primary)
+    async def buy_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        key, data = self.get_current_bg()
+        
+        # Check if owned, if so, equip
+        if key in self.user_owned:
+             # Equip logic
+            success = await self.ctx.cog.db.xp.set_active_xp_item(self.ctx.author.id, 1, key)
+            if success:
+                await interaction.response.send_message(f"✅ Equipped **{data.get('name', key)}**!", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"❌ Failed to equip.", ephemeral=True)
+            return
+
+        # Buy logic
+        price = data.get('price', -1)
+        if price == -1:
+            await interaction.response.send_message("❌ This item is unavailable.", ephemeral=True)
+            return
+
+        # Check balance
+        user_balance = await self.ctx.cog.db.economy.get_user_currency(self.ctx.author.id)
+        if user_balance < price:
+             await interaction.response.send_message(f"❌ Insufficient funds. You need {price:,} <:slut:686148402941001730>.", ephemeral=True)
+             return
+
+        # Purchase
+        success = await self.ctx.cog.db.xp.purchase_xp_item(self.ctx.author.id, 1, key, price)
+        if success:
+            self.user_owned.add(key)
+            
+            # Auto-equip
+            await self.ctx.cog.db.xp.set_active_xp_item(self.ctx.author.id, 1, key)
+            
+            self.update_buttons()
+            embed = await self.get_embed()
+            # Update the main message to reflect "Owned" status
+            await interaction.response.edit_message(embed=embed, view=self)
+            await interaction.followup.send(f"✅ Purchased and equipped **{data.get('name', key)}**!", ephemeral=True)
+        else:
+             await interaction.response.send_message("❌ Purchase failed.", ephemeral=True)
+
+    @discord.ui.button(label="Next ▶️", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.index = min(len(self.backgrounds) - 1, self.index + 1)
+        self.update_buttons()
+        embed = await self.get_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
 class ShopCommands:
     # Shop commands
     @commands.group(name="shop", aliases=["store"])
@@ -407,36 +525,17 @@ class ShopCommands:
         
         try:
             backgrounds = self.xp_system.card_generator.get_available_backgrounds()
+            if not backgrounds:
+                await ctx.send("❌ No backgrounds configured.")
+                return
+
             user_owned = await self.db.xp.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
             owned_keys = {item[3] for item in user_owned}  # ItemKey
             
-            embed = discord.Embed(
-                title="🖼️ XP Backgrounds Shop",
-                description="Purchase backgrounds with your Slut points!",
-                color=discord.Color.blue()
-            )
+            view = BackgroundShopView(ctx, backgrounds, owned_keys)
+            embed = await view.get_embed()
             
-            for key, bg_data in backgrounds.items():
-                name = bg_data.get('name', key)
-                price = bg_data.get('price', -1)
-                desc = bg_data.get('desc', '')
-                
-                if price == -1:
-                    continue  # Skip removed items
-                
-                owned_text = " ✅ **OWNED**" if key in owned_keys else ""
-                price_text = "FREE" if price == 0 else f"{price:,} 🪙"
-                
-                embed.add_field(
-                    name=f"{name}{owned_text}",
-                    value=f"Price: {price_text}\n{desc}",
-                    inline=True
-                )
-            
-            user_currency = await self.db.economy.get_user_currency(ctx.author.id)
-            embed.set_footer(text=f"Your Slut points: {user_currency:,} <:slut:686148402941001730>")
-            
-            await ctx.send(embed=embed)
+            view.message = await ctx.send(embed=embed, view=view)
             
         except (OSError, IOError) as e:
             import logging
@@ -477,7 +576,7 @@ class ShopCommands:
             
             if success:
                 item_name = items[item_key].get('name', item_key)
-                price_text = "FREE" if price == 0 else f"{price:,} 🪙"
+                price_text = "FREE" if price == 0 else f"{price:,} <:slut:686148402941001730>"
                 
                 # Auto-equip logic
                 equip_success = await self.db.xp.set_active_xp_item(ctx.author.id, 1, item_key)
