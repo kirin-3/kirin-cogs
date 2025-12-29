@@ -580,16 +580,19 @@ class CoreDB:
                     log.info(f"ShopEntryItem table not found or empty: {e}")
                 
                 # Migrate XpCurrencyReward data (if exists)
+                # Note: Nadeko uses 'XpSettingsId' which is a FK to XpSettings (GuildId).
+                # We need to ensure we migrate this correctly.
                 try:
                     async with nadeko_db.execute("SELECT Id, XpSettingsId, Level, Amount FROM XpCurrencyReward") as cursor:
                         async for row in cursor:
-                            reward_id, xp_settings_id, level, amount = row
+                            reward_id, guild_id, level, amount = row
                             async with self._get_connection() as db:
                                 await db.execute("""
                                     INSERT OR REPLACE INTO XpCurrencyReward (Id, XpSettingsId, Level, Amount)
                                     VALUES (?, ?, ?, ?)
-                                """, (reward_id, xp_settings_id, level, amount))
+                                """, (reward_id, guild_id, level, amount))
                                 await db.commit()
+                    log.info("Migrated XP Currency Rewards")
                 except Exception as e:
                     log.info(f"XpCurrencyReward table not found or empty: {e}")
                 

@@ -163,16 +163,6 @@ class XPSystem:
         await self.db.xp.add_xp_bulk(updates)
         
         # Handle level ups check (Optional - expensive to check every flush, maybe skip for bulk?)
-        # Nadeko checks level up on every message. With buffering, we delay this check.
-        # Ideally, we should check level ups after flush.
-        # Optimally: fetch new XP for all these users and check?
-        # For 20k users, maybe just let them check .level or wait for next interactive trigger?
-        # Or, we can do a quick check.
-        # For now, let's skip automatic level up *announcements* from buffer to save resources, 
-        # or implement a bulk level check later. The user asked for performance. 
-        # Skipping level-up messages on spammy channels is actually a feature.
-        # But if we want it, we'd need `get_user_xp` for each.
-        # Let's keep it simple: flush XP.
 
     async def process_message(self, message: discord.Message):
         """Process a message for XP gain"""
@@ -271,9 +261,6 @@ class XPSystem:
         footer_texts = []
 
         # Check for role rewards (from DB)
-        # Note: _handle_role_rewards handles logic, here we just want to notify?
-        # Actually _handle_role_rewards is not called automatically here in original code, it was called in loop separately maybe?
-        # No, it was missing. Let's integrate it.
         
         role_rewards = await self.db.xp.get_xp_role_rewards(guild.id, new_level)
         for role_id, remove in role_rewards:

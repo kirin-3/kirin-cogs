@@ -31,13 +31,13 @@ class WaifuSystem:
             {"name": "Lipstick", "emoji": "💄", "price": 6000, "negative": False},
             {"name": "Purse", "emoji": "👛", "price": 7500, "negative": False},
             {"name": "Dress", "emoji": "👗", "price": 12500, "negative": False},
-            {"name": "Whip", "emoji": "🧨", "price": 20000, "negative": False}, 
+            {"name": "Whip", "emoji": "<:zz_whip2:695147901407592499>", "price": 20000, "negative": False}, 
             {"name": "Ring", "emoji": "💍", "price": 25000, "negative": False},
             {"name": "Key", "emoji": "🗝️", "price": 30000, "negative": False},
-            {"name": "Cage", "emoji": "🕸️", "price": 50000, "negative": False},
-            {"name": "Buttplug", "emoji": "🔌", "price": 60000, "negative": False},
-            {"name": "CherryKeeper", "emoji": "🍒", "price": 75000, "negative": False},
-            {"name": "Crown", "emoji": "👑", "price": 100000, "negative": False},
+            {"name": "Cage", "emoji": "<:cage:686126928327213057>", "price": 50000, "negative": False},
+            {"name": "Buttplug", "emoji": "<:buttplug:686126927614050355>", "price": 60000, "negative": False},
+            {"name": "CherryKeeper", "emoji": "<:cherrykeeper:764138703873638400>", "price": 75000, "negative": False},
+            {"name": "Crown", "emoji": "<:zz_crown:695147988389199873>", "price": 100000, "negative": False},
             {"name": "Moon", "emoji": "🌕", "price": 150000, "negative": False},
         ]
         # Map for easier lookup
