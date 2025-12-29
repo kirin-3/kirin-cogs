@@ -34,9 +34,44 @@ class XPCardGenerator:
         self.card_width = 500
         self.card_height = 245
         
-        # Load XP configuration
+        # Bundled fonts directory
+        self.bundled_fonts_dir = os.path.join(self.cog_dir, "data", "fonts")
+
+        # Load XP configuration and ensure fonts
         asyncio.create_task(self._load_xp_config())
-    
+        asyncio.create_task(self._ensure_bundled_fonts())
+
+    async def _ensure_bundled_fonts(self):
+        """Ensure bundled fonts are present, downloading if necessary"""
+        if not os.path.exists(self.bundled_fonts_dir):
+            try:
+                os.makedirs(self.bundled_fonts_dir)
+            except Exception as e:
+                log.error(f"Failed to create font directory: {e}")
+                return
+
+        # Noto Sans Math covers Mathematical Alphanumeric Symbols (like 𝐉)
+        fonts_to_download = {
+            "NotoSansMath-Regular.ttf": "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSansMath/NotoSansMath-Regular.ttf"
+        }
+
+        async with aiohttp.ClientSession() as session:
+            for font_name, url in fonts_to_download.items():
+                font_path = os.path.join(self.bundled_fonts_dir, font_name)
+                if not os.path.exists(font_path):
+                    log.info(f"Downloading bundled font: {font_name}")
+                    try:
+                        async with session.get(url) as resp:
+                            if resp.status == 200:
+                                data = await resp.read()
+                                with open(font_path, "wb") as f:
+                                    f.write(data)
+                                log.info(f"Successfully downloaded {font_name}")
+                            else:
+                                log.error(f"Failed to download {font_name}: Status {resp.status}")
+                    except Exception as e:
+                        log.error(f"Error downloading {font_name}: {e}")
+
     async def _load_xp_config(self):
         """Load XP configuration from local config file"""
         try:
@@ -133,7 +168,14 @@ class XPCardGenerator:
             return self.fallback_fonts_cache[size]
             
         # List of fonts known to have good unicode support (Linux & Windows)
-        fallback_paths = [
+        fallback_paths = []
+        
+        # Add bundled fonts first
+        if hasattr(self, 'bundled_fonts_dir'):
+            bundled_math = os.path.join(self.bundled_fonts_dir, "NotoSansMath-Regular.ttf")
+            fallback_paths.append(bundled_math)
+
+        fallback_paths.extend([
             # Linux / Standard
             "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
             "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
@@ -145,7 +187,7 @@ class XPCardGenerator:
             "C:\\Windows\\Fonts\\seguisym.ttf", # Segoe UI Symbol
             "C:\\Windows\\Fonts\\arialuni.ttf", # Arial Unicode MS
             "arialuni.ttf"
-        ]
+        ])
         
         loaded_fonts = []
         for path in fallback_paths:
