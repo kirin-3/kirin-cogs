@@ -7,8 +7,7 @@ class ClubCommands:
     @commands.group(name="club")
     async def club_group(self, ctx):
         """Club system commands"""
-        if ctx.invoked_subcommand is None:
-            await ctx.send_help(ctx.command)
+        pass
 
     @club_group.command(name="create")
     @commands.cooldown(1, 86400, commands.BucketType.user)

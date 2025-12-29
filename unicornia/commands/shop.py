@@ -8,8 +8,7 @@ class ShopCommands:
     @commands.group(name="shop", aliases=["store"])
     async def shop_group(self, ctx):
         """Shop commands - Buy roles and items with currency"""
-        if ctx.invoked_subcommand is None:
-            await ctx.send_help(ctx.command)
+        pass
     
     @shop_group.command(name="list", aliases=["items", "view"])
     @systems_ready
@@ -258,11 +257,7 @@ class ShopCommands:
     @commands.group(name="xpshop", aliases=["xps"])
     async def xp_shop_group(self, ctx):
         """XP Shop - Buy custom backgrounds with currency"""
-        if ctx.invoked_subcommand is None:
-            import logging
-            log = logging.getLogger("red.unicornia.debug")
-            log.info(f"XPShop group invoked without subcommand by {ctx.author}. Sending help manually.")
-            await ctx.send_help(ctx.command)
+        pass
     
     @xp_shop_group.command(name="backgrounds", aliases=["bg", "bgs"])
     @systems_ready

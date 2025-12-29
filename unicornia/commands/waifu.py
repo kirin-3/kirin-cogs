@@ -8,11 +8,7 @@ class WaifuCommands:
     @commands.group(name="waifu", aliases=["wf"])
     async def waifu_group(self, ctx):
         """Waifu system - Claim and manage virtual waifus"""
-        if ctx.invoked_subcommand is None:
-            import logging
-            log = logging.getLogger("red.unicornia.debug")
-            log.info(f"Waifu group invoked without subcommand by {ctx.author}. Sending help manually.")
-            await ctx.send_help(ctx.command)
+        pass
     
     @waifu_group.command(name="claim")
     @systems_ready
@@ -61,15 +57,8 @@ class WaifuCommands:
             if success:
                 # Deduct currency
                 await self.db.economy.remove_currency(ctx.author.id, price, "waifu_claim", str(member.id), note=f"Claimed {member.display_name}")
-                # log_currency_transaction is handled internally by remove_currency usually, but if it was called explicitly before:
-                # Looking at economy.py: remove_currency calls log transaction.
-                # However, the original code called log_currency_transaction explicitly too.
-                # It might be duplicate logging, but to be safe I will just update the call path.
-                # WAIT: economy.py remove_currency DOES log the transaction. Double logging?
-                # Line 60 in waifu.py calls remove_currency. Line 61 calls log_currency_transaction.
-                # I'll update the path for both for now to preserve behavior, even if redundant.
-                # Actually, wait. I can't easily see if log_currency_transaction is in economy repository.
-                # Checking economy.py... yes, line 222: log_currency_transaction is in EconomyRepository.
+                # Log currency transaction
+                # Note: remove_currency might also log, but we keep this explicit log as per original behavior/request
                 await self.db.economy.log_currency_transaction(ctx.author.id, "waifu_claim", -price, f"Claimed {member.display_name}")
                 
                 currency_symbol = await self.config.currency_symbol()
