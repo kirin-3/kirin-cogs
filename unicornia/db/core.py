@@ -756,6 +756,7 @@ class CoreDB:
                             FROM XpRoleReward xrr
                             JOIN XpSettings xs ON xrr.XpSettingsId = xs.Id
                         """
+                        rewards_migrated = 0
                         async with nadeko_db.execute(query) as cursor:
                             async for row in cursor:
                                 guild_id, level, role_id, remove = row
@@ -767,9 +768,41 @@ class CoreDB:
                                         VALUES (?, ?, ?, ?)
                                     """, (guild_id, level, role_id, remove_bool))
                                     await db.commit()
-                        log.info("Migrated XP Role Rewards")
+                                rewards_migrated += 1
+                        
+                        log.info(f"Migrated {rewards_migrated} XP Role Rewards using JOIN")
+
+                        # Fallback if 0 rewards found: Try manual mapping
+                        if rewards_migrated == 0:
+                            log.info("Attempting manual mapping fallback for Role Rewards...")
+                            
+                            # 1. Fetch all XpSettings to build {Id: GuildId} map
+                            xp_settings_map = {}
+                            async with nadeko_db.execute("SELECT Id, GuildId FROM XpSettings") as cursor:
+                                async for row in cursor:
+                                    xp_settings_map[row[0]] = row[1]
+                            
+                            if not xp_settings_map:
+                                log.warning("No XpSettings found, cannot migrate Role Rewards.")
+                            else:
+                                # 2. Fetch all XpRoleReward and map manually
+                                async with nadeko_db.execute("SELECT XpSettingsId, Level, RoleId, Remove FROM XpRoleReward") as cursor:
+                                    async for row in cursor:
+                                        xp_settings_id, level, role_id, remove = row
+                                        if xp_settings_id in xp_settings_map:
+                                            guild_id = xp_settings_map[xp_settings_id]
+                                            async with self._get_connection() as db:
+                                                remove_bool = 1 if remove else 0
+                                                await db.execute("""
+                                                    INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove)
+                                                    VALUES (?, ?, ?, ?)
+                                                """, (guild_id, level, role_id, remove_bool))
+                                                await db.commit()
+                                            rewards_migrated += 1
+                                log.info(f"Migrated {rewards_migrated} XP Role Rewards using fallback mapping")
+
                     except Exception as e:
-                        log.warning(f"XP Role Rewards migration partial failure: {e}")
+                        log.warning(f"XP Role Rewards migration failure: {e}")
                     
                     # XpExcludedItem
                     async with nadeko_db.execute("SELECT GuildId, ItemId, ItemType FROM XpExcludedItem") as cursor:
