@@ -591,7 +591,7 @@ class XPCardGenerator:
         fonts = {
             'name': await self._get_font(25),
             'level': await self._get_font(22),
-            'level_big': await self._get_font(30, bold=True), # Big size for the number
+            'level_big': await self._get_font(26, bold=True), # Big size for the number
             'label': await self._get_font(20),                # Small size for "lv."
             'rank': await self._get_font(20),
             'xp': await self._get_font(25),

@@ -45,21 +45,31 @@ class WaifuCommands:
             if price is None:
                 price = await self.db.waifu.get_waifu_price(member.id)
             
+            # Check affinity for discount
+            target_affinity = await self.db.waifu.get_waifu_affinity(member.id)
+            discount_text = ""
+            final_price = price
+            
+            if target_affinity == ctx.author.id:
+                # 20% Discount
+                final_price = int(price * 0.8)
+                discount_text = f" (20% affinity discount applied! Original: {price:,})"
+            
             # Check if user has enough currency
             user_balance = await self.db.economy.get_user_currency(ctx.author.id)
-            if user_balance < price:
+            if user_balance < final_price:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"❌ You need {currency_symbol}{price:,} but only have {currency_symbol}{user_balance:,}!")
+                await ctx.send(f"❌ You need {currency_symbol}{final_price:,} but only have {currency_symbol}{user_balance:,}!")
                 return
             
             # Claim the waifu
-            success = await self.db.waifu.claim_waifu(member.id, ctx.author.id, price)
+            success = await self.db.waifu.claim_waifu(member.id, ctx.author.id, final_price)
             if success:
                 # Deduct currency
-                await self.db.economy.remove_currency(ctx.author.id, price, "waifu_claim", str(member.id), note=f"Claimed {member.display_name}")
+                await self.db.economy.remove_currency(ctx.author.id, final_price, "waifu_claim", str(member.id), note=f"Claimed {member.display_name}")
                 # Log currency transaction
                 # Note: remove_currency might also log, but we keep this explicit log as per original behavior/request
-                await self.db.economy.log_currency_transaction(ctx.author.id, "waifu_claim", -price, f"Claimed {member.display_name}")
+                await self.db.economy.log_currency_transaction(ctx.author.id, "waifu_claim", -final_price, f"Claimed {member.display_name}")
                 
                 currency_symbol = await self.config.currency_symbol()
                 embed = discord.Embed(
@@ -67,7 +77,7 @@ class WaifuCommands:
                     description=f"You successfully claimed **{member.display_name}** as your waifu!",
                     color=discord.Color.pink()
                 )
-                embed.add_field(name="Price Paid", value=f"{currency_symbol}{price:,}", inline=True)
+                embed.add_field(name="Price Paid", value=f"{currency_symbol}{final_price:,}{discount_text}", inline=True)
                 embed.add_field(name="New Owner", value=ctx.author.display_name, inline=True)
                 embed.set_thumbnail(url=member.display_avatar.url)
                 await ctx.send(embed=embed)
@@ -145,6 +155,15 @@ class WaifuCommands:
         else:
             await ctx.send(f"❌ {message}")
 
+    @waifu_group.command(name="gifts")
+    @systems_ready
+    async def waifu_gifts_list(self, ctx):
+        """List all available waifu gifts
+        
+        Usage: [p]waifu gifts
+        """
+        await self.gifts_list(ctx)
+
     @commands.command(name="gifts")
     @systems_ready
     async def gifts_list(self, ctx):
@@ -171,51 +190,103 @@ class WaifuCommands:
 
     @waifu_group.command(name="info")
     @systems_ready
-    async def waifu_info(self, ctx, member: discord.Member):
+    async def waifu_info(self, ctx, member: discord.Member = None):
         """Get information about a waifu
         
-        Usage: [p]waifu info @user
+        Usage: [p]waifu info [@user]
         """
+        target = member or ctx.author
         
         try:
-            waifu_info = await self.db.waifu.get_waifu_info(member.id)
-            if not waifu_info:
-                await ctx.send("❌ This user is not claimed as a waifu.")
-                return
+            waifu_info = await self.db.waifu.get_waifu_info(target.id)
             
-            waifu_id, claimer_id, price, affinity_id, created_at = waifu_info
+            price = 50
+            claimer_id = None
+            affinity_id = None
+            created_at = None
+            
+            if waifu_info:
+                waifu_id, claimer_id, price, affinity_id, created_at = waifu_info
             
             # Get owner info
             owner = ctx.guild.get_member(claimer_id) if claimer_id else None
             affinity = ctx.guild.get_member(affinity_id) if affinity_id else None
             
-            # Get waifu items
-            items = await self.db.waifu.get_waifu_items(member.id)
+            # Get aggregated gifts
+            gifts = await self.db.waifu.get_waifu_gifts_aggregated(target.id)
+            
+            # Get owned waifus
+            owned_waifus = await self.db.waifu.get_user_waifus(target.id)
+            
+            # Get affinity towards
+            affinity_towards = await self.db.waifu.get_affinity_towards(target.id)
             
             currency_symbol = await self.config.currency_symbol()
             embed = discord.Embed(
-                title=f"💕 {member.display_name}'s Waifu Info",
+                title=f"💕 {target.display_name}'s Waifu Info",
                 color=discord.Color.pink()
             )
-            embed.set_thumbnail(url=member.display_avatar.url)
+            embed.set_thumbnail(url=target.display_avatar.url)
             
+            # Price & Owner
+            embed.add_field(name="Price", value=f"{currency_symbol}{price:,}", inline=True)
             if owner:
                 embed.add_field(name="Owner", value=owner.display_name, inline=True)
             else:
-                embed.add_field(name="Status", value="Unclaimed", inline=True)
+                embed.add_field(name="Owner", value="Nobody", inline=True)
             
-            embed.add_field(name="Price", value=f"{currency_symbol}{price:,}", inline=True)
-            
+            # Affinity (Who they like)
             if affinity:
                 embed.add_field(name="Affinity", value=affinity.display_name, inline=True)
+            else:
+                embed.add_field(name="Affinity", value="Nobody", inline=True)
             
-            if items:
-                items_text = "\n".join([f"{emoji} {name}" for name, emoji in items[:5]])
-                if len(items) > 5:
-                    items_text += f"\n... and {len(items) - 5} more"
-                embed.add_field(name="Items", value=items_text, inline=False)
+            # Affinity Towards (Who likes them)
+            if affinity_towards:
+                affinity_names = []
+                for (uid,) in affinity_towards:
+                    u = ctx.guild.get_member(uid)
+                    if u:
+                        affinity_names.append(u.display_name)
+                
+                if affinity_names:
+                    count = len(affinity_names)
+                    names_str = ", ".join(affinity_names[:5])
+                    if count > 5:
+                        names_str += f" and {count - 5} others"
+                    embed.add_field(name=f"Affinity From ({count})", value=names_str, inline=False)
             
-            embed.add_field(name="Claimed", value=f"<t:{int(created_at.timestamp())}:R>", inline=True)
+            # Owned Waifus
+            if owned_waifus:
+                waifu_names = []
+                for wid, wprice, _, _ in owned_waifus[:10]:
+                    w = ctx.guild.get_member(wid)
+                    if w:
+                        waifu_names.append(w.display_name)
+                
+                count = len(owned_waifus)
+                names_str = ", ".join(waifu_names)
+                if count > 10:
+                    names_str += f" and {count - 10} others"
+                
+                embed.add_field(name=f"Waifus ({count})", value=names_str, inline=False)
+
+            # Gifts
+            if gifts:
+                gifts_text = []
+                for name, emoji, count in gifts:
+                    if count > 1:
+                        gifts_text.append(f"{emoji} {name} (x{count})")
+                    else:
+                        gifts_text.append(f"{emoji} {name}")
+                
+                # Limit display if too many
+                if len(gifts_text) > 15:
+                    gifts_str = ", ".join(gifts_text[:15]) + f" ... and {len(gifts_text) - 15} more"
+                else:
+                    gifts_str = ", ".join(gifts_text)
+                    
+                embed.add_field(name=f"Gifts Received ({sum(g[2] for g in gifts)})", value=gifts_str, inline=False)
             
             await ctx.send(embed=embed)
             
@@ -326,21 +397,32 @@ class WaifuCommands:
     
     @waifu_group.command(name="affinity")
     @systems_ready
-    async def waifu_affinity(self, ctx, member: discord.Member, affinity_user: discord.Member):
-        """Set affinity for your waifu (Owner only)
+    async def waifu_affinity(self, ctx, affinity_user: discord.Member = None):
+        """Set your affinity to someone
         
-        Usage: [p]waifu affinity @waifu @affinity_user
+        If someone has an affinity for you, you can claim them for 20% cheaper!
+        
+        Usage: [p]waifu affinity @user
         """
         
         try:
-            # Check if user owns this waifu
-            current_owner = await self.db.waifu.get_waifu_owner(member.id)
-            if current_owner != ctx.author.id:
-                await ctx.send("❌ You don't own this waifu!")
+            if affinity_user is None:
+                # Check current affinity
+                current_affinity = await self.db.waifu.get_waifu_affinity(ctx.author.id)
+                if current_affinity:
+                    user = ctx.guild.get_member(current_affinity)
+                    name = user.display_name if user else "Unknown User"
+                    await ctx.send(f"💕 Your current affinity is set to **{name}**.")
+                else:
+                    await ctx.send("💕 You don't have an affinity set.")
                 return
-            
-            await self.db.waifu.set_waifu_affinity(member.id, affinity_user.id)
-            await ctx.send(f"✅ Set {member.display_name}'s affinity to {affinity_user.display_name}")
+
+            if affinity_user == ctx.author:
+                await ctx.send("❌ You cannot set affinity to yourself!")
+                return
+
+            await self.db.waifu.set_waifu_affinity(ctx.author.id, affinity_user.id)
+            await ctx.send(f"✅ You have set your affinity to **{affinity_user.display_name}**! They can now claim you for 20% off.")
             
         except Exception as e:
-            await ctx.send(f"❌ Error setting waifu affinity: {e}")
+            await ctx.send(f"❌ Error setting affinity: {e}")

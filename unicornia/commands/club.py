@@ -94,7 +94,7 @@ class ClubCommands:
     @club_group.command(name="accept")
     @systems_ready
     async def club_accept(self, ctx, user: discord.Member):
-        """Accept a user's application (Admin/Owner only)"""
+        """Accept a user's application (Owner only)"""
             
         success, message = await self.club_system.accept_application(ctx.author, user.name)
         if success:
@@ -105,7 +105,7 @@ class ClubCommands:
     @club_group.command(name="reject", aliases=["deny"])
     @systems_ready
     async def club_reject(self, ctx, user: discord.Member):
-        """Reject a user's application (Admin/Owner only)"""
+        """Reject a user's application (Owner only)"""
             
         success, message = await self.club_system.reject_application(ctx.author, user.name)
         if success:
@@ -114,10 +114,9 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="kick")
-    @commands.admin_or_permissions(manage_guild=True)
     @systems_ready
     async def club_kick(self, ctx, user: discord.Member):
-        """Kick a user from the club (Admin/Owner/Server Mod)"""
+        """Kick a user from the club (Owner/Server Mod)"""
             
         success, message = await self.club_system.kick_member(ctx.author, user.name)
         if success:
@@ -126,10 +125,9 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="ban")
-    @commands.admin_or_permissions(manage_guild=True)
     @systems_ready
     async def club_ban(self, ctx, user: discord.Member):
-        """Ban a user from the club (Admin/Owner/Server Mod)"""
+        """Ban a user from the club (Owner/Server Mod)"""
             
         success, message = await self.club_system.ban_member(ctx.author, user.name)
         if success:
@@ -138,10 +136,9 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="unban")
-    @commands.admin_or_permissions(manage_guild=True)
     @systems_ready
     async def club_unban(self, ctx, user: discord.Member):
-        """Unban a user from the club (Admin/Owner/Server Mod)"""
+        """Unban a user from the club (Owner/Server Mod)"""
             
         success, message = await self.club_system.unban_member(ctx.author, user.name)
         if success:
@@ -160,17 +157,63 @@ class ClubCommands:
         else:
             await ctx.send(f"❌ {message}")
 
-    @club_group.command(name="admin")
-    @commands.admin_or_permissions(manage_guild=True)
+    @club_group.command(name="applicants", aliases=["apps"])
     @systems_ready
-    async def club_admin(self, ctx, member: discord.Member):
-        """Toggle admin status for a member (Owner/Server Mod)"""
+    async def club_applicants(self, ctx):
+        """View pending club applications (Owner only)"""
             
-        success, message = await self.club_system.toggle_admin(ctx.author, member)
-        if success:
-            await ctx.send(f"✅ {message}")
-        else:
+        applicants, message = await self.club_system.get_applicants(ctx.author)
+        
+        if applicants is None:
             await ctx.send(f"❌ {message}")
+            return
+            
+        if not applicants:
+            await ctx.send("📋 No pending applications.")
+            return
+            
+        embed = discord.Embed(
+            title="📋 Club Applications",
+            color=discord.Color.blue()
+        )
+        
+        desc = []
+        for a in applicants:
+            desc.append(f"• **{a['username']}** (XP: {a['total_xp']:,})")
+            
+        embed.description = "\n".join(desc)
+        embed.set_footer(text="Use [p]club accept <user> or [p]club reject <user>")
+        
+        await ctx.send(embed=embed)
+
+    @club_group.command(name="bans")
+    @systems_ready
+    async def club_bans(self, ctx):
+        """View banned members (Owner only)"""
+            
+        bans, message = await self.club_system.get_banned_members(ctx.author)
+        
+        if bans is None:
+            await ctx.send(f"❌ {message}")
+            return
+            
+        if not bans:
+            await ctx.send("📋 No banned members.")
+            return
+            
+        embed = discord.Embed(
+            title="🚫 Banned Members",
+            color=discord.Color.red()
+        )
+        
+        desc = []
+        for b in bans:
+            desc.append(f"• **{b['username']}**")
+            
+        embed.description = "\n".join(desc)
+        embed.set_footer(text="Use [p]club unban <user> to unban")
+        
+        await ctx.send(embed=embed)
 
     @club_group.command(name="rename")
     @commands.cooldown(1, 86400, commands.BucketType.user)

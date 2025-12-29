@@ -147,11 +147,23 @@ class WaifuRepository:
             await db.commit()
 
     async def set_waifu_affinity(self, waifu_id: int, affinity_id: int):
-        """Set waifu affinity"""
+        """Set waifu affinity (updates if exists, inserts if not)"""
         async with self.db._get_connection() as db:
-            await db.execute("""
-                UPDATE WaifuInfo SET Affinity = ? WHERE WaifuId = ?
-            """, (affinity_id, waifu_id))
+            # Check if record exists
+            cursor = await db.execute("SELECT WaifuId FROM WaifuInfo WHERE WaifuId = ?", (waifu_id,))
+            exists = await cursor.fetchone()
+
+            if exists:
+                await db.execute("""
+                    UPDATE WaifuInfo SET Affinity = ? WHERE WaifuId = ?
+                """, (affinity_id, waifu_id))
+            else:
+                # Insert new record with default price 50, no claimer
+                await db.execute("""
+                    INSERT INTO WaifuInfo (WaifuId, ClaimerId, Price, Affinity, DateAdded)
+                    VALUES (?, NULL, 50, ?, datetime('now'))
+                """, (waifu_id, affinity_id))
+            
             await db.commit()
 
     async def get_waifu_affinity(self, waifu_id: int):
@@ -187,6 +199,26 @@ class WaifuRepository:
                 SELECT Name, ItemEmoji FROM WaifuItem WHERE WaifuInfoId = ?
                 ORDER BY DateAdded DESC
             """, (waifu_id,))
+            return await cursor.fetchall()
+
+    async def get_waifu_gifts_aggregated(self, waifu_id: int):
+        """Get waifu gifts aggregated by count"""
+        async with self.db._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT Name, ItemEmoji, COUNT(*) as Count
+                FROM WaifuItem
+                WHERE WaifuInfoId = ?
+                GROUP BY Name, ItemEmoji
+                ORDER BY Count DESC
+            """, (waifu_id,))
+            return await cursor.fetchall()
+
+    async def get_affinity_towards(self, user_id: int):
+        """Get list of users who have affinity towards this user"""
+        async with self.db._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT WaifuId FROM WaifuInfo WHERE Affinity = ?
+            """, (user_id,))
             return await cursor.fetchall()
 
     async def get_waifu_history(self, waifu_id: int, limit: int = 10):

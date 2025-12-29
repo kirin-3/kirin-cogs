@@ -226,6 +226,149 @@ class ShopCommands:
         except Exception as e:
             await ctx.send(f"❌ Error adding shop item: {e}")
     
+    @shop_group.command(name="edit")
+    @commands.admin_or_permissions(manage_roles=True)
+    @systems_ready
+    async def shop_edit(self, ctx, item_id: int, field: str, *, value: str):
+        """Edit a shop item (Admin only)
+        
+        Fields:
+        - name: Change item name
+        - price: Change item price
+        - type: Change type (role, command, effect, other)
+        - role: Change role (mention or name) - For Role items
+        - command: Change command - For Command items
+        - req: Change role requirement (mention, name, or 'none')
+        
+        Usage:
+        `[p]shop edit 1 price 5000`
+        `[p]shop edit 1 name Super VIP`
+        `[p]shop edit 1 role @SuperVIP`
+        """
+        if not await self.config.shop_enabled():
+            await ctx.send("❌ Shop system is disabled.")
+            return
+        
+        try:
+            # Get item
+            item = await self.shop_system.get_shop_item(ctx.guild.id, item_id)
+            if not item:
+                await ctx.send("❌ Shop item not found.")
+                return
+            
+            field = field.lower()
+            updates = {}
+            response_msg = ""
+            
+            if field == "price":
+                try:
+                    price = int(value)
+                    if price < 0:
+                        raise ValueError
+                    updates['price'] = price
+                    response_msg = f"Price updated to {price:,}"
+                except ValueError:
+                    await ctx.send("❌ Price must be a positive integer.")
+                    return
+            
+            elif field == "name":
+                if len(value) > 100:
+                    await ctx.send("❌ Name is too long (max 100 chars).")
+                    return
+                updates['name'] = value
+                response_msg = f"Name updated to **{value}**"
+            
+            elif field == "type":
+                type_map = {
+                    'role': self.db.shop.SHOP_TYPE_ROLE,
+                    'command': self.db.shop.SHOP_TYPE_COMMAND,
+                    'effect': self.db.shop.SHOP_TYPE_EFFECT,
+                    'other': self.db.shop.SHOP_TYPE_OTHER
+                }
+                if value.lower() not in type_map:
+                    await ctx.send("❌ Invalid type. Options: role, command, effect, other")
+                    return
+                updates['entry_type'] = type_map[value.lower()]
+                response_msg = f"Type updated to **{value.title()}**"
+                
+            elif field == "role":
+                # Find role
+                role = None
+                if ctx.message.role_mentions:
+                    role = ctx.message.role_mentions[0]
+                else:
+                    role = discord.utils.get(ctx.guild.roles, name=value.strip())
+                
+                if not role:
+                    # Try by ID
+                    try:
+                        role = ctx.guild.get_role(int(value))
+                    except ValueError:
+                        pass
+                
+                if not role:
+                    await ctx.send("❌ Role not found.")
+                    return
+                
+                updates['role_id'] = role.id
+                updates['role_name'] = role.name
+                # Ensure type is role if it wasn't
+                if item['type'] != self.db.shop.SHOP_TYPE_ROLE:
+                    updates['entry_type'] = self.db.shop.SHOP_TYPE_ROLE
+                    response_msg = f"Role updated to **{role.name}** (Type changed to Role)"
+                else:
+                    response_msg = f"Role updated to **{role.name}**"
+
+            elif field == "command":
+                updates['command'] = value
+                # Ensure type is command if it wasn't
+                if item['type'] != self.db.shop.SHOP_TYPE_COMMAND:
+                    updates['entry_type'] = self.db.shop.SHOP_TYPE_COMMAND
+                    response_msg = f"Command updated to `{value}` (Type changed to Command)"
+                else:
+                    response_msg = f"Command updated to `{value}`"
+            
+            elif field in ["req", "requirement"]:
+                if value.lower() == "none":
+                    updates['role_requirement'] = None
+                    response_msg = "Role requirement removed."
+                else:
+                    # Find role
+                    role = None
+                    if ctx.message.role_mentions:
+                        role = ctx.message.role_mentions[0]
+                    else:
+                        role = discord.utils.get(ctx.guild.roles, name=value.strip())
+                    
+                    if not role:
+                         # Try by ID
+                        try:
+                            role = ctx.guild.get_role(int(value))
+                        except ValueError:
+                            pass
+                    
+                    if not role:
+                        await ctx.send("❌ Role not found.")
+                        return
+                    
+                    updates['role_requirement'] = role.id
+                    response_msg = f"Role requirement set to **{role.name}**"
+            
+            else:
+                await ctx.send(f"❌ Invalid field. Available fields: name, price, type, role, command, req")
+                return
+            
+            # Apply updates
+            success = await self.shop_system.update_shop_item(ctx.guild.id, item['id'], **updates)
+            
+            if success:
+                await ctx.send(f"✅ Shop item #{item['index']} updated: {response_msg}")
+            else:
+                await ctx.send("❌ Failed to update shop item.")
+                
+        except Exception as e:
+            await ctx.send(f"❌ Error editing shop item: {e}")
+
     @shop_group.command(name="remove", aliases=["delete", "del"])
     @commands.admin_or_permissions(manage_roles=True)
     @systems_ready
