@@ -5,16 +5,22 @@ from ..utils import systems_ready
 
 class LevelCommands:
     # Level commands
-    @commands.group(name="level", aliases=["lvl", "xp"])
-    async def level_group(self, ctx):
+    @commands.group(name="level", aliases=["lvl", "xp"], invoke_without_command=True)
+    @systems_ready
+    async def level_group(self, ctx, member: Optional[discord.Member] = None):
         """Level and XP commands"""
-        pass
+        # If no subcommand is invoked, behave like the check command
+        if ctx.invoked_subcommand is None:
+            await self._level_check_logic(ctx, member)
     
     @level_group.command(name="check", aliases=["me"])
     @systems_ready
     async def level_check(self, ctx, member: discord.Member = None):
         """Check your or another user's level and XP"""
-        
+        await self._level_check_logic(ctx, member)
+
+    async def _level_check_logic(self, ctx, member: discord.Member = None):
+        """Logic for checking level/XP"""
         if not await self.config.xp_enabled():
             await ctx.send("❌ XP system is disabled.")
             return
@@ -59,12 +65,6 @@ class LevelCommands:
                     return
                     
             except Exception as e:
-                # Need logger
-                from redbot.core import logs
-                # Wait, logging is set up in unicornia.py
-                # We can access it via self.log if we define it, but self refers to Cog.
-                # Unicornia class has logger. We assume self has access if inherited.
-                # However, Python logging module works too.
                 import logging
                 log = logging.getLogger("red.unicornia")
                 log.error(f"Error generating XP card for {member.display_name}: {e}")

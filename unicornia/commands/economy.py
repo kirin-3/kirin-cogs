@@ -14,7 +14,16 @@ class EconomyCommands:
     @systems_ready
     async def economy_balance(self, ctx, member: discord.Member = None):
         """Check your or another user's Slut points balance"""
-        
+        await self._balance_logic(ctx, member)
+
+    @commands.command(name="balance", aliases=["bal", "$", "€", "£"])
+    @systems_ready
+    async def global_balance(self, ctx, member: discord.Member = None):
+        """Check your or another user's balance"""
+        await self._balance_logic(ctx, member)
+
+    async def _balance_logic(self, ctx, member: discord.Member = None):
+        """Shared logic for balance commands"""
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
             return
@@ -29,7 +38,7 @@ class EconomyCommands:
                 title=f"{member.display_name}'s Balance",
                 color=member.color or discord.Color.green()
             )
-            embed.add_field(name="<:slut:686148402941001730> Slut points", value=f"{currency_symbol}{wallet_balance:,}", inline=True)
+            embed.add_field(name=f"{currency_symbol} Currency", value=f"{currency_symbol}{wallet_balance:,}", inline=True)
             embed.add_field(name="🏦 Bank", value=f"{currency_symbol}{bank_balance:,}", inline=True)
             embed.add_field(name="💎 Total", value=f"{currency_symbol}{wallet_balance + bank_balance:,}", inline=True)
             
@@ -75,6 +84,17 @@ class EconomyCommands:
     @systems_ready
     async def economy_timely(self, ctx):
         """Claim your daily Slut points reward"""
+        await self._timely_logic(ctx)
+
+    @commands.command(name="timely", aliases=["daily"])
+    @commands.cooldown(1, 86400, commands.BucketType.user)  # 24 hours cooldown
+    @systems_ready
+    async def global_timely(self, ctx):
+        """Claim your daily reward"""
+        await self._timely_logic(ctx)
+
+    async def _timely_logic(self, ctx):
+        """Shared logic for timely commands"""
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
             return
@@ -111,7 +131,7 @@ class EconomyCommands:
                 
         except Exception as e:
             await ctx.send(f"❌ Error claiming daily reward: {e}")
-    
+
     @economy_group.command(name="history", aliases=["transactions", "tx"])
     @systems_ready
     async def economy_history(self, ctx, member: discord.Member = None):
