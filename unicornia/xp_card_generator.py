@@ -404,7 +404,7 @@ class XPCardGenerator:
         
         # Draw Level Number ONLY (Remove "lv." label drawing)
         # Position: Left side, big number
-        draw.text((29, 95), str(level), font=level_big_font, fill=(255, 255, 255, 255))
+        draw.text((30, 95), str(level), font=level_big_font, fill=(255, 255, 255, 255))
         
         # Draw Rank Number ONLY (Remove "Rank" word)
         # Position: Slightly to the right of Level, smaller
@@ -591,7 +591,7 @@ class XPCardGenerator:
         fonts = {
             'name': await self._get_font(25),
             'level': await self._get_font(22),
-            'level_big': await self._get_font(26, bold=True), # Big size for the number
+            'level_big': await self._get_font(24, bold=True), # Big size for the number
             'label': await self._get_font(20),                # Small size for "lv."
             'rank': await self._get_font(20),
             'xp': await self._get_font(25),
