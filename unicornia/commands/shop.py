@@ -529,10 +529,17 @@ class ShopCommands:
                 await ctx.send("❌ No backgrounds configured.")
                 return
 
+            # Filter hidden items
+            visible_backgrounds = {k: v for k, v in backgrounds.items() if not v.get('hidden', False)}
+            
+            if not visible_backgrounds:
+                await ctx.send("❌ No backgrounds available.")
+                return
+
             user_owned = await self.db.xp.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
             owned_keys = {item[3] for item in user_owned}  # ItemKey
             
-            view = BackgroundShopView(ctx, backgrounds, owned_keys)
+            view = BackgroundShopView(ctx, visible_backgrounds, owned_keys)
             embed = await view.get_embed()
             
             view.message = await ctx.send(embed=embed, view=view)
@@ -567,6 +574,11 @@ class ShopCommands:
                 await ctx.send(f"❌ Background `{item_key}` not found.")
                 return
             
+            bg_data = items[item_key]
+            if bg_data.get('hidden', False):
+                 await ctx.send(f"❌ Background `{item_key}` is not available for purchase.")
+                 return
+
             if price == -1:
                 await ctx.send(f"❌ Background `{item_key}` is no longer available for purchase.")
                 return
@@ -666,36 +678,25 @@ class ShopCommands:
         except Exception as e:
             await ctx.send(f"❌ Error reloading configuration: {e}")
     
-    @xp_shop_group.command(name="config")
+    @xp_shop_group.command(name="give")
     @commands.is_owner()
     @systems_ready
-    async def shop_config_info(self, ctx):
-        """Show XP shop configuration file location (Owner only)"""
-        import os
-        config_path = os.path.join(self.xp_system.card_generator.cog_dir, "xp_config.yml")
-        embed = discord.Embed(
-            title="🔧 XP Shop Configuration",
-            description=f"Configuration file location:\n`{config_path}`",
-            color=discord.Color.blue()
-        )
-        embed.add_field(
-            name="How to add/edit backgrounds:",
-            value="1. Edit the `xp_config.yml` file\n2. Add new backgrounds under `shop.bgs`\n3. Use `[p]xpshop reload` to apply changes",
-            inline=False
-        )
-        embed.add_field(
-            name="Background format:",
-            value="```yaml\nkey_name:\n  name: Display Name\n  price: 10000\n  url: https://your-image-url.com/image.gif\n  desc: Optional description```",
-            inline=False
-        )
-        embed.add_field(
-            name="Available Commands:",
-            value="`[p]xpshop backgrounds` - View all backgrounds\n`[p]xpshop buy <key>` - Purchase a background\n`[p]xpshop use <key>` - Set active background\n`[p]xpshop owned` - View your inventory",
-            inline=False
-        )
-        embed.add_field(
-            name="Note:",
-            value="All users start with the 'default' background. Purchase backgrounds with Slut points, then use `[p]xpshop use <key>` to activate them!",
-            inline=False
-        )
-        await ctx.send(embed=embed)
+    async def shop_give_bg(self, ctx, user: discord.Member, item_key: str):
+        """Give an XP background to a user (Owner only)"""
+        try:
+            items = self.xp_system.card_generator.get_available_backgrounds()
+            if item_key not in items:
+                await ctx.send(f"❌ Background `{item_key}` not found.")
+                return
+
+            success = await self.db.xp.give_xp_item(user.id, 1, item_key) # 1 = Background
+            
+            if success:
+                item_name = items[item_key].get('name', item_key)
+                await ctx.send(f"✅ Gave **{item_name}** to {user.mention}!")
+            else:
+                await ctx.send(f"❌ {user.mention} already owns `{item_key}`.")
+                
+        except Exception as e:
+             await ctx.send(f"❌ Error giving background: {e}")
+

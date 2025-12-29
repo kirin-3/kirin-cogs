@@ -239,8 +239,8 @@ class XPRepository:
             
             # Atomic deduction
             cursor = await db.execute("""
-                UPDATE DiscordUser 
-                SET CurrencyAmount = CurrencyAmount - ? 
+                UPDATE DiscordUser
+                SET CurrencyAmount = CurrencyAmount - ?
                 WHERE UserId = ? AND CurrencyAmount >= ?
             """, (price, user_id, price))
             
@@ -257,6 +257,22 @@ class XPRepository:
                 INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, Reason, DateAdded)
                 VALUES (?, ?, 'xp_shop_purchase', ?, ?, datetime('now'))
             """, (user_id, -price, item_key, f"Purchased XP item: {item_key}"))
+            
+            await db.commit()
+            return True
+
+    async def give_xp_item(self, user_id: int, item_type: int, item_key: str) -> bool:
+        """Give an XP shop item to a user without cost"""
+        async with self.db._get_connection() as db:
+            
+            # Check if user already owns this item
+            if await self.user_owns_xp_item(user_id, item_type, item_key):
+                return False
+            
+            # Add item to user's collection
+            await db.execute("""
+                INSERT INTO XpShopOwnedItem (UserId, ItemType, ItemKey, IsUsing) VALUES (?, ?, ?, FALSE)
+            """, (user_id, item_type, item_key))
             
             await db.commit()
             return True

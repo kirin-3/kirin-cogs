@@ -1,11 +1,28 @@
+# Unicornia XP Shop Configuration
+# To add a hidden background (only available via [p]xpshop give), add "hidden: true" to the item.
+# Example:
+#   secret_bg:
+#     name: Secret Background
+#     price: 0
+#     url: https://example.com/image.png
+#     desc: Secret
+#     hidden: true
+
 shop:
   bgs:
+    default:
+      desc: Free default background for everyone
+      name: Default Background
+      preview: ''
+      price: 0
+      url: https://unicornia.net/botimages/defaultxp1.png
     aki-csm:
       desc: ''
       name: Aki
       preview: ''
       price: 20000
       url: https://unicornia.net/botimages/aki-csm.gif
+      hidden: true
     archer:
       desc: ''
       name: Archer
@@ -42,12 +59,6 @@ shop:
       preview: ''
       price: 20000
       url: https://unicornia.net/botimages/dandadan.gif
-    default:
-      desc: Free default background for everyone
-      name: Default Background
-      preview: ''
-      price: 0
-      url: https://unicornia.net/botimages/defaultxp1.png
     edward:
       desc: ''
       name: Edward Elric
