@@ -778,28 +778,37 @@ class CoreDB:
                             
                             # 1. Fetch all XpSettings to build {Id: GuildId} map
                             xp_settings_map = {}
-                            async with nadeko_db.execute("SELECT Id, GuildId FROM XpSettings") as cursor:
-                                async for row in cursor:
-                                    xp_settings_map[row[0]] = row[1]
+                            try:
+                                async with nadeko_db.execute("SELECT Id, GuildId FROM XpSettings") as cursor:
+                                    async for row in cursor:
+                                        xp_settings_map[row[0]] = row[1]
+                                log.info(f"Loaded {len(xp_settings_map)} XpSettings mappings.")
+                            except Exception as e:
+                                log.error(f"Failed to load XpSettings for fallback: {e}")
                             
                             if not xp_settings_map:
                                 log.warning("No XpSettings found, cannot migrate Role Rewards.")
                             else:
                                 # 2. Fetch all XpRoleReward and map manually
-                                async with nadeko_db.execute("SELECT XpSettingsId, Level, RoleId, Remove FROM XpRoleReward") as cursor:
-                                    async for row in cursor:
-                                        xp_settings_id, level, role_id, remove = row
-                                        if xp_settings_id in xp_settings_map:
-                                            guild_id = xp_settings_map[xp_settings_id]
-                                            async with self._get_connection() as db:
-                                                remove_bool = 1 if remove else 0
-                                                await db.execute("""
-                                                    INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove)
-                                                    VALUES (?, ?, ?, ?)
-                                                """, (guild_id, level, role_id, remove_bool))
-                                                await db.commit()
-                                            rewards_migrated += 1
-                                log.info(f"Migrated {rewards_migrated} XP Role Rewards using fallback mapping")
+                                try:
+                                    async with nadeko_db.execute("SELECT XpSettingsId, Level, RoleId, Remove FROM XpRoleReward") as cursor:
+                                        async for row in cursor:
+                                            xp_settings_id, level, role_id, remove = row
+                                            if xp_settings_id in xp_settings_map:
+                                                guild_id = xp_settings_map[xp_settings_id]
+                                                async with self._get_connection() as db:
+                                                    remove_bool = 1 if remove else 0
+                                                    await db.execute("""
+                                                        INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove)
+                                                        VALUES (?, ?, ?, ?)
+                                                    """, (guild_id, level, role_id, remove_bool))
+                                                    await db.commit()
+                                                rewards_migrated += 1
+                                            else:
+                                                log.warning(f"Skipping Role Reward with unknown XpSettingsId: {xp_settings_id}")
+                                    log.info(f"Migrated {rewards_migrated} XP Role Rewards using fallback mapping")
+                                except Exception as e:
+                                    log.error(f"Failed to fetch XpRoleReward for fallback: {e}")
 
                     except Exception as e:
                         log.warning(f"XP Role Rewards migration failure: {e}")
