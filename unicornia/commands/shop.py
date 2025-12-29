@@ -53,7 +53,7 @@ class ShopCommands:
                     inline=True
                 )
             
-            embed.set_footer(text=f"Use '[p]shop buy <item_id>' to purchase an item")
+            embed.set_footer(text=f"Use '[p]shop buy <index>' to purchase an item")
             await ctx.send(embed=embed)
             
         except Exception as e:
@@ -61,15 +61,14 @@ class ShopCommands:
     
     @shop_group.command(name="buy")
     @systems_ready
-    async def shop_buy(self, ctx, item_id: int):
-        """Buy a shop item"""
+    async def shop_buy(self, ctx, index_or_id: int):
+        """Buy a shop item by Index (recommended) or ID"""
         if not await self.config.shop_enabled():
             await ctx.send("❌ Shop system is disabled.")
             return
         
-        
         try:
-            success, message = await self.shop_system.purchase_item(ctx.author, ctx.guild.id, item_id)
+            success, message = await self.shop_system.purchase_item(ctx.author, ctx.guild.id, index_or_id)
             if success:
                 currency_symbol = await self.config.currency_symbol()
                 # Replace currency in message if it comes from system with generic term
@@ -93,15 +92,14 @@ class ShopCommands:
     
     @shop_group.command(name="info")
     @systems_ready
-    async def shop_info(self, ctx, item_id: int):
-        """Get detailed information about a shop item"""
+    async def shop_info(self, ctx, index_or_id: int):
+        """Get detailed information about a shop item (by Index or ID)"""
         if not await self.config.shop_enabled():
             await ctx.send("❌ Shop system is disabled.")
             return
         
-        
         try:
-            item = await self.shop_system.get_shop_item(ctx.guild.id, item_id)
+            item = await self.shop_system.get_shop_item(ctx.guild.id, index_or_id)
             if not item:
                 await ctx.send("❌ Shop item not found.")
                 return
@@ -132,7 +130,7 @@ class ShopCommands:
                 items_text = "\n".join([f"• {item_text}" for _, item_text in item['additional_items']])
                 embed.add_field(name="Additional Items", value=items_text[:1000], inline=False)
             
-            embed.set_footer(text=f"Use '[p]shop buy {item_id}' to purchase this item")
+            embed.set_footer(text=f"Use '[p]shop buy {item['index']}' to purchase this item")
             await ctx.send(embed=embed)
             
         except Exception as e:

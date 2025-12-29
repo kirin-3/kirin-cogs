@@ -46,8 +46,14 @@ class ShopSystem:
         return items
     
     async def get_shop_item(self, guild_id: int, item_id: int) -> Optional[Dict[str, Any]]:
-        """Get a specific shop item"""
-        entry = await self.db.shop.get_shop_entry(guild_id, item_id)
+        """Get a specific shop item (by Index or ID)"""
+        # Try by Index first
+        entry = await self.db.shop.get_shop_entry_by_index(guild_id, item_id)
+        
+        # If not found, try by ID
+        if not entry:
+            entry = await self.db.shop.get_shop_entry(guild_id, item_id)
+            
         if not entry:
             return None
         
@@ -110,7 +116,8 @@ class ShopSystem:
             pass
         
         # Deduct currency
-        success, message = await self.db.shop.purchase_shop_item(user.id, guild_id, item_id)
+        # Use the actual ID from the item (in case we found it by index)
+        success, message = await self.db.shop.purchase_shop_item(user.id, guild_id, item['id'])
         if not success:
             return False, message
         

@@ -34,7 +34,7 @@ class WaifuRepository:
             
             # Log waifu update (Claimed = 0)
             await db.execute("""
-                INSERT INTO WaifuUpdate (UserId, OldId, NewId, UpdateType, DateAdded)
+                INSERT INTO WaifuUpdates (UserId, OldId, NewId, UpdateType, DateAdded)
                 VALUES (?, ?, ?, 0, datetime('now'))
             """, (waifu_id, 0, claimer_id))
             
@@ -54,7 +54,7 @@ class WaifuRepository:
             
             # Log divorce (Divorced = 1) - Note: Nadeko likely uses UserId as the Waifu ID here
             await db.execute("""
-                INSERT INTO WaifuUpdate (UserId, OldId, NewId, UpdateType, DateAdded)
+                INSERT INTO WaifuUpdates (UserId, OldId, NewId, UpdateType, DateAdded)
                 VALUES (?, ?, ?, 1, datetime('now'))
             """, (waifu_id, claimer_id, 0))
             
@@ -84,7 +84,7 @@ class WaifuRepository:
             
             # Log update (Transfer = 2? Assuming UpdateType enum)
             await db.execute("""
-                INSERT INTO WaifuUpdate (UserId, OldId, NewId, UpdateType, DateAdded)
+                INSERT INTO WaifuUpdates (UserId, OldId, NewId, UpdateType, DateAdded)
                 VALUES (?, ?, ?, 2, datetime('now'))
             """, (waifu_id, old_owner_id, new_owner_id))
             
@@ -108,7 +108,7 @@ class WaifuRepository:
             
             # Log update
             await db.execute("""
-                INSERT INTO WaifuUpdate (UserId, OldId, NewId, UpdateType, DateAdded)
+                INSERT INTO WaifuUpdates (UserId, OldId, NewId, UpdateType, DateAdded)
                 VALUES (?, ?, 0, 99, datetime('now'))
             """, (waifu_id, old_owner_id))
             
@@ -194,7 +194,7 @@ class WaifuRepository:
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT OldId, NewId, UpdateType, DateAdded
-                FROM WaifuUpdate WHERE UserId = ?
+                FROM WaifuUpdates WHERE UserId = ?
                 ORDER BY DateAdded DESC LIMIT ?
             """, (waifu_id, limit))
             return await cursor.fetchall()

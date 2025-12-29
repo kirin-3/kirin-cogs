@@ -26,7 +26,7 @@ class EconomyRepository:
             
             # Log transaction
             await db.execute("""
-                INSERT INTO CurrencyTransaction (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+                INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
                 VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
             """, (user_id, amount, transaction_type, extra, other_id, note))
             
@@ -55,7 +55,7 @@ class EconomyRepository:
             
             # Log transaction
             await db.execute("""
-                INSERT INTO CurrencyTransaction (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+                INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
                 VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
             """, (user_id, -amount, transaction_type, extra, other_id, note))
             
@@ -66,7 +66,7 @@ class EconomyRepository:
     async def get_bank_balance(self, user_id: int) -> int:
         """Get user's bank balance"""
         async with self.db._get_connection() as db:
-            cursor = await db.execute("SELECT Balance FROM BankUser WHERE UserId = ?", (user_id,))
+            cursor = await db.execute("SELECT Balance FROM BankUsers WHERE UserId = ?", (user_id,))
             row = await cursor.fetchone()
             return row[0] if row else 0
     
@@ -86,13 +86,13 @@ class EconomyRepository:
             
             # Add to bank
             await db.execute("""
-                INSERT INTO BankUser (UserId, Balance) VALUES (?, ?)
+                INSERT INTO BankUsers (UserId, Balance) VALUES (?, ?)
                 ON CONFLICT(UserId) DO UPDATE SET Balance = Balance + ?
             """, (user_id, amount, amount))
             
             # Log transaction
             await db.execute("""
-                INSERT INTO CurrencyTransaction (UserId, Amount, Type, Extra, Reason, DateAdded)
+                INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, Reason, DateAdded)
                 VALUES (?, ?, 'bank_deposit', 'bank', ?, datetime('now'))
             """, (user_id, -amount, f"Deposited {amount} to bank"))
             
@@ -105,7 +105,7 @@ class EconomyRepository:
             
             # Atomic deduct from bank
             cursor = await db.execute("""
-                UPDATE BankUser
+                UPDATE BankUsers
                 SET Balance = Balance - ?
                 WHERE UserId = ? AND Balance >= ?
             """, (amount, user_id, amount))
@@ -121,7 +121,7 @@ class EconomyRepository:
             
             # Log transaction
             await db.execute("""
-                INSERT INTO CurrencyTransaction (UserId, Amount, Type, Extra, Reason, DateAdded)
+                INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, Reason, DateAdded)
                 VALUES (?, ?, 'bank_withdraw', 'bank', ?, datetime('now'))
             """, (user_id, amount, f"Withdrew {amount} from bank"))
             
@@ -132,13 +132,13 @@ class EconomyRepository:
         """Get or create bank user"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT Balance, InterestRate FROM BankUser WHERE UserId = ?
+                SELECT Balance, InterestRate FROM BankUsers WHERE UserId = ?
             """, (user_id,))
             result = await cursor.fetchone()
             
             if not result:
                 await db.execute("""
-                    INSERT INTO BankUser (UserId, Balance, InterestRate) VALUES (?, 0, 0.02)
+                    INSERT INTO BankUsers (UserId, Balance, InterestRate) VALUES (?, 0, 0.02)
                 """, (user_id,))
                 await db.commit()
                 return (0, 0.02)
@@ -149,8 +149,8 @@ class EconomyRepository:
         """Update bank balance"""
         async with self.db._get_connection() as db:
             await db.execute("""
-                INSERT OR REPLACE INTO BankUser (UserId, Balance, InterestRate)
-                VALUES (?, ?, COALESCE((SELECT InterestRate FROM BankUser WHERE UserId = ?), 0.02))
+                INSERT OR REPLACE INTO BankUsers (UserId, Balance, InterestRate)
+                VALUES (?, ?, COALESCE((SELECT InterestRate FROM BankUsers WHERE UserId = ?), 0.02))
             """, (user_id, new_balance, user_id))
             await db.commit()
 
@@ -223,7 +223,7 @@ class EconomyRepository:
         """Log a currency transaction"""
         async with self.db._get_connection() as db:
             await db.execute("""
-                INSERT INTO CurrencyTransaction (UserId, Type, Amount, Reason, OtherId, Extra, DateAdded)
+                INSERT INTO CurrencyTransactions (UserId, Type, Amount, Reason, OtherId, Extra, DateAdded)
                 VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
             """, (user_id, transaction_type, amount, reason, other_id, extra))
             await db.commit()
@@ -232,7 +232,7 @@ class EconomyRepository:
         """Get recent currency transactions for a user"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT Type, Amount, Reason, DateAdded FROM CurrencyTransaction 
+                SELECT Type, Amount, Reason, DateAdded FROM CurrencyTransactions
                 WHERE UserId = ? ORDER BY DateAdded DESC LIMIT ?
             """, (user_id, limit))
             return await cursor.fetchall()

@@ -12,7 +12,7 @@ class ClubRepository:
             
             # Insert club
             cursor = await db.execute("""
-                INSERT INTO ClubInfo (Name, OwnerId, Xp) VALUES (?, ?, 0)
+                INSERT INTO Clubs (Name, OwnerId, Xp) VALUES (?, ?, 0)
             """, (name, owner_id))
             club_id = cursor.lastrowid
             
@@ -30,8 +30,8 @@ class ClubRepository:
         """Get club by ID"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded 
-                FROM ClubInfo WHERE Id = ?
+                SELECT Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded
+                FROM Clubs WHERE Id = ?
             """, (club_id,))
             return await cursor.fetchone()
 
@@ -39,8 +39,8 @@ class ClubRepository:
         """Get club by name"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded 
-                FROM ClubInfo WHERE Name = ? COLLATE NOCASE
+                SELECT Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded
+                FROM Clubs WHERE Name = ? COLLATE NOCASE
             """, (name,))
             return await cursor.fetchone()
 
@@ -48,8 +48,8 @@ class ClubRepository:
         """Get club by member user ID"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT c.Id, c.Name, c.Description, c.ImageUrl, c.BannerUrl, c.Xp, c.OwnerId, c.DateAdded 
-                FROM ClubInfo c
+                SELECT c.Id, c.Name, c.Description, c.ImageUrl, c.BannerUrl, c.Xp, c.OwnerId, c.DateAdded
+                FROM Clubs c
                 JOIN DiscordUser u ON c.Id = u.ClubId
                 WHERE u.UserId = ?
             """, (user_id,))
@@ -189,7 +189,7 @@ class ClubRepository:
             await db.execute("DELETE FROM ClubBans WHERE ClubId = ?", (club_id,))
             
             # Delete club
-            await db.execute("DELETE FROM ClubInfo WHERE Id = ?", (club_id,))
+            await db.execute("DELETE FROM Clubs WHERE Id = ?", (club_id,))
             
             await db.commit()
 
@@ -212,7 +212,7 @@ class ClubRepository:
                 return
                 
             params.append(club_id)
-            query = f"UPDATE ClubInfo SET {', '.join(updates)} WHERE Id = ?"
+            query = f"UPDATE Clubs SET {', '.join(updates)} WHERE Id = ?"
             
             await db.execute(query, params)
             await db.commit()
@@ -230,8 +230,8 @@ class ClubRepository:
         offset = page * limit
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT Id, Name, Xp FROM ClubInfo 
-                ORDER BY Xp DESC 
+                SELECT Id, Name, Xp FROM Clubs
+                ORDER BY Xp DESC
                 LIMIT ? OFFSET ?
             """, (limit, offset))
             return await cursor.fetchall()
@@ -240,8 +240,8 @@ class ClubRepository:
         """Get club rank by XP"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT COUNT(*) + 1 FROM ClubInfo 
-                WHERE Xp > (SELECT Xp FROM ClubInfo WHERE Id = ?)
+                SELECT COUNT(*) + 1 FROM Clubs
+                WHERE Xp > (SELECT Xp FROM Clubs WHERE Id = ?)
             """, (club_id,))
             rank = (await cursor.fetchone())[0]
             return rank

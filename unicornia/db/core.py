@@ -146,7 +146,7 @@ class CoreDB:
             
             # Currency Transaction table (matching Nadeko's CurrencyTransaction)
             await db.execute("""
-            CREATE TABLE IF NOT EXISTS CurrencyTransaction (
+            CREATE TABLE IF NOT EXISTS CurrencyTransactions (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 UserId INTEGER NOT NULL,
                 Type TEXT NOT NULL,
@@ -160,7 +160,7 @@ class CoreDB:
             
             # Bank User table (matching Nadeko's BankUser)
             await db.execute("""
-            CREATE TABLE IF NOT EXISTS BankUser (
+            CREATE TABLE IF NOT EXISTS BankUsers (
                 UserId INTEGER PRIMARY KEY,
                 Balance INTEGER NOT NULL DEFAULT 0,
                 InterestRate REAL NOT NULL DEFAULT 0.02
@@ -224,7 +224,7 @@ class CoreDB:
 
             # Club Info table (matching Nadeko's ClubInfo)
             await db.execute("""
-            CREATE TABLE IF NOT EXISTS ClubInfo (
+            CREATE TABLE IF NOT EXISTS Clubs (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 Name TEXT NOT NULL,
                 Description TEXT,
@@ -244,7 +244,7 @@ class CoreDB:
                 UserId INTEGER,
                 DateAdded TEXT DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (ClubId, UserId),
-                FOREIGN KEY (ClubId) REFERENCES ClubInfo(Id) ON DELETE CASCADE
+                FOREIGN KEY (ClubId) REFERENCES Clubs(Id) ON DELETE CASCADE
             )
             """)
 
@@ -255,7 +255,7 @@ class CoreDB:
                 UserId INTEGER,
                 DateAdded TEXT DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (ClubId, UserId),
-                FOREIGN KEY (ClubId) REFERENCES ClubInfo(Id) ON DELETE CASCADE
+                FOREIGN KEY (ClubId) REFERENCES Clubs(Id) ON DELETE CASCADE
             )
             """)
             
@@ -335,7 +335,7 @@ class CoreDB:
             """)
 
             await db.execute("""
-                CREATE TABLE IF NOT EXISTS WaifuUpdate (
+                CREATE TABLE IF NOT EXISTS WaifuUpdates (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     UserId INTEGER,
                     OldId INTEGER,
@@ -368,8 +368,8 @@ class CoreDB:
             # Create Indices for Performance
             await db.execute("CREATE INDEX IF NOT EXISTS idx_xp_guild_xp ON UserXpStats(GuildId, Xp DESC)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_currency_amount ON DiscordUser(CurrencyAmount DESC)")
-            await db.execute("CREATE INDEX IF NOT EXISTS idx_transactions_user ON currency_transactions(user_id)")
-            await db.execute("CREATE INDEX IF NOT EXISTS idx_club_xp ON ClubInfo(Xp DESC)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_transactions_user ON CurrencyTransactions(UserId)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_club_xp ON Clubs(Xp DESC)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_user_club ON DiscordUser(ClubId)")
             
             await db.commit()
@@ -531,12 +531,12 @@ class CoreDB:
                 log.info(f"Completed UserXpStats migration: {migrated_xp} entries")
                 
                 # Migrate BankUsers data
-                async with nadeko_db.execute("SELECT UserId, Balance FROM BankUser") as cursor:
+                async with nadeko_db.execute("SELECT UserId, Balance FROM BankUsers") as cursor:
                     async for row in cursor:
                         user_id, balance = row
                         async with self._get_connection() as db:
                             await db.execute("""
-                                INSERT OR REPLACE INTO BankUser (UserId, Balance)
+                                INSERT OR REPLACE INTO BankUsers (UserId, Balance)
                                 VALUES (?, ?)
                             """, (user_id, balance))
                             await db.commit()
@@ -607,6 +607,140 @@ class CoreDB:
                                 await db.commit()
                 except Exception as e:
                     log.info(f"GCChannelId table not found or empty: {e}")
+
+                # Migrate Waifu Tables
+                try:
+                    # WaifuInfo
+                    async with nadeko_db.execute("SELECT WaifuId, ClaimerId, AffinityId, Price, DateAdded FROM WaifuInfo") as cursor:
+                        async for row in cursor:
+                            async with self._get_connection() as db:
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO WaifuInfo (WaifuId, ClaimerId, Affinity, Price, DateAdded)
+                                    VALUES (?, ?, ?, ?, ?)
+                                """, row)
+                                await db.commit()
+                    log.info("Migrated WaifuInfo")
+
+                    # WaifuItem
+                    async with nadeko_db.execute("SELECT WaifuInfoId, ItemEmoji, Name, DateAdded FROM WaifuItem") as cursor:
+                        async for row in cursor:
+                            async with self._get_connection() as db:
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO WaifuItem (WaifuInfoId, ItemEmoji, Name, DateAdded)
+                                    VALUES (?, ?, ?, ?)
+                                """, row)
+                                await db.commit()
+                    log.info("Migrated WaifuItem")
+
+                    # WaifuUpdate
+                    async with nadeko_db.execute("SELECT UserId, OldId, NewId, UpdateType, DateAdded FROM WaifuUpdates") as cursor:
+                        async for row in cursor:
+                            async with self._get_connection() as db:
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO WaifuUpdates (UserId, OldId, NewId, UpdateType, DateAdded)
+                                    VALUES (?, ?, ?, ?, ?)
+                                """, row)
+                                await db.commit()
+                    log.info("Migrated WaifuUpdates")
+                except Exception as e:
+                    log.warning(f"Waifu migration partial failure: {e}")
+
+                # Migrate Club Tables
+                try:
+                    # ClubInfo - We need to handle potential schema differences if any, but standard Nadeko is consistent
+                    async with nadeko_db.execute("SELECT Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded FROM Clubs") as cursor:
+                        async for row in cursor:
+                            async with self._get_connection() as db:
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO Clubs (Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                """, row)
+                                await db.commit()
+                    log.info("Migrated Clubs")
+
+                    # ClubApplicants
+                    async with nadeko_db.execute("SELECT ClubId, UserId, DateAdded FROM ClubApplicants") as cursor:
+                        async for row in cursor:
+                            async with self._get_connection() as db:
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO ClubApplicants (ClubId, UserId, DateAdded)
+                                    VALUES (?, ?, ?)
+                                """, row)
+                                await db.commit()
+                    log.info("Migrated ClubApplicants")
+
+                    # ClubBans
+                    async with nadeko_db.execute("SELECT ClubId, UserId, DateAdded FROM ClubBans") as cursor:
+                        async for row in cursor:
+                            async with self._get_connection() as db:
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO ClubBans (ClubId, UserId, DateAdded)
+                                    VALUES (?, ?, ?)
+                                """, row)
+                                await db.commit()
+                    log.info("Migrated ClubBans")
+                except Exception as e:
+                    log.warning(f"Club migration partial failure: {e}")
+
+                # Migrate XP Configuration
+                try:
+                    # XpSettings
+                    async with nadeko_db.execute("SELECT GuildId, XpRateMultiplier, XpPerMessage, XpMinutesTimeout FROM XpSettings") as cursor:
+                        async for row in cursor:
+                            async with self._get_connection() as db:
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO XpSettings (GuildId, XpRateMultiplier, XpPerMessage, XpMinutesTimeout)
+                                    VALUES (?, ?, ?, ?)
+                                """, row)
+                                await db.commit()
+
+                    # XpRoleReward
+                    async with nadeko_db.execute("SELECT GuildId, Level, RoleId, Remove FROM XpRoleReward") as cursor:
+                        async for row in cursor:
+                            async with self._get_connection() as db:
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove)
+                                    VALUES (?, ?, ?, ?)
+                                """, row)
+                                await db.commit()
+                    
+                    # XpExcludedItem
+                    async with nadeko_db.execute("SELECT GuildId, ItemId, ItemType FROM XpExcludedItem") as cursor:
+                        async for row in cursor:
+                            async with self._get_connection() as db:
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO XpExcludedItem (GuildId, ItemId, ItemType)
+                                    VALUES (?, ?, ?)
+                                """, row)
+                                await db.commit()
+                    log.info("Migrated XP Settings")
+                except Exception as e:
+                    log.warning(f"XP Settings migration partial failure: {e}")
+
+                # Migrate Gambling Stats
+                try:
+                    # GamblingStats
+                    async with nadeko_db.execute("SELECT Feature, BetAmount, WinAmount, LossAmount FROM GamblingStats") as cursor:
+                        async for row in cursor:
+                            async with self._get_connection() as db:
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO GamblingStats (Feature, BetAmount, WinAmount, LossAmount)
+                                    VALUES (?, ?, ?, ?)
+                                """, row)
+                                await db.commit()
+
+                    # UserBetStats
+                    async with nadeko_db.execute("SELECT UserId, Game, BetAmount, WinAmount, LossAmount, MaxWin FROM UserBetStats") as cursor:
+                        async for row in cursor:
+                            async with self._get_connection() as db:
+                                await db.execute("""
+                                    INSERT OR REPLACE INTO UserBetStats (UserId, Game, BetAmount, WinAmount, LossAmount, MaxWin)
+                                    VALUES (?, ?, ?, ?, ?, ?)
+                                """, row)
+                                await db.commit()
+                    log.info("Migrated Gambling Stats")
+                except Exception as e:
+                    log.warning(f"Gambling stats migration partial failure: {e}")
                 
                 log.info("Migration from Nadeko database completed successfully")
                 
@@ -622,11 +756,11 @@ class CoreDB:
             # Delete from all user-related tables
             tables_to_clean = [
                 "UserXpStats",
-                "CurrencyTransaction", 
-                "BankUser",
+                "CurrencyTransactions",
+                "BankUsers",
                 "TimelyCooldown",
                 "WaifuInfo",  # Remove waifu claims
-                "WaifuUpdate",  # Remove waifu history
+                "WaifuUpdates",  # Remove waifu history
                 "XpShopOwnedItem"
             ]
             
@@ -644,7 +778,7 @@ class CoreDB:
                 pass
                 
             try:
-                await db.execute("DELETE FROM WaifuUpdate WHERE OldId = ? OR NewId = ?", (user_id, user_id))
+                await db.execute("DELETE FROM WaifuUpdates WHERE OldId = ? OR NewId = ?", (user_id, user_id))
             except Exception:
                 pass
             

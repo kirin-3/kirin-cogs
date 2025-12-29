@@ -31,6 +31,15 @@ class ShopRepository:
             """, (guild_id, entry_id))
             return await cursor.fetchone()
 
+    async def get_shop_entry_by_index(self, guild_id: int, index: int):
+        """Get a specific shop entry by its index"""
+        async with self.db._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT Id, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command
+                FROM ShopEntry WHERE GuildId = ? AND `Index` = ?
+            """, (guild_id, index))
+            return await cursor.fetchone()
+
     async def add_shop_entry(self, guild_id: int, index: int, price: int, name: str, author_id: int,
                            entry_type: int, role_name: str = None, role_id: int = None,
                            role_requirement: int = None, command: str = None):
