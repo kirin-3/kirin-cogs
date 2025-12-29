@@ -12,7 +12,7 @@ import functools
 import socket
 import ipaddress
 from urllib.parse import urlparse
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageSequence
 from typing import Dict, Any, Tuple
 from collections import OrderedDict
 import logging
@@ -259,8 +259,8 @@ class XPCardGenerator:
         self.fonts_cache[cache_key] = font
         return font
     
-    async def _download_image(self, url: str) -> Image.Image | None:
-        """Download and cache an image from URL (with SSRF protection and Cache Limit)"""
+    async def _download_image(self, url: str) -> bytes | None:
+        """Download and cache image bytes from URL (with SSRF protection and Cache Limit)"""
         if not url:
             return None
 
@@ -299,11 +299,9 @@ class XPCardGenerator:
                 async with session.get(url, timeout=10) as response:
                     if response.status == 200:
                         image_data = await response.read()
-                        image = Image.open(io.BytesIO(image_data))
-                        image = image.convert("RGBA")
-                        self.images_cache[url] = image
+                        self.images_cache[url] = image_data
                         self.images_cache.move_to_end(url)
-                        return image
+                        return image_data
         except Exception as e:
             log.error(f"Error downloading image from {url}: {e}")
             
@@ -311,19 +309,25 @@ class XPCardGenerator:
     
     async def _get_user_avatar(self, user_avatar_url: str) -> Image.Image:
         """Get user avatar, with fallback to default"""
-        avatar = await self._download_image(user_avatar_url)
-        if avatar:
-            # Resize and make circular
-            avatar = avatar.resize((38, 38), Image.Resampling.LANCZOS)
-            
-            # Create circular mask
-            mask = Image.new('L', (38, 38), 0)
-            draw = ImageDraw.Draw(mask)
-            draw.ellipse((0, 0, 38, 38), fill=255)
-            
-            # Apply mask
-            avatar.putalpha(mask)
-            return avatar
+        avatar_bytes = await self._download_image(user_avatar_url)
+        if avatar_bytes:
+            try:
+                avatar = Image.open(io.BytesIO(avatar_bytes))
+                avatar = avatar.convert("RGBA")
+                
+                # Resize and make circular
+                avatar = avatar.resize((38, 38), Image.Resampling.LANCZOS)
+                
+                # Create circular mask
+                mask = Image.new('L', (38, 38), 0)
+                draw = ImageDraw.Draw(mask)
+                draw.ellipse((0, 0, 38, 38), fill=255)
+                
+                # Apply mask
+                avatar.putalpha(mask)
+                return avatar
+            except Exception as e:
+                log.error(f"Error processing avatar image: {e}")
         
         # Create default avatar
         default_avatar = Image.new('RGBA', (38, 38), (128, 128, 128, 255))
@@ -365,35 +369,26 @@ class XPCardGenerator:
             # Draw the shape with transparency (Black with ~50% opacity)
             draw.polygon(fill_poly, fill=(0, 0, 0, 128))
 
-    def _draw_card_sync(
+    def _create_card_overlay(
         self,
-        username: str,
         avatar: Image.Image,
-        background: Image.Image | None,
-        club_icon: Image.Image | None,
         level: int,
         current_xp: int,
         required_xp: int,
-        total_xp: int,
         rank: int,
+        username: str,
+        club_icon: Image.Image | None,
         club_name: str | None,
         fonts: Dict[str, ImageFont.FreeTypeFont]
-    ) -> io.BytesIO:
-        """Synchronous method to draw the XP card (runs in thread)"""
-        # Create base card
-        card = Image.new('RGBA', (self.card_width, self.card_height), (47, 49, 54, 255))
+    ) -> Image.Image:
+        """Create the overlay with user info (Avatar, Text, XP Bar)"""
+        # Create transparent overlay
+        overlay = Image.new('RGBA', (self.card_width, self.card_height), (0, 0, 0, 0))
         
-        # Draw background
-        if background:
-            # Use ImageOps.fit to prevent stretching
-            bg_resized = ImageOps.fit(background, (self.card_width, self.card_height))
-            card.paste(bg_resized, (0, 0))
-            
         # Draw user avatar
-        card.paste(avatar, (11, 11), avatar)
+        overlay.paste(avatar, (11, 11), avatar)
         
-        # Create drawing context
-        draw = ImageDraw.Draw(card)
+        draw = ImageDraw.Draw(overlay)
         
         # Use passed fonts
         name_font = fonts['name']
@@ -419,25 +414,15 @@ class XPCardGenerator:
         progress = 0
         if required_xp > 0:
             progress = current_xp / required_xp
-        
-        # Create overlay for transparent elements (XP Bar)
-        overlay = Image.new('RGBA', card.size, (0, 0, 0, 0))
-        overlay_draw = ImageDraw.Draw(overlay)
-
+            
         # Updated coordinates to fill the whole box
         # Shifted left to match the background track outline
         bar_x = 181
         bar_y = 67
         bar_w = 279
         bar_h = 79
-        self._draw_skewed_bar(overlay_draw, x=bar_x, y=bar_y, width=bar_w, height=bar_h, progress=progress)
+        self._draw_skewed_bar(draw, x=bar_x, y=bar_y, width=bar_w, height=bar_h, progress=progress)
         
-        # Composite overlay onto card (This ensures proper transparency)
-        card = Image.alpha_composite(card, overlay)
-        
-        # Re-create draw context for text (to draw on top of everything)
-        draw = ImageDraw.Draw(card)
-
         # Draw XP Text (Centered in the large bar)
         xp_text = f"{current_xp}/{required_xp} XP"
         
@@ -456,7 +441,7 @@ class XPCardGenerator:
             # Resize to 29x29 if needed
             if club_icon.size != (29, 29):
                 club_icon = club_icon.resize((29, 29), Image.Resampling.LANCZOS)
-            card.paste(club_icon, (451, 15), club_icon)
+            overlay.paste(club_icon, (451, 15), club_icon)
             
             # Draw Club Name (Right Aligned)
             if club_name and club_font:
@@ -472,13 +457,94 @@ class XPCardGenerator:
                     fill=(255, 255, 255, 255),
                     anchor="rs"
                 )
-            
-        # Convert to bytes
+        
+        return overlay
+
+    def _draw_card_sync(
+        self,
+        username: str,
+        avatar: Image.Image,
+        background_bytes: bytes | None,
+        club_icon: Image.Image | None,
+        level: int,
+        current_xp: int,
+        required_xp: int,
+        total_xp: int,
+        rank: int,
+        club_name: str | None,
+        fonts: Dict[str, ImageFont.FreeTypeFont]
+    ) -> Tuple[io.BytesIO, str]:
+        """Synchronous method to draw the XP card (runs in thread)"""
+        
+        # 1. Create the overlay with all static content
+        overlay = self._create_card_overlay(
+            avatar, level, current_xp, required_xp, rank, username, club_icon, club_name, fonts
+        )
+        
+        # 2. Handle Background
+        if background_bytes:
+            try:
+                bg_image = Image.open(io.BytesIO(background_bytes))
+                
+                # Check if animated GIF
+                is_animated = getattr(bg_image, "is_animated", False)
+                
+                if is_animated:
+                    frames = []
+                    duration = bg_image.info.get('duration', 100)
+                    
+                    for frame in ImageSequence.Iterator(bg_image):
+                        frame = frame.convert("RGBA")
+                        # Resize frame to card size (cover)
+                        frame = ImageOps.fit(frame, (self.card_width, self.card_height))
+                        
+                        # Composite overlay on top
+                        frame.alpha_composite(overlay)
+                        
+                        frames.append(frame)
+                        
+                    output = io.BytesIO()
+                    # Save as GIF
+                    frames[0].save(
+                        output, 
+                        format='GIF', 
+                        save_all=True, 
+                        append_images=frames[1:], 
+                        loop=0, 
+                        duration=duration,
+                        disposal=2  # Restore to background color. 
+                    )
+                    output.seek(0)
+                    return output, "gif"
+                    
+                else:
+                    # Static Image
+                    bg_image = bg_image.convert("RGBA")
+                    bg_resized = ImageOps.fit(bg_image, (self.card_width, self.card_height))
+                    
+                    # Create base
+                    card = Image.new('RGBA', (self.card_width, self.card_height))
+                    card.paste(bg_resized, (0, 0))
+                    card.alpha_composite(overlay)
+                    
+                    output = io.BytesIO()
+                    card.save(output, format='PNG')
+                    output.seek(0)
+                    return output, "png"
+                    
+            except Exception as e:
+                log.error(f"Error processing background image: {e}")
+                # Fallthrough to default background color if image fails
+                
+        # Fallback / No background image
+        card = Image.new('RGBA', (self.card_width, self.card_height), (47, 49, 54, 255))
+        card.alpha_composite(overlay)
+        
         output = io.BytesIO()
         card.save(output, format='PNG')
         output.seek(0)
         
-        return output
+        return output, "png"
     
     async def generate_xp_card(
         self, 
@@ -493,7 +559,7 @@ class XPCardGenerator:
         background_key: str = "default",
         club_icon_url: str = None,
         club_name: str = None
-    ) -> io.BytesIO:
+    ) -> Tuple[io.BytesIO, str]:
         """Generate XP card image (Non-blocking)"""
         
         # Ensure config is loaded
@@ -511,7 +577,15 @@ class XPCardGenerator:
             self._download_image(club_icon_url) if club_icon_url else asyncio.sleep(0, result=None)
         ]
         
-        avatar, background, club_icon = await asyncio.gather(*tasks)
+        avatar, background_bytes, club_icon_bytes = await asyncio.gather(*tasks)
+        
+        # Process club icon if bytes
+        club_icon = None
+        if club_icon_bytes:
+            try:
+                club_icon = Image.open(io.BytesIO(club_icon_bytes)).convert("RGBA")
+            except Exception:
+                pass
         
         # Get fonts (likely cached, but keep async interface)
         fonts = {
@@ -532,7 +606,7 @@ class XPCardGenerator:
             self._draw_card_sync,
             username=username,
             avatar=avatar,
-            background=background,
+            background_bytes=background_bytes,
             club_icon=club_icon,
             level=level,
             current_xp=current_xp,

@@ -337,7 +337,17 @@ class ShopCommands:
             if success:
                 item_name = items[item_key].get('name', item_key)
                 price_text = "FREE" if price == 0 else f"{price:,} 🪙"
-                await ctx.send(f"✅ Successfully purchased **{item_name}** for {price_text}!")
+                
+                # Auto-equip logic
+                equip_success = await self.db.xp.set_active_xp_item(ctx.author.id, 1, item_key)
+                
+                msg = f"✅ Successfully purchased **{item_name}** for {price_text}!"
+                if equip_success:
+                    msg += f"\n🌟 Auto-equipped **{item_name}** as your new background!"
+                else:
+                    msg += f"\n(Tip: Use `[p]xpshop use {item_key}` to equip it)"
+                    
+                await ctx.send(msg)
             else:
                 # Check why it failed
                 if await self.db.xp.user_owns_xp_item(ctx.author.id, 1, item_key):

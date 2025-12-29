@@ -39,7 +39,7 @@ class LevelCommands:
             
             # Generate XP card
             try:
-                card_image_bytes = await self.xp_system.card_generator.generate_xp_card(
+                card_image_bytes, ext = await self.xp_system.card_generator.generate_xp_card(
                     member.id,
                     member.display_name,
                     str(member.avatar.url) if member.avatar else str(member.default_avatar.url),
@@ -54,7 +54,7 @@ class LevelCommands:
                 )
                 
                 if card_image_bytes:
-                    file = discord.File(card_image_bytes, filename="xp_card.png")
+                    file = discord.File(card_image_bytes, filename=f"xp_card.{ext}")
                     await ctx.send(file=file)
                     return
                     
