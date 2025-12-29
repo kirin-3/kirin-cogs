@@ -1,10 +1,8 @@
 import discord
-import logging
 from redbot.core import commands, checks
+from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
 from typing import Optional
 from ..utils import systems_ready
-
-log = logging.getLogger("red.unicornia.admin")
 
 class AdminCommands:
     # Configuration commands
@@ -207,46 +205,77 @@ class AdminCommands:
         else:
             await ctx.send(f"✅ Users reaching level {level} will receive {currency_symbol}{amount:,}.")
 
-    @guild_config.command(name="listrewards")
+    @guild_config.command(name="listcurrencyrewards")
     @systems_ready
-    async def guild_list_rewards(self, ctx):
-        """List all current level rewards for the server"""
-        embed = discord.Embed(title=f"Level Rewards for {ctx.guild.name}", color=discord.Color.blue())
-        
-        # Currency Rewards
+    async def guild_list_currency_rewards(self, ctx):
+        """List currency rewards (paginated)"""
         currency_rewards = await self.db.xp.get_xp_currency_rewards(ctx.guild.id)
+        
+        if not currency_rewards:
+            await ctx.send("No currency rewards configured.")
+            return
+
         currency_symbol = await self.config.currency_symbol()
         
-        curr_text = ""
-        for level, amount in currency_rewards:
-            curr_text += f"**Level {level}:** {currency_symbol}{amount:,}\n"
+        # Sort by level just in case
+        currency_rewards.sort(key=lambda x: x[0])
         
-        if not curr_text:
-            curr_text = "No currency rewards configured."
-            
-        log.info(f"Currency rewards text length: {len(curr_text)}")
-        if len(curr_text) > 1024:
-            log.warning("Currency rewards text exceeds 1024 characters!")
-            
-        embed.add_field(name="<:slut:686148402941001730> Currency Rewards", value=curr_text, inline=False)
+        chunks = [currency_rewards[i:i + 30] for i in range(0, len(currency_rewards), 30)]
+        pages = []
         
-        # Role Rewards
+        for i, chunk in enumerate(chunks, 1):
+            embed = discord.Embed(
+                title=f"Currency Rewards for {ctx.guild.name}",
+                color=discord.Color.gold()
+            )
+            
+            curr_text = ""
+            for level, amount in chunk:
+                curr_text += f"**Level {level}:** {currency_symbol}{amount:,}\n"
+                
+            embed.description = curr_text
+            embed.set_footer(text=f"Page {i}/{len(chunks)} • Total Rewards: {len(currency_rewards)}")
+            pages.append(embed)
+            
+        if len(pages) == 1:
+            await ctx.send(embed=pages[0])
+        else:
+            await menu(ctx, pages, DEFAULT_CONTROLS)
+
+    @guild_config.command(name="listrolerewards")
+    @systems_ready
+    async def guild_list_role_rewards(self, ctx):
+        """List role rewards (paginated)"""
         role_rewards = await self.db.xp.get_all_xp_role_rewards(ctx.guild.id)
         
-        role_text = ""
-        for level, role_id, remove in role_rewards:
-            role = ctx.guild.get_role(role_id)
-            role_name = role.mention if role else f"Deleted Role ({role_id})"
-            action = "Remove" if remove else "Add"
-            role_text += f"**Level {level}:** {action} {role_name}\n"
+        if not role_rewards:
+            await ctx.send("No role rewards configured.")
+            return
             
-        if not role_text:
-            role_text = "No role rewards configured."
-            
-        log.info(f"Role rewards text length: {len(role_text)}")
-        if len(role_text) > 1024:
-            log.warning("Role rewards text exceeds 1024 characters!")
-            
-        embed.add_field(name="🎭 Role Rewards", value=role_text, inline=False)
+        # Sort by level
+        role_rewards.sort(key=lambda x: x[0])
         
-        await ctx.send(embed=embed)
+        chunks = [role_rewards[i:i + 30] for i in range(0, len(role_rewards), 30)]
+        pages = []
+        
+        for i, chunk in enumerate(chunks, 1):
+            embed = discord.Embed(
+                title=f"Role Rewards for {ctx.guild.name}",
+                color=discord.Color.purple()
+            )
+            
+            role_text = ""
+            for level, role_id, remove in chunk:
+                role = ctx.guild.get_role(role_id)
+                role_name = role.mention if role else f"Deleted Role ({role_id})"
+                action = "Remove" if remove else "Add"
+                role_text += f"**Level {level}:** {action} {role_name}\n"
+                
+            embed.description = role_text
+            embed.set_footer(text=f"Page {i}/{len(chunks)} • Total Rewards: {len(role_rewards)}")
+            pages.append(embed)
+            
+        if len(pages) == 1:
+            await ctx.send(embed=pages[0])
+        else:
+            await menu(ctx, pages, DEFAULT_CONTROLS)
