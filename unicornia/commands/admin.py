@@ -1,7 +1,10 @@
 import discord
+import logging
 from redbot.core import commands, checks
 from typing import Optional
 from ..utils import systems_ready
+
+log = logging.getLogger("red.unicornia.admin")
 
 class AdminCommands:
     # Configuration commands
@@ -220,6 +223,11 @@ class AdminCommands:
         
         if not curr_text:
             curr_text = "No currency rewards configured."
+            
+        log.info(f"Currency rewards text length: {len(curr_text)}")
+        if len(curr_text) > 1024:
+            log.warning("Currency rewards text exceeds 1024 characters!")
+            
         embed.add_field(name="<:slut:686148402941001730> Currency Rewards", value=curr_text, inline=False)
         
         # Role Rewards
@@ -234,6 +242,11 @@ class AdminCommands:
             
         if not role_text:
             role_text = "No role rewards configured."
+            
+        log.info(f"Role rewards text length: {len(role_text)}")
+        if len(role_text) > 1024:
+            log.warning("Role rewards text exceeds 1024 characters!")
+            
         embed.add_field(name="🎭 Role Rewards", value=role_text, inline=False)
         
         await ctx.send(embed=embed)
