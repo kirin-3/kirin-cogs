@@ -236,6 +236,36 @@ class CloseView(View):
         )
 
 
+class FileUpload(discord.ui.Item):
+    def __init__(self, custom_id: str, required: bool = True, min_values: int = 1, max_values: int = 1):
+        super().__init__()
+        self.custom_id = custom_id
+        self.required = required
+        self.min_values = min_values
+        self.max_values = max_values
+        self._uploaded_attachments = []
+
+    @property
+    def type(self) -> discord.ComponentType:
+        return discord.ComponentType(19)
+
+    def to_component_dict(self):
+        return {
+            "type": 19,
+            "custom_id": self.custom_id,
+            "required": self.required,
+            "min_values": self.min_values,
+            "max_values": self.max_values,
+        }
+
+    def refresh_component(self, component):
+        self._uploaded_attachments = component.values
+
+    @property
+    def values(self):
+        return self._uploaded_attachments
+
+
 class VerificationModal(discord.ui.Modal, title="Verification"):
     def __init__(self, bot: Red, guild: discord.Guild, config: Config, user: discord.Member):
         super().__init__()
@@ -244,8 +274,8 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         self.config = config
         self.user = user
         
-        # 1. Use the built-in discord.ui.File (v2.6+)
-        self.image = discord.ui.File(
+        # 1. Use custom FileUpload component
+        self.image = FileUpload(
             custom_id="verification_image",
             required=True,
             min_values=1,
@@ -253,7 +283,6 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         )
 
         # 2. Wrap it in discord.ui.Label
-        # Note: Use 'component' instead of 'children'
         self.label = discord.ui.Label(
             "Upload your verification image",
             description="Please upload an image for verification.",
@@ -264,10 +293,8 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
-        # In v2.6+, .values on the ui.File item returns a list of attachments automatically
         attachment_url = None
         if self.image.values:
-            # self.image.values is a list of discord.Attachment
             attachment_url = self.image.values[0].url
 
         functions = Functions()
