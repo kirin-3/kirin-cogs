@@ -421,7 +421,7 @@ class XPSystem:
         filtered_users = []
         for user_id, xp in all_users:
             member = guild.get_member(user_id)
-            if member:
+            if member and not member.bot:
                 filtered_users.append((user_id, xp))
                 
         return filtered_users

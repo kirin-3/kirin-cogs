@@ -1,6 +1,6 @@
 import discord
 from redbot.core import commands, checks
-from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
+from redbot.core.utils.views import SimpleMenu
 from typing import Optional
 from ..utils import validate_text_input
 
@@ -382,7 +382,7 @@ class EconomyCommands:
                 # If only one page, send it directly without menu controls
                 await ctx.send(embed=pages[0])
             else:
-                await menu(ctx, pages, DEFAULT_CONTROLS)
+                await SimpleMenu(pages).start(ctx)
             
         except Exception as e:
             import logging

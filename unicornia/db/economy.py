@@ -293,13 +293,16 @@ class EconomyRepository:
             """, (limit, offset))
             return await cursor.fetchall()
 
-    async def get_all_users_currency(self):
-        """Get all users currency globally for filtering"""
+    async def get_top_total_currency(self, limit: int = 1000):
+        """Get top users by total currency (Wallet + Bank)"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT UserId, CurrencyAmount FROM DiscordUser
-                ORDER BY CurrencyAmount DESC
-            """)
+                SELECT u.UserId, (u.CurrencyAmount + COALESCE(b.Balance, 0)) as Total
+                FROM DiscordUser u
+                LEFT JOIN BankUsers b ON u.UserId = b.UserId
+                ORDER BY Total DESC
+                LIMIT ?
+            """, (limit,))
             return await cursor.fetchall()
 
     # Currency Transaction Methods
