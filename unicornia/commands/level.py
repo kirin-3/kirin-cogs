@@ -2,6 +2,7 @@ import discord
 from redbot.core import commands, checks
 from redbot.core.utils.views import SimpleMenu
 from typing import Optional
+from ..views import LeaderboardView
 
 class LevelCommands:
     # Level commands
@@ -112,42 +113,28 @@ class LevelCommands:
                 await ctx.send("No XP data found for this server.")
                 return
             
-            entries = []
-            for i, (user_id, xp) in enumerate(top_users):
-                member = ctx.guild.get_member(user_id)
-                username = member.display_name
+            # Find user position
+            user_position = None
+            for i, (uid, _) in enumerate(top_users):
+                if uid == ctx.author.id:
+                    user_position = i
+                    break
+            
+            def xp_formatter(rank, rank_str, member, user_id, xp):
+                username = member.display_name if member else f"User ID: {user_id}"
                 level_stats = self.db.calculate_level_stats(xp)
-                
-                rank = i + 1
-                if rank == 1:
-                    rank_str = "🥇"
-                elif rank == 2:
-                    rank_str = "🥈"
-                elif rank == 3:
-                    rank_str = "🥉"
-                else:
-                    rank_str = f"**{rank}.**"
-                
-                entries.append(f"{rank_str} **{username}**\nLevel **{level_stats.level}** • {xp:,} XP\n")
-            
-            # Pagination
-            pages = []
-            chunk_size = 10
-            for i in range(0, len(entries), chunk_size):
-                chunk = entries[i:i + chunk_size]
-                embed = discord.Embed(
-                    title=f"XP Leaderboard - {ctx.guild.name}",
-                    description="".join(chunk),
-                    color=discord.Color.blue()
-                )
-                embed.set_footer(text=f"Page {i // chunk_size + 1}/{(len(entries) - 1) // chunk_size + 1}")
-                pages.append(embed)
-            
-            if len(pages) == 1:
-                # If only one page, send it directly without menu controls
-                await ctx.send(embed=pages[0])
-            else:
-                await SimpleMenu(pages).start(ctx)
+                return f"{rank_str} **{username}**\nLevel **{level_stats.level}** • {xp:,} XP\n"
+
+            view = LeaderboardView(
+                ctx,
+                top_users,
+                user_position=user_position,
+                currency_symbol="",
+                title=f"XP Leaderboard - {ctx.guild.name}",
+                formatter=xp_formatter
+            )
+            embed = await view.get_embed()
+            view.message = await ctx.send(embed=embed, view=view)
             
         except Exception as e:
             import logging

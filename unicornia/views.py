@@ -391,12 +391,14 @@ class ShopBrowserView(ui.View):
         self.add_item(next_btn)
 
 class LeaderboardView(ui.View):
-    def __init__(self, ctx, entries: list[tuple[int, int]], user_position: int = None, currency_symbol: str = "$"):
+    def __init__(self, ctx, entries: list[tuple[int, int]], user_position: int = None, currency_symbol: str = "$", title: str = None, formatter=None):
         super().__init__(timeout=60)
         self.ctx = ctx
         self.entries = entries # list of (user_id, balance)
         self.user_position = user_position # 0-based index in the entries list
         self.currency_symbol = currency_symbol
+        self.title = title or f"<:slut:686148402941001730> Economy Leaderboard"
+        self.formatter = formatter
         
         self.current_page = 0
         self.items_per_page = 10
@@ -433,7 +435,7 @@ class LeaderboardView(ui.View):
 
     async def get_embed(self):
         embed = discord.Embed(
-            title=f"<:slut:686148402941001730> Economy Leaderboard",
+            title=self.title,
             color=discord.Color.gold()
         )
         
@@ -451,7 +453,11 @@ class LeaderboardView(ui.View):
             elif rank == 3: rank_str = "🥉"
             
             # Highlight caller
-            line = f"{rank_str} **{username}**\n{self.currency_symbol}{balance:,}\n"
+            if self.formatter:
+                line = self.formatter(rank, rank_str, member, user_id, balance)
+            else:
+                line = f"{rank_str} **{username}**\n{self.currency_symbol}{balance:,}\n"
+            
             if self.user_position is not None and rank == (self.user_position + 1):
                 line = f"👉 {line}"
                 
