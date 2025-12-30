@@ -1,6 +1,6 @@
 {
   "author": [
-    "Vertyco"
+    "Kirin"
   ],
   "description": "Multi-Panel Discord support ticket system with buttons!",
   "disabled": false,
@@ -21,8 +21,7 @@
   ],
   "required_cogs": {},
   "requirements": [
-    "numpy",
-    "chat-exporter"
+    "numpy"
   ],
   "short": "Advanced support ticket system",
   "tags": [

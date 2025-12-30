@@ -6,9 +6,6 @@ import discord
 from discord import ButtonStyle, Interaction
 from discord.ui import Button, View
 from redbot.core import commands
-from redbot.core.i18n import Translator
-
-_ = Translator("SupportViews", __file__)
 
 mapping = {
     "\N{LEFTWARDS BLACK ARROW}\N{VARIATION SELECTOR-16}": (
@@ -62,7 +59,7 @@ class MenuView(View):
     async def interaction_check(self, interaction: Interaction):
         if interaction.user.id != self.ctx.author.id:
             await interaction.response.send_message(
-                content=_("You are not allowed to interact with this button."),
+                content="You are not allowed to interact with this button.",
                 ephemeral=True,
             )
             return False

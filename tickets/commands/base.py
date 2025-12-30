@@ -7,7 +7,6 @@ import discord
 from discord import app_commands
 from redbot.core import commands
 from redbot.core.commands import parse_timedelta
-from redbot.core.i18n import Translator
 from redbot.core.utils.mod import is_admin_or_superior
 
 from ..abc import MixinMeta
@@ -15,7 +14,6 @@ from ..common.utils import can_close, close_ticket, get_ticket_owner
 
 LOADING = "https://i.imgur.com/l3p6EMX.gif"
 log = logging.getLogger("red.vrt.tickets.base")
-_ = Translator("Tickets", __file__)
 
 
 class BaseCommands(MixinMeta):
@@ -28,16 +26,11 @@ class BaseCommands(MixinMeta):
         opened = conf["opened"]
         owner_id = get_ticket_owner(opened, str(ctx.channel.id))
         if not owner_id:
-            return await ctx.send(_("This is not a ticket channel, or it has been removed from config"))
-
-        panel_name = opened[owner_id][str(ctx.channel.id)]["panel"]
-        panel_roles = conf["panels"][panel_name]["roles"]
-        user_roles = [r.id for r in ctx.author.roles]
+            return await ctx.send("This is not a ticket channel, or it has been removed from config")
 
         support_roles = [i[0] for i in conf["support_roles"]]
-        support_roles.extend([i[0] for i in panel_roles])
+        user_roles = [r.id for r in ctx.author.roles]
 
-        # If a mod tries
         can_add = False
         if any(i in support_roles for i in user_roles):
             can_add = True
@@ -49,7 +42,7 @@ class BaseCommands(MixinMeta):
             can_add = True
 
         if not can_add:
-            return await ctx.send(_("You do not have permissions to add users to this ticket"))
+            return await ctx.send("You do not have permissions to add users to this ticket")
 
         channel = ctx.channel
         try:
@@ -59,9 +52,9 @@ class BaseCommands(MixinMeta):
                 await channel.add_user(user)
         except Exception as e:
             log.exception(f"Failed to add {user.name} to ticket", exc_info=e)
-            txt = _("Failed to add user to ticket: {}").format(str(e))
-            return await ctx.send(txt)
-        await ctx.send(f"**{user.name}** " + _("has been added to this ticket!"))
+            return await ctx.send(f"Failed to add user to ticket: {e}")
+
+        await ctx.send(f"**{user.name}** has been added to this ticket!")
 
     @commands.hybrid_command(name="renameticket", description="Rename your ticket")
     @app_commands.describe(new_name="The new name for your ticket")
@@ -72,14 +65,10 @@ class BaseCommands(MixinMeta):
         opened = conf["opened"]
         owner_id = get_ticket_owner(opened, str(ctx.channel.id))
         if not owner_id:
-            return await ctx.send(_("This is not a ticket channel, or it has been removed from config"))
-
-        panel_name = opened[owner_id][str(ctx.channel.id)]["panel"]
-        panel_roles = conf["panels"][panel_name]["roles"]
-        user_roles = [r.id for r in ctx.author.roles]
+            return await ctx.send("This is not a ticket channel, or it has been removed from config")
 
         support_roles = [i[0] for i in conf["support_roles"]]
-        support_roles.extend([i[0] for i in panel_roles])
+        user_roles = [r.id for r in ctx.author.roles]
 
         can_rename = False
         if any(i in support_roles for i in user_roles):
@@ -92,12 +81,12 @@ class BaseCommands(MixinMeta):
             can_rename = True
 
         if not can_rename:
-            return await ctx.send(_("You do not have permissions to rename this ticket"))
+            return await ctx.send("You do not have permissions to rename this ticket")
         if not ctx.channel.permissions_for(ctx.me).manage_channels:
-            return await ctx.send(_("I no longer have permission to edit this channel"))
+            return await ctx.send("I no longer have permission to edit this channel")
 
         if isinstance(ctx.channel, discord.TextChannel):
-            txt = _("Renaming channel to {}").format(f"**{new_name}**")
+            txt = f"Renaming channel to **{new_name}**"
             if ctx.interaction:
                 await ctx.interaction.response.send_message(txt)
             else:
@@ -107,87 +96,6 @@ class BaseCommands(MixinMeta):
             await ctx.tick()
 
         await ctx.channel.edit(name=new_name)
-
-    @commands.hybrid_command(name="closetime", description="Close your ticket after a specified time if no responses")
-    @app_commands.describe(time="Time duration (e.g., 5h, 30m, 1d)")
-    @commands.guild_only()
-    async def close_ticket_timed(self, ctx: commands.Context, *, time: str):
-        """
-        Close your ticket after a specified time if there are no responses
-        
-        **Examples**
-        `[p]closetime 5h` - closes ticket in 5 hours if no responses
-        `[p]closetime 30m` - closes ticket in 30 minutes if no responses
-        `[p]closetime 1d` - closes ticket in 1 day if no responses
-        """
-        conf = await self.config.guild(ctx.guild).all()
-        owner_id = get_ticket_owner(conf["opened"], str(ctx.channel.id))
-        if not owner_id:
-            return await ctx.send(
-                _(
-                    "Cannot find the owner of this ticket! Maybe it is not a ticket channel or was cleaned from the config?"
-                )
-            )
-
-        user_can_close = await can_close(self.bot, ctx.guild, ctx.channel, ctx.author, owner_id, conf)
-        if not user_can_close:
-            return await ctx.send(_("You do not have permissions to close this ticket"))
-        
-        # Parse the time duration
-        try:
-            td = parse_timedelta(time)
-            if not td:
-                return await ctx.send(_("Invalid time format! Use formats like: 5h, 30m, 1d, etc."))
-        except Exception:
-            return await ctx.send(_("Invalid time format! Use formats like: 5h, 30m, 1d, etc."))
-        
-        owner = ctx.guild.get_member(int(owner_id))
-        if not owner:
-            owner = await self.bot.fetch_user(int(owner_id))
-
-        closing_in = int((datetime.datetime.now() + td).timestamp())
-        closemsg = _("This ticket will close {} if there are no responses").format(f"<t:{closing_in}:R>")
-        
-        if ctx.interaction:
-            await ctx.interaction.response.send_message(f"{owner.mention}, {closemsg}")
-        else:
-            await ctx.send(f"{owner.mention}, {closemsg}")
-
-        def check(m: discord.Message):
-            return m.channel.id == ctx.channel.id and not m.author.bot
-
-        # Wait for the specified duration, monitoring for any responses
-        try:
-            await self.bot.wait_for("message", check=check, timeout=td.total_seconds())
-            # If we get here, someone responded, so cancel the close
-            cancelled = _("Closing cancelled due to response!")
-            if ctx.interaction:
-                await ctx.interaction.followup.send(cancelled, ephemeral=True)
-            else:
-                await ctx.send(cancelled)
-            return
-        except asyncio.TimeoutError:
-            # Timeout reached, proceed with closing
-            pass
-
-        # Double-check the ticket still exists before closing
-        conf = await self.config.guild(ctx.guild).all()
-        owner_id = get_ticket_owner(conf["opened"], str(ctx.channel.id))
-        if not owner_id:
-            # Ticket already closed...
-            return
-
-        # Close the ticket
-        await close_ticket(
-            bot=self.bot,
-            member=owner,
-            guild=ctx.guild,
-            channel=ctx.channel,
-            conf=conf,
-            reason=_("Auto-closed after {} with no responses").format(time),
-            closedby=ctx.author.name,
-            config=self.config,
-        )
 
     @commands.hybrid_command(name="close", description="Close your ticket")
     @app_commands.describe(reason="Reason for closing the ticket")
@@ -206,14 +114,12 @@ class BaseCommands(MixinMeta):
         owner_id = get_ticket_owner(conf["opened"], str(ctx.channel.id))
         if not owner_id:
             return await ctx.send(
-                _(
-                    "Cannot find the owner of this ticket! Maybe it is not a ticket channel or was cleaned from the config?"
-                )
+                "Cannot find the owner of this ticket! Maybe it is not a ticket channel or was cleaned from the config?"
             )
 
         user_can_close = await can_close(self.bot, ctx.guild, ctx.channel, ctx.author, owner_id, conf)
         if not user_can_close:
-            return await ctx.send(_("You do not have permissions to close this ticket"))
+            return await ctx.send("You do not have permissions to close this ticket")
         else:
             owner = ctx.guild.get_member(int(owner_id))
             if not owner:
@@ -231,7 +137,7 @@ class BaseCommands(MixinMeta):
                     # User provided delayed close with no reason attached
                     reason = None
                 closing_in = int((datetime.datetime.now() + td).timestamp())
-                closemsg = _("This ticket will close {}").format(f"<t:{closing_in}:R>")
+                closemsg = f"This ticket will close <t:{closing_in}:R>"
                 msg = await ctx.send(f"{owner.mention}, {closemsg}")
                 await asyncio.sleep(1.5)
                 try:
@@ -239,7 +145,7 @@ class BaseCommands(MixinMeta):
                 except asyncio.TimeoutError:
                     pass
                 else:
-                    cancelled = _("Closing cancelled!")
+                    cancelled = "Closing cancelled!"
                     await msg.edit(content=cancelled)
                     return
 
@@ -250,7 +156,7 @@ class BaseCommands(MixinMeta):
                     return
 
         if ctx.interaction:
-            await ctx.interaction.response.send_message(_("Closing..."), ephemeral=True, delete_after=4)
+            await ctx.interaction.response.send_message("Closing...", ephemeral=True, delete_after=4)
         await close_ticket(
             bot=self.bot,
             member=owner,

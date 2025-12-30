@@ -1,0 +1,50 @@
+{
+  "117117": {
+    "GUILD": {
+      "684360255798509578": {
+        "support_roles": [
+          [
+            696020813299580940,
+            true
+          ],
+          [
+            898586656842600549,
+            false
+          ]
+        ],
+        "blacklist": [],
+        "max_tickets": 1,
+        "inactive": 2,
+        "overview_channel": 1267961576376373299,
+        "overview_msg": 1268225226907320443,
+        "overview_mention": false,
+        "opened": {},
+        "category_id": 1267960729592397965,
+        "channel_id": 1267154732817055827,
+        "message_id": 1271094264482234379,
+        "button_text": "Verify",
+        "button_color": "green",
+        "button_emoji": "<:zz_tick_yes:729330852747542568>",
+        "ticket_messages": [
+          {
+            "title": null,
+            "desc": "Hello {mention}. Please send the selfie as described in <#1267154732817055827> channel, our mod team will get back to you shortly.",
+            "footer": null
+          }
+        ],
+        "ticket_name": "verify-{num}-{displayname}",
+        "log_channel": 1267961576376373299,
+        "modal": {},
+        "modal_title": "",
+        "ticket_num": 3994,
+        "close_reason": true,
+        "dm": false,
+        "user_can_rename": false,
+        "user_can_close": false,
+        "user_can_manage": false,
+        "auto_add": false,
+        "suspended_msg": null
+      }
+    }
+  }
+}
