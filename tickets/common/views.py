@@ -293,8 +293,19 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         await interaction.response.defer(ephemeral=True)
         
         attachment_url = None
+        # Try retrieving from the custom component
         if self.image.values:
             attachment_url = self.image.values[0].url
+        
+        # Fallback: check interaction data directly if custom component retrieval failed
+        if not attachment_url and hasattr(interaction, 'data') and 'resolved' in interaction.data and 'attachments' in interaction.data['resolved']:
+            attachments = interaction.data['resolved']['attachments']
+            if attachments:
+                attachment_info = list(attachments.values())[0]
+                attachment_url = attachment_info.get('url')
+        
+        if not attachment_url:
+            log.warning(f"Failed to retrieve attachment URL for {interaction.user}. Image values: {self.image.values}")
 
         cog = self.bot.get_cog("Tickets")
         if not cog:
@@ -316,9 +327,22 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
                 
                 if channel and attachment_url:
                     embed = discord.Embed(title="Verification Image", color=discord.Color.green())
-                    embed.set_image(url=attachment_url)
                     embed.set_author(name=self.user.display_name, icon_url=self.user.display_avatar.url)
-                    await channel.send(embed=embed)
+                    
+                    try:
+                        # Re-upload the file to ensure visibility
+                        attachment = self.image.values[0] if self.image.values else None
+                        if attachment:
+                            f = await attachment.to_file()
+                            embed.set_image(url=f"attachment://{f.filename}")
+                            await channel.send(embed=embed, file=f)
+                        else:
+                            # Fallback to URL
+                            embed.set_image(url=attachment_url)
+                            await channel.send(embed=embed)
+                    except Exception as e:
+                        log.error(f"Failed to send verification image to {channel.name}", exc_info=e)
+                        await channel.send(f"Failed to load verification image: {attachment_url}")
 
         await interaction.followup.send(result, ephemeral=True)
 
