@@ -236,7 +236,7 @@ class CloseView(View):
 
 
 class FileUpload(discord.ui.Item):
-    def __init__(self, custom_id: str, required: bool = True, min_values: int = 1, max_values: int = 1):
+    def __init__(self, custom_id: str, required: bool = True, min_values: int = 1, max_values: int = 3):
         super().__init__()
         self.custom_id = custom_id
         self.required = required
@@ -278,13 +278,13 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
             custom_id="verification_image",
             required=True,
             min_values=1,
-            max_values=1,
+            max_values=3,
         )
 
         # 2. Wrap it in discord.ui.Label
         self.label = discord.ui.Label(
-            text="Upload your verification image",
-            description="Please upload an image for verification.",
+            text="Upload your verification images",
+            description="Please upload up to 3 images for verification.",
             component=self.image
         )
         self.add_item(self.label)
@@ -292,16 +292,14 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
-        attachment_url = None
-        # Try retrieving from the custom component
-        if self.image.values:
-            attachment_url = self.image.values[0].url
+        attachments = self.image.values or []
+        attachment_url = attachments[0].url if attachments else None
         
         # Fallback: check interaction data directly if custom component retrieval failed
         if not attachment_url and hasattr(interaction, 'data') and 'resolved' in interaction.data and 'attachments' in interaction.data['resolved']:
-            attachments = interaction.data['resolved']['attachments']
-            if attachments:
-                attachment_info = list(attachments.values())[0]
+            raw_attachments = interaction.data['resolved']['attachments']
+            if raw_attachments:
+                attachment_info = list(raw_attachments.values())[0]
                 attachment_url = attachment_info.get('url')
         
         if not attachment_url:
@@ -325,24 +323,19 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
                 latest_channel_id = ticket_ids[0]
                 channel = self.guild.get_channel(latest_channel_id)
                 
-                if channel and attachment_url:
-                    embed = discord.Embed(title="Verification Image", color=discord.Color.green())
-                    embed.set_author(name=self.user.display_name, icon_url=self.user.display_avatar.url)
-                    
-                    try:
-                        # Re-upload the file to ensure visibility
-                        attachment = self.image.values[0] if self.image.values else None
-                        if attachment:
+                if channel and attachments:
+                    for i, attachment in enumerate(attachments):
+                        embed = discord.Embed(title=f"Verification Image {i+1}", color=discord.Color.green())
+                        embed.set_author(name=self.user.display_name, icon_url=self.user.display_avatar.url)
+                        
+                        try:
+                            # Re-upload the file
                             f = await attachment.to_file()
                             embed.set_image(url=f"attachment://{f.filename}")
                             await channel.send(embed=embed, file=f)
-                        else:
-                            # Fallback to URL
-                            embed.set_image(url=attachment_url)
-                            await channel.send(embed=embed)
-                    except Exception as e:
-                        log.error(f"Failed to send verification image to {channel.name}", exc_info=e)
-                        await channel.send(f"Failed to load verification image: {attachment_url}")
+                        except Exception as e:
+                            log.error(f"Failed to send verification image to {channel.name}", exc_info=e)
+                            await channel.send(f"Failed to load verification image {i+1}: {attachment.url}")
 
         await interaction.followup.send(result, ephemeral=True)
 
@@ -368,7 +361,6 @@ class SupportButton(Button):
             log.exception(f"Failed to create ticket in {guild} for {user}", exc_info=e)
 
     async def create_ticket(self, interaction: Interaction):
-        log.info(f"SupportButton clicked by {interaction.user} in {interaction.guild}")
         guild = interaction.guild
         user = self.mock_user or guild.get_member(interaction.user.id)
         if not guild:
@@ -420,7 +412,6 @@ class SupportButton(Button):
             return await interaction.response.send_message(embed=em, ephemeral=True)
 
         # Open Verification Modal
-        log.info(f"Opening VerificationModal for {user}")
         modal = VerificationModal(self.view.bot, guild, self.view.config, user)
         await interaction.response.send_modal(modal)
 
