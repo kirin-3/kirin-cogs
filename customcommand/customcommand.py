@@ -107,7 +107,7 @@ class CustomCommand(commands.Cog):
             await ctx.send(box(page))
 
     @customcommand.command(name="create")
-    @commands.cooldown(1, 60, commands.BucketType.user)
+    @commands.cooldown(1, 5, commands.BucketType.user)
     async def customcommand_create(self, ctx, trigger: str, response: Optional[str] = None):
         """
         Create a custom command.
