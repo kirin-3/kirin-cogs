@@ -12,6 +12,8 @@ from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import box, humanize_list, pagify
 
+from .functions import Functions
+from .functions import Functions
 from .utils import (
     can_close,
     close_ticket,
@@ -234,33 +236,49 @@ class CloseView(View):
         )
 
 
-class TicketModal(Modal):
-    def __init__(self, title: str, data: dict):
-        super().__init__(title=title, timeout=300)
-        self.fields = {}
-        self.inputs: Dict[str, TextInput] = {}
-        self.labels: Dict[str, str] = {}
-        for key, info in data.items():
-            field = TextInput(
-                label=info["label"],
-                style=get_modal_style(info["style"]),
-                placeholder=info["placeholder"],
-                default=info["default"],
-                required=info["required"],
-                min_length=info["min_length"],
-                max_length=info["max_length"],
-            )
-            self.add_item(field)
-            self.inputs[key] = field
-            self.inputs[key] = field
-            self.labels[key] = info["label"]
+class VerificationModal(discord.ui.Modal, title="Verification"):
+    def __init__(self, bot: Red, guild: discord.Guild, config: Config, user: discord.Member):
+        super().__init__()
+        self.bot = bot
+        self.guild = guild
+        self.config = config
+        self.user = user
+        self.image = discord.ui.File(label="Upload your verification image", required=True, file_type="image/*")
+        self.add_item(self.image)
 
     async def on_submit(self, interaction: discord.Interaction):
-        for k, v in self.inputs.items():
-            self.fields[k] = {"question": self.labels[k], "answer": v.value}
-        with contextlib.suppress(discord.NotFound):
-            await interaction.response.defer()
-        self.stop()
+        await interaction.response.defer(ephemeral=True)
+        
+        attachment_url = None
+        # Try to find the attachment in the interaction data
+        if hasattr(interaction, 'data') and 'resolved' in interaction.data and 'attachments' in interaction.data['resolved']:
+            attachments = interaction.data['resolved']['attachments']
+            if attachments:
+                attachment_info = list(attachments.values())[0]
+                attachment_url = attachment_info.get('url')
+
+        functions = Functions()
+        functions.bot = self.bot
+        functions.config = self.config
+        
+        result = await functions.create_ticket_for_user(self.user)
+        
+        # Post image to the new ticket channel
+        conf = await self.config.guild(self.guild).all()
+        opened = conf["opened"]
+        uid = str(self.user.id)
+        if uid in opened:
+            # Get the most recently opened ticket
+            latest_channel_id = max(opened[uid].keys(), key=lambda x: int(x))
+            channel = self.guild.get_channel(int(latest_channel_id))
+            
+            if channel and attachment_url:
+                embed = discord.Embed(title="Verification Image", color=discord.Color.green())
+                embed.set_image(url=attachment_url)
+                embed.set_author(name=self.user.display_name, icon_url=self.user.display_avatar.url)
+                await channel.send(embed=embed)
+
+        await interaction.followup.send(result, ephemeral=True)
 
 
 class SupportButton(Button):
@@ -286,10 +304,9 @@ class SupportButton(Button):
     async def create_ticket(self, interaction: Interaction):
         guild = interaction.guild
         user = self.mock_user or guild.get_member(interaction.user.id)
-        if not isinstance(interaction.channel, discord.TextChannel) or not guild:
+        if not guild:
             return
 
-        roles = [r.id for r in user.roles]
         conf = await self.view.config.guild(guild).all()
         
         if conf["suspended_msg"]:
@@ -307,7 +324,7 @@ class SupportButton(Button):
                     color=discord.Color.red(),
                 )
                 return await interaction.response.send_message(embed=em, ephemeral=True)
-            elif rid_uid in roles:
+            elif rid_uid in [r.id for r in user.roles]:
                 em = discord.Embed(
                     description="You have a role that has been blacklisted from creating tickets!",
                     color=discord.Color.red(),
@@ -324,10 +341,6 @@ class SupportButton(Button):
                 )
                 return await interaction.response.send_message(embed=em, ephemeral=True)
 
-        channel: discord.TextChannel = guild.get_channel(conf.get("channel_id", 0))
-        if not channel:
-            channel = interaction.channel
-
         max_tickets = conf["max_tickets"]
         opened = conf["opened"]
         uid = str(user.id)
@@ -339,319 +352,9 @@ class SupportButton(Button):
             )
             return await interaction.response.send_message(embed=em, ephemeral=True)
 
-        category = guild.get_channel(conf["category_id"]) if conf["category_id"] else None
-        if not category:
-            em = discord.Embed(
-                description="The category for this support panel cannot be found!\nplease contact an admin!",
-                color=discord.Color.red(),
-            )
-            return await interaction.response.send_message(embed=em, ephemeral=True)
-        if category and not isinstance(category, discord.CategoryChannel):
-            em = discord.Embed(
-                description=(
-                    "The category for this support panel is not a category channel!\nplease contact an admin!"
-                ),
-                color=discord.Color.red(),
-            )
-            return await interaction.response.send_message(embed=em, ephemeral=True)
-
-        user_can_close = conf["user_can_close"]
-        logchannel = guild.get_channel(conf["log_channel"]) if conf["log_channel"] else None
-
-        # Throw modal before creating ticket if configured
-        form_embed = discord.Embed()
-        modal = conf.get("modal")
-        panel_title = conf.get("modal_title", None) or "Ticket Submission"
-        answers = {}
-        has_response = False
-        if modal:
-            title = "Submission Info"
-            form_embed = discord.Embed(color=user.color)
-            if user.avatar:
-                form_embed.set_author(name=title, icon_url=user.display_avatar.url)
-            else:
-                form_embed.set_author(name=title)
-
-            m = TicketModal(panel_title, modal)
-            try:
-                await interaction.response.send_modal(m)
-            except discord.NotFound:
-                return
-            await m.wait()
-
-            if not m.fields:
-                return
-
-            for submission_info in m.fields.values():
-                question = submission_info["question"]
-                answer = submission_info["answer"]
-                if not answer:
-                    answer = "Unanswered"
-                else:
-                    has_response = True
-
-                if "DISCOVERABLE" in guild.features and "discord" in answer.lower():
-                    txt = "Your response cannot contain the word 'Discord' in discoverable servers."
-                    return await interaction.followup.send(txt, ephemeral=True)
-
-                answers[question] = answer
-
-                if len(answer) <= 1024:
-                    form_embed.add_field(name=question, value=answer, inline=False)
-                    continue
-
-                chunks = [ans for ans in pagify(answer, page_length=1024)]
-                for index, chunk in enumerate(chunks):
-                    form_embed.add_field(
-                        name=f"{question} ({index + 1})",
-                        value=chunk,
-                        inline=False,
-                    )
-
-        open_txt = "Your ticket is being created, one moment..."
-        if modal:
-            existing_msg = await interaction.followup.send(open_txt, ephemeral=True)
-        else:
-            await interaction.response.send_message(open_txt, ephemeral=True)
-            existing_msg = await interaction.original_response()
-
-        can_read_send = discord.PermissionOverwrite(
-            read_messages=True,
-            read_message_history=True,
-            send_messages=True,
-            attach_files=True,
-            embed_links=True,
-            use_application_commands=True,
-        )
-        read_and_manage = discord.PermissionOverwrite(
-            read_messages=True,
-            send_messages=True,
-            attach_files=True,
-            embed_links=True,
-            manage_channels=True,
-            manage_messages=True,
-        )
-
-        support_roles = []
-        support_mentions = []
-        for role_id, mention_toggle in conf["support_roles"]:
-            role = guild.get_role(role_id)
-            if not role:
-                continue
-            support_roles.append(role)
-            if mention_toggle:
-                support_mentions.append(role.mention)
-
-        overwrite = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            guild.me: read_and_manage,
-            user: can_read_send,
-        }
-        for role in support_roles:
-            overwrite[role] = can_read_send
-
-        num = conf["ticket_num"]
-        now = datetime.now().astimezone()
-        name_fmt = conf["ticket_name"]
-        params = {
-            "num": str(num),
-            "user": user.name,
-            "displayname": user.display_name,
-            "id": str(user.id),
-            "shortdate": now.strftime("%m-%d"),
-            "longdate": now.strftime("%m-%d-%Y"),
-            "time": now.strftime("%I-%M-%p"),
-        }
-        channel_name = name_fmt.format(**params) if name_fmt else user.name
-        default_channel_name = f"ticket-{num}"
-        
-        try:
-            if not category.permissions_for(guild.me).manage_channels:
-                return await interaction.followup.send(
-                    "I don't have permissions to create channels!",
-                    ephemeral=True,
-                )
-            try:
-                channel_or_thread = await category.create_text_channel(channel_name, overwrites=overwrite)
-            except discord.Forbidden:
-                return await interaction.followup.send(
-                    "I don't have permissions to create channels under this category!",
-                    ephemeral=True,
-                )
-            except Exception as e:
-                if "Contains words not allowed" in str(e):
-                    channel_or_thread = await category.create_text_channel(
-                        default_channel_name, overwrites=overwrite
-                    )
-                    await channel_or_thread.send(
-                        (
-                            "I was not able to name the ticket properly due to Discord's filter!\nIntended name: {}"
-                        ).format(channel_name)
-                    )
-                else:
-                    raise e
-        except discord.Forbidden:
-            txt = (
-                "I am missing the required permissions to create a ticket for you. "
-                "Please contact an admin so they may fix my permissions."
-            )
-            em = discord.Embed(description=txt, color=discord.Color.red())
-            return await interaction.followup.send(embed=em, ephemeral=True)
-
-        except Exception as e:
-            em = discord.Embed(
-                description="There was an error while preparing your ticket, please contact an admin!\n{}".format(
-                    box(str(e), "py")
-                ),
-                color=discord.Color.red(),
-            )
-            log.info(
-                f"Failed to create ticket for {user.name} in {guild.name}",
-                exc_info=e,
-            )
-            return await interaction.followup.send(embed=em, ephemeral=True)
-
-        prefix = (await self.view.bot.get_valid_prefixes(self.view.guild))[0]
-        default_message = "Welcome to your ticket channel " + f"{user.display_name}!"
-        if user_can_close:
-            default_message += "\nYou or an admin can close this with the `{}close` command".format(prefix)
-
-        messages = conf["ticket_messages"]
-        params = {
-            "username": user.name,
-            "displayname": user.display_name,
-            "mention": user.mention,
-            "id": str(user.id),
-            "server": guild.name,
-            "guild": guild.name,
-            "members": int(guild.member_count or len(guild.members)),
-            "toprole": user.top_role.name,
-        }
-
-        def fmt_params(text: str) -> str:
-            for k, v in params.items():
-                text = text.replace("{" + str(k) + "}", str(v))
-            return text
-
-        support_mentions.append(user.mention)
-        content = " ".join(support_mentions)
-
-        allowed_mentions = discord.AllowedMentions(roles=True)
-        close_view = CloseView(
-            self.view.bot,
-            self.view.config,
-            user.id,
-            channel_or_thread,
-        )
-        if messages:
-            embeds = []
-            for index, einfo in enumerate(messages):
-                # Use custom color if set and valid, otherwise default to user's color
-                color_val = einfo.get("color")
-                embed_color = discord.Color(color_val) if color_val is not None and isinstance(color_val, int) else user.color
-                em = discord.Embed(
-                    title=fmt_params(einfo["title"]) if einfo["title"] else None,
-                    description=fmt_params(einfo["desc"]),
-                    color=embed_color,
-                )
-                if index == 0:
-                    em.set_thumbnail(url=user.display_avatar.url)
-                if einfo["footer"]:
-                    em.set_footer(text=fmt_params(einfo["footer"]))
-                # Set image if configured
-                if einfo.get("image"):
-                    em.set_image(url=einfo["image"])
-                embeds.append(em)
-
-            msg = await channel_or_thread.send(
-                content=content,
-                embeds=embeds,
-                allowed_mentions=allowed_mentions,
-                view=close_view,
-            )
-        else:
-            # Default message
-            em = discord.Embed(description=default_message, color=user.color)
-            em.set_thumbnail(url=user.display_avatar.url)
-            msg = await channel_or_thread.send(
-                content=content,
-                embed=em,
-                allowed_mentions=allowed_mentions,
-                view=close_view,
-            )
-
-        if len(form_embed.fields) > 0:
-            form_msg = await channel_or_thread.send(embed=form_embed)
-            try:
-                asyncio.create_task(form_msg.pin(reason="Ticket form questions"))
-            except discord.Forbidden:
-                txt = "I tried to pin the response message but don't have the manage messages permissions!"
-                asyncio.create_task(channel_or_thread.send(txt))
-
-        async def delete_delay():
-            desc = "Your ticket has been created! {}".format(channel_or_thread.mention)
-            em = discord.Embed(description=desc, color=user.color)
-            with contextlib.suppress(discord.HTTPException):
-                if existing_msg:
-                    await existing_msg.edit(content=None, embed=em)
-                    await existing_msg.delete(delay=30)
-                else:
-                    msg = await interaction.followup.send(embed=em, ephemeral=True)
-                    await msg.delete(delay=30)
-
-        asyncio.create_task(delete_delay())
-
-        if (
-            logchannel
-            and isinstance(logchannel, discord.TextChannel)
-            and logchannel.permissions_for(guild.me).send_messages
-        ):
-            ts = int(now.timestamp())
-            kwargs = {
-                "user": str(user),
-                "userid": user.id,
-                "timestamp": f"<t:{ts}:R>",
-                "channelname": channel_name,
-                "jumpurl": msg.jump_url,
-            }
-            desc = (
-                "`Created By: `{user}\n"
-                "`User ID:    `{userid}\n"
-                "`Opened:     `{timestamp}\n"
-                "`Ticket:     `{channelname}\n"
-                "**[Click to Jump!]({jumpurl})**"
-            ).format(**kwargs)
-            em = discord.Embed(
-                title="Ticket Opened",
-                description=desc,
-                color=discord.Color.red(),
-            )
-            if user.avatar:
-                em.set_thumbnail(url=user.display_avatar.url)
-
-            for question, answer in answers.items():
-                em.add_field(name=f"__{question}__", value=answer, inline=False)
-
-            log_message = await logchannel.send(embed=em)
-        else:
-            log_message = None
-
-        async with self.view.config.guild(guild).all() as data:
-            data["ticket_num"] += 1
-            if uid not in data["opened"]:
-                data["opened"][uid] = {}
-            data["opened"][uid][str(channel_or_thread.id)] = {
-                "opened": now.isoformat(),
-                "pfp": str(user.display_avatar.url) if user.avatar else None,
-                "logmsg": log_message.id if log_message else None,
-                "answers": answers,
-                "has_response": has_response,
-                "message_id": msg.id,
-            }
-
-            new_id = await update_active_overview(guild, data)
-            if new_id:
-                data["overview_msg"] = new_id
+        # Open Verification Modal
+        modal = VerificationModal(self.view.bot, guild, self.view.config, user)
+        await interaction.response.send_modal(modal)
 
 
 class PanelView(View):

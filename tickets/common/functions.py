@@ -15,55 +15,9 @@ log = logging.getLogger("red.vrt.tickets.functions")
 
 
 class Functions(MixinMeta):
-    @commands.Cog.listener()
-    async def on_assistant_cog_add(self, cog: commands.Cog):
-        schema = {
-            "name": "get_ticket_info",
-            "description": (
-                "Fetch support ticket requirements available for the user to open (Use this before opening a ticket). "
-                "The user MUST answer the questions in detail before the ticket can be opened!"
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {},
-            },
-        }
-        await cog.register_function("Tickets", schema)
-
-        schema = {
-            "name": "create_ticket_for_user",
-            "description": (
-                "Create a support ticket for the user you are speaking with if you are unable to help sufficiently. "
-                "Use `get_ticket_info` function before this one to get response section requirements. "
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "answer1": {
-                        "type": "string",
-                        "description": "The answer to the first question if one exists.",
-                    },
-                    "answer2": {
-                        "type": "string",
-                        "description": "The answer to the second question if one exists.",
-                    },
-                    "answer3": {
-                        "type": "string",
-                        "description": "The answer to the third question if one exists.",
-                    },
-                    "answer4": {
-                        "type": "string",
-                        "description": "The answer to the fourth question if one exists.",
-                    },
-                    "answer5": {
-                        "type": "string",
-                        "description": "The answer to the fifth question if one exists.",
-                    },
-                },
-                "required": [],
-            },
-        }
-        await cog.register_function("Tickets", schema)
+    # @commands.Cog.listener()
+    # async def on_assistant_cog_add(self, cog: commands.Cog):
+    #     pass
 
     async def get_ticket_info(self, user: discord.Member, *args, **kwargs) -> str:
         """Fetch available ticket requirements that the user can open.
@@ -118,24 +72,10 @@ class Functions(MixinMeta):
     async def create_ticket_for_user(
         self,
         user: discord.Member,
-        answer1: str = None,
-        answer2: str = None,
-        answer3: str = None,
-        answer4: str = None,
-        answer5: str = None,
         *args,
         **kwargs,
     ) -> str:
-        """Create a ticket for the given member.
-
-        Args:
-            user (discord.Member): User to open a ticket for.
-            answer1 (str, optional): The answer to the first ticket question. Defaults to None.
-            answer2 (str, optional): The answer to the second ticket question. Defaults to None.
-            answer3 (str, optional): The answer to the third ticket question. Defaults to None.
-            answer4 (str, optional): The answer to the fourth ticket question. Defaults to None.
-            answer5 (str, optional): The answer to the fifth ticket question. Defaults to None.
-        """
+        """Create a ticket for the given member."""
 
         guild = user.guild
         conf = await self.config.guild(guild).all()
@@ -163,46 +103,8 @@ class Functions(MixinMeta):
         if required_roles and not any(role.id in required_roles for role in user.roles):
             return "This user does not have the required roles to open this ticket."
 
-        # Prepare the modal responses
-        responses = [
-            answer1,
-            answer2,
-            answer3,
-            answer4,
-            answer5,
-        ]
         answers = {}
-        if modal := conf.get("modal"):
-            for idx, i in enumerate(list(modal.values())):
-                if i.get("required") and not responses[idx]:
-                    return f"THE FOLLOWING TICKET QUESTION WAS NOT ANSWERED!\n{i['label']}"
-                response = str(responses[idx])
-                if "DISCOVERABLE" in guild.features:
-                    response = response.replace("Discord", "").replace("discord", "")
-
-                answers[i["label"]] = response
-
         form_embed = discord.Embed()
-        if answers:
-            title = "Submission Info"
-            form_embed = discord.Embed(color=user.color)
-            if user.avatar:
-                form_embed.set_author(name=title, icon_url=user.display_avatar.url)
-            else:
-                form_embed.set_author(name=title)
-
-            for question, answer in answers.items():
-                if len(answer) <= 1024:
-                    form_embed.add_field(name=question, value=answer, inline=False)
-                    continue
-
-                chunks = [ans for ans in pagify(answer, page_length=1024)]
-                for index, chunk in enumerate(chunks):
-                    form_embed.add_field(
-                        name=f"{question} ({index + 1})",
-                        value=chunk,
-                        inline=False,
-                    )
 
         can_read_send = discord.PermissionOverwrite(
             read_messages=True,
@@ -341,14 +243,6 @@ class Functions(MixinMeta):
                 content=content, embed=em, allowed_mentions=allowed_mentions, view=close_view
             )
 
-        if len(form_embed.fields) > 0:
-            form_msg = await channel_or_thread.send(embed=form_embed)
-            try:
-                asyncio.create_task(form_msg.pin(reason="Ticket form questions"))
-            except discord.Forbidden:
-                txt = "I tried to pin the response message but don't have the manage messages permissions!"
-                asyncio.create_task(channel_or_thread.send(txt))
-
         if logchannel:
             ts = int(now.timestamp())
             kwargs = {
@@ -372,9 +266,6 @@ class Functions(MixinMeta):
             )
             if user.avatar:
                 em.set_thumbnail(url=user.display_avatar.url)
-
-            for question, answer in answers.items():
-                em.add_field(name=f"__{question}__", value=answer, inline=False)
 
             log_message = await logchannel.send(embed=em)
         else:
