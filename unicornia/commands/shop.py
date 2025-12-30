@@ -522,6 +522,27 @@ class ShopCommands:
             await ctx.send(f"❌ Error loading inventory: {e}")
 
     # XP Shop commands
+    @commands.command(name="xpshopbuy")
+    async def xpshopbuy_shortcut(self, ctx, item_type: str, item_key: str = None):
+        """Shortcut to buy XP shop items
+        
+        Usage: `[p]xpshopbuy bg <item_key>`
+        """
+        # If user provided "bg <key>"
+        if item_key and item_type.lower() in ["bg", "background", "backgrounds"]:
+            await self.shop_buy_bg(ctx, item_key=item_key)
+            return
+
+        # If user provided just "<key>" (implicit bg) - support direct usage
+        if item_key is None:
+             # Assume the first arg is the key if it's not a type keyword
+             if item_type.lower() not in ["bg", "background", "backgrounds"]:
+                 await self.shop_buy_bg(ctx, item_key=item_type)
+                 return
+            
+        # If user provided "bg" but no key
+        await ctx.send(f"Usage: `{ctx.prefix}xpshopbuy bg <item_key>`")
+
     @commands.group(name="xpshop", aliases=["xps"])
     async def xp_shop_group(self, ctx):
         """XP Shop - Buy custom backgrounds with currency"""
@@ -550,7 +571,8 @@ class ShopCommands:
             view = BackgroundShopView(ctx, visible_backgrounds, owned_keys)
             embed = await view.get_embed()
             
-            view.message = await ctx.send(embed=embed, view=view)
+            content = "You can preview the list of backgrounds here: https://unicornia.net/backgrounds/ and copy the commands directly from there!"
+            view.message = await ctx.send(content=content, embed=embed, view=view)
             
         except (OSError, IOError) as e:
             import logging

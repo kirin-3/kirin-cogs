@@ -62,15 +62,29 @@ class CustomCommand(commands.Cog):
         await ctx.send(f"Custom command limit for {member.display_name} set to {limit}.")
 
     @customcommand.command(name="list")
-    @commands.has_permissions(administrator=True)
     async def customcommand_list(self, ctx):
-        """List all custom commands and their owners."""
+        """
+        List custom commands.
+        
+        If you are a moderator, lists all commands.
+        Otherwise, lists only your commands.
+        """
         command_owners = await self.config.guild(ctx.guild).command_owners()
         all_commands = await self.config.guild(ctx.guild).commands()
         
         if not command_owners:
             await ctx.send("No custom commands found.")
             return
+
+        is_mod = ctx.author.guild_permissions.ban_members
+        
+        if not is_mod:
+            user_id = str(ctx.author.id)
+            if user_id in command_owners:
+                command_owners = {user_id: command_owners[user_id]}
+            else:
+                await ctx.send("You don't have any custom commands.")
+                return
             
         text = ""
         for user_id, triggers in command_owners.items():
@@ -138,7 +152,7 @@ class CustomCommand(commands.Cog):
         if isinstance(user_commands, str):
             user_commands = [user_commands]
 
-        if len(user_commands) >= limit:
+        if len(user_commands) >= limit and not await self.bot.is_owner(author):
             await ctx.send(f"You have reached your limit of {limit} custom command(s).")
             return
 

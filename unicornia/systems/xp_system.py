@@ -23,16 +23,13 @@ class XPSystem:
         self.bot = bot
         self.xp_cooldowns = {}  # {user_id: timestamp}
         self.xp_buffer = {} # {(user_id, guild_id): amount}
-        # Cache structure: {guild_id: ({excluded_channel_ids}, {excluded_role_ids})}
-        self.exclusion_cache = {}
-        
         # Config Cache
         self._config_cache = {
             "xp_enabled": True,
             "xp_cooldown": 60,
             "xp_per_message": 1
         }
-        self._guild_config_cache = {} # {guild_id: {'excluded_channels': set(), 'excluded_roles': set()}}
+        self._guild_config_cache = {} # {guild_id: {'xp_included_channels': set(), 'excluded_roles': set()}}
         
         # User XP Cache (LRU) - Stores { (user_id, guild_id): {'xp': int, 'level': int, 'req_xp': int} }
         self.user_xp_cache = OrderedDict()
@@ -95,27 +92,13 @@ class XPSystem:
                 pending_updates = []
                 
                 for guild in self.bot.guilds:
-                    # Get exclusions (Config) - Optimized with cache check
-                    # We check config occasionally or rely on commands updating the cache (not implemented yet for commands, so fetch)
-                    # For now, fetching per guild per minute is fine, much better than per message.
-                    # Ideally we'd cache this too, but let's stick to the high-impact stuff first.
-                    config_excluded_channels = set(await self.config.guild(guild).excluded_channels())
-                    config_excluded_roles = set(await self.config.guild(guild).excluded_roles())
-                    
-                    # Get exclusions (Database) - Use/Update Cache
-                    if guild.id not in self.exclusion_cache:
-                        channels, roles = await self.db.xp.get_guild_exclusions(guild.id)
-                        self.exclusion_cache[guild.id] = (set(channels), set(roles))
-                    
-                    db_excluded_channels, db_excluded_roles = self.exclusion_cache[guild.id]
-                    
-                    # Combine exclusions
-                    all_excluded_channels = config_excluded_channels.union(db_excluded_channels)
-                    all_excluded_roles = config_excluded_roles.union(db_excluded_roles)
+                    # Get whitelist and exclusions (Config)
+                    included_channels = set(await self.config.guild(guild).xp_included_channels())
+                    excluded_roles = set(await self.config.guild(guild).excluded_roles())
                     
                     for channel in guild.voice_channels:
-                        # Skip excluded channels
-                        if channel.id in all_excluded_channels:
+                        # Skip if channel is not in whitelist
+                        if channel.id not in included_channels:
                             continue
                         
                         # Process members
@@ -127,8 +110,8 @@ class XPSystem:
                             if member.voice.self_deaf or member.voice.deaf:
                                 continue
                                 
-                            # Skip excluded roles (In-memory check)
-                            if any(role.id in all_excluded_roles for role in member.roles):
+                            # Skip excluded roles
+                            if any(role.id in excluded_roles for role in member.roles):
                                 continue
                             
                             # Add to batch
@@ -231,28 +214,26 @@ class XPSystem:
         
         guild_id = message.guild.id
         
-        # --- EXCLUSION CHECKS (Cache First) ---
+        # --- EXCLUSION CHECKS ---
         
-        # 1. Database Exclusions (Memory Cached)
-        if guild_id not in self.exclusion_cache:
-            channels, roles = await self.db.xp.get_guild_exclusions(guild_id)
-            self.exclusion_cache[guild_id] = (set(channels), set(roles))
-            
-        db_excluded_channels, db_excluded_roles = self.exclusion_cache[guild_id]
+        # 1. Channel Whitelist Check
+        included_channels = await self.config.guild(message.guild).xp_included_channels()
         
-        if message.channel.id in db_excluded_channels:
-            return
-        if any(role.id in db_excluded_roles for role in message.author.roles):
+        # Check channel ID directly
+        channel_id = message.channel.id
+        is_included = channel_id in included_channels
+        
+        # If not included, check if it's a thread and if parent is included
+        if not is_included and isinstance(message.channel, discord.Thread):
+            if message.channel.parent_id in included_channels:
+                is_included = True
+                
+        if not is_included:
             return
 
-        # 2. Config Exclusions (Red Config Cache is reasonably fast, but we could optimize further if needed)
-        # For now, let's trust Red's internal caching for guild settings
-        excluded_channels_config = await self.config.guild(message.guild).excluded_channels()
-        if message.channel.id in excluded_channels_config:
-            return
-
-        excluded_roles_config = await self.config.guild(message.guild).excluded_roles()
-        if any(role.id in excluded_roles_config for role in message.author.roles):
+        # 2. Role Exclusion Check
+        excluded_roles = await self.config.guild(message.guild).excluded_roles()
+        if any(role.id in excluded_roles for role in message.author.roles):
             return
             
         # --- XP CALCULATION (LRU Cache) ---

@@ -140,32 +140,6 @@ class XPRepository:
             await db.execute("DELETE FROM XpRoleReward WHERE GuildId = ? AND Level = ? AND RoleId = ?", (guild_id, level, role_id))
             await db.commit()
 
-    # XP Exclusions Methods
-    async def is_xp_excluded(self, guild_id: int, item_id: int, item_type: int):
-        """Check if channel/role is excluded from XP"""
-        async with self.db._get_connection() as db:
-            cursor = await db.execute("""
-                SELECT 1 FROM XpExcludedItem WHERE GuildId = ? AND ItemId = ? AND ItemType = ?
-            """, (guild_id, item_id, item_type))
-            return await cursor.fetchone() is not None
-
-    async def get_guild_exclusions(self, guild_id: int) -> Tuple[List[int], List[int]]:
-        """Get all XP exclusions for a guild (channels, roles)"""
-        async with self.db._get_connection() as db:
-            cursor = await db.execute("SELECT ItemId, ItemType FROM XpExcludedItem WHERE GuildId = ?", (guild_id,))
-            rows = await cursor.fetchall()
-            
-            channels = [r[0] for r in rows if r[1] == 0]
-            roles = [r[0] for r in rows if r[1] == 1]
-            return channels, roles
-
-    async def add_xp_exclusion(self, guild_id: int, item_id: int, item_type: int):
-        """Add XP exclusion"""
-        async with self.db._get_connection() as db:
-            await db.execute("""
-                INSERT OR IGNORE INTO XpExcludedItem (GuildId, ItemId, ItemType) VALUES (?, ?, ?)
-            """, (guild_id, item_id, item_type))
-            await db.commit()
 
     # XP currency reward methods
     async def get_xp_currency_rewards(self, guild_id: int):

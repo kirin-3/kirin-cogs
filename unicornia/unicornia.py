@@ -79,8 +79,8 @@ class Unicornia(
         }
         
         default_guild = {
-            "excluded_channels": [],
-            "excluded_roles": []
+            "excluded_roles": [],
+            "xp_included_channels": []
         }
         
         self.config.register_global(**default_global)

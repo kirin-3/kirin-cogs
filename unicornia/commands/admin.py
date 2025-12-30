@@ -149,27 +149,50 @@ class AdminCommands:
         """Guild-specific configuration"""
         pass
     
-    @guild_config.command(name="excludechannel")
-    async def guild_exclude_channel(self, ctx, channel: discord.TextChannel):
-        """Exclude a channel from XP gain"""
-        excluded = await self.config.guild(ctx.guild).excluded_channels()
-        if channel.id not in excluded:
-            excluded.append(channel.id)
-            await self.config.guild(ctx.guild).excluded_channels.set(excluded)
-            await ctx.send(f"✅ {channel.mention} excluded from XP gain.")
+    @guild_config.group(name="xp")
+    async def guild_xp_group(self, ctx):
+        """Manage XP configuration"""
+        pass
+
+    @guild_xp_group.command(name="include")
+    async def xp_include_channel(self, ctx, channel: discord.abc.GuildChannel):
+        """Add a channel to the XP whitelist"""
+        included = await self.config.guild(ctx.guild).xp_included_channels()
+        if channel.id not in included:
+            included.append(channel.id)
+            await self.config.guild(ctx.guild).xp_included_channels.set(included)
+            await ctx.send(f"✅ {channel.mention} added to XP whitelist.")
         else:
-            await ctx.send(f"❌ {channel.mention} is already excluded from XP gain.")
-    
-    @guild_config.command(name="includechannel")
-    async def guild_include_channel(self, ctx, channel: discord.TextChannel):
-        """Include a channel in XP gain"""
-        excluded = await self.config.guild(ctx.guild).excluded_channels()
-        if channel.id in excluded:
-            excluded.remove(channel.id)
-            await self.config.guild(ctx.guild).excluded_channels.set(excluded)
-            await ctx.send(f"✅ {channel.mention} included in XP gain.")
+            await ctx.send(f"❌ {channel.mention} is already in the XP whitelist.")
+
+    @guild_xp_group.command(name="exclude")
+    async def xp_exclude_channel(self, ctx, channel: discord.abc.GuildChannel):
+        """Remove a channel from the XP whitelist"""
+        included = await self.config.guild(ctx.guild).xp_included_channels()
+        if channel.id in included:
+            included.remove(channel.id)
+            await self.config.guild(ctx.guild).xp_included_channels.set(included)
+            await ctx.send(f"✅ {channel.mention} removed from XP whitelist.")
         else:
-            await ctx.send(f"❌ {channel.mention} is not excluded from XP gain.")
+            await ctx.send(f"❌ {channel.mention} is not in the XP whitelist.")
+
+    @guild_xp_group.command(name="listchannels")
+    async def xp_list_channels(self, ctx):
+        """List all channels in the XP whitelist"""
+        included = await self.config.guild(ctx.guild).xp_included_channels()
+        if not included:
+            await ctx.send("No channels are whitelisted for XP gain.")
+            return
+
+        channel_mentions = []
+        for channel_id in included:
+            channel = ctx.guild.get_channel(channel_id)
+            if channel:
+                channel_mentions.append(channel.mention)
+            else:
+                channel_mentions.append(f"<#{channel_id}> (Deleted)")
+        
+        await ctx.send(f"**XP Whitelisted Channels:**\n{', '.join(channel_mentions)}")
     
     @guild_config.command(name="rolereward")
     async def guild_role_reward(self, ctx, level: int, role: discord.Role, remove: bool = False):

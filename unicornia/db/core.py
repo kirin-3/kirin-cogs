@@ -871,19 +871,43 @@ class CoreDB:
                 except Exception as e:
                     log.warning(f"XP Role Rewards migration failure: {e}")
                 
-                # XpExcludedItem
+                # XpExcludedItem migration removed (Whitelisted channels are now in Red Config)
+
+                # Migrate XpShopOwnedItem
                 try:
-                    async with nadeko_db.execute("SELECT GuildId, ItemId, ItemType FROM XpExcludedItem") as cursor:
+                    cursor = await nadeko_db.execute("SELECT COUNT(*) FROM XpShopOwnedItem")
+                    count = (await cursor.fetchone())[0]
+                    log.info(f"Found {count} XP Shop items to migrate")
+
+                    migrated_items = 0
+                    batch_data = []
+
+                    async with nadeko_db.execute("SELECT UserId, ItemType, IsUsing, ItemKey FROM XpShopOwnedItem") as cursor:
                         async for row in cursor:
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO XpExcludedItem (GuildId, ItemId, ItemType)
-                                    VALUES (?, ?, ?, ?)
-                                """, row)
-                                await db.commit()
-                    log.info("Migrated XP Excluded Items")
+                            # row: (UserId, ItemType, IsUsing, ItemKey)
+                            batch_data.append(row)
+                            migrated_items += 1
+                            
+                            if len(batch_data) >= 1000:
+                                async with self._get_connection() as db:
+                                    await db.executemany("""
+                                        INSERT OR REPLACE INTO XpShopOwnedItem (UserId, ItemType, IsUsing, ItemKey)
+                                        VALUES (?, ?, ?, ?)
+                                    """, batch_data)
+                                    await db.commit()
+                                batch_data.clear()
+                    
+                    if batch_data:
+                        async with self._get_connection() as db:
+                            await db.executemany("""
+                                INSERT OR REPLACE INTO XpShopOwnedItem (UserId, ItemType, IsUsing, ItemKey)
+                                VALUES (?, ?, ?, ?)
+                            """, batch_data)
+                            await db.commit()
+
+                    log.info(f"Migrated {migrated_items} XP Shop Owned Items")
                 except Exception as e:
-                    log.warning(f"XP Excluded Items migration partial failure: {e}")
+                    log.warning(f"XP Shop Owned Items migration partial failure: {e}")
 
                 # Migrate Gambling Stats
                 try:
