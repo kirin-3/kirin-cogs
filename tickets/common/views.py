@@ -302,6 +302,7 @@ class SupportButton(Button):
             log.exception(f"Failed to create ticket in {guild} for {user}", exc_info=e)
 
     async def create_ticket(self, interaction: Interaction):
+        log.info(f"SupportButton clicked by {interaction.user} in {interaction.guild}")
         guild = interaction.guild
         user = self.mock_user or guild.get_member(interaction.user.id)
         if not guild:
@@ -353,6 +354,7 @@ class SupportButton(Button):
             return await interaction.response.send_message(embed=em, ephemeral=True)
 
         # Open Verification Modal
+        log.info(f"Opening VerificationModal for {user}")
         modal = VerificationModal(self.view.bot, guild, self.view.config, user)
         await interaction.response.send_modal(modal)
 
