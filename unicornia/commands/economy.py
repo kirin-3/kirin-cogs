@@ -334,6 +334,7 @@ class EconomyCommands:
             await ctx.send(f"❌ Error taking Slut points: {e}")
     
     @economy_group.command(name="leaderboard", aliases=["lb", "top"])
+    @commands.guild_only()
     async def economy_leaderboard(self, ctx):
         """Show the Slut points leaderboard"""
         if not await self.config.economy_enabled():

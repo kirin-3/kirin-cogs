@@ -49,6 +49,7 @@ Unicornia creates tables that match Nadeko's schema naming convention to ensure 
 *   `CurrencyTransactions`: Transaction history.
 *   `Clubs`: Club information.
 *   `WaifuInfo`: Waifu claims and affinity.
+*   `WaifuItem`: Waifu gifts/inventory.
 *   `WaifuUpdates`: Waifu transaction history.
 
 Note: The `InterestRate` column was removed from `BankUsers` as it is not used in the current version of Nadeko.

@@ -21,7 +21,7 @@ The currency (default name "Slut points") flows through the system via several m
     *   **Rakeback**: Users earn back 5% of their gambling losses, claimed via `[p]economy rakeback`.
 
 *   **Sinks**:
-    *   **Shop Purchases**: Buying roles, items, or XP card backgrounds removes currency from circulation.
+    *   **Shop Purchases**: Buying roles, items, XP card backgrounds, or Discord Nitro removes currency from circulation.
     *   **Gambling Losses**: A house edge is built into games to naturally remove currency over time (deflationary pressure).
     *   **Waifu Gifts**: Gifts increase a waifu's value but cost currency, effectively removing it from the user's wallet.
     *   **Transfer Fees**: Transferring waifus incurs a 10% (or 60% for affinity) tax.
@@ -103,6 +103,7 @@ The shop allows admins to sell:
 *   **Roles**: Automatically assigned upon purchase.
 *   **Commands**: (In development) Trigger custom commands.
 *   **XP Backgrounds**: Visual customization for the leveling system.
+*   **Nitro Shop**: Buy Discord Nitro Boost or Basic subscriptions.
 
 ## Configuration
 

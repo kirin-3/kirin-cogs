@@ -45,6 +45,7 @@ After editing `xp_config.yml`, run the following command to apply changes withou
 - `[p]xpshop buy <key>`: Purchase a specific background.
 - `[p]xpshop use <key>`: Equip a purchased background.
 - `[p]xpshop owned`: View your inventory of owned backgrounds.
+- `[p]xpshopbuy <type> [key]`: Shortcut to buy XP shop items (e.g., `[p]xpshopbuy bg default`).
 
 ### Owner Commands
 - `[p]xpshop give <user> <key>`: Give a background to a user for free (bypasses price and hidden status).

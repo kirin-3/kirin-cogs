@@ -628,8 +628,8 @@ class NitroShopView(ui.View):
         embed = discord.Embed(
             title="<:nitro:1323201460596346900> Unicornia Nitro Shop",
             description=f"Exchange your hard-earned {currency_symbol} for Discord Nitro!\n"
-                        f"Items are delivered manually by an admin after purchase.",
-            color=discord.Color.nitro_pink()
+                        f"Items are delivered manually by Kirin after purchase.",
+            color=discord.Color(0xff73fa)
         )
         
         embed.add_field(

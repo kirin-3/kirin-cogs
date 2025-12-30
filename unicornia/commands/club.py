@@ -94,6 +94,7 @@ class ClubInfoView(ui.View):
 
 class ClubCommands:
     @commands.group(name="club")
+    @commands.guild_only()
     async def club_group(self, ctx):
         """Club system commands"""
         pass

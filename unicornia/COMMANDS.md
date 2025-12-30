@@ -96,6 +96,15 @@ Track your activity and earn rewards.
 | `[p]level leaderboard` | View the server XP leaderboard. Aliases: `lb`, `top`. |
 | `[p]xplb` | Global shortcut for XP leaderboard. |
 
+## Nitro Shop
+Buy Discord Nitro with currency.
+
+| Command | Description | Permission |
+| :--- | :--- | :--- |
+| `[p]nitroshop` | Open the Nitro Shop to purchase Discord Nitro subscriptions. | |
+| `[p]nitrostock <type> <amount>` | Add or remove stock for Nitro items. Types: `boost`, `basic`. | Bot Owner |
+| `[p]nitroprice <type> <price>` | Set the price for Nitro items. Types: `boost`, `basic`. | Bot Owner |
+
 ## Shop
 Buy roles, items, and XP card customizations.
 

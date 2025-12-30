@@ -125,6 +125,7 @@ class BackgroundShopView(discord.ui.View):
 class ShopCommands:
     # Shop commands
     @commands.group(name="shop", aliases=["store"])
+    @commands.guild_only()
     async def shop_group(self, ctx):
         """Shop commands - Buy roles and items with currency"""
         pass
@@ -510,6 +511,7 @@ class ShopCommands:
         await ctx.send(f"Usage: `{ctx.prefix}xpshopbuy bg <item_key>`")
 
     @commands.group(name="xpshop", aliases=["xps"])
+    @commands.guild_only()
     async def xp_shop_group(self, ctx):
         """XP Shop - Buy custom backgrounds with currency"""
         pass
