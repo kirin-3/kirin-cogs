@@ -13,7 +13,6 @@ from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import box, humanize_list, pagify
 
 from .functions import Functions
-from .functions import Functions
 from .utils import (
     can_close,
     close_ticket,
@@ -297,11 +296,11 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         if self.image.values:
             attachment_url = self.image.values[0].url
 
-        functions = Functions()
-        functions.bot = self.bot
-        functions.config = self.config
-        
-        result = await functions.create_ticket_for_user(self.user)
+        cog = self.bot.get_cog("Tickets")
+        if not cog:
+            return await interaction.followup.send("Tickets cog not loaded!", ephemeral=True)
+            
+        result = await cog.create_ticket_for_user(self.user)
         
         # Post image to the new ticket channel
         conf = await self.config.guild(self.guild).all()
