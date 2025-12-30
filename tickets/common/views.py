@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import logging
-import io
 from datetime import datetime
 from typing import Any, Dict, Optional, Union
 
@@ -243,14 +242,6 @@ class SimpleAttachment:
         self.url = url
         self.filename = filename
 
-    async def to_file(self, session=None):
-        if session:
-            async with session.get(self.url) as resp:
-                if resp.status == 200:
-                    data = await resp.read()
-                    return discord.File(io.BytesIO(data), filename=self.filename)
-        return None
-
 class FileUpload(discord.ui.Item):
     def __init__(self, custom_id: str, required: bool = True, min_values: int = 1, max_values: int = 3):
         super().__init__()
@@ -274,7 +265,6 @@ class FileUpload(discord.ui.Item):
         }
 
     def refresh_component(self, component):
-        log.warning(f"Refreshing component values: {component.values}")
         self._uploaded_attachments = component.values
 
     @property
@@ -309,15 +299,12 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
-        log.warning(f"On Submit: Image Values: {self.image.values}")
-        
         attachments = []
         if self.image.values:
             attachments = self.image.values
         
         # Fallback: check interaction data directly if custom component retrieval failed
         if not attachments and hasattr(interaction, 'data') and 'resolved' in interaction.data and 'attachments' in interaction.data['resolved']:
-            log.warning("Fallback parsing interaction data for attachments")
             raw_attachments = interaction.data['resolved']['attachments']
             if raw_attachments:
                 for attachment_data in raw_attachments.values():
@@ -350,19 +337,8 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
                         embed.set_author(name=self.user.display_name, icon_url=self.user.display_avatar.url)
                         
                         try:
-                            # Re-upload the file
-                            f = None
-                            if isinstance(attachment, SimpleAttachment):
-                                f = await attachment.to_file(self.bot.session)
-                            elif hasattr(attachment, 'to_file'):
-                                f = await attachment.to_file()
-                            
-                            if f:
-                                embed.set_image(url=f"attachment://{f.filename}")
-                                await channel.send(embed=embed, file=f)
-                            else:
-                                embed.set_image(url=attachment.url)
-                                await channel.send(embed=embed)
+                            embed.set_image(url=attachment.url)
+                            await channel.send(embed=embed)
                         except Exception as e:
                             log.error(f"Failed to send verification image to {channel.name}", exc_info=e)
                             await channel.send(f"Failed to load verification image {i+1}: {attachment.url}")
