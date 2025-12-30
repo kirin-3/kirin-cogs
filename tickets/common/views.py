@@ -234,6 +234,19 @@ class CloseView(View):
             config=self.config,
         )
 
+    @discord.ui.button(label="Remind Instructions", style=ButtonStyle.danger)
+    async def remind_instructions(self, interaction: Interaction, button: Button):
+        embed = discord.Embed(
+            description=(
+                "**PLEASE ADHERE TO THE FOLLOWING FORMAT IN ORDER TO BE VERIFIED**\n\n"
+                "- Send a selfie while holding your censored ID and your hand written Discord username and also today's date within the same selfie.\n\n"
+                "- The photo on the ID and year of birth should be clearly visible (day and month of birth should also be censored unless needed)."
+            ),
+            color=discord.Color.red()
+        )
+        embed.set_image(url="https://cdn.discordapp.com/attachments/686096388018405408/1267972588165136496/id-verify.png")
+        await interaction.response.send_message(embed=embed)
+
 
 import io
 
