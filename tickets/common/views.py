@@ -236,37 +236,6 @@ class CloseView(View):
         )
 
 
-class FileUpload(discord.ui.Item):
-    def __init__(self, custom_id: str, required: bool = True, min_values: int = 1, max_values: int = 1):
-        super().__init__()
-        self.custom_id = custom_id
-        self.required = required
-        self.min_values = min_values
-        self.max_values = max_values
-        self._values = []
-
-    @property
-    def type(self) -> discord.ComponentType:
-        # Use literal 19 for ComponentType.file_upload
-        return discord.ComponentType(19)
-
-    def to_component_dict(self):
-        return {
-            "type": 19,
-            "custom_id": self.custom_id,
-            "required": self.required,
-            "min_values": self.min_values,
-            "max_values": self.max_values,
-        }
-
-    def _refresh_component(self, component):
-        self._values = component.values
-
-    @property
-    def values(self):
-        return self._values
-
-
 class VerificationModal(discord.ui.Modal, title="Verification"):
     def __init__(self, bot: Red, guild: discord.Guild, config: Config, user: discord.Member):
         super().__init__()
@@ -275,33 +244,31 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         self.config = config
         self.user = user
         
-        # 1. Define the File Upload component using custom class
-        self.image = FileUpload(
+        # 1. Use the built-in discord.ui.File (v2.6+)
+        self.image = discord.ui.File(
             custom_id="verification_image",
             required=True,
             min_values=1,
             max_values=1,
         )
 
-        # 2. Define the Label component
+        # 2. Wrap it in discord.ui.Label
+        # Note: Use 'component' instead of 'children'
         self.label = discord.ui.Label(
             "Upload your verification image",
             description="Please upload an image for verification.",
-            children=[self.image]
+            component=self.image
         )
         self.add_item(self.label)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
+        # In v2.6+, .values on the ui.File item returns a list of attachments automatically
         attachment_url = None
-        
-        # Manual fallback to find attachment URL if values are not populated
-        if hasattr(interaction, 'data') and 'resolved' in interaction.data and 'attachments' in interaction.data['resolved']:
-            attachments = interaction.data['resolved']['attachments']
-            if attachments:
-                attachment_info = list(attachments.values())[0]
-                attachment_url = attachment_info.get('url')
+        if self.image.values:
+            # self.image.values is a list of discord.Attachment
+            attachment_url = self.image.values[0].url
 
         functions = Functions()
         functions.bot = self.bot
@@ -315,14 +282,17 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         uid = str(self.user.id)
         if uid in opened:
             # Get the most recently opened ticket
-            latest_channel_id = max(opened[uid].keys(), key=lambda x: int(x))
-            channel = self.guild.get_channel(int(latest_channel_id))
-            
-            if channel and attachment_url:
-                embed = discord.Embed(title="Verification Image", color=discord.Color.green())
-                embed.set_image(url=attachment_url)
-                embed.set_author(name=self.user.display_name, icon_url=self.user.display_avatar.url)
-                await channel.send(embed=embed)
+            # (Sorting by ID is safer than max() on keys if keys are strings)
+            ticket_ids = sorted([int(x) for x in opened[uid].keys()], reverse=True)
+            if ticket_ids:
+                latest_channel_id = ticket_ids[0]
+                channel = self.guild.get_channel(latest_channel_id)
+                
+                if channel and attachment_url:
+                    embed = discord.Embed(title="Verification Image", color=discord.Color.green())
+                    embed.set_image(url=attachment_url)
+                    embed.set_author(name=self.user.display_name, icon_url=self.user.display_avatar.url)
+                    await channel.send(embed=embed)
 
         await interaction.followup.send(result, ephemeral=True)
 
