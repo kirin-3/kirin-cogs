@@ -626,7 +626,7 @@ class NitroShopView(ui.View):
         currency_symbol = await self.ctx.cog.config.currency_symbol()
         
         embed = discord.Embed(
-            title="<:nitro:1323201460596346900> Unicornia Nitro Shop",
+            title="<a:zz_unicorn_dot:965576604212396092> Unicornia Nitro Shop",
             description=f"Exchange your hard-earned {currency_symbol} for Discord Nitro!\n"
                         f"Items are delivered manually by Kirin after purchase.",
             color=discord.Color(0xff73fa)

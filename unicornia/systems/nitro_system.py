@@ -111,7 +111,7 @@ class NitroSystem:
         embed = discord.Embed(
             title="🎉 New Nitro Stock Available!",
             description=f"**{amount}x {pretty_name}** has just been restocked!",
-            color=discord.Color.nitro_pink()
+            color=discord.Color(0xff73fa)
         )
         embed.add_field(name="How to buy?", value=f"Use the command `[p]nitroshop` to purchase.")
         
