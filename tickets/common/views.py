@@ -285,7 +285,7 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
 
         # 2. Define the Label component
         self.label = discord.ui.Label(
-            label="Upload your verification image",
+            "Upload your verification image",
             description="Please upload an image for verification.",
             children=[self.image]
         )
