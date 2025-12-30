@@ -13,8 +13,9 @@ Commands for configuring the Unicornia system.
 | `[p]unicornia gen channel <operation> <channel>` | Add or remove a channel for currency generation. Operation: `add` or `remove`. | Bot Owner |
 | `[p]unicornia gen list` | List currency generation channels. | |
 | `[p]unicornia guild` | Base command for guild-specific configuration. | Admin |
-| `[p]unicornia guild excludechannel <channel>` | Exclude a channel from XP gain. | Admin |
-| `[p]unicornia guild includechannel <channel>` | Re-include a channel for XP gain. | Admin |
+| `[p]unicornia guild xp include <channel>` | Add a channel to the XP whitelist. | Admin |
+| `[p]unicornia guild xp exclude <channel>` | Remove a channel from the XP whitelist. | Admin |
+| `[p]unicornia guild xp listchannels` | List all channels in the XP whitelist. | Admin |
 | `[p]unicornia guild rolereward <level> <role> [remove]` | Set a role reward for reaching a specific level. Set `remove` to True to remove role instead of adding. | Admin |
 | `[p]unicornia guild removerolereward <level> <role>` | Remove a configured role reward. | Admin |
 | `[p]unicornia guild currencyreward <level> <amount>` | Set a currency reward for reaching a specific level. | Admin |
@@ -61,11 +62,12 @@ Manage your wallet, bank, and transactions.
 | `[p]economy stats [user]` | View detailed gambling statistics. Alias: `gambling`. | |
 | `[p]economy rakeback` | Check and claim your gambling rakeback (5% of losses). Alias: `rb`. | |
 | `[p]economy leaderboard` | View the global currency leaderboard. Aliases: `lb`, `top`. | |
+| `[p]baltop` | Global shortcut for economy leaderboard. Alias: `ballb`. | |
 | `[p]economy award <amount> <user>` | Award currency to a user (generated out of thin air). | Bot Owner |
 | `[p]economy take <amount> <user>` | Take currency from a user. | Bot Owner |
 | `[p]economy bank [user]` | View bank information for a user. | |
 | `[p]pick` | Global shortcut to pick up generated currency from chat. | |
-| `[p]currency pick` | Pick up generated currency from chat. | |
+| `[p]currency pick [password]` | Pick up generated currency from chat. | |
 | `[p]bank` | Base command for banking. | |
 | `[p]bank deposit <amount>` | Deposit currency from wallet to bank. Alias: `dep`. | |
 | `[p]bank withdraw <amount>` | Withdraw currency from bank to wallet. Alias: `with`. | |
@@ -92,6 +94,7 @@ Track your activity and earn rewards.
 | `[p]level` | Base command for leveling. Aliases: `lvl`, `xp`. |
 | `[p]level check [user]` | Check your (or another user's) level, rank, and view XP card. Alias: `me`. |
 | `[p]level leaderboard` | View the server XP leaderboard. Aliases: `lb`, `top`. |
+| `[p]xplb` | Global shortcut for XP leaderboard. |
 
 ## Shop
 Buy roles, items, and XP card customizations.
@@ -113,6 +116,7 @@ Buy roles, items, and XP card customizations.
 | `[p]xpshop owned` | View your owned backgrounds. Aliases: `inventory`, `inv`. | |
 | `[p]xpshop reload` | Reload the XP shop configuration. | Bot Owner |
 | `[p]xpshop give <user> <key>` | Give an XP background to a user. | Bot Owner |
+| `[p]xpshopbuy <type> [key]` | Shortcut to buy XP shop items. | |
 
 ## Waifus
 Claim and trade virtual waifus (other users).

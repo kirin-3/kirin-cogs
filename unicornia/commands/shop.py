@@ -2,6 +2,7 @@ import discord
 from redbot.core import commands, checks
 from redbot.core.utils.views import SimpleMenu
 from typing import Optional
+from ..views import ShopBrowserView
 
 class BackgroundShopView(discord.ui.View):
     def __init__(self, ctx, backgrounds, user_owned, timeout=60):
@@ -135,51 +136,15 @@ class ShopCommands:
             await ctx.send("❌ Shop system is disabled.")
             return
         
-        
         try:
             items = await self.shop_system.get_shop_items(ctx.guild.id)
             if not items:
                 await ctx.send("🛒 The shop is empty! Admins can add items with `[p]shop add`.")
                 return
             
-            currency_symbol = await self.config.currency_symbol()
-            
-            pages = []
-            chunk_size = 10
-            for i in range(0, len(items), chunk_size):
-                chunk = items[i:i + chunk_size]
-                embed = discord.Embed(
-                    title="🛒 Shop Items",
-                    description="Purchase items with your Slut points!",
-                    color=discord.Color.green()
-                )
-                
-                for item in chunk:
-                    item_type = self.shop_system.get_type_name(item['type'])
-                    emoji = self.shop_system.get_type_emoji(item['type'])
-                    
-                    description = f"**{emoji} {item['name']}** - {currency_symbol}{item['price']:,}\n"
-                    description += f"Type: {item_type}\n"
-                    
-                    if item['type'] == self.db.shop.SHOP_TYPE_ROLE and item['role_name']:
-                        description += f"Role: {item['role_name']}\n"
-                    
-                    if item['additional_items']:
-                        description += f"Items: {len(item['additional_items'])} additional items\n"
-                    
-                    embed.add_field(
-                        name=f"#{item['index']} - {item['name']}",
-                        value=description,
-                        inline=True
-                    )
-                
-                embed.set_footer(text=f"Page {i // chunk_size + 1}/{(len(items) - 1) // chunk_size + 1} • Use '[p]shop buy <index>' to purchase an item")
-                pages.append(embed)
-            
-            if len(pages) == 1:
-                await ctx.send(embed=pages[0])
-            else:
-                await SimpleMenu(pages).start(ctx)
+            view = ShopBrowserView(ctx, items, self.shop_system)
+            embed = await view.get_embed()
+            view.message = await ctx.send(embed=embed, view=view)
             
         except Exception as e:
             await ctx.send(f"❌ Error retrieving shop items: {e}")

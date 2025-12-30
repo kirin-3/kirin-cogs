@@ -57,8 +57,8 @@ class Unicornia(
             "shop_enabled": True,
             "timely_amount": 500,
             "timely_cooldown": 24,  # hours
-            "xp_per_message": 1,
-            "xp_cooldown": 60,  # seconds
+            "xp_per_message": 3,
+            "xp_cooldown": 180,  # seconds
             # Currency generation
             "currency_generation_enabled": True,
             "generation_chance": 0.005,  # 0.5%

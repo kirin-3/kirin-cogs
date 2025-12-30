@@ -98,11 +98,11 @@ class XPRepository:
             if not result:
                 # Create default settings
                 await db.execute("""
-                    INSERT INTO XpSettings (GuildId, XpRateMultiplier, XpPerMessage, XpMinutesTimeout) 
-                    VALUES (?, 1.0, 3, 5)
+                    INSERT INTO XpSettings (GuildId, XpRateMultiplier, XpPerMessage, XpMinutesTimeout)
+                    VALUES (?, 1.0, 3, 3)
                 """, (guild_id,))
                 await db.commit()
-                return (1.0, 3, 5)
+                return (1.0, 3, 3)
             
             return result
 

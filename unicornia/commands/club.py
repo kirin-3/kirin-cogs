@@ -2,7 +2,9 @@ import discord
 from redbot.core import commands
 from discord import ui
 from typing import Optional
+from redbot.core.utils.views import ConfirmView
 from ..utils import validate_club_name, validate_url, validate_text_input
+from ..views import ApplicantProcessView
 import asyncio
 
 class ClubManageModal(ui.Modal, title="Manage Club"):
@@ -248,20 +250,15 @@ class ClubCommands:
         if not applicants:
             await ctx.send("📋 No pending applications.")
             return
-            
+
+        view = ApplicantProcessView(ctx, applicants, self.club_system)
+
         embed = discord.Embed(
             title="📋 Club Applications",
+            description=f"There are **{len(applicants)}** pending applications.\nUse the menu below to accept or reject them.",
             color=discord.Color.blue()
         )
-        
-        desc = []
-        for a in applicants:
-            desc.append(f"• **{a['username']}** (XP: {a['total_xp']:,})")
-            
-        embed.description = "\n".join(desc)
-        embed.set_footer(text="Use [p]club accept <user> or [p]club reject <user>")
-        
-        await ctx.send(embed=embed)
+        view.message = await ctx.send(embed=embed, view=view)
 
     @club_group.command(name="bans")
     async def club_bans(self, ctx):
@@ -360,16 +357,14 @@ class ClubCommands:
     async def club_disband(self, ctx):
         """Disband the club (Owner/Server Mod)"""
             
-        await ctx.send("⚠️ Are you sure you want to disband your club? Type `yes` to confirm.")
-        try:
-            msg = await self.bot.wait_for("message", check=lambda m: m.author == ctx.author and m.channel == ctx.channel, timeout=30)
-            if msg.content.lower() != "yes":
-                await ctx.send("❌ Disband cancelled.")
-                return
-        except asyncio.TimeoutError:
-            await ctx.send("❌ Timed out. Disband cancelled.")
+        view = ConfirmView(ctx.author)
+        msg = await ctx.send("⚠️ Are you sure you want to disband your club? This cannot be undone.", view=view)
+        await view.wait()
+        
+        if not view.result:
+            await msg.edit(content="❌ Disband cancelled.")
             return
-            
+
         success, message = await self.club_system.disband_club(ctx.author)
         if success:
             await ctx.send(f"✅ {message}")

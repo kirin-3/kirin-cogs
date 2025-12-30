@@ -3,6 +3,7 @@ from redbot.core import commands, checks
 from redbot.core.utils.views import SimpleMenu
 from typing import Optional
 from ..utils import validate_text_input
+from ..views import LeaderboardView
 
 class EconomyCommands:
     # Economy commands
@@ -333,7 +334,7 @@ class EconomyCommands:
             await ctx.send(f"❌ Error taking Slut points: {e}")
     
     @economy_group.command(name="leaderboard", aliases=["lb", "top"])
-    async def economy_leaderboard(self, ctx, limit: int = 10):
+    async def economy_leaderboard(self, ctx):
         """Show the Slut points leaderboard"""
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
@@ -347,42 +348,18 @@ class EconomyCommands:
                 await ctx.send("No economy data found for this server.")
                 return
             
-            entries = []
+            # Find user position
+            user_position = None
+            for i, (uid, _) in enumerate(top_users):
+                if uid == ctx.author.id:
+                    user_position = i
+                    break
+            
             currency_symbol = await self.config.currency_symbol()
-            for i, (user_id, balance) in enumerate(top_users):
-                member = ctx.guild.get_member(user_id)
-                username = member.display_name
-                
-                rank = i + 1
-                if rank == 1:
-                    rank_str = "🥇"
-                elif rank == 2:
-                    rank_str = "🥈"
-                elif rank == 3:
-                    rank_str = "🥉"
-                else:
-                    rank_str = f"**{rank}.**"
-                    
-                entries.append(f"{rank_str} **{username}**\n{currency_symbol}{balance:,}\n")
             
-            # Pagination
-            pages = []
-            chunk_size = 10
-            for i in range(0, len(entries), chunk_size):
-                chunk = entries[i:i + chunk_size]
-                embed = discord.Embed(
-                    title="<:slut:686148402941001730> Slut points Leaderboard",
-                    description="".join(chunk),
-                    color=discord.Color.gold()
-                )
-                embed.set_footer(text=f"Page {i // chunk_size + 1}/{(len(entries) - 1) // chunk_size + 1}")
-                pages.append(embed)
-            
-            if len(pages) == 1:
-                # If only one page, send it directly without menu controls
-                await ctx.send(embed=pages[0])
-            else:
-                await SimpleMenu(pages).start(ctx)
+            view = LeaderboardView(ctx, top_users, user_position, currency_symbol)
+            embed = await view.get_embed()
+            view.message = await ctx.send(embed=embed, view=view)
             
         except Exception as e:
             import logging

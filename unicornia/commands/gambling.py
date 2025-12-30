@@ -1,6 +1,7 @@
 import discord
 from redbot.core import commands, checks
 from typing import Optional, Union
+from ..views import RockPaperScissorsView, CoinFlipView
 
 class GamblingCommands:
     async def _resolve_bet(self, ctx, amount: Union[int, str]) -> Optional[int]:
@@ -68,7 +69,7 @@ class GamblingCommands:
     
     @gambling_group.command(name="rps", aliases=["rockpaperscissors"])
     @commands.cooldown(1, 1, commands.BucketType.user)
-    async def gambling_rps(self, ctx, choice: str, amount: Union[int, str] = 0):
+    async def gambling_rps(self, ctx, choice: Optional[str] = None, amount: Union[int, str] = 0):
         """Play rock paper scissors"""
         if not await self.config.gambling_enabled():
             await ctx.send("❌ Gambling is disabled.")
@@ -77,6 +78,21 @@ class GamblingCommands:
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
             return
+
+        # Handle flexible arguments: [p]rps 100 -> choice="100", amount=0
+        if choice and (choice.isdigit() or choice.lower() == "all") and amount == 0:
+            amount = choice
+            choice = None
+            
+        if choice is None:
+            view = RockPaperScissorsView(ctx.author)
+            view.message = await ctx.send("Choose your weapon!", view=view)
+            await view.wait()
+            
+            if view.choice is None:
+                await ctx.send("❌ Timed out.")
+                return
+            choice = view.choice
         
         if amount != 0:
             amount = await self._resolve_bet(ctx, amount)
@@ -175,10 +191,11 @@ class GamblingCommands:
 
     @gambling_group.command(name="betflip", aliases=["bf"])
     @commands.cooldown(1, 1, commands.BucketType.user)
-    async def gambling_betflip(self, ctx, amount: Union[int, str], guess: str):
+    async def gambling_betflip(self, ctx, amount: Union[int, str], guess: Optional[str] = None):
         """Bet on a coin flip (Heads or Tails)
         
         Usage: [p]gambling betflip 100 heads
+        Or: [p]gambling betflip 100 (interactive)
         """
         if not await self.config.gambling_enabled():
             await ctx.send("❌ Gambling is disabled.")
@@ -191,6 +208,16 @@ class GamblingCommands:
         amount = await self._resolve_bet(ctx, amount)
         if amount is None:
             return
+
+        if guess is None:
+            view = CoinFlipView(ctx.author)
+            view.message = await ctx.send(f"You are betting {amount}. Choose Heads or Tails:", view=view)
+            await view.wait()
+            
+            if view.choice is None:
+                await ctx.send("❌ Timed out.")
+                return
+            guess = view.choice
             
         try:
             success, result = await self.gambling_system.bet_flip(ctx.author.id, amount, guess)
@@ -273,7 +300,7 @@ class GamblingCommands:
 
     @commands.command(name="rps", aliases=["rockpaperscissors"])
     @commands.cooldown(1, 1, commands.BucketType.user)
-    async def top_rps(self, ctx, choice: str, amount: Union[int, str] = 0):
+    async def top_rps(self, ctx, choice: Optional[str] = None, amount: Union[int, str] = 0):
         """Play rock paper scissors"""
         await self.gambling_rps(ctx, choice, amount)
 
@@ -291,7 +318,7 @@ class GamblingCommands:
 
     @commands.command(name="betflip", aliases=["bf"])
     @commands.cooldown(1, 1, commands.BucketType.user)
-    async def top_betflip(self, ctx, amount: Union[int, str], guess: str):
+    async def top_betflip(self, ctx, amount: Union[int, str], guess: Optional[str] = None):
         """Bet on a coin flip (Heads or Tails)"""
         await self.gambling_betflip(ctx, amount, guess)
 
