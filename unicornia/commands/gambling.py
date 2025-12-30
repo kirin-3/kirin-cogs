@@ -283,7 +283,7 @@ class GamblingCommands:
         """Play slots"""
         await self.gambling_slots(ctx, amount)
 
-    @commands.command(name="blackjack", aliases=["bj", "21"])
+    @commands.command(name="blackjack", aliases=["21"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     async def top_blackjack(self, ctx, amount: Union[int, str]):
         """Play blackjack"""
