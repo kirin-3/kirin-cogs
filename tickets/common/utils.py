@@ -66,6 +66,7 @@ async def close_ticket(
     reason: str | None,
     closedby: str,
     config: Config,
+    status: str | None = None,
 ) -> None:
     opened = conf["opened"]
     if not opened:
@@ -124,7 +125,12 @@ async def close_ticket(
 
     if conf["dm"]:
         try:
-            await member.send(embed=embed)
+            if status == "Verified":
+                await member.send("You are now Verified.")
+            elif status == "Not Verified":
+                await member.send("You were not verified.")
+            else:
+                await member.send(embed=embed)
         except discord.Forbidden:
             pass
 

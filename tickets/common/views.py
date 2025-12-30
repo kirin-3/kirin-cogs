@@ -130,6 +130,7 @@ class TestButton(View):
 class CloseReasonModal(Modal):
     def __init__(self):
         self.reason = None
+        self.status_value = None
         super().__init__(title="Closing your ticket", timeout=120)
         self.field = TextInput(
             label="Reason for closing",
@@ -137,9 +138,21 @@ class CloseReasonModal(Modal):
             required=True,
         )
         self.add_item(self.field)
+        self.status_select = discord.ui.Select(
+            placeholder="Select Verification Status",
+            min_values=1,
+            max_values=1,
+            options=[
+                discord.SelectOption(label="Verified", value="Verified", emoji="✅"),
+                discord.SelectOption(label="Not Verified", value="Not Verified", emoji="❌"),
+            ],
+        )
+        self.add_item(self.status_select)
 
     async def on_submit(self, interaction: Interaction):
         self.reason = self.field.value
+        if self.status_select.values:
+            self.status_value = self.status_select.values[0]
         with contextlib.suppress(discord.NotFound):
             await interaction.response.defer()
         self.stop()
@@ -199,6 +212,7 @@ class CloseView(View):
             
         requires_reason = conf.get("close_reason", True)
         reason = None
+        status = None
         if requires_reason:
             modal = CloseReasonModal()
             try:
@@ -216,6 +230,7 @@ class CloseView(View):
             if modal.reason is None:
                 return
             reason = modal.reason
+            status = modal.status_value
             await interaction.followup.send("Closing...", ephemeral=True)
         else:
             await interaction.response.send_message("Closing...", ephemeral=True)
@@ -232,6 +247,7 @@ class CloseView(View):
             reason=reason,
             closedby=interaction.user.name,
             config=self.config,
+            status=status,
         )
 
     @discord.ui.button(label="Remind Instructions", style=ButtonStyle.danger)
