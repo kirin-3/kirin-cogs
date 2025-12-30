@@ -1,6 +1,6 @@
 import discord
 from redbot.core import commands, checks
-from redbot.core.utils.menus import SimpleMenu, ListPageSource
+from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
 from typing import Optional
 
 class LevelCommands:
@@ -131,26 +131,23 @@ class LevelCommands:
                 entries.append(f"{rank_str} **{username}**\nLevel **{level_stats.level}** • {xp:,} XP\n")
             
             # Pagination
-            source = ListPageSource(entries, per_page=10)
-            source.embed_title = f"XP Leaderboard - {ctx.guild.name}"
-            source.embed_color = discord.Color.blue()
-            
-            # Custom formatter to handle embed format
-            async def format_page(menu, entries):
-                offset = menu.current_page * 10
-                joined = "\n".join(entries)
+            pages = []
+            chunk_size = 10
+            for i in range(0, len(entries), chunk_size):
+                chunk = entries[i:i + chunk_size]
                 embed = discord.Embed(
-                    title=source.embed_title,
-                    description=joined,
-                    color=source.embed_color
+                    title=f"XP Leaderboard - {ctx.guild.name}",
+                    description="".join(chunk),
+                    color=discord.Color.blue()
                 )
-                embed.set_footer(text=f"Page {menu.current_page + 1}/{source.get_max_pages()}")
-                return embed
-                
-            source.format_page = format_page
+                embed.set_footer(text=f"Page {i // chunk_size + 1}/{(len(entries) - 1) // chunk_size + 1}")
+                pages.append(embed)
             
-            menu = SimpleMenu(source)
-            await menu.start(ctx)
+            if len(pages) == 1:
+                # If only one page, send it directly without menu controls
+                await ctx.send(embed=pages[0])
+            else:
+                await menu(ctx, pages, DEFAULT_CONTROLS)
             
         except Exception as e:
             import logging
