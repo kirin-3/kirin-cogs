@@ -243,8 +243,11 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         self.guild = guild
         self.config = config
         self.user = user
-        self.image = discord.ui.File(label="Upload your verification image", required=True, file_type="image/*")
-        self.add_item(self.image)
+        # Using discord.ui.Label to wrap the File component as per user instructions regarding Modal structure
+        # Passing None to media as we are uploading, not displaying.
+        self.image = discord.ui.File(None)
+        self.label = discord.ui.Label(text="Upload your verification image", component=self.image)
+        self.add_item(self.label)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
