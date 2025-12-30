@@ -29,16 +29,19 @@ class NitroCommands:
     @commands.is_owner()
     async def nitrostock(self, ctx, type: str, amount: int):
         """
-        Add or remove stock for Nitro items.
+        Set the stock for Nitro items.
         
         <type>: "boost" or "basic"
-        <amount>: Number to add (can be negative to remove)
+        <amount>: The exact amount of stock available
         """
         type = type.lower()
         if type not in ["boost", "basic"]:
             return await ctx.send("Invalid type. Use `boost` or `basic`.")
+        
+        if amount < 0:
+            return await ctx.send("Stock cannot be negative.")
             
-        new_amount = await self.nitro_system.add_stock(type, amount)
+        new_amount = await self.nitro_system.set_stock(type, amount)
         
         await ctx.send(f"✅ Stock updated. New **Nitro {type.capitalize()}** stock: `{new_amount}`")
 

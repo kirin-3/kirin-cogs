@@ -328,36 +328,18 @@ class XPCardGenerator:
         
         for i, (seg_text, seg_font) in enumerate(segments):
             # We use 'ls' (Left, Baseline) or 'la' (Left, Ascender) equivalent
-            # But since we already adjusted start_x, we can just use default position with specific anchor?
-            # No, 'draw.text' with anchor applies to the whole string relative to xy.
-            # Here we are drawing parts. We must draw them left-aligned at the calculated position.
-            
-            # To match the vertical alignment of the requested anchor (e.g. 'mm'),
-            # we need to know the baseline.
-            # If anchor was 'mm', y was the middle.
-            # If anchor was 'rs', y was the baseline.
-            
-            # Simplification: Assume most text is single line and we want baseline alignment.
-            # If anchor was 'mm', we need to shift y down by half height to get baseline?
-            # Pillow's 'mm' centers the bounding box.
             
             draw_anchor = "ls" # Left, Baseline (standard)
             draw_y = y
             
             if anchor == "mm":
-                # If original request was Center-Middle, we calculated start_x.
-                # But Y is still Middle. We need to shift to baseline?
-                # Actually, if we use 'lm' (Left-Middle) for each segment, they might jitter if fonts have diff heights.
-                # Better to align by baseline.
-                # But we don't know the exact baseline offset from 'mm' center easily without metrics.
-                # Let's fallback to 'lm' (Left-Middle) if input was 'mm' to keep it vertically centered?
                 draw_anchor = "lm"
                 draw_y = y
             elif anchor == "rs":
                 draw_anchor = "ls"
                 draw_y = y
             elif anchor is None: # Default top-left
-                draw_anchor = "lt" # Left-Top? Or 'la'?
+                draw_anchor = "lt" 
                 # Pillow default is Top-Left of bounding box
                 pass
             

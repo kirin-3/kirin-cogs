@@ -1,6 +1,7 @@
 import discord
 from discord import ui
 from redbot.core.utils.chat_formatting import humanize_number
+from redbot.core.utils.views import ConfirmView
 
 class RockPaperScissorsView(ui.View):
     def __init__(self, user: discord.abc.User, timeout: float = 30):
@@ -580,42 +581,35 @@ class NitroShopView(ui.View):
         price = await self.nitro_system.get_price(item_type)
         
         # Confirm Dialog
-        confirm_view = ui.View(timeout=30)
-        confirm_view.add_item(ui.Button(label="Confirm", style=discord.ButtonStyle.green, custom_id="confirm"))
-        confirm_view.add_item(ui.Button(label="Cancel", style=discord.ButtonStyle.red, custom_id="cancel"))
-        
-        async def confirm_action(inter):
-            if inter.custom_id == "confirm":
-                await inter.response.defer()
-                success, msg = await self.nitro_system.purchase_nitro(self.ctx, item_type)
-                
-                if success:
-                    # Update buttons on the main view
-                    await self.update_components()
-                    try:
-                        await self.message.edit(view=self)
-                    except: pass
-                    
-                    await inter.followup.send(f"✅ {msg}", ephemeral=True)
-                else:
-                    await inter.followup.send(f"❌ {msg}", ephemeral=True)
-            else:
-                await inter.response.send_message("Purchase cancelled.", ephemeral=True)
-            
-            # Disable confirm view
-            for child in confirm_view.children:
-                child.disabled = True
-            await interaction.edit_original_response(view=confirm_view)
-
-        # Hook up callbacks for confirmation
-        for child in confirm_view.children:
-            child.callback = confirm_action
+        confirm_view = ConfirmView(self.ctx.author, disable_buttons=True)
+        confirm_view.confirm_button.label = "Confirm"
+        confirm_view.confirm_button.style = discord.ButtonStyle.green
+        confirm_view.cancel_button.label = "Cancel"
+        confirm_view.cancel_button.style = discord.ButtonStyle.red
 
         await interaction.response.send_message(
             f"Are you sure you want to purchase **{pretty_name}** for **{humanize_number(price)}**?",
             view=confirm_view,
             ephemeral=True
         )
+        
+        await confirm_view.wait()
+
+        if confirm_view.result:
+            success, msg = await self.nitro_system.purchase_nitro(self.ctx, item_type)
+            
+            if success:
+                # Update buttons on the main view
+                await self.update_components()
+                try:
+                    await self.message.edit(view=self)
+                except: pass
+                
+                await interaction.edit_original_response(content=f"✅ {msg}", view=confirm_view)
+            else:
+                await interaction.edit_original_response(content=f"❌ {msg}", view=confirm_view)
+        else:
+            await interaction.edit_original_response(content="Purchase cancelled.", view=confirm_view)
 
     async def get_embed(self):
         boost_stock = await self.nitro_system.get_stock("boost")

@@ -49,21 +49,21 @@ class NitroSystem:
         async with self.config.nitro_prices() as prices:
             prices[item_type] = price
 
-    async def add_stock(self, item_type: Literal["boost", "basic"], amount: int) -> int:
-        """Add (or remove) stock and announce if adding"""
+    async def set_stock(self, item_type: Literal["boost", "basic"], amount: int) -> int:
+        """Set stock to a specific amount and announce the change"""
+        old_amount = 0
         async with self.config.nitro_stock() as stock:
-            current = stock.get(item_type, 0)
-            new_amount = current + amount
+            old_amount = stock.get(item_type, 0)
             # Ensure we don't go below 0
-            if new_amount < 0:
-                new_amount = 0
-            stock[item_type] = new_amount
+            if amount < 0:
+                amount = 0
+            stock[item_type] = amount
             
-        # Only announce if we're adding positive stock
-        if amount > 0:
+        # Announce only if we are restocking from empty (or negative) to positive
+        if old_amount <= 0 and amount > 0:
             await self._announce_stock(item_type, amount)
             
-        return new_amount
+        return amount
 
     async def purchase_nitro(self, ctx, item_type: Literal["boost", "basic"]) -> Tuple[bool, str]:
         """Process a nitro purchase transaction"""
