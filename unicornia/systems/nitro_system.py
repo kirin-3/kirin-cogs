@@ -122,6 +122,7 @@ class NitroSystem:
 
     async def _notify_admin(self, ctx, item_type: str):
         """Notify bot owners and specific admin about the purchase"""
+        log.info(f"Notifying admins for Nitro purchase: {item_type} by {ctx.author.id}")
         pretty_name = "Nitro Boost" if item_type == "boost" else "Nitro Basic"
         
         embed = discord.Embed(
@@ -134,22 +135,17 @@ class NitroSystem:
         embed.add_field(name="Price Paid", value=humanize_number(await self.get_price(item_type)), inline=True)
         embed.set_footer(text="Please send the code to the user.")
 
-        # Notify Bot Owners
-        owners = await self.bot.get_owners()
-        for owner_id in owners:
-            try:
-                owner = await self.bot.get_or_fetch_user(owner_id)
-                if owner:
-                    await owner.send(embed=embed)
-            except discord.HTTPException as e:
-                log.error(f"Failed to DM owner {owner_id}: {e}")
-
-        # Notify Specific Admin (if not already an owner to avoid double DMs, but usually safe to just send)
+        # Notify Specific Admin
         # Requirement: "send a DM to user with the ID 140186220255903746"
-        if self.ADMIN_NOTIFY_USER_ID not in owners:
-            try:
-                admin = await self.bot.get_or_fetch_user(self.ADMIN_NOTIFY_USER_ID)
-                if admin:
-                    await admin.send(embed=embed)
-            except discord.HTTPException as e:
-                log.error(f"Failed to DM admin {self.ADMIN_NOTIFY_USER_ID}: {e}")
+        try:
+            log.info(f"Attempting to notify specific admin {self.ADMIN_NOTIFY_USER_ID}")
+            admin = await self.bot.get_or_fetch_user(self.ADMIN_NOTIFY_USER_ID)
+            if admin:
+                await admin.send(embed=embed)
+                log.info(f"Successfully notified specific admin {self.ADMIN_NOTIFY_USER_ID}")
+            else:
+                log.warning(f"Could not find specific admin user {self.ADMIN_NOTIFY_USER_ID}")
+        except discord.HTTPException as e:
+            log.error(f"Failed to DM admin {self.ADMIN_NOTIFY_USER_ID}: {e}")
+        except Exception as e:
+            log.error(f"Unexpected error notifying admin {self.ADMIN_NOTIFY_USER_ID}: {e}")

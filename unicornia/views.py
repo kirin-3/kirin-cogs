@@ -577,6 +577,10 @@ class NitroShopView(ui.View):
         self.add_item(basic_btn)
     
     async def buy_callback(self, interaction: discord.Interaction, item_type: str):
+        # logging import isn't in this file, but we can assume standard logging setup if we added it,
+        # but for now let's just rely on the system logs we added.
+        # Actually, adding print for local debugging or using bot logger if available is good practice.
+        # But let's stick to modifying logic or minimal logging.
         pretty_name = "Nitro Boost" if item_type == "boost" else "Nitro Basic"
         price = await self.nitro_system.get_price(item_type)
         
@@ -601,9 +605,9 @@ class NitroShopView(ui.View):
                     await self.message.edit(view=self)
                 except: pass
                 
-                await interaction.edit_original_response(content=f"✅ {msg}", view=confirm_view)
+                await interaction.followup.send(f"✅ {msg}", ephemeral=True)
             else:
-                await interaction.edit_original_response(content=f"❌ {msg}", view=confirm_view)
+                await interaction.followup.send(f"❌ {msg}", ephemeral=True)
         else:
             await interaction.edit_original_response(content="Purchase cancelled.", view=confirm_view)
 
