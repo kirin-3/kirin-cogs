@@ -9,7 +9,6 @@ from redbot.core.utils.chat_formatting import pagify
 
 from ..abc import MixinMeta
 from ..common.utils import update_active_overview
-from ..common.views import CloseView
 
 log = logging.getLogger("red.vrt.tickets.functions")
 
@@ -204,6 +203,8 @@ class Functions(MixinMeta):
 
         support_mentions.append(user.mention)
         content = " ".join(support_mentions)
+
+        from ..common.views import CloseView
 
         allowed_mentions = discord.AllowedMentions(roles=True)
         close_view = CloseView(
