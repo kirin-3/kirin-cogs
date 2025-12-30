@@ -68,13 +68,14 @@ class Unicornia(
             "generation_has_password": False,
             "generation_channels": [],  # List of channel IDs (Global)
             # Currency decay
-            "decay_percent": 0.0,  # 0% (disabled by default)
-            "decay_max_amount": 0,  # unlimited
-            "decay_min_threshold": 99,
-            "decay_hour_interval": 24,
+            "decay_percent": 0.01,  # 1% (0 to disable)
+            "decay_max_amount": 5000,  # Max amount to decay
+            "decay_min_threshold": 15000, # Minimum wealth to trigger decay
+            "decay_hour_interval": 48,
+            "decay_last_run": 0, # Timestamp of last decay
             # Gambling limits
-            "gambling_min_bet": 10,
-            "gambling_max_bet": 50000
+            "gambling_min_bet": 50,
+            "gambling_max_bet": 1000000
         }
         
         default_guild = {

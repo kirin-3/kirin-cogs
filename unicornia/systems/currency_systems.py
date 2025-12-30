@@ -168,13 +168,28 @@ class CurrencyDecay:
     
     async def _decay_loop(self):
         """Main decay loop"""
+        await self.bot.wait_until_ready()
+        
         while True:
             try:
-                await self._process_decay()
-                
-                # Wait for the next decay interval
                 interval_hours = await self.config.decay_hour_interval()
-                await asyncio.sleep(interval_hours * 3600)
+                last_run = await self.config.decay_last_run()
+                current_time = time.time()
+                
+                # Check if enough time has passed since last run
+                if current_time - last_run >= interval_hours * 3600:
+                    await self._process_decay()
+                    await self.config.decay_last_run.set(int(time.time()))
+                    
+                    # Wait full interval before next check
+                    await asyncio.sleep(interval_hours * 3600)
+                else:
+                    # Wait remaining time
+                    remaining = (interval_hours * 3600) - (current_time - last_run)
+                    if remaining > 0:
+                        await asyncio.sleep(remaining)
+                    else:
+                        await asyncio.sleep(60) # Fallback safety
                 
             except asyncio.CancelledError:
                 break
@@ -183,7 +198,7 @@ class CurrencyDecay:
                 await asyncio.sleep(3600)  # Wait 1 hour before retrying
     
     async def _process_decay(self):
-        """Process currency decay for all users (Batch optimized)"""
+        """Process currency decay for all users (Batch optimized) including bank"""
         decay_percent = await self.config.decay_percent()
         max_decay = await self.config.decay_max_amount()
         min_threshold = await self.config.decay_min_threshold()
@@ -193,45 +208,93 @@ class CurrencyDecay:
         
         async with self.db._get_connection() as db:
             await self.db._setup_wal_mode(db)
-            # Get all users above threshold
+            
+            # Get wallet balances
             cursor = await db.execute("""
-                SELECT UserId, CurrencyAmount FROM DiscordUser 
-                WHERE CurrencyAmount > ? AND UserId != ?
-            """, (min_threshold, self.bot.user.id))
+                SELECT UserId, CurrencyAmount FROM DiscordUser
+                WHERE CurrencyAmount > 0 AND UserId != ?
+            """, (self.bot.user.id,))
+            wallet_users = await cursor.fetchall()
             
-            users = await cursor.fetchall()
+            # Get bank balances
+            cursor = await db.execute("""
+                SELECT UserId, Balance FROM BankUsers
+                WHERE Balance > 0
+            """)
+            bank_users = await cursor.fetchall()
             
-            updates = []
+            # Combine into a map {user_id: {'wallet': 0, 'bank': 0}}
+            user_balances = {}
+            for uid, amt in wallet_users:
+                if uid not in user_balances: user_balances[uid] = {'wallet': 0, 'bank': 0}
+                user_balances[uid]['wallet'] = amt
+                
+            for uid, amt in bank_users:
+                if uid not in user_balances: user_balances[uid] = {'wallet': 0, 'bank': 0}
+                user_balances[uid]['bank'] = amt
+            
+            wallet_updates = []
+            bank_updates = []
             transactions = []
-            timestamp = datetime.now().isoformat()
             
-            for user_id, current_amount in users:
-                # Calculate decay amount
-                decay_amount = int(current_amount * decay_percent)
+            for user_id, balances in user_balances.items():
+                total_wealth = balances['wallet'] + balances['bank']
                 
+                # Check minimum threshold
+                if total_wealth < min_threshold:
+                    continue
+                    
+                # Calculate decay based on total wealth
+                total_decay = int(total_wealth * decay_percent)
+                
+                # Cap max decay
                 if max_decay > 0:
-                    decay_amount = min(decay_amount, max_decay)
+                    total_decay = min(total_decay, max_decay)
                 
-                if decay_amount > 0:
-                    # Add to batch
-                    updates.append((decay_amount, user_id))
-                    transactions.append((user_id, -decay_amount, 'decay', 'system', f"Slut points decay: {decay_percent:.1%}"))
+                if total_decay <= 0:
+                    continue
+                
+                # Decay from wallet first, then bank
+                wallet_decay = min(balances['wallet'], total_decay)
+                bank_decay = total_decay - wallet_decay
+                
+                if wallet_decay > 0:
+                    wallet_updates.append((wallet_decay, user_id))
+                    transactions.append((user_id, -wallet_decay, 'decay', 'system', f"Wallet decay: {decay_percent:.1%}"))
+                    
+                if bank_decay > 0:
+                    bank_updates.append((bank_decay, user_id))
+                    transactions.append((user_id, -bank_decay, 'decay', 'system', f"Bank decay: {decay_percent:.1%}"))
             
-            if updates:
-                # Execute batch updates
+            if wallet_updates:
                 await db.executemany("""
-                    UPDATE DiscordUser 
-                    SET CurrencyAmount = CurrencyAmount - ? 
+                    UPDATE DiscordUser
+                    SET CurrencyAmount = MAX(0, CurrencyAmount - ?)
                     WHERE UserId = ?
-                """, updates)
+                """, wallet_updates)
+                
+            if bank_updates:
+                await db.executemany("""
+                    UPDATE BankUsers
+                    SET Balance = MAX(0, Balance - ?)
+                    WHERE UserId = ?
+                """, bank_updates)
+                
+            if transactions:
+                # Need to map transaction columns correctly to schema
+                # Schema: UserId, Amount, Type, Extra, OtherId, Reason, DateAdded
+                # Our list has: (user_id, amount, type, extra, note)
+                # Adjust to: (user_id, amount, type, extra, None, note)
+                formatted_transactions = [(uid, amt, typ, ext, None, note) for uid, amt, typ, ext, note in transactions]
                 
                 await db.executemany("""
-                    INSERT INTO currency_transactions (user_id, amount, type, extra, note)
-                    VALUES (?, ?, ?, ?, ?)
-                """, transactions)
+                    INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                """, formatted_transactions)
                 
+            if wallet_updates or bank_updates:
                 await db.commit()
-                # print(f"Processed decay for {len(updates)} users")
+                # print(f"Processed decay for {len(wallet_updates) + len(bank_updates)} balances")
     
     async def get_decay_stats(self) -> Dict[str, Any]:
         """Get decay statistics"""

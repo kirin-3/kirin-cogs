@@ -151,7 +151,7 @@ class GamblingCommands:
         except Exception as e:
             await ctx.send(f"❌ Error in slots: {e}")
 
-    @gambling_group.command(name="blackjack", aliases=["bj", "21"])
+    @gambling_group.command(name="blackjack", aliases=["blackjack", "21"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     async def gambling_blackjack(self, ctx, amount: Union[int, str]):
         """Play blackjack"""
