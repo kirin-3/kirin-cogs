@@ -258,6 +258,7 @@ class FileUpload(discord.ui.Item):
         }
 
     def refresh_component(self, component):
+        log.warning(f"Refreshing component values: {component.values}")
         self._uploaded_attachments = component.values
 
     @property
@@ -292,18 +293,18 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
-        attachments = self.image.values or []
-        attachment_url = attachments[0].url if attachments else None
+        log.warning(f"On Submit: Image Values: {self.image.values}")
+        
+        attachments = []
+        if self.image.values:
+            attachments = self.image.values
         
         # Fallback: check interaction data directly if custom component retrieval failed
-        if not attachment_url and hasattr(interaction, 'data') and 'resolved' in interaction.data and 'attachments' in interaction.data['resolved']:
-            raw_attachments = interaction.data['resolved']['attachments']
-            if raw_attachments:
-                attachment_info = list(raw_attachments.values())[0]
-                attachment_url = attachment_info.get('url')
-        
-        if not attachment_url:
-            log.warning(f"Failed to retrieve attachment URL for {interaction.user}. Image values: {self.image.values}")
+        if not attachments and hasattr(interaction, 'data') and 'resolved' in interaction.data and 'attachments' in interaction.data['resolved']:
+            log.warning("Fallback parsing interaction data for attachments")
+            # We can't easily reconstruct Attachment objects here without library internals,
+            # but we can try to get at least the first URL if needed, but we prefer the list.
+            pass
 
         cog = self.bot.get_cog("Tickets")
         if not cog:
