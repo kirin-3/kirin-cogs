@@ -20,6 +20,7 @@ class NitroSystem:
         # Hardcoded channel and user IDs as per requirements
         self.ANNOUNCE_CHANNEL_ID = 695155004507422730
         self.ADMIN_NOTIFY_USER_ID = 140186220255903746
+        self.PURCHASE_LOG_CHANNEL_ID = 686096388018405408
         
         # Define defaults if they don't exist in config yet
         # We'll use a specific group for nitro shop
@@ -95,7 +96,7 @@ class NitroSystem:
             s[item_type] -= 1
 
         # 5. Notify Admins
-        await self._notify_admin(ctx, item_type)
+        await self._notify_purchase(ctx, item_type)
         
         return True, "Purchase successful! An admin has been notified and will send your code shortly."
 
@@ -103,8 +104,11 @@ class NitroSystem:
         """Announce new stock to the public channel"""
         channel = self.bot.get_channel(self.ANNOUNCE_CHANNEL_ID)
         if not channel:
-            log.warning(f"Nitro Announce Channel {self.ANNOUNCE_CHANNEL_ID} not found.")
-            return
+            try:
+                channel = await self.bot.fetch_channel(self.ANNOUNCE_CHANNEL_ID)
+            except discord.HTTPException as e:
+                log.warning(f"Could not fetch Nitro Announce Channel {self.ANNOUNCE_CHANNEL_ID}: {e}")
+                return
 
         pretty_name = "Nitro Boost" if item_type == "boost" else "Nitro Basic"
         
@@ -120,9 +124,9 @@ class NitroSystem:
         except discord.Forbidden:
             log.error(f"Missing permissions to send to Nitro Announce Channel {self.ANNOUNCE_CHANNEL_ID}")
 
-    async def _notify_admin(self, ctx, item_type: str):
-        """Notify bot owners and specific admin about the purchase"""
-        log.info(f"Notifying admins for Nitro purchase: {item_type} by {ctx.author.id}")
+    async def _notify_purchase(self, ctx, item_type: str):
+        """Notify admins and log channel about the purchase"""
+        log.info(f"Notifying purchase: {item_type} by {ctx.author.id}")
         pretty_name = "Nitro Boost" if item_type == "boost" else "Nitro Basic"
         
         embed = discord.Embed(
@@ -135,8 +139,26 @@ class NitroSystem:
         embed.add_field(name="Price Paid", value=humanize_number(await self.get_price(item_type)), inline=True)
         embed.set_footer(text="Please send the code to the user.")
 
-        # Notify Specific Admin
-        # Requirement: "send a DM to user with the ID 140186220255903746"
+        # 1. Notify Log Channel
+        channel = self.bot.get_channel(self.PURCHASE_LOG_CHANNEL_ID)
+        if not channel:
+            try:
+                channel = await self.bot.fetch_channel(self.PURCHASE_LOG_CHANNEL_ID)
+            except discord.HTTPException as e:
+                log.warning(f"Could not fetch Nitro Log Channel {self.PURCHASE_LOG_CHANNEL_ID}: {e}")
+
+        if channel:
+            try:
+                # Ping the specific user as requested
+                await channel.send(content=f"<@{self.ADMIN_NOTIFY_USER_ID}>", embed=embed)
+            except discord.Forbidden:
+                log.error(f"Missing permissions to send to Nitro Log Channel {self.PURCHASE_LOG_CHANNEL_ID}")
+            except Exception as e:
+                log.error(f"Failed to send to Nitro Log Channel: {e}")
+        else:
+            log.warning(f"Nitro Log Channel {self.PURCHASE_LOG_CHANNEL_ID} not found (cache and fetch failed).")
+
+        # 2. Notify Specific Admin via DM (Legacy/Backup)
         try:
             log.info(f"Attempting to notify specific admin {self.ADMIN_NOTIFY_USER_ID}")
             admin = await self.bot.get_or_fetch_user(self.ADMIN_NOTIFY_USER_ID)

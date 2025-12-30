@@ -20,7 +20,7 @@ class CustomCommand(commands.Cog):
         }
         self.config.register_guild(**default_guild)
         self.role_id = 700121551483437128
-        self._cooldown = commands.CooldownMapping.from_cooldown(1, 60, commands.BucketType.user)
+        self._cooldown = commands.CooldownMapping.from_cooldown(1, 10, commands.BucketType.user)
 
     async def log_action(self, ctx, action: str, trigger: str, response: str = None):
         """Log custom command actions to the hardcoded channel."""
