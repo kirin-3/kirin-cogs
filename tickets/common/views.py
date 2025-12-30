@@ -243,22 +243,30 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         self.guild = guild
         self.config = config
         self.user = user
-        # Using discord.ui.Label to wrap the File component as per user instructions regarding Modal structure
-        # Passing None to media as we are uploading, not displaying.
-        self.image = discord.ui.File(None)
-        self.label = discord.ui.Label(text="Upload your verification image", component=self.image)
+        
+        # 1. Define the File Upload component
+        self.image = discord.ui.File(
+            custom_id="verification_image",
+            required=True,
+            min_values=1,
+            max_values=1,
+        )
+
+        # 2. Define the Label component
+        self.label = discord.ui.Label(
+            label="Upload your verification image",
+            description="Please upload an image for verification.",
+            children=[self.image]
+        )
         self.add_item(self.label)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
         attachment_url = None
-        # Try to find the attachment in the interaction data
-        if hasattr(interaction, 'data') and 'resolved' in interaction.data and 'attachments' in interaction.data['resolved']:
-            attachments = interaction.data['resolved']['attachments']
-            if attachments:
-                attachment_info = list(attachments.values())[0]
-                attachment_url = attachment_info.get('url')
+        uploaded_files = self.image.values
+        if uploaded_files:
+            attachment_url = uploaded_files[0].url
 
         functions = Functions()
         functions.bot = self.bot
