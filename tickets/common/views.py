@@ -128,9 +128,21 @@ class TestButton(View):
 
 
 class CloseReasonModal(Modal):
-    def __init__(self):
-        self.reason = None
-        self.status_value = None
+    def __init__(
+        self,
+        bot: Red,
+        config: Config,
+        owner_id: int,
+        channel: Union[discord.TextChannel, discord.Thread],
+        conf: dict,
+        status: str,
+    ):
+        self.bot = bot
+        self.config = config
+        self.owner_id = owner_id
+        self.channel = channel
+        self.conf = conf
+        self.status = status
         super().__init__(title="Closing your ticket", timeout=120)
         self.field = TextInput(
             label="Reason for closing",
@@ -138,24 +150,93 @@ class CloseReasonModal(Modal):
             required=True,
         )
         self.add_item(self.field)
-        self.status_select = discord.ui.Select(
+
+    async def on_submit(self, interaction: Interaction):
+        reason = self.field.value
+        with contextlib.suppress(discord.NotFound):
+            await interaction.response.defer(ephemeral=True)
+            await interaction.followup.send("Closing...", ephemeral=True)
+        
+        owner = self.channel.guild.get_member(int(self.owner_id))
+        if not owner:
+            owner = await self.bot.fetch_user(int(self.owner_id))
+
+        await close_ticket(
+            bot=self.bot,
+            member=owner,
+            guild=self.channel.guild,
+            channel=self.channel,
+            conf=self.conf,
+            reason=reason,
+            closedby=interaction.user.name,
+            config=self.config,
+            status=self.status,
+        )
+
+
+class VerificationStatusView(View):
+    def __init__(
+        self,
+        bot: Red,
+        config: Config,
+        owner_id: int,
+        channel: Union[discord.TextChannel, discord.Thread],
+        conf: dict,
+    ):
+        super().__init__(timeout=60)
+        self.bot = bot
+        self.config = config
+        self.owner_id = owner_id
+        self.channel = channel
+        self.conf = conf
+        
+        self.select = discord.ui.Select(
             placeholder="Select Verification Status",
             min_values=1,
             max_values=1,
             options=[
                 discord.SelectOption(label="Verified", value="Verified", emoji="✅"),
                 discord.SelectOption(label="Not Verified", value="Not Verified", emoji="❌"),
-            ],
+            ]
         )
-        self.add_item(self.status_select)
+        self.select.callback = self.select_callback
+        self.add_item(self.select)
 
-    async def on_submit(self, interaction: Interaction):
-        self.reason = self.field.value
-        if self.status_select.values:
-            self.status_value = self.status_select.values[0]
-        with contextlib.suppress(discord.NotFound):
-            await interaction.response.defer()
-        self.stop()
+    async def select_callback(self, interaction: Interaction):
+        if not self.select.values:
+            return
+        status = self.select.values[0]
+        requires_reason = self.conf.get("close_reason", True)
+        
+        if requires_reason:
+            modal = CloseReasonModal(
+                self.bot,
+                self.config,
+                self.owner_id,
+                self.channel,
+                self.conf,
+                status
+            )
+            await interaction.response.send_modal(modal)
+        else:
+            await interaction.response.defer(ephemeral=True)
+            await interaction.followup.send("Closing...", ephemeral=True)
+            
+            owner = self.channel.guild.get_member(int(self.owner_id))
+            if not owner:
+                owner = await self.bot.fetch_user(int(self.owner_id))
+
+            await close_ticket(
+                bot=self.bot,
+                member=owner,
+                guild=self.channel.guild,
+                channel=self.channel,
+                conf=self.conf,
+                reason=None,
+                closedby=interaction.user.name,
+                config=self.config,
+                status=status,
+            )
 
 
 class CloseView(View):
@@ -210,44 +291,17 @@ class CloseView(View):
                 ephemeral=True,
             )
             
-        requires_reason = conf.get("close_reason", True)
-        reason = None
-        status = None
-        if requires_reason:
-            modal = CloseReasonModal()
-            try:
-                await interaction.response.send_modal(modal)
-            except discord.NotFound as e:
-                log.warning("Failed to send ticket modal", exc_info=e)
-                txt = "Something went wrong, please try again."
-                try:
-                    await interaction.followup.send(txt, ephemeral=True)
-                except discord.NotFound:
-                    await interaction.channel.send(txt, delete_after=10)
-                return
-
-            await modal.wait()
-            if modal.reason is None:
-                return
-            reason = modal.reason
-            status = modal.status_value
-            await interaction.followup.send("Closing...", ephemeral=True)
-        else:
-            await interaction.response.send_message("Closing...", ephemeral=True)
-        
-        owner = self.channel.guild.get_member(int(self.owner_id))
-        if not owner:
-            owner = await self.bot.fetch_user(int(self.owner_id))
-        await close_ticket(
+        view = VerificationStatusView(
             bot=self.bot,
-            member=owner,
-            guild=self.channel.guild,
+            config=self.config,
+            owner_id=self.owner_id,
             channel=self.channel,
             conf=conf,
-            reason=reason,
-            closedby=interaction.user.name,
-            config=self.config,
-            status=status,
+        )
+        await interaction.response.send_message(
+            "Please select the verification status for this user.",
+            view=view,
+            ephemeral=True,
         )
 
     @discord.ui.button(label="Remind Instructions", style=ButtonStyle.danger)
