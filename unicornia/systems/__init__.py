@@ -5,3 +5,4 @@ from .gambling_system import GamblingSystem
 from .shop_system import ShopSystem
 from .waifu_system import WaifuSystem
 from .xp_system import XPSystem
+from .nitro_system import NitroSystem

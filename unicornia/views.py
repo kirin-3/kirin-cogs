@@ -1,5 +1,6 @@
 import discord
 from discord import ui
+from redbot.core.utils.chat_formatting import humanize_number
 
 class RockPaperScissorsView(ui.View):
     def __init__(self, user: discord.abc.User, timeout: float = 30):
@@ -515,3 +516,134 @@ class LeaderboardView(ui.View):
         self.add_item(jump_btn)
         
         self.add_item(next_btn)
+
+class NitroShopView(ui.View):
+    def __init__(self, ctx, nitro_system):
+        super().__init__(timeout=120)
+        self.ctx = ctx
+        self.nitro_system = nitro_system
+        self.message = None
+        self.update_components_task = None
+    
+    async def init(self):
+        """Async initialization to fetch dynamic data"""
+        await self.update_components()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.ctx.author.id:
+            await interaction.response.send_message("This menu is not for you.", ephemeral=True)
+            return False
+        return True
+
+    async def on_timeout(self):
+        if self.message:
+            for child in self.children:
+                child.disabled = True
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+        self.stop()
+        
+    async def update_components(self):
+        self.clear_items()
+        
+        boost_stock = await self.nitro_system.get_stock("boost")
+        basic_stock = await self.nitro_system.get_stock("basic")
+        boost_price = await self.nitro_system.get_price("boost")
+        basic_price = await self.nitro_system.get_price("basic")
+        
+        user_bal = await self.nitro_system.economy_system.get_balance(self.ctx.author)
+        
+        # Nitro Boost Button
+        boost_btn = ui.Button(
+            label=f"Buy Nitro Boost ({humanize_number(boost_price)})",
+            style=discord.ButtonStyle.blurple,
+            emoji="🚀",
+            disabled=(boost_stock <= 0 or user_bal < boost_price)
+        )
+        boost_btn.callback = lambda i: self.buy_callback(i, "boost")
+        self.add_item(boost_btn)
+        
+        # Nitro Basic Button
+        basic_btn = ui.Button(
+            label=f"Buy Nitro Basic ({humanize_number(basic_price)})",
+            style=discord.ButtonStyle.secondary,
+            emoji="⭐",
+            disabled=(basic_stock <= 0 or user_bal < basic_price)
+        )
+        basic_btn.callback = lambda i: self.buy_callback(i, "basic")
+        self.add_item(basic_btn)
+    
+    async def buy_callback(self, interaction: discord.Interaction, item_type: str):
+        pretty_name = "Nitro Boost" if item_type == "boost" else "Nitro Basic"
+        price = await self.nitro_system.get_price(item_type)
+        
+        # Confirm Dialog
+        confirm_view = ui.View(timeout=30)
+        confirm_view.add_item(ui.Button(label="Confirm", style=discord.ButtonStyle.green, custom_id="confirm"))
+        confirm_view.add_item(ui.Button(label="Cancel", style=discord.ButtonStyle.red, custom_id="cancel"))
+        
+        async def confirm_action(inter):
+            if inter.custom_id == "confirm":
+                await inter.response.defer()
+                success, msg = await self.nitro_system.purchase_nitro(self.ctx, item_type)
+                
+                if success:
+                    # Update buttons on the main view
+                    await self.update_components()
+                    try:
+                        await self.message.edit(view=self)
+                    except: pass
+                    
+                    await inter.followup.send(f"✅ {msg}", ephemeral=True)
+                else:
+                    await inter.followup.send(f"❌ {msg}", ephemeral=True)
+            else:
+                await inter.response.send_message("Purchase cancelled.", ephemeral=True)
+            
+            # Disable confirm view
+            for child in confirm_view.children:
+                child.disabled = True
+            await interaction.edit_original_response(view=confirm_view)
+
+        # Hook up callbacks for confirmation
+        for child in confirm_view.children:
+            child.callback = confirm_action
+
+        await interaction.response.send_message(
+            f"Are you sure you want to purchase **{pretty_name}** for **{humanize_number(price)}**?",
+            view=confirm_view,
+            ephemeral=True
+        )
+
+    async def get_embed(self):
+        boost_stock = await self.nitro_system.get_stock("boost")
+        basic_stock = await self.nitro_system.get_stock("basic")
+        boost_price = await self.nitro_system.get_price("boost")
+        basic_price = await self.nitro_system.get_price("basic")
+        
+        currency_symbol = await self.ctx.cog.config.currency_symbol()
+        
+        embed = discord.Embed(
+            title="<:nitro:1323201460596346900> Unicornia Nitro Shop",
+            description=f"Exchange your hard-earned {currency_symbol} for Discord Nitro!\n"
+                        f"Items are delivered manually by an admin after purchase.",
+            color=discord.Color.nitro_pink()
+        )
+        
+        embed.add_field(
+            name="🚀 Nitro Boost (1 Month)",
+            value=f"**Price:** {humanize_number(boost_price)} {currency_symbol}\n**Stock:** {boost_stock}",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="⭐ Nitro Basic (1 Month)",
+            value=f"**Price:** {humanize_number(basic_price)} {currency_symbol}\n**Stock:** {basic_stock}",
+            inline=True
+        )
+        
+        embed.set_footer(text="Stock is limited! • No refunds once code is sent.")
+        
+        return embed

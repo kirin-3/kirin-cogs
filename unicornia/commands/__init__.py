@@ -6,3 +6,4 @@ from .waifu import WaifuCommands
 from .shop import ShopCommands
 from .admin import AdminCommands
 from .currency import CurrencyCommands
+from .nitro import NitroCommands

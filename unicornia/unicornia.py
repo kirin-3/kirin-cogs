@@ -21,14 +21,14 @@ from .database import DatabaseManager
 from .systems import (
     XPSystem, EconomySystem, GamblingSystem,
     CurrencyGeneration, CurrencyDecay, ShopSystem,
-    ClubSystem, WaifuSystem
+    ClubSystem, WaifuSystem, NitroSystem
 )
 from .utils import validate_url, validate_club_name
 from .errors import UnicorniaError, SystemNotReadyError
 from .commands import (
     ClubCommands, EconomyCommands, GamblingCommands,
     LevelCommands, WaifuCommands, ShopCommands,
-    AdminCommands, CurrencyCommands
+    AdminCommands, CurrencyCommands, NitroCommands
 )
 
 log = logging.getLogger("red.unicornia")
@@ -38,7 +38,7 @@ log = logging.getLogger("red.unicornia")
 class Unicornia(
     ClubCommands, EconomyCommands, GamblingCommands,
     LevelCommands, WaifuCommands, ShopCommands,
-    AdminCommands, CurrencyCommands, commands.Cog
+    AdminCommands, CurrencyCommands, NitroCommands, commands.Cog
 ):
     """Full-featured leveling and economy cog with Nadeko-like functionality"""
     
@@ -93,6 +93,7 @@ class Unicornia(
         self.gambling_system = None
         self.currency_generation = None
         self.currency_decay = None
+        self.nitro_system = None
     
     async def cog_load(self):
         """Called when the cog is loaded - proper async initialization"""
@@ -119,6 +120,7 @@ class Unicornia(
             self.shop_system = ShopSystem(self.db, self.config, self.bot)
             self.club_system = ClubSystem(self.db, self.config, self.bot)
             self.waifu_system = WaifuSystem(self.db, self.config, self.bot)
+            self.nitro_system = NitroSystem(self.config, self.bot, self.economy_system)
             
             # Start background tasks
             await self.currency_decay.start_decay_loop()
@@ -215,7 +217,8 @@ class Unicornia(
             self.economy_system is not None,
             self.gambling_system is not None,
             self.currency_generation is not None,
-            self.currency_decay is not None
+            self.currency_decay is not None,
+            self.nitro_system is not None
         ])
     
     async def _wal_maintenance_loop(self):
