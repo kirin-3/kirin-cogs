@@ -423,8 +423,9 @@ class XPSystem:
             member = guild.get_member(user_id)
             if member and not member.bot:
                 filtered_users.append((user_id, xp))
-                
-        return filtered_users
+        
+        # Limit to 30 pages (300 users)
+        return filtered_users[:300]
     
     def get_progress_bar(self, current_xp: int, required_xp: int, length: int = 10) -> str:
         """Generate a progress bar for XP"""
