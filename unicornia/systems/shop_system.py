@@ -120,9 +120,8 @@ class ShopSystem:
                 except discord.HTTPException:
                     return False, "Failed to assign role"
         
-        elif item['type'] == self.db.shop.SHOP_TYPE_COMMAND:
-            # Command item - this would need special handling
-            # For now, just log the purchase
+        elif item['type'] == self.db.shop.SHOP_TYPE_ITEM:
+            # Regular item - just inventory tracking
             pass
         
         # Deduct currency
@@ -130,6 +129,10 @@ class ShopSystem:
         success, message = await self.db.shop.purchase_shop_item(user.id, guild_id, item['id'])
         if not success:
             return False, message
+            
+        # If purchase successful, add to inventory if it's an ITEM type
+        if item['type'] == self.db.shop.SHOP_TYPE_ITEM:
+            await self.db.shop.add_inventory_item(guild_id, user.id, item['id'], 1)
         
         return True, f"Successfully purchased {item['name']} for {item['price']:,} Slut points"
     
@@ -154,9 +157,10 @@ class ShopSystem:
         """Get human-readable type name"""
         type_names = {
             self.db.shop.SHOP_TYPE_ROLE: "Role",
-            self.db.shop.SHOP_TYPE_COMMAND: "Command",
+            self.db.shop.SHOP_TYPE_COMMAND: "Command (Deprecated)",
             self.db.shop.SHOP_TYPE_EFFECT: "Effect",
-            self.db.shop.SHOP_TYPE_OTHER: "Other"
+            self.db.shop.SHOP_TYPE_OTHER: "Other",
+            self.db.shop.SHOP_TYPE_ITEM: "Item"
         }
         return type_names.get(item_type, "Unknown")
     
@@ -166,6 +170,25 @@ class ShopSystem:
             self.db.shop.SHOP_TYPE_ROLE: "🎭",
             self.db.shop.SHOP_TYPE_COMMAND: "⚡",
             self.db.shop.SHOP_TYPE_EFFECT: "✨",
-            self.db.shop.SHOP_TYPE_OTHER: "📦"
+            self.db.shop.SHOP_TYPE_OTHER: "📦",
+            self.db.shop.SHOP_TYPE_ITEM: "🎒"
         }
         return type_emojis.get(item_type, "❓")
+
+    async def get_user_inventory(self, guild_id: int, user_id: int) -> list[dict[str, Any]]:
+        """Get a user's inventory items"""
+        rows = await self.db.shop.get_user_inventory(guild_id, user_id)
+        
+        inventory = []
+        for row in rows:
+            # row: ShopEntryId, Quantity, Index, Name, Price, Type
+            inventory.append({
+                'id': row[0],
+                'quantity': row[1],
+                'index': row[2],
+                'name': row[3],
+                'price': row[4],
+                'type': row[5]
+            })
+            
+        return inventory

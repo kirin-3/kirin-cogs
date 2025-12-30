@@ -77,18 +77,26 @@ class EconomySystem:
         now = datetime.now()
         
         if last_claim:
-            last_claim_dt = datetime.fromisoformat(last_claim)
-            if now - last_claim_dt < timedelta(hours=24):
-                # Still on cooldown
-                return False, 0, streak, {}
+            try:
+                last_claim_dt = datetime.fromisoformat(last_claim)
+                if now - last_claim_dt < timedelta(hours=24):
+                    # Still on cooldown
+                    return False, 0, streak, {}
+            except ValueError:
+                # If date is invalid, treat as never claimed
+                pass
         
         # Calculate new streak
         if last_claim:
-            last_claim_dt = datetime.fromisoformat(last_claim)
-            if now - last_claim_dt <= timedelta(hours=48):  # Within 48 hours = maintain streak
-                new_streak = streak + 1
-            else:
-                new_streak = 1  # Reset streak
+            try:
+                last_claim_dt = datetime.fromisoformat(last_claim)
+                if now - last_claim_dt <= timedelta(hours=48):  # Within 48 hours = maintain streak
+                    new_streak = streak + 1
+                else:
+                    new_streak = 1  # Reset streak
+            except ValueError:
+                # If date is invalid, treat as never claimed
+                new_streak = 1
         else:
             new_streak = 1
         

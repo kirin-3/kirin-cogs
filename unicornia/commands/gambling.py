@@ -1,8 +1,30 @@
 import discord
 from redbot.core import commands, checks
-from typing import Optional
+from typing import Optional, Union
 
 class GamblingCommands:
+    async def _resolve_bet(self, ctx, amount: Union[int, str]) -> Optional[int]:
+        """Resolve bet amount from int or 'all'"""
+        if isinstance(amount, str):
+            if amount.lower() == "all":
+                balance = await self.db.economy.get_user_currency(ctx.author.id)
+                if balance <= 0:
+                    await ctx.send("❌ You don't have any currency to bet.")
+                    return None
+                return balance
+            else:
+                try:
+                    amount = int(amount)
+                except ValueError:
+                    await ctx.send("❌ Invalid bet amount.")
+                    return None
+        
+        if amount <= 0:
+            await ctx.send("❌ Amount must be positive.")
+            return None
+            
+        return amount
+
     # Gambling commands
     @commands.group(name="gambling", aliases=["gamble"])
     async def gambling_group(self, ctx):
@@ -10,7 +32,8 @@ class GamblingCommands:
         pass
     
     @gambling_group.command(name="betroll", aliases=["roll"])
-    async def gambling_betroll(self, ctx, amount: int):
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    async def gambling_betroll(self, ctx, amount: Union[int, str]):
         """Bet on a dice roll (1-100)"""
         if not await self.config.gambling_enabled():
             await ctx.send("❌ Gambling is disabled.")
@@ -20,8 +43,8 @@ class GamblingCommands:
             await ctx.send("❌ Economy system is disabled.")
             return
         
-        if amount <= 0:
-            await ctx.send("❌ Amount must be positive.")
+        amount = await self._resolve_bet(ctx, amount)
+        if amount is None:
             return
         
         try:
@@ -44,8 +67,8 @@ class GamblingCommands:
             await ctx.send(f"❌ Error in gambling: {e}")
     
     @gambling_group.command(name="rps", aliases=["rockpaperscissors"])
-    @commands.cooldown(1, 5, commands.BucketType.user)  # 5 second cooldown
-    async def gambling_rps(self, ctx, choice: str, amount: int = 0):
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    async def gambling_rps(self, ctx, choice: str, amount: Union[int, str] = 0):
         """Play rock paper scissors"""
         if not await self.config.gambling_enabled():
             await ctx.send("❌ Gambling is disabled.")
@@ -54,6 +77,11 @@ class GamblingCommands:
         if not await self.config.economy_enabled():
             await ctx.send("❌ Economy system is disabled.")
             return
+        
+        if amount != 0:
+            amount = await self._resolve_bet(ctx, amount)
+            if amount is None:
+                return
         
         try:
             success, result = await self.gambling_system.rock_paper_scissors(ctx.author.id, choice, amount)
@@ -87,8 +115,8 @@ class GamblingCommands:
             await ctx.send(f"❌ Error in RPS: {e}")
     
     @gambling_group.command(name="slots")
-    @commands.cooldown(1, 3, commands.BucketType.user)  # 3 second cooldown
-    async def gambling_slots(self, ctx, amount: int):
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    async def gambling_slots(self, ctx, amount: Union[int, str]):
         """Play slots"""
         if not await self.config.gambling_enabled():
             await ctx.send("❌ Gambling is disabled.")
@@ -98,8 +126,8 @@ class GamblingCommands:
             await ctx.send("❌ Economy system is disabled.")
             return
         
-        if amount <= 0:
-            await ctx.send("❌ Amount must be positive.")
+        amount = await self._resolve_bet(ctx, amount)
+        if amount is None:
             return
         
         try:
@@ -124,8 +152,8 @@ class GamblingCommands:
             await ctx.send(f"❌ Error in slots: {e}")
 
     @gambling_group.command(name="blackjack", aliases=["bj", "21"])
-    @commands.cooldown(1, 5, commands.BucketType.user) # 5 second cooldown
-    async def gambling_blackjack(self, ctx, amount: int):
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    async def gambling_blackjack(self, ctx, amount: Union[int, str]):
         """Play blackjack"""
         if not await self.config.gambling_enabled():
             await ctx.send("❌ Gambling is disabled.")
@@ -135,10 +163,9 @@ class GamblingCommands:
             await ctx.send("❌ Economy system is disabled.")
             return
         
-        if amount <= 0:
-            await ctx.send("❌ Amount must be positive.")
+        amount = await self._resolve_bet(ctx, amount)
+        if amount is None:
             return
-            
             
         try:
             # Note: play_blackjack handles interaction and responses internally
@@ -147,8 +174,8 @@ class GamblingCommands:
             await ctx.send(f"❌ Error in blackjack: {e}")
 
     @gambling_group.command(name="betflip", aliases=["bf"])
-    @commands.cooldown(1, 2, commands.BucketType.user) # 2 second cooldown
-    async def gambling_betflip(self, ctx, amount: int, guess: str):
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    async def gambling_betflip(self, ctx, amount: Union[int, str], guess: str):
         """Bet on a coin flip (Heads or Tails)
         
         Usage: [p]gambling betflip 100 heads
@@ -161,10 +188,9 @@ class GamblingCommands:
             await ctx.send("❌ Economy system is disabled.")
             return
         
-        if amount <= 0:
-            await ctx.send("❌ Amount must be positive.")
+        amount = await self._resolve_bet(ctx, amount)
+        if amount is None:
             return
-            
             
         try:
             success, result = await self.gambling_system.bet_flip(ctx.author.id, amount, guess)
@@ -204,7 +230,8 @@ class GamblingCommands:
             await ctx.send(f"❌ Error in betflip: {e}")
     
     @gambling_group.command(name="luckyladder", aliases=["ladder"])
-    async def gambling_lucky_ladder(self, ctx, amount: int):
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    async def gambling_lucky_ladder(self, ctx, amount: Union[int, str]):
         """Play lucky ladder"""
         if not await self.config.gambling_enabled():
             await ctx.send("❌ Gambling is disabled.")
@@ -214,8 +241,8 @@ class GamblingCommands:
             await ctx.send("❌ Economy system is disabled.")
             return
         
-        if amount <= 0:
-            await ctx.send("❌ Amount must be positive.")
+        amount = await self._resolve_bet(ctx, amount)
+        if amount is None:
             return
         
         try:
@@ -236,3 +263,40 @@ class GamblingCommands:
                 
         except Exception as e:
             await ctx.send(f"❌ Error in lucky ladder: {e}")
+
+    # Top-level aliases for gambling commands
+    @commands.command(name="betroll", aliases=["roll"])
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    async def top_betroll(self, ctx, amount: Union[int, str]):
+        """Bet on a dice roll (1-100)"""
+        await self.gambling_betroll(ctx, amount)
+
+    @commands.command(name="rps", aliases=["rockpaperscissors"])
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    async def top_rps(self, ctx, choice: str, amount: Union[int, str] = 0):
+        """Play rock paper scissors"""
+        await self.gambling_rps(ctx, choice, amount)
+
+    @commands.command(name="slots")
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    async def top_slots(self, ctx, amount: Union[int, str]):
+        """Play slots"""
+        await self.gambling_slots(ctx, amount)
+
+    @commands.command(name="blackjack", aliases=["bj", "21"])
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    async def top_blackjack(self, ctx, amount: Union[int, str]):
+        """Play blackjack"""
+        await self.gambling_blackjack(ctx, amount)
+
+    @commands.command(name="betflip", aliases=["bf"])
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    async def top_betflip(self, ctx, amount: Union[int, str], guess: str):
+        """Bet on a coin flip (Heads or Tails)"""
+        await self.gambling_betflip(ctx, amount, guess)
+
+    @commands.command(name="luckyladder", aliases=["ladder"])
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    async def top_luckyladder(self, ctx, amount: Union[int, str]):
+        """Play lucky ladder"""
+        await self.gambling_lucky_ladder(ctx, amount)

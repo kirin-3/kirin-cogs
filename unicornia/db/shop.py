@@ -8,9 +8,10 @@ class ShopRepository:
 
     # Shop item type constants
     SHOP_TYPE_ROLE = 0
-    SHOP_TYPE_COMMAND = 1
+    SHOP_TYPE_COMMAND = 1  # Deprecated
     SHOP_TYPE_EFFECT = 2
     SHOP_TYPE_OTHER = 3
+    SHOP_TYPE_ITEM = 4
 
     # Shop Entry Methods
     async def get_shop_entries(self, guild_id: int):
@@ -174,3 +175,68 @@ class ShopRepository:
             # Transaction already logged in remove_currency
             
             return True, f"Successfully purchased {name} for {price:,} currency"
+
+    # Inventory Methods
+    async def get_user_inventory(self, guild_id: int, user_id: int):
+        """Get a user's inventory for a guild"""
+        async with self.db._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT
+                    ui.ShopEntryId, ui.Quantity,
+                    se.`Index`, se.Name, se.Price, se.Type
+                FROM UserInventory ui
+                JOIN ShopEntry se ON ui.ShopEntryId = se.Id
+                WHERE ui.GuildId = ? AND ui.UserId = ?
+                ORDER BY se.`Index`
+            """, (guild_id, user_id))
+            return await cursor.fetchall()
+
+    async def add_inventory_item(self, guild_id: int, user_id: int, entry_id: int, quantity: int = 1):
+        """Add an item to user's inventory (Stacking)"""
+        async with self.db._get_connection() as db:
+            await db.execute("""
+                INSERT INTO UserInventory (UserId, GuildId, ShopEntryId, Quantity)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(UserId, GuildId, ShopEntryId)
+                DO UPDATE SET Quantity = Quantity + excluded.Quantity
+            """, (user_id, guild_id, entry_id, quantity))
+            await db.commit()
+
+    async def remove_inventory_item(self, guild_id: int, user_id: int, entry_id: int, quantity: int = 1) -> bool:
+        """Remove an item from user's inventory"""
+        async with self.db._get_connection() as db:
+            # Check current quantity
+            cursor = await db.execute("""
+                SELECT Quantity FROM UserInventory
+                WHERE UserId = ? AND GuildId = ? AND ShopEntryId = ?
+            """, (user_id, guild_id, entry_id))
+            row = await cursor.fetchone()
+            
+            if not row or row[0] < quantity:
+                return False
+            
+            new_quantity = row[0] - quantity
+            
+            if new_quantity > 0:
+                await db.execute("""
+                    UPDATE UserInventory SET Quantity = ?
+                    WHERE UserId = ? AND GuildId = ? AND ShopEntryId = ?
+                """, (new_quantity, user_id, guild_id, entry_id))
+            else:
+                await db.execute("""
+                    DELETE FROM UserInventory
+                    WHERE UserId = ? AND GuildId = ? AND ShopEntryId = ?
+                """, (user_id, guild_id, entry_id))
+            
+            await db.commit()
+            return True
+            
+    async def get_user_item_count(self, guild_id: int, user_id: int, entry_id: int) -> int:
+        """Get how many of an item a user has"""
+        async with self.db._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT Quantity FROM UserInventory
+                WHERE UserId = ? AND GuildId = ? AND ShopEntryId = ?
+            """, (user_id, guild_id, entry_id))
+            row = await cursor.fetchone()
+            return row[0] if row else 0

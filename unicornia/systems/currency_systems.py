@@ -129,8 +129,13 @@ class CurrencyGeneration:
             
             plant_id, amount = plant
             
-            # Remove the plant
-            await db.execute("DELETE FROM PlantedCurrency WHERE Id = ?", (plant_id,))
+            # Remove the plant (Atomic check using rowcount)
+            cursor = await db.execute("DELETE FROM PlantedCurrency WHERE Id = ?", (plant_id,))
+            
+            if cursor.rowcount == 0:
+                # Already picked by someone else in the split second between SELECT and DELETE
+                await db.commit()
+                return None
             
             # Give currency to user
             await self.db.economy.add_currency(user_id, amount, "plant_pick", str(plant_id), note=f"Picked plant {plant_id}")

@@ -157,8 +157,6 @@ class ShopCommands:
                 
                 if item['type'] == self.db.shop.SHOP_TYPE_ROLE and item['role_name']:
                     description += f"Role: {item['role_name']}\n"
-                elif item['type'] == self.db.shop.SHOP_TYPE_COMMAND and item['command']:
-                    description += f"Command: `{item['command']}`\n"
                 
                 if item['additional_items']:
                     description += f"Items: {len(item['additional_items'])} additional items\n"
@@ -236,10 +234,6 @@ class ShopCommands:
                     if req_role:
                         embed.add_field(name="Requirement", value=f"Must have {req_role.name}", inline=True)
             
-            elif item['type'] == self.db.shop.SHOP_TYPE_COMMAND:
-                if item['command']:
-                    embed.add_field(name="Command", value=f"`{item['command']}`", inline=True)
-            
             if item['additional_items']:
                 items_text = "\n".join([f"• {item_text}" for _, item_text in item['additional_items']])
                 embed.add_field(name="Additional Items", value=items_text[:1000], inline=False)
@@ -256,8 +250,10 @@ class ShopCommands:
     async def shop_add(self, ctx, item_type: str, price: int, name: str, *, details: str = ""):
         """Add a new shop item (Admin only)
         
-        Types: role, command, effect, other
-        Usage: [p]shop add role 1000 "VIP Role" @VIPRole
+        Types: role, item, effect, other
+        Usage:
+        - [p]shop add role 1000 "VIP Role" @VIPRole
+        - [p]shop add item 500 "Mystery Box"
         """
         if not await self.config.shop_enabled():
             await ctx.send("❌ Shop system is disabled.")
@@ -267,13 +263,13 @@ class ShopCommands:
             # Parse item type
             type_map = {
                 'role': self.db.shop.SHOP_TYPE_ROLE,
-                'command': self.db.shop.SHOP_TYPE_COMMAND,
+                'item': self.db.shop.SHOP_TYPE_ITEM,
                 'effect': self.db.shop.SHOP_TYPE_EFFECT,
                 'other': self.db.shop.SHOP_TYPE_OTHER
             }
             
             if item_type.lower() not in type_map:
-                await ctx.send("❌ Invalid item type. Use: role, command, effect, or other")
+                await ctx.send("❌ Invalid item type. Use: role, item, effect, or other")
                 return
             
             entry_type = type_map[item_type.lower()]
@@ -284,7 +280,6 @@ class ShopCommands:
             
             role_id = None
             role_name = None
-            command = None
             
             if entry_type == self.db.shop.SHOP_TYPE_ROLE:
                 # Parse role from details
@@ -307,16 +302,10 @@ class ShopCommands:
                 role_id = role.id
                 role_name = role.name
             
-            elif entry_type == self.db.shop.SHOP_TYPE_COMMAND:
-                command = details.strip()
-                if not command:
-                    await ctx.send("❌ Please specify a command for command items.")
-                    return
-            
             # Add shop item
             item_id = await self.shop_system.add_shop_item(
                 ctx.guild.id, next_index, price, name, ctx.author.id,
-                entry_type, role_name, role_id, None, command
+                entry_type, role_name, role_id, None, None
             )
             
             currency_symbol = await self.config.currency_symbol()
@@ -331,8 +320,6 @@ class ShopCommands:
             
             if role_name:
                 embed.add_field(name="Role", value=role_name, inline=True)
-            if command:
-                embed.add_field(name="Command", value=f"`{command}`", inline=True)
             
             await ctx.send(embed=embed)
             
@@ -347,9 +334,8 @@ class ShopCommands:
         Fields:
         - name: Change item name
         - price: Change item price
-        - type: Change type (role, command, effect, other)
+        - type: Change type (role, item, effect, other)
         - role: Change role (mention or name) - For Role items
-        - command: Change command - For Command items
         - req: Change role requirement (mention, name, or 'none')
         
         Usage:
@@ -393,12 +379,12 @@ class ShopCommands:
             elif field == "type":
                 type_map = {
                     'role': self.db.shop.SHOP_TYPE_ROLE,
-                    'command': self.db.shop.SHOP_TYPE_COMMAND,
+                    'item': self.db.shop.SHOP_TYPE_ITEM,
                     'effect': self.db.shop.SHOP_TYPE_EFFECT,
                     'other': self.db.shop.SHOP_TYPE_OTHER
                 }
                 if value.lower() not in type_map:
-                    await ctx.send("❌ Invalid type. Options: role, command, effect, other")
+                    await ctx.send("❌ Invalid type. Options: role, item, effect, other")
                     return
                 updates['entry_type'] = type_map[value.lower()]
                 response_msg = f"Type updated to **{value.title()}**"
@@ -431,15 +417,6 @@ class ShopCommands:
                 else:
                     response_msg = f"Role updated to **{role.name}**"
 
-            elif field == "command":
-                updates['command'] = value
-                # Ensure type is command if it wasn't
-                if item['type'] != self.db.shop.SHOP_TYPE_COMMAND:
-                    updates['entry_type'] = self.db.shop.SHOP_TYPE_COMMAND
-                    response_msg = f"Command updated to `{value}` (Type changed to Command)"
-                else:
-                    response_msg = f"Command updated to `{value}`"
-            
             elif field in ["req", "requirement"]:
                 if value.lower() == "none":
                     updates['role_requirement'] = None
@@ -467,7 +444,7 @@ class ShopCommands:
                     response_msg = f"Role requirement set to **{role.name}**"
             
             else:
-                await ctx.send(f"❌ Invalid field. Available fields: name, price, type, role, command, req")
+                await ctx.send(f"❌ Invalid field. Available fields: name, price, type, role, req")
                 return
             
             # Apply updates
@@ -504,6 +481,34 @@ class ShopCommands:
                 
         except Exception as e:
             await ctx.send(f"❌ Error removing shop item: {e}")
+
+    @commands.command(name="inventory", aliases=["inv", "bag"])
+    async def show_inventory(self, ctx):
+        """View your purchased items"""
+        try:
+            inventory = await self.shop_system.get_user_inventory(ctx.guild.id, ctx.author.id)
+            
+            if not inventory:
+                await ctx.send("🎒 Your inventory is empty! Visit the shop with `[p]shop list`.")
+                return
+            
+            embed = discord.Embed(
+                title="🎒 Your Inventory",
+                color=discord.Color.blue()
+            )
+            embed.set_author(name=ctx.author.display_name, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
+            
+            description = ""
+            for item in inventory:
+                item_emoji = self.shop_system.get_type_emoji(item['type'])
+                description += f"**{item_emoji} {item['name']}** (x{item['quantity']})\n"
+                description += f"Type: {self.shop_system.get_type_name(item['type'])} | ID: #{item['id']}\n\n"
+            
+            embed.description = description
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error loading inventory: {e}")
 
     # XP Shop commands
     @commands.group(name="xpshop", aliases=["xps"])

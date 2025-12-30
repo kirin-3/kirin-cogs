@@ -22,6 +22,7 @@ class BlackjackView(ui.View):
         self.currency_symbol = currency_symbol
         self.message = None
         self.finished = False
+        self.end_time = discord.utils.utcnow().timestamp() + 60
 
     def calculate_hand(self, hand):
         total = sum(hand)
@@ -40,7 +41,8 @@ class BlackjackView(ui.View):
         else:
             dealer_display = f"[{self.dealer_hand[0]}, ?]"
 
-        embed = discord.Embed(title="🃏 Blackjack", description=result_text, color=color)
+        description = result_text or f"Time remaining: <t:{int(self.end_time)}:R>"
+        embed = discord.Embed(title="🃏 Blackjack", description=description, color=color)
         embed.add_field(name="Your Hand", value=f"{self.user_hand} ({user_total})", inline=True)
         embed.add_field(name="Dealer Hand", value=dealer_display, inline=True)
         

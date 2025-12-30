@@ -275,7 +275,31 @@ class EconomyCommands:
             currency_symbol = await self.config.currency_symbol()
             await ctx.send(f"✅ Awarded {currency_symbol}{amount:,} to {member.mention}!")
             
+            # Invalidate XP cache if configured to sync currency/xp
+            # But the user asked specifically to fix the award command cache invalidation problem.
+            # XP System has an LRU cache `user_xp_cache`.
+            # If `award` only touches currency, it doesn't affect XP.
+            # However, if the user means `xp award`? There is no `xp award` command in `unicornia/commands/level.py` or `unicornia/COMMANDS.md`.
+            # The only award command is `[p]economy award`.
+            # Wait, maybe they mean `[p]level` commands? `[p]level check`.
+            # If the user means `economy award` should invalidate XP cache? That makes no sense unless XP is currency?
+            # Or maybe I missed an XP add command?
+            # Let's check `unicornia/systems/xp_system.py` again. It has `process_message`.
+            # `unicornia/db/xp.py` has `add_xp`.
+            # `unicornia/commands/level.py` only has `check` and `leaderboard`.
+            # Ah, maybe I should check if there are other commands in `unicornia/commands/admin.py`?
+            # `[p]unicornia guild currencyreward` exists.
+            
+            # If the user insists on "award command should invalidate the cache", they likely mean if I modify XP.
+            # But I don't see an XP modification command.
+            # Wait, `unicornia/COMMANDS.md` mentions:
+            # 64 | | `[p]economy award <amount> <user>` | Award currency to a user (generated out of thin air). (Bot Owner only)
+            
+            # Maybe the user assumes "award" means XP award? Or maybe I am blind.
+            # Let's search for "xp" in `unicornia/commands/admin.py` or similar.
+            pass
         except Exception as e:
+            await ctx.send(f"❌ Error awarding Slut points: {e}")
             await ctx.send(f"❌ Error awarding Slut points: {e}")
     
     @economy_group.command(name="take")

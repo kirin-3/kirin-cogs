@@ -376,6 +376,19 @@ class CoreDB:
                 )
             """)
             
+            # User Inventory table (New for v2 - converting Command items)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS UserInventory (
+                UserId INTEGER,
+                GuildId INTEGER,
+                ShopEntryId INTEGER,
+                Quantity INTEGER DEFAULT 1,
+                DateAdded TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (UserId, GuildId, ShopEntryId),
+                FOREIGN KEY (ShopEntryId) REFERENCES ShopEntry(Id) ON DELETE CASCADE
+            )
+            """)
+
             # Create Indices for Performance
             await db.execute("CREATE INDEX IF NOT EXISTS idx_xp_guild_xp ON UserXpStats(GuildId, Xp DESC)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_currency_amount ON DiscordUser(CurrencyAmount DESC)")
@@ -387,6 +400,7 @@ class CoreDB:
             await db.execute("CREATE INDEX IF NOT EXISTS idx_shop_entry_items ON ShopEntryItem(ShopEntryId)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_xp_exclusions ON XpExcludedItem(GuildId, ItemId, ItemType)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_shop_entry_guild ON ShopEntry(GuildId, `Index`)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_user_inventory ON UserInventory(UserId, GuildId)")
 
             await db.commit()
             
@@ -406,6 +420,30 @@ class CoreDB:
                 await db.execute("ALTER TABLE XpShopOwnedItem ADD COLUMN IsUsing BOOLEAN DEFAULT FALSE")
                 await db.commit()
                 log.info("Successfully added IsUsing column")
+                
+            # Create UserInventory table if it doesn't exist (for existing DBs that missed init)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS UserInventory (
+                UserId INTEGER,
+                GuildId INTEGER,
+                ShopEntryId INTEGER,
+                Quantity INTEGER DEFAULT 1,
+                DateAdded TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (UserId, GuildId, ShopEntryId),
+                FOREIGN KEY (ShopEntryId) REFERENCES ShopEntry(Id) ON DELETE CASCADE
+            )
+            """)
+            
+            # Migrate Command items (Type 1) to Items (Type 4)
+            # Check if there are any Type 1 items first
+            cursor = await db.execute("SELECT COUNT(*) FROM ShopEntry WHERE Type = 1")
+            count = (await cursor.fetchone())[0]
+            
+            if count > 0:
+                log.info(f"Migrating {count} 'Command' shop items to 'Item' type...")
+                await db.execute("UPDATE ShopEntry SET Type = 4, Command = NULL WHERE Type = 1")
+                await db.commit()
+                log.info("Migration complete.")
                 
         except Exception as e:
             log.error(f"Error updating database schema: {e}")
@@ -891,7 +929,8 @@ class CoreDB:
                 "TimelyCooldown",
                 "WaifuInfo",  # Remove waifu claims
                 "WaifuUpdates",  # Remove waifu history
-                "XpShopOwnedItem"
+                "XpShopOwnedItem",
+                "UserInventory"
             ]
             
             for table in tables_to_clean:
