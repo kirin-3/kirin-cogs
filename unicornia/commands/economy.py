@@ -1,10 +1,16 @@
 import discord
 from redbot.core import commands, checks
+from redbot.core.utils.menus import SimpleMenu, ListPageSource
 from typing import Optional
 from ..utils import validate_text_input
 
 class EconomyCommands:
     # Economy commands
+    @commands.command(name="baltop", aliases=["ballb"])
+    async def baltop_shortcut(self, ctx):
+        """Show the Slut points leaderboard"""
+        await self.economy_leaderboard(ctx)
+
     @commands.group(name="economy", aliases=["econ", "money"])
     async def economy_group(self, ctx):
         """Economy and currency commands"""
@@ -334,27 +340,57 @@ class EconomyCommands:
             return
         
         try:
-            top_users = await self.economy_system.get_leaderboard(limit)
+            # Get filtered leaderboard (only members in server)
+            top_users = await self.economy_system.get_filtered_leaderboard(ctx.guild)
             
             if not top_users:
-                await ctx.send("No economy data found.")
+                await ctx.send("No economy data found for this server.")
                 return
             
             entries = []
             currency_symbol = await self.config.currency_symbol()
             for i, (user_id, balance) in enumerate(top_users):
-                member = ctx.guild.get_member(user_id) or self.bot.get_user(user_id)
-                username = member.display_name if member else f"Unknown User ({user_id})"
-                entries.append(f"**{i + 1}.** {username} - {currency_symbol}{balance:,}")
+                member = ctx.guild.get_member(user_id)
+                username = member.display_name
+                
+                rank = i + 1
+                if rank == 1:
+                    rank_str = "🥇"
+                elif rank == 2:
+                    rank_str = "🥈"
+                elif rank == 3:
+                    rank_str = "🥉"
+                else:
+                    rank_str = f"**{rank}.**"
+                    
+                entries.append(f"{rank_str} **{username}**\n{currency_symbol}{balance:,}\n")
             
-            embed = discord.Embed(
-                title="<:slut:686148402941001730> Slut points Leaderboard",
-                description="\n".join(entries),
-                color=discord.Color.gold()
-            )
-            await ctx.send(embed=embed)
+            # Pagination
+            source = ListPageSource(entries, per_page=10)
+            source.embed_title = "<:slut:686148402941001730> Slut points Leaderboard"
+            source.embed_color = discord.Color.gold()
+            
+            # Custom formatter to handle embed format
+            async def format_page(menu, entries):
+                offset = menu.current_page * 10
+                joined = "\n".join(entries)
+                embed = discord.Embed(
+                    title=source.embed_title,
+                    description=joined,
+                    color=source.embed_color
+                )
+                embed.set_footer(text=f"Page {menu.current_page + 1}/{source.get_max_pages()}")
+                return embed
+                
+            source.format_page = format_page
+            
+            menu = SimpleMenu(source)
+            await menu.start(ctx)
             
         except Exception as e:
+            import logging
+            log = logging.getLogger("red.unicornia")
+            log.error(f"Error in economy leaderboard: {e}", exc_info=True)
             await ctx.send(f"❌ Error retrieving leaderboard: {e}")
     
     # Bank commands

@@ -134,6 +134,18 @@ class EconomySystem:
     async def get_leaderboard(self, limit: int = 10, offset: int = 0):
         """Get currency leaderboard"""
         return await self.db.economy.get_top_currency_users(limit, offset)
+
+    async def get_filtered_leaderboard(self, guild: discord.Guild):
+        """Get filtered currency leaderboard for a guild (only current members)"""
+        all_users = await self.db.economy.get_all_users_currency()
+        
+        filtered_users = []
+        for user_id, balance in all_users:
+            member = guild.get_member(user_id)
+            if member:
+                filtered_users.append((user_id, balance))
+                
+        return filtered_users
     
     async def get_transaction_history(self, user_id: int, limit: int = 50):
         """Get user's transaction history"""

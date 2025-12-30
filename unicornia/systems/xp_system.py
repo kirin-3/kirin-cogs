@@ -413,6 +413,18 @@ class XPSystem:
     async def get_leaderboard(self, guild_id: int, limit: int = 10, offset: int = 0):
         """Get XP leaderboard for a guild"""
         return await self.db.xp.get_top_xp_users(guild_id, limit, offset)
+
+    async def get_filtered_leaderboard(self, guild: discord.Guild):
+        """Get filtered XP leaderboard for a guild (only current members)"""
+        all_users = await self.db.xp.get_all_guild_xp(guild.id)
+        
+        filtered_users = []
+        for user_id, xp in all_users:
+            member = guild.get_member(user_id)
+            if member:
+                filtered_users.append((user_id, xp))
+                
+        return filtered_users
     
     def get_progress_bar(self, current_xp: int, required_xp: int, length: int = 10) -> str:
         """Generate a progress bar for XP"""

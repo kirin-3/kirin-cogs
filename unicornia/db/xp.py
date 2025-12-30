@@ -360,9 +360,19 @@ class XPRepository:
         """Get top XP users in a guild"""
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT UserId, Xp FROM UserXpStats 
-                WHERE GuildId = ? 
-                ORDER BY Xp DESC 
+                SELECT UserId, Xp FROM UserXpStats
+                WHERE GuildId = ?
+                ORDER BY Xp DESC
                 LIMIT ? OFFSET ?
             """, (guild_id, limit, offset))
+            return await cursor.fetchall()
+
+    async def get_all_guild_xp(self, guild_id: int):
+        """Get all XP users in a guild for filtering"""
+        async with self.db._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT UserId, Xp FROM UserXpStats
+                WHERE GuildId = ?
+                ORDER BY Xp DESC
+            """, (guild_id,))
             return await cursor.fetchall()

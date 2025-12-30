@@ -1,9 +1,15 @@
 import discord
 from redbot.core import commands, checks
+from redbot.core.utils.menus import SimpleMenu, ListPageSource
 from typing import Optional
 
 class LevelCommands:
     # Level commands
+    @commands.command(name="xplb")
+    async def xplb_shortcut(self, ctx):
+        """Show the XP leaderboard for this server"""
+        await self.level_leaderboard(ctx)
+
     @commands.group(name="level", aliases=["lvl", "xp"], invoke_without_command=True)
     async def level_group(self, ctx, member: Optional[discord.Member] = None):
         """Level and XP commands"""
@@ -99,7 +105,8 @@ class LevelCommands:
             return
         
         try:
-            top_users = await self.xp_system.get_leaderboard(ctx.guild.id, limit)
+            # Use filtered leaderboard (only members in server)
+            top_users = await self.xp_system.get_filtered_leaderboard(ctx.guild)
             
             if not top_users:
                 await ctx.send("No XP data found for this server.")
@@ -108,20 +115,45 @@ class LevelCommands:
             entries = []
             for i, (user_id, xp) in enumerate(top_users):
                 member = ctx.guild.get_member(user_id)
-                username = member.display_name if member else f"Unknown User ({user_id})"
-                # Need calculate_level_stats which is on db object in original file.
-                # But self.db is DatabaseManager which inherits CoreDB.
-                # calculate_level_stats is static method on CoreDB.
-                # So self.db.calculate_level_stats works.
+                username = member.display_name
                 level_stats = self.db.calculate_level_stats(xp)
-                entries.append(f"**{i + 1}.** {username} - Level **{level_stats.level}** ({xp:,} XP)")
+                
+                rank = i + 1
+                if rank == 1:
+                    rank_str = "🥇"
+                elif rank == 2:
+                    rank_str = "🥈"
+                elif rank == 3:
+                    rank_str = "🥉"
+                else:
+                    rank_str = f"**{rank}.**"
+                
+                entries.append(f"{rank_str} **{username}**\nLevel **{level_stats.level}** • {xp:,} XP\n")
             
-            embed = discord.Embed(
-                title=f"XP Leaderboard - {ctx.guild.name}",
-                description="\n".join(entries),
-                color=discord.Color.blue()
-            )
-            await ctx.send(embed=embed)
+            # Pagination
+            source = ListPageSource(entries, per_page=10)
+            source.embed_title = f"XP Leaderboard - {ctx.guild.name}"
+            source.embed_color = discord.Color.blue()
+            
+            # Custom formatter to handle embed format
+            async def format_page(menu, entries):
+                offset = menu.current_page * 10
+                joined = "\n".join(entries)
+                embed = discord.Embed(
+                    title=source.embed_title,
+                    description=joined,
+                    color=source.embed_color
+                )
+                embed.set_footer(text=f"Page {menu.current_page + 1}/{source.get_max_pages()}")
+                return embed
+                
+            source.format_page = format_page
+            
+            menu = SimpleMenu(source)
+            await menu.start(ctx)
             
         except Exception as e:
+            import logging
+            log = logging.getLogger("red.unicornia")
+            log.error(f"Error in xp leaderboard: {e}", exc_info=True)
             await ctx.send(f"❌ Error retrieving leaderboard: {e}")
