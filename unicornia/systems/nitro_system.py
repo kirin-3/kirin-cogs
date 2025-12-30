@@ -74,13 +74,13 @@ class NitroSystem:
 
         # 2. Check price and balance
         price = await self.get_price(item_type)
-        user_balance = await self.economy_system.get_balance(ctx.author)
+        wallet, bank = await self.economy_system.get_balance(ctx.author.id)
         
-        if user_balance < price:
-            return False, f"You need {humanize_number(price)} to purchase this item. You only have {humanize_number(user_balance)}."
+        if wallet < price:
+            return False, f"You need {humanize_number(price)} to purchase this item. You only have {humanize_number(wallet)} in your wallet."
 
         # 3. Process transaction (Deduct money)
-        success = await self.economy_system.withdraw(ctx.author, price)
+        success = await self.economy_system.take_currency(ctx.author.id, price, note=f"Nitro Shop: {item_type}")
         if not success:
             return False, "Transaction failed during currency deduction."
 
@@ -89,7 +89,7 @@ class NitroSystem:
             # Double check stock to prevent race conditions (simple check)
             if s.get(item_type, 0) <= 0:
                 # Refund if stock ran out suddenly
-                await self.economy_system.deposit(ctx.author, price)
+                await self.economy_system.award_currency(ctx.author.id, price, note=f"Nitro Shop Refund: {item_type}")
                 return False, "This item just went out of stock!"
             
             s[item_type] -= 1

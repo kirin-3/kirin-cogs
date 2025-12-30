@@ -553,7 +553,7 @@ class NitroShopView(ui.View):
         boost_price = await self.nitro_system.get_price("boost")
         basic_price = await self.nitro_system.get_price("basic")
         
-        user_bal = await self.nitro_system.economy_system.get_balance(self.ctx.author)
+        user_bal, _ = await self.nitro_system.economy_system.get_balance(self.ctx.author.id)
         
         # Nitro Boost Button
         boost_btn = ui.Button(
