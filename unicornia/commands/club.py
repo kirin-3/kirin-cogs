@@ -78,6 +78,14 @@ class ClubInfoView(ui.View):
         if interaction.user.id != self.ctx.author.id:
             await interaction.response.send_message("This is not your session.", ephemeral=True)
             return
+        
+        # Double-check permissions in case status changed
+        is_owner = interaction.user.id == self.club_data['owner_id']
+        is_admin = interaction.user.guild_permissions.manage_guild
+        
+        if not (is_owner or is_admin):
+            await interaction.response.send_message("❌ You are not authorized to manage this club.", ephemeral=True)
+            return
             
         modal = ClubManageModal(self.cog, self.ctx, self.club_data['name'], self.club_data['description'])
         await interaction.response.send_modal(modal)

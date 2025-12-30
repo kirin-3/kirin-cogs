@@ -10,6 +10,8 @@ from discord import ui
 from ..database import DatabaseManager
 
 class BlackjackView(ui.LayoutView):
+    actions = ui.ActionRow()
+
     def __init__(self, ctx, system, user_id, amount, user_hand, dealer_hand, deck, currency_symbol):
         super().__init__(timeout=60)
         self.ctx = ctx
@@ -62,7 +64,7 @@ class BlackjackView(ui.LayoutView):
                 pass
             await self.do_stand_logic()
 
-    @ui.button(label="Hit", style=discord.ButtonStyle.primary, row=0)
+    @actions.button(label="Hit", style=discord.ButtonStyle.primary)
     async def hit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This is not your game!", ephemeral=True)
@@ -91,7 +93,7 @@ class BlackjackView(ui.LayoutView):
             except discord.HTTPException:
                 pass
 
-    @ui.button(label="Stand", style=discord.ButtonStyle.secondary, row=0)
+    @actions.button(label="Stand", style=discord.ButtonStyle.secondary)
     async def stand_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This is not your game!", ephemeral=True)
