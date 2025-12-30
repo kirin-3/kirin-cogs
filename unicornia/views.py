@@ -283,13 +283,15 @@ class ShopBrowserView(ui.View):
         
         # 1. Category Select
         # We need to map category IDs to names. Using logic from ShopSystem
-        # DB Types: 1=Role, 2=Command, 3=Effect, 4=Other, 5=Item
+        # DB Types: 0=Role, 1=Command(Deprecated), 2=Effect, 3=Other, 4=Item
+        # Accessing via shop_system.db.shop constants for consistency
+        shop_db = self.shop_system.db.shop
         categories = [
             ("All Categories", -1, "🌐"),
-            ("Roles", 1, "🎭"),
-            ("Items", 5, "🎒"),
-            ("Effects", 3, "✨"),
-            ("Other", 4, "📦")
+            ("Roles", shop_db.SHOP_TYPE_ROLE, "🎭"), # 0
+            ("Items", shop_db.SHOP_TYPE_ITEM, "🎒"), # 4
+            ("Effects", shop_db.SHOP_TYPE_EFFECT, "✨"), # 2
+            ("Other", shop_db.SHOP_TYPE_OTHER, "📦") # 3
         ]
         
         cat_options = []

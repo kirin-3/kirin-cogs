@@ -114,11 +114,11 @@ class ShopRepository:
     async def delete_shop_entry(self, guild_id: int, entry_id: int):
         """Delete a shop entry"""
         async with self.db._get_connection() as db:
-            await db.execute("""
+            cursor = await db.execute("""
                 DELETE FROM ShopEntry WHERE GuildId = ? AND Id = ?
             """, (guild_id, entry_id))
             await db.commit()
-            return True
+            return cursor.rowcount > 0
 
     async def get_shop_entry_items(self, entry_id: int):
         """Get items for a shop entry"""

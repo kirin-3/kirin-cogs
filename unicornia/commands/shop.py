@@ -449,7 +449,8 @@ class ShopCommands:
                 await ctx.send("❌ Shop item not found.")
                 return
             
-            success = await self.shop_system.delete_shop_item(ctx.guild.id, item_id)
+            # Pass item['id'] (actual DB ID) instead of item_id (which might be an Index)
+            success = await self.shop_system.delete_shop_item(ctx.guild.id, item['id'])
             if success:
                 await ctx.send(f"✅ Removed shop item: **{item['name']}**")
             else:
