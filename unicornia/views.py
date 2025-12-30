@@ -582,10 +582,6 @@ class NitroShopView(ui.View):
         
         # Confirm Dialog
         confirm_view = ConfirmView(self.ctx.author, disable_buttons=True)
-        confirm_view.confirm_button.label = "Confirm"
-        confirm_view.confirm_button.style = discord.ButtonStyle.green
-        confirm_view.cancel_button.label = "Cancel"
-        confirm_view.cancel_button.style = discord.ButtonStyle.red
 
         await interaction.response.send_message(
             f"Are you sure you want to purchase **{pretty_name}** for **{humanize_number(price)}**?",
