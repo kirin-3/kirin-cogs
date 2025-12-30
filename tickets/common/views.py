@@ -236,6 +236,37 @@ class CloseView(View):
         )
 
 
+class FileUpload(discord.ui.Item):
+    def __init__(self, custom_id: str, required: bool = True, min_values: int = 1, max_values: int = 1):
+        super().__init__()
+        self.custom_id = custom_id
+        self.required = required
+        self.min_values = min_values
+        self.max_values = max_values
+        self._values = []
+
+    @property
+    def type(self) -> discord.ComponentType:
+        # Use literal 19 for ComponentType.file_upload
+        return discord.ComponentType(19)
+
+    def to_component_dict(self):
+        return {
+            "type": 19,
+            "custom_id": self.custom_id,
+            "required": self.required,
+            "min_values": self.min_values,
+            "max_values": self.max_values,
+        }
+
+    def _refresh_component(self, component):
+        self._values = component.values
+
+    @property
+    def values(self):
+        return self._values
+
+
 class VerificationModal(discord.ui.Modal, title="Verification"):
     def __init__(self, bot: Red, guild: discord.Guild, config: Config, user: discord.Member):
         super().__init__()
@@ -244,8 +275,8 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         self.config = config
         self.user = user
         
-        # 1. Define the File Upload component
-        self.image = discord.ui.File(
+        # 1. Define the File Upload component using custom class
+        self.image = FileUpload(
             custom_id="verification_image",
             required=True,
             min_values=1,
@@ -264,9 +295,13 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         await interaction.response.defer(ephemeral=True)
         
         attachment_url = None
-        uploaded_files = self.image.values
-        if uploaded_files:
-            attachment_url = uploaded_files[0].url
+        
+        # Manual fallback to find attachment URL if values are not populated
+        if hasattr(interaction, 'data') and 'resolved' in interaction.data and 'attachments' in interaction.data['resolved']:
+            attachments = interaction.data['resolved']['attachments']
+            if attachments:
+                attachment_info = list(attachments.values())[0]
+                attachment_url = attachment_info.get('url')
 
         functions = Functions()
         functions.bot = self.bot
