@@ -1,5 +1,5 @@
 import discord
-from redbot.core import commands, checks
+from redbot.core import commands, checks, app_commands
 from typing import Optional, Union
 from ..views import RockPaperScissorsView, CoinFlipView
 
@@ -10,38 +10,39 @@ class GamblingCommands:
             if amount.lower() == "all":
                 balance = await self.db.economy.get_user_currency(ctx.author.id)
                 if balance <= 0:
-                    await ctx.send("❌ You don't have any currency to bet.")
+                    await ctx.reply("❌ You don't have any currency to bet.", mention_author=False)
                     return None
                 return balance
             else:
                 try:
                     amount = int(amount)
                 except ValueError:
-                    await ctx.send("❌ Invalid bet amount.")
+                    await ctx.reply("❌ Invalid bet amount.", mention_author=False)
                     return None
         
         if amount <= 0:
-            await ctx.send("❌ Amount must be positive.")
+            await ctx.reply("❌ Amount must be positive.", mention_author=False)
             return None
             
         return amount
 
     # Gambling commands
-    @commands.group(name="gambling", aliases=["gamble"])
+    @commands.hybrid_group(name="gambling", aliases=["gamble"])
     async def gambling_group(self, ctx):
         """Gambling commands"""
         pass
     
     @gambling_group.command(name="betroll", aliases=["roll"])
     @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(amount="Amount to bet")
     async def gambling_betroll(self, ctx, amount: Union[int, str]):
         """Bet on a dice roll (1-100)"""
         if not await self.config.gambling_enabled():
-            await ctx.send("❌ Gambling is disabled.")
+            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
             return
         
         amount = await self._resolve_bet(ctx, amount)
@@ -53,30 +54,31 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.")
+                    await ctx.reply(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
                 else:
-                    await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
+                    await ctx.reply(f"❌ Error: {result.get('error', 'Unknown error')}", mention_author=False)
                 return
             
             currency_symbol = await self.config.currency_symbol()
             if result["won"]:
-                await ctx.send(f"🎲 You rolled **{result['roll']}** (needed {result['threshold']}+) and won {currency_symbol}{result['win_amount']:,}!")
+                await ctx.reply(f"🎲 You rolled **{result['roll']}** (needed {result['threshold']}+) and won {currency_symbol}{result['win_amount']:,}!", mention_author=False)
             else:
-                await ctx.send(f"🎲 You rolled **{result['roll']}** (needed {result['threshold']}+) and lost {currency_symbol}{result['loss_amount']:,}. Better luck next time!")
+                await ctx.reply(f"🎲 You rolled **{result['roll']}** (needed {result['threshold']}+) and lost {currency_symbol}{result['loss_amount']:,}. Better luck next time!", mention_author=False)
                 
         except Exception as e:
-            await ctx.send(f"❌ Error in gambling: {e}")
+            await ctx.reply(f"❌ Error in gambling: {e}", mention_author=False)
     
     @gambling_group.command(name="rps", aliases=["rockpaperscissors"])
     @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(choice="rock, paper, or scissors", amount="Amount to bet")
     async def gambling_rps(self, ctx, choice: Optional[str] = None, amount: Union[int, str] = 0):
         """Play rock paper scissors"""
         if not await self.config.gambling_enabled():
-            await ctx.send("❌ Gambling is disabled.")
+            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
             return
 
         # Handle flexible arguments: [p]rps 100 -> choice="100", amount=0
@@ -86,11 +88,11 @@ class GamblingCommands:
             
         if choice is None:
             view = RockPaperScissorsView(ctx.author)
-            view.message = await ctx.send("Choose your weapon!", view=view)
+            view.message = await ctx.reply("Choose your weapon!", view=view, mention_author=False)
             await view.wait()
             
             if view.choice is None:
-                await ctx.send("❌ Timed out.")
+                await ctx.reply("❌ Timed out.", mention_author=False)
                 return
             choice = view.choice
         
@@ -104,42 +106,43 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.")
+                    await ctx.reply(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
                 elif result.get("error") == "invalid_choice":
-                    await ctx.send("❌ Please choose: rock, paper, or scissors")
+                    await ctx.reply("❌ Please choose: rock, paper, or scissors", mention_author=False)
                 else:
-                    await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
+                    await ctx.reply(f"❌ Error: {result.get('error', 'Unknown error')}", mention_author=False)
                 return
             
             currency_symbol = await self.config.currency_symbol()
             if amount > 0:
                 if result["result"] == "win":
-                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - You won {currency_symbol}{result['win_amount']:,}!")
+                    await ctx.reply(f"{result['user_choice']} vs {result['bot_choice']} - You won {currency_symbol}{result['win_amount']:,}!", mention_author=False)
                 elif result["result"] == "lose":
-                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - You lost {currency_symbol}{result['loss_amount']:,}!")
+                    await ctx.reply(f"{result['user_choice']} vs {result['bot_choice']} - You lost {currency_symbol}{result['loss_amount']:,}!", mention_author=False)
                 else:
-                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - It's a draw! No Slut points lost.")
+                    await ctx.reply(f"{result['user_choice']} vs {result['bot_choice']} - It's a draw! No Slut points lost.", mention_author=False)
             else:
                 if result["result"] == "win":
-                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - You win!")
+                    await ctx.reply(f"{result['user_choice']} vs {result['bot_choice']} - You win!", mention_author=False)
                 elif result["result"] == "lose":
-                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - You lose!")
+                    await ctx.reply(f"{result['user_choice']} vs {result['bot_choice']} - You lose!", mention_author=False)
                 else:
-                    await ctx.send(f"{result['user_choice']} vs {result['bot_choice']} - It's a draw!")
+                    await ctx.reply(f"{result['user_choice']} vs {result['bot_choice']} - It's a draw!", mention_author=False)
                 
         except Exception as e:
-            await ctx.send(f"❌ Error in RPS: {e}")
+            await ctx.reply(f"❌ Error in RPS: {e}", mention_author=False)
     
     @gambling_group.command(name="slots")
     @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(amount="Amount to bet")
     async def gambling_slots(self, ctx, amount: Union[int, str]):
         """Play slots"""
         if not await self.config.gambling_enabled():
-            await ctx.send("❌ Gambling is disabled.")
+            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
             return
         
         amount = await self._resolve_bet(ctx, amount)
@@ -151,32 +154,33 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.")
+                    await ctx.reply(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
                 else:
-                    await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
+                    await ctx.reply(f"❌ Error: {result.get('error', 'Unknown error')}", mention_author=False)
                 return
             
             currency_symbol = await self.config.currency_symbol()
             rolls_str = "".join(map(str, result['rolls']))
             
             if result['won_amount'] > 0:
-                await ctx.send(f"🎰 **{rolls_str}** - {result['win_type'].replace('_', ' ').title()}! You won {currency_symbol}{result['won_amount']:,}!")
+                await ctx.reply(f"🎰 **{rolls_str}** - {result['win_type'].replace('_', ' ').title()}! You won {currency_symbol}{result['won_amount']:,}!", mention_author=False)
             else:
-                await ctx.send(f"🎰 **{rolls_str}** - Better luck next time! You lost {currency_symbol}{amount:,}.")
+                await ctx.reply(f"🎰 **{rolls_str}** - Better luck next time! You lost {currency_symbol}{amount:,}.", mention_author=False)
                 
         except Exception as e:
-            await ctx.send(f"❌ Error in slots: {e}")
+            await ctx.reply(f"❌ Error in slots: {e}", mention_author=False)
 
     @gambling_group.command(name="blackjack", aliases=["21"])
     @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(amount="Amount to bet")
     async def gambling_blackjack(self, ctx, amount: Union[int, str]):
         """Play blackjack"""
         if not await self.config.gambling_enabled():
-            await ctx.send("❌ Gambling is disabled.")
+            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
             return
         
         amount = await self._resolve_bet(ctx, amount)
@@ -185,12 +189,26 @@ class GamblingCommands:
             
         try:
             # Note: play_blackjack handles interaction and responses internally
+            # We assume it uses ctx.send, but we can't easily patch it without seeing the method.
+            # However, if it uses ctx.send, it won't reply. 
+            # We can try to monkeypatch ctx.send for this call if needed, or update play_blackjack.
+            # But play_blackjack is likely in another file or imported.
+            # Wait, Line 188: await self.gambling_system.play_blackjack(ctx, amount)
+            # `unicornia/systems/gambling_system.py` contains the logic.
+            # Since I am editing commands files, I should probably check if I can modify the system call.
+            # Or just leave it as is if it's complex.
+            # User instructions were "Analyze the following files in unicornia/commands/".
+            # I will assume I only touch these files.
+            # If play_blackjack uses ctx.send internally, I can't change it here easily.
+            # But I can wrap `ctx` to override `send`? No, that's hacking.
+            # I'll stick to what I can control.
             await self.gambling_system.play_blackjack(ctx, amount)
         except Exception as e:
-            await ctx.send(f"❌ Error in blackjack: {e}")
+            await ctx.reply(f"❌ Error in blackjack: {e}", mention_author=False)
 
     @gambling_group.command(name="betflip", aliases=["bf"])
     @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(amount="Amount to bet", guess="heads or tails")
     async def gambling_betflip(self, ctx, amount: Union[int, str], guess: Optional[str] = None):
         """Bet on a coin flip (Heads or Tails)
         
@@ -198,11 +216,11 @@ class GamblingCommands:
         Or: [p]gambling betflip 100 (interactive)
         """
         if not await self.config.gambling_enabled():
-            await ctx.send("❌ Gambling is disabled.")
+            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
             return
         
         amount = await self._resolve_bet(ctx, amount)
@@ -211,11 +229,11 @@ class GamblingCommands:
 
         if guess is None:
             view = CoinFlipView(ctx.author)
-            view.message = await ctx.send(f"You are betting {amount}. Choose Heads or Tails:", view=view)
+            view.message = await ctx.reply(f"You are betting {amount}. Choose Heads or Tails:", view=view, mention_author=False)
             await view.wait()
             
             if view.choice is None:
-                await ctx.send("❌ Timed out.")
+                await ctx.reply("❌ Timed out.", mention_author=False)
                 return
             guess = view.choice
             
@@ -225,11 +243,11 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.")
+                    await ctx.reply(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
                 elif result.get("error") == "invalid_guess":
-                    await ctx.send("❌ Invalid guess. Please choose 'heads' or 'tails'.")
+                    await ctx.reply("❌ Invalid guess. Please choose 'heads' or 'tails'.", mention_author=False)
                 else:
-                    await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
+                    await ctx.reply(f"❌ Error: {result.get('error', 'Unknown error')}", mention_author=False)
                 return
             
             currency_symbol = await self.config.currency_symbol()
@@ -251,21 +269,22 @@ class GamblingCommands:
                 embed.color = discord.Color.red()
                 embed.add_field(name="Result", value=f"You guessed {result['guess']} and lost {currency_symbol}{result['loss_amount']:,}.", inline=False)
                 
-            await ctx.send(embed=embed)
+            await ctx.reply(embed=embed, mention_author=False)
             
         except Exception as e:
-            await ctx.send(f"❌ Error in betflip: {e}")
+            await ctx.reply(f"❌ Error in betflip: {e}", mention_author=False)
     
     @gambling_group.command(name="luckyladder", aliases=["ladder"])
     @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(amount="Amount to bet")
     async def gambling_lucky_ladder(self, ctx, amount: Union[int, str]):
         """Play lucky ladder"""
         if not await self.config.gambling_enabled():
-            await ctx.send("❌ Gambling is disabled.")
+            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
             return
         
         amount = await self._resolve_bet(ctx, amount)
@@ -277,35 +296,38 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.")
+                    await ctx.reply(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
                 else:
-                    await ctx.send(f"❌ Error: {result.get('error', 'Unknown error')}")
+                    await ctx.reply(f"❌ Error: {result.get('error', 'Unknown error')}", mention_author=False)
                 return
             
             currency_symbol = await self.config.currency_symbol()
             if result['won_amount'] > amount:
-                await ctx.send(f"🪜 Rung {result['rung']} - {result['multiplier']}x multiplier! You won {currency_symbol}{result['won_amount']:,}!")
+                await ctx.reply(f"🪜 Rung {result['rung']} - {result['multiplier']}x multiplier! You won {currency_symbol}{result['won_amount']:,}!", mention_author=False)
             else:
-                await ctx.send(f"🪜 Rung {result['rung']} - {result['multiplier']}x multiplier. You lost {currency_symbol}{amount - result['won_amount']:,}.")
+                await ctx.reply(f"🪜 Rung {result['rung']} - {result['multiplier']}x multiplier. You lost {currency_symbol}{amount - result['won_amount']:,}.", mention_author=False)
                 
         except Exception as e:
-            await ctx.send(f"❌ Error in lucky ladder: {e}")
+            await ctx.reply(f"❌ Error in lucky ladder: {e}", mention_author=False)
 
     # Top-level aliases for gambling commands
-    @commands.command(name="betroll", aliases=["roll"])
+    @commands.hybrid_command(name="betroll", aliases=["roll"])
     @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(amount="Amount to bet")
     async def top_betroll(self, ctx, amount: Union[int, str]):
         """Bet on a dice roll (1-100)"""
         await self.gambling_betroll(ctx, amount)
 
-    @commands.command(name="rps", aliases=["rockpaperscissors"])
+    @commands.hybrid_command(name="rps", aliases=["rockpaperscissors"])
     @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(choice="rock, paper, or scissors", amount="Amount to bet")
     async def top_rps(self, ctx, choice: Optional[str] = None, amount: Union[int, str] = 0):
         """Play rock paper scissors"""
         await self.gambling_rps(ctx, choice, amount)
 
-    @commands.command(name="slots")
+    @commands.hybrid_command(name="slots")
     @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(amount="Amount to bet")
     async def top_slots(self, ctx, amount: Union[int, str]):
         """Play slots"""
         await self.gambling_slots(ctx, amount)
@@ -316,14 +338,16 @@ class GamblingCommands:
         """Play blackjack"""
         await self.gambling_blackjack(ctx, amount)
 
-    @commands.command(name="betflip", aliases=["bf"])
+    @commands.hybrid_command(name="betflip", aliases=["bf"])
     @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(amount="Amount to bet", guess="heads or tails")
     async def top_betflip(self, ctx, amount: Union[int, str], guess: Optional[str] = None):
         """Bet on a coin flip (Heads or Tails)"""
         await self.gambling_betflip(ctx, amount, guess)
 
-    @commands.command(name="luckyladder", aliases=["ladder"])
+    @commands.hybrid_command(name="luckyladder", aliases=["ladder"])
     @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(amount="Amount to bet")
     async def top_luckyladder(self, ctx, amount: Union[int, str]):
         """Play lucky ladder"""
         await self.gambling_lucky_ladder(ctx, amount)

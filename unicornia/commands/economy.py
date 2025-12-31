@@ -1,5 +1,5 @@
 import discord
-from redbot.core import commands, checks
+from redbot.core import commands, checks, app_commands
 from redbot.core.utils.views import SimpleMenu
 from typing import Optional
 from ..utils import validate_text_input
@@ -7,30 +7,38 @@ from ..views import LeaderboardView
 
 class EconomyCommands:
     # Economy commands
-    @commands.command(name="baltop", aliases=["ballb"])
+    @commands.hybrid_command(name="baltop", aliases=["ballb"])
     async def baltop_shortcut(self, ctx):
         """Show the Slut points leaderboard"""
         await self.economy_leaderboard(ctx)
 
-    @commands.group(name="economy", aliases=["econ", "money"])
+    @commands.hybrid_group(name="economy", aliases=["econ", "money"])
     async def economy_group(self, ctx):
         """Economy and currency commands"""
         pass
     
     @economy_group.command(name="balance", aliases=["bal", "wallet"])
+    @app_commands.describe(member="The user to check balance for")
     async def economy_balance(self, ctx, member: discord.Member = None):
         """Check your or another user's Slut points balance"""
         await self._balance_logic(ctx, member)
 
-    @commands.command(name="balance", aliases=["bal", "$", "€", "£"])
+    @commands.hybrid_command(name="balance", aliases=["bal", "$", "€", "£"])
+    @app_commands.describe(member="The user to check balance for")
     async def global_balance(self, ctx, member: discord.Member = None):
         """Check your or another user's balance"""
+        await self._balance_logic(ctx, member)
+
+    @commands.hybrid_command(name="wallet")
+    @app_commands.describe(member="The user to check wallet for")
+    async def wallet_command(self, ctx, member: discord.Member = None):
+        """Check your or another user's wallet (Alias for balance)"""
         await self._balance_logic(ctx, member)
 
     async def _balance_logic(self, ctx, member: discord.Member = None):
         """Shared logic for balance commands"""
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
             return
         
         member = member or ctx.author
@@ -47,10 +55,10 @@ class EconomyCommands:
             embed.add_field(name="🏦 Bank", value=f"{currency_symbol}{bank_balance:,}", inline=True)
             embed.add_field(name="💎 Total", value=f"{currency_symbol}{wallet_balance + bank_balance:,}", inline=True)
             
-            await ctx.send(embed=embed)
+            await ctx.reply(embed=embed, mention_author=False)
             
         except Exception as e:
-            await ctx.send(f"❌ Error retrieving balance: {e}")
+            await ctx.reply(f"❌ Error retrieving balance: {e}", mention_author=False)
     
     @economy_group.command(name="give")
     async def economy_give(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
@@ -98,7 +106,7 @@ class EconomyCommands:
         """Claim your daily Slut points reward"""
         await self._timely_logic(ctx)
 
-    @commands.command(name="timely", aliases=["daily"])
+    @commands.hybrid_command(name="timely", aliases=["daily"])
     @commands.cooldown(1, 86400, commands.BucketType.user)  # 24 hours cooldown
     async def global_timely(self, ctx):
         """Claim your daily reward"""
@@ -107,7 +115,7 @@ class EconomyCommands:
     async def _timely_logic(self, ctx):
         """Shared logic for timely commands"""
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
             return
         
         try:
@@ -140,13 +148,13 @@ class EconomyCommands:
                 details.append(f"• Booster Bonus: {booster_mark} {currency_symbol}{booster_amount:,}")
                 
                 embed.add_field(name="Reward Breakdown", value="\n".join(details), inline=False)
-                await ctx.send(embed=embed)
+                await ctx.reply(embed=embed, mention_author=False)
             else:
                 cooldown_hours = await self.config.timely_cooldown()
-                await ctx.send(f"❌ You can claim your daily reward in {cooldown_hours} hours.")
+                await ctx.reply(f"❌ You can claim your daily reward in {cooldown_hours} hours.", mention_author=False)
                 
         except Exception as e:
-            await ctx.send(f"❌ Error claiming daily reward: {e}")
+            await ctx.reply(f"❌ Error claiming daily reward: {e}", mention_author=False)
 
     @economy_group.command(name="history", aliases=["transactions", "tx"])
     async def economy_history(self, ctx, member: discord.Member = None):
@@ -180,6 +188,7 @@ class EconomyCommands:
             await ctx.send(f"❌ Error retrieving transaction history: {e}")
     
     @economy_group.command(name="stats", aliases=["gambling"])
+    @app_commands.describe(member="The user to check stats for")
     async def gambling_stats(self, ctx, member: discord.Member = None):
         """View gambling statistics"""
         target = member or ctx.author
@@ -187,7 +196,7 @@ class EconomyCommands:
         try:
             stats = await self.economy_system.get_gambling_stats(target.id)
             if not stats:
-                await ctx.send(f"{target.display_name} has no gambling statistics.")
+                await ctx.reply(f"{target.display_name} has no gambling statistics.", mention_author=False)
                 return
             
             embed = discord.Embed(
@@ -217,10 +226,10 @@ class EconomyCommands:
                 inline=False
             )
             
-            await ctx.send(embed=embed)
+            await ctx.reply(embed=embed, mention_author=False)
             
         except Exception as e:
-            await ctx.send(f"❌ Error retrieving gambling statistics: {e}")
+            await ctx.reply(f"❌ Error retrieving gambling statistics: {e}", mention_author=False)
     
     @economy_group.command(name="rakeback", aliases=["rb"])
     async def rakeback_command(self, ctx):
@@ -265,10 +274,10 @@ class EconomyCommands:
             )
             embed.add_field(name="Balance", value=f"{currency_symbol}{balance:,}", inline=True)
             
-            await ctx.send(embed=embed)
+            await ctx.reply(embed=embed, mention_author=False)
             
         except Exception as e:
-            await ctx.send(f"❌ Error retrieving bank information: {e}")
+            await ctx.reply(f"❌ Error retrieving bank information: {e}", mention_author=False)
 
     @economy_group.command(name="award")
     @checks.is_owner()
@@ -292,31 +301,7 @@ class EconomyCommands:
             currency_symbol = await self.config.currency_symbol()
             await ctx.send(f"✅ Awarded {currency_symbol}{amount:,} to {member.mention}!")
             
-            # Invalidate XP cache if configured to sync currency/xp
-            # But the user asked specifically to fix the award command cache invalidation problem.
-            # XP System has an LRU cache `user_xp_cache`.
-            # If `award` only touches currency, it doesn't affect XP.
-            # However, if the user means `xp award`? There is no `xp award` command in `unicornia/commands/level.py` or `unicornia/COMMANDS.md`.
-            # The only award command is `[p]economy award`.
-            # Wait, maybe they mean `[p]level` commands? `[p]level check`.
-            # If the user means `economy award` should invalidate XP cache? That makes no sense unless XP is currency?
-            # Or maybe I missed an XP add command?
-            # Let's check `unicornia/systems/xp_system.py` again. It has `process_message`.
-            # `unicornia/db/xp.py` has `add_xp`.
-            # `unicornia/commands/level.py` only has `check` and `leaderboard`.
-            # Ah, maybe I should check if there are other commands in `unicornia/commands/admin.py`?
-            # `[p]unicornia guild currencyreward` exists.
-            
-            # If the user insists on "award command should invalidate the cache", they likely mean if I modify XP.
-            # But I don't see an XP modification command.
-            # Wait, `unicornia/COMMANDS.md` mentions:
-            # 64 | | `[p]economy award <amount> <user>` | Award currency to a user (generated out of thin air). (Bot Owner only)
-            
-            # Maybe the user assumes "award" means XP award? Or maybe I am blind.
-            # Let's search for "xp" in `unicornia/commands/admin.py` or similar.
-            pass
         except Exception as e:
-            await ctx.send(f"❌ Error awarding Slut points: {e}")
             await ctx.send(f"❌ Error awarding Slut points: {e}")
     
     @economy_group.command(name="take")
@@ -375,7 +360,7 @@ class EconomyCommands:
             
             view = LeaderboardView(ctx, top_users, user_position, currency_symbol)
             embed = await view.get_embed()
-            view.message = await ctx.send(embed=embed, view=view)
+            view.message = await ctx.reply(embed=embed, view=view, mention_author=False)
             
         except Exception as e:
             import logging
@@ -384,7 +369,7 @@ class EconomyCommands:
             await ctx.send(f"❌ Error retrieving leaderboard: {e}")
     
     # Bank commands
-    @commands.group(name="bank")
+    @commands.hybrid_group(name="bank")
     async def bank_group(self, ctx):
         """Bank commands for storing currency"""
         pass
@@ -439,13 +424,13 @@ class EconomyCommands:
     async def bank_balance(self, ctx):
         """Check your bank balance"""
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
             return
         
         try:
             wallet_balance, bank_balance = await self.economy_system.get_balance(ctx.author.id)
             currency_symbol = await self.config.currency_symbol()
-            await ctx.send(f"🏦 Your bank balance: {currency_symbol}{bank_balance:,}")
+            await ctx.reply(f"🏦 Your bank balance: {currency_symbol}{bank_balance:,}", mention_author=False)
                 
         except Exception as e:
-            await ctx.send(f"❌ Error retrieving bank balance: {e}")
+            await ctx.reply(f"❌ Error retrieving bank balance: {e}", mention_author=False)

@@ -1,5 +1,5 @@
 import discord
-from redbot.core import commands
+from redbot.core import commands, app_commands
 from discord import ui
 from typing import Optional
 from redbot.core.utils.views import ConfirmView
@@ -93,7 +93,7 @@ class ClubInfoView(ui.View):
         await interaction.response.send_modal(modal)
 
 class ClubCommands:
-    @commands.group(name="club")
+    @commands.hybrid_group(name="club")
     @commands.guild_only()
     async def club_group(self, ctx):
         """Club system commands"""
@@ -115,12 +115,13 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="info", aliases=["profile"])
+    @app_commands.describe(club_name="Name of the club to view (optional)")
     async def club_info(self, ctx, club_name: Optional[str] = None):
         """Get club information"""
             
         data, message = await self.club_system.get_club_info(club_name, ctx.author if not club_name else None)
         if not data:
-            await ctx.send(f"❌ {message}")
+            await ctx.reply(f"❌ {message}", mention_author=False)
             return
             
         # Format info embed
@@ -156,7 +157,7 @@ class ClubCommands:
         embed.add_field(name=f"Members ({len(members)})", value="\n".join(member_list) if member_list else "None", inline=False)
         
         view = ClubInfoView(self, ctx, data)
-        await ctx.send(embed=embed, view=view)
+        await ctx.reply(embed=embed, view=view, mention_author=False)
 
     @club_group.command(name="leave")
     async def club_leave(self, ctx):
@@ -381,12 +382,13 @@ class ClubCommands:
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="leaderboard", aliases=["lb"])
+    @app_commands.describe(page="Page number")
     async def club_leaderboard(self, ctx, page: int = 1):
         """Show club leaderboard"""
             
         clubs = await self.club_system.get_leaderboard(page)
         if not clubs:
-            await ctx.send("No clubs found.")
+            await ctx.reply("No clubs found.", mention_author=False)
             return
             
         embed = discord.Embed(

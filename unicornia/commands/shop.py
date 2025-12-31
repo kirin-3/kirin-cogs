@@ -1,5 +1,5 @@
 import discord
-from redbot.core import commands, checks
+from redbot.core import commands, checks, app_commands
 from redbot.core.utils.views import SimpleMenu
 from typing import Optional
 from ..views import ShopBrowserView
@@ -124,7 +124,7 @@ class BackgroundShopView(discord.ui.View):
 
 class ShopCommands:
     # Shop commands
-    @commands.group(name="shop", aliases=["store"])
+    @commands.hybrid_group(name="shop", aliases=["store"])
     @commands.guild_only()
     async def shop_group(self, ctx):
         """Shop commands - Buy roles and items with currency"""
@@ -134,27 +134,27 @@ class ShopCommands:
     async def shop_list(self, ctx):
         """View all available shop items"""
         if not await self.config.shop_enabled():
-            await ctx.send("❌ Shop system is disabled.")
+            await ctx.reply("❌ Shop system is disabled.", mention_author=False)
             return
         
         try:
             items = await self.shop_system.get_shop_items(ctx.guild.id)
             if not items:
-                await ctx.send("🛒 The shop is empty! Admins can add items with `[p]shop add`.")
+                await ctx.reply("🛒 The shop is empty! Admins can add items with `[p]shop add`.", mention_author=False)
                 return
             
             view = ShopBrowserView(ctx, items, self.shop_system)
             embed = await view.get_embed()
-            view.message = await ctx.send(embed=embed, view=view)
+            view.message = await ctx.reply(embed=embed, view=view, mention_author=False)
             
         except Exception as e:
-            await ctx.send(f"❌ Error retrieving shop items: {e}")
+            await ctx.reply(f"❌ Error retrieving shop items: {e}", mention_author=False)
     
     @shop_group.command(name="buy")
     async def shop_buy(self, ctx, index_or_id: int):
         """Buy a shop item by Index (recommended) or ID"""
         if not await self.config.shop_enabled():
-            await ctx.send("❌ Shop system is disabled.")
+            await ctx.reply("❌ Shop system is disabled.", mention_author=False)
             return
         
         try:
@@ -173,12 +173,12 @@ class ShopCommands:
                     value="Use `[p]shop list` to see all available items!",
                     inline=False
                 )
-                await ctx.send(embed=embed)
+                await ctx.reply(embed=embed, mention_author=False)
             else:
-                await ctx.send(f"❌ {message}")
+                await ctx.reply(f"❌ {message}", mention_author=False)
                 
         except Exception as e:
-            await ctx.send(f"❌ Error purchasing item: {e}")
+            await ctx.reply(f"❌ Error purchasing item: {e}", mention_author=False)
     
     @shop_group.command(name="info")
     async def shop_info(self, ctx, index_or_id: int):
@@ -510,7 +510,7 @@ class ShopCommands:
         # If user provided "bg" but no key
         await ctx.send(f"Usage: `{ctx.prefix}xpshopbuy bg <item_key>`")
 
-    @commands.group(name="xpshop", aliases=["xps"])
+    @commands.hybrid_group(name="xpshop", aliases=["xps"])
     @commands.guild_only()
     async def xp_shop_group(self, ctx):
         """XP Shop - Buy custom backgrounds with currency"""
@@ -523,14 +523,14 @@ class ShopCommands:
         try:
             backgrounds = self.xp_system.card_generator.get_available_backgrounds()
             if not backgrounds:
-                await ctx.send("❌ No backgrounds configured.")
+                await ctx.reply("❌ No backgrounds configured.", mention_author=False)
                 return
 
             # Filter hidden items
             visible_backgrounds = {k: v for k, v in backgrounds.items() if not v.get('hidden', False)}
             
             if not visible_backgrounds:
-                await ctx.send("❌ No backgrounds available.")
+                await ctx.reply("❌ No backgrounds available.", mention_author=False)
                 return
 
             user_owned = await self.db.xp.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
@@ -540,20 +540,21 @@ class ShopCommands:
             embed = await view.get_embed()
             
             content = "You can preview the list of backgrounds here: https://unicornia.net/backgrounds/ and copy the commands directly from there!"
-            view.message = await ctx.send(content=content, embed=embed, view=view)
+            view.message = await ctx.reply(content=content, embed=embed, view=view, mention_author=False)
             
         except (OSError, IOError) as e:
             import logging
             log = logging.getLogger("red.unicornia")
             log.error(f"Error loading XP backgrounds: {e}")
-            await ctx.send("❌ Error loading backgrounds. Please check the configuration file.")
+            await ctx.reply("❌ Error loading backgrounds. Please check the configuration file.", mention_author=False)
         except Exception as e:
             import logging
             log = logging.getLogger("red.unicornia")
             log.error(f"Unexpected error loading backgrounds: {e}", exc_info=True)
-            await ctx.send("❌ An unexpected error occurred while loading backgrounds.")
+            await ctx.reply("❌ An unexpected error occurred while loading backgrounds.", mention_author=False)
     
     @xp_shop_group.command(name="buy")
+    @app_commands.describe(item_key="Key of the background to buy")
     async def shop_buy_bg(self, ctx, item_key: str):
         """Buy an XP background
         
@@ -568,22 +569,22 @@ class ShopCommands:
             price = self.xp_system.card_generator.get_background_price(item_key)
             
             if item_key not in items:
-                await ctx.send(f"❌ Background `{item_key}` not found.")
+                await ctx.reply(f"❌ Background `{item_key}` not found.", mention_author=False)
                 return
             
             bg_data = items[item_key]
             if bg_data.get('hidden', False):
-                 await ctx.send(f"❌ Background `{item_key}` is not available for purchase.")
+                 await ctx.reply(f"❌ Background `{item_key}` is not available for purchase.", mention_author=False)
                  return
 
             if price == -1:
-                await ctx.send(f"❌ Background `{item_key}` is no longer available for purchase.")
+                await ctx.reply(f"❌ Background `{item_key}` is no longer available for purchase.", mention_author=False)
                 return
             
             # Check balance
             user_balance = await self.db.economy.get_user_currency(ctx.author.id)
             if user_balance < price:
-                await ctx.send(f"❌ Insufficient Slut points! You have {user_balance:,} <:slut:686148402941001730> but need {price:,} <:slut:686148402941001730>.")
+                await ctx.reply(f"❌ Insufficient Slut points! You have {user_balance:,} <:slut:686148402941001730> but need {price:,} <:slut:686148402941001730>.", mention_author=False)
                 return
 
             # Attempt purchase (item_type_id = 1 for backgrounds)
@@ -602,17 +603,17 @@ class ShopCommands:
                 else:
                     msg += f"\n(Tip: Use `[p]xpshop use {item_key}` to equip it)"
                     
-                await ctx.send(msg)
+                await ctx.reply(msg, mention_author=False)
             else:
                 # Check why it failed
                 if await self.db.xp.user_owns_xp_item(ctx.author.id, 1, item_key):
-                    await ctx.send(f"❌ You already own this background!")
+                    await ctx.reply(f"❌ You already own this background!", mention_author=False)
                 else:
                     user_currency = await self.db.economy.get_user_currency(ctx.author.id)
-                    await ctx.send(f"❌ Insufficient Slut points! You have {user_currency:,} <:slut:686148402941001730> but need {price:,} <:slut:686148402941001730>.")
+                    await ctx.reply(f"❌ Insufficient Slut points! You have {user_currency:,} <:slut:686148402941001730> but need {price:,} <:slut:686148402941001730>.", mention_author=False)
             
         except Exception as e:
-            await ctx.send(f"❌ Error processing purchase: {e}")
+            await ctx.reply(f"❌ Error processing purchase: {e}", mention_author=False)
     
     @xp_shop_group.command(name="use")
     async def shop_use(self, ctx, item_key: str):
@@ -626,7 +627,7 @@ class ShopCommands:
         try:
             # Check if user owns the background
             if not await self.db.xp.user_owns_xp_item(ctx.author.id, 1, item_key):
-                await ctx.send(f"❌ You don't own the background `{item_key}`. Purchase it first with `[p]xpshop buy {item_key}`.")
+                await ctx.reply(f"❌ You don't own the background `{item_key}`. Purchase it first with `[p]xpshop buy {item_key}`.", mention_author=False)
                 return
             
             # Set as active
@@ -635,12 +636,12 @@ class ShopCommands:
             if success:
                 backgrounds = self.xp_system.card_generator.get_available_backgrounds()
                 item_name = backgrounds.get(item_key, {}).get('name', item_key)
-                await ctx.send(f"✅ Now using **{item_name}** as your XP background!")
+                await ctx.reply(f"✅ Now using **{item_name}** as your XP background!", mention_author=False)
             else:
-                await ctx.send(f"❌ Failed to set background. Make sure you own `{item_key}`.")
+                await ctx.reply(f"❌ Failed to set background. Make sure you own `{item_key}`.", mention_author=False)
                 
         except Exception as e:
-            await ctx.send(f"❌ Error setting background: {e}")
+            await ctx.reply(f"❌ Error setting background: {e}", mention_author=False)
     
     @xp_shop_group.command(name="owned", aliases=["inventory", "inv"])
     async def shop_owned(self, ctx):
@@ -649,7 +650,7 @@ class ShopCommands:
         try:
             owned_items = await self.db.xp.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
             if not owned_items:
-                await ctx.send("❌ You don't own any backgrounds yet. Use `[p]xpshop backgrounds` to see what's available!")
+                await ctx.reply("❌ You don't own any backgrounds yet. Use `[p]xpshop backgrounds` to see what's available!", mention_author=False)
                 return
 
             backgrounds = self.xp_system.card_generator.get_available_backgrounds()
@@ -663,10 +664,10 @@ class ShopCommands:
             embed = await view.get_embed()
             embed.title = "🎒 Your XP Backgrounds" # Override title
             
-            view.message = await ctx.send(embed=embed, view=view)
+            view.message = await ctx.reply(embed=embed, view=view, mention_author=False)
             
         except Exception as e:
-            await ctx.send(f"❌ Error loading owned backgrounds: {e}")
+            await ctx.reply(f"❌ Error loading owned backgrounds: {e}", mention_author=False)
     
     @xp_shop_group.command(name="reload")
     @commands.is_owner()
@@ -698,4 +699,3 @@ class ShopCommands:
                 
         except Exception as e:
              await ctx.send(f"❌ Error giving background: {e}")
-

@@ -1,10 +1,10 @@
 import discord
-from redbot.core import commands, checks
+from redbot.core import commands, checks, app_commands
 from typing import Optional
 
 class WaifuCommands:
     # Waifu commands
-    @commands.group(name="waifu", aliases=["wf"])
+    @commands.hybrid_group(name="waifu", aliases=["wf"])
     async def waifu_group(self, ctx):
         """Waifu system - Claim and manage virtual waifus"""
         pass
@@ -181,6 +181,7 @@ class WaifuCommands:
         await ctx.send(embed=embed)
 
     @waifu_group.command(name="info")
+    @app_commands.describe(member="The waifu to check")
     async def waifu_info(self, ctx, member: discord.Member = None):
         """Get information about a waifu
         
@@ -279,10 +280,10 @@ class WaifuCommands:
                     
                 embed.add_field(name=f"Gifts Received ({sum(g[2] for g in gifts)})", value=gifts_str, inline=False)
             
-            await ctx.send(embed=embed)
+            await ctx.reply(embed=embed, mention_author=False)
             
         except Exception as e:
-            await ctx.send(f"❌ Error getting waifu info: {e}")
+            await ctx.reply(f"❌ Error getting waifu info: {e}", mention_author=False)
     
     @waifu_group.command(name="list", aliases=["my"])
     async def waifu_list(self, ctx, member: discord.Member = None):
@@ -399,17 +400,17 @@ class WaifuCommands:
                 if current_affinity:
                     user = ctx.guild.get_member(current_affinity)
                     name = user.display_name if user else "Unknown User"
-                    await ctx.send(f"💕 Your current affinity is set to **{name}**.")
+                    await ctx.reply(f"💕 Your current affinity is set to **{name}**.", mention_author=False)
                 else:
-                    await ctx.send("💕 You don't have an affinity set.")
+                    await ctx.reply("💕 You don't have an affinity set.", mention_author=False)
                 return
 
             if affinity_user == ctx.author:
-                await ctx.send("❌ You cannot set affinity to yourself!")
+                await ctx.reply("❌ You cannot set affinity to yourself!", mention_author=False)
                 return
 
             await self.db.waifu.set_waifu_affinity(ctx.author.id, affinity_user.id)
-            await ctx.send(f"✅ You have set your affinity to **{affinity_user.display_name}**! They can now claim you for 20% off.")
+            await ctx.reply(f"✅ You have set your affinity to **{affinity_user.display_name}**! They can now claim you for 20% off.", mention_author=False)
             
         except Exception as e:
-            await ctx.send(f"❌ Error setting affinity: {e}")
+            await ctx.reply(f"❌ Error setting affinity: {e}", mention_author=False)

@@ -3,7 +3,7 @@ Nitro Shop Commands for Unicornia
 """
 
 import discord
-from redbot.core import commands
+from redbot.core import commands, app_commands
 from redbot.core.utils.chat_formatting import humanize_number, box
 
 from ..views import NitroShopView
@@ -11,19 +11,19 @@ from ..views import NitroShopView
 class NitroCommands:
     """Commands for the Nitro Shop system"""
     
-    @commands.command(name="nitroshop")
+    @commands.hybrid_command(name="nitroshop")
     @commands.guild_only()
     async def nitroshop(self, ctx):
         """Open the Nitro Shop to purchase Discord Nitro subscriptions."""
         if not self.nitro_system:
-            return await ctx.send("The Nitro Shop system is currently unavailable.")
+            return await ctx.reply("The Nitro Shop system is currently unavailable.", mention_author=False)
             
         view = NitroShopView(ctx, self.nitro_system)
         # Initialize async components
         await view.init()
         
         embed = await view.get_embed()
-        view.message = await ctx.send(embed=embed, view=view)
+        view.message = await ctx.reply(embed=embed, view=view, mention_author=False)
 
     @commands.command(name="nitrostock")
     @commands.is_owner()

@@ -1,24 +1,31 @@
 import discord
-from redbot.core import commands, checks
+from redbot.core import commands, checks, app_commands
 from redbot.core.utils.views import SimpleMenu
 from typing import Optional
 from ..views import LeaderboardView
 
 class LevelCommands:
     # Level commands
-    @commands.command(name="xplb")
+    @commands.hybrid_command(name="xplb")
     async def xplb_shortcut(self, ctx):
         """Show the XP leaderboard for this server"""
         await self.level_leaderboard(ctx)
 
-    @commands.group(name="level", aliases=["lvl", "xp"], invoke_without_command=True)
+    @commands.hybrid_group(name="level", aliases=["lvl", "xp"], invoke_without_command=True)
     async def level_group(self, ctx, member: Optional[discord.Member] = None):
         """Level and XP commands"""
         # If no subcommand is invoked, behave like the check command
         if ctx.invoked_subcommand is None:
             await self._level_check_logic(ctx, member)
+
+    @commands.hybrid_command(name="xp")
+    @app_commands.describe(member="The user to check XP for")
+    async def xp_command(self, ctx, member: Optional[discord.Member] = None):
+        """Check your or another user's level and XP"""
+        await self._level_check_logic(ctx, member)
     
     @level_group.command(name="check", aliases=["me"])
+    @app_commands.describe(member="The user to check XP for")
     async def level_check(self, ctx, member: discord.Member = None):
         """Check your or another user's level and XP"""
         await self._level_check_logic(ctx, member)
@@ -26,7 +33,7 @@ class LevelCommands:
     async def _level_check_logic(self, ctx, member: discord.Member = None):
         """Logic for checking level/XP"""
         if not await self.config.xp_enabled():
-            await ctx.send("❌ XP system is disabled.")
+            await ctx.reply("❌ XP system is disabled.", mention_author=False)
             return
         
         member = member or ctx.author
@@ -65,7 +72,7 @@ class LevelCommands:
                 
                 if card_image_bytes:
                     file = discord.File(card_image_bytes, filename=f"xp_card.{ext}")
-                    await ctx.send(file=file)
+                    await ctx.reply(file=file, mention_author=False)
                     return
                     
             except Exception as e:
@@ -90,19 +97,20 @@ class LevelCommands:
             embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
             embed.set_footer(text=f"Active background: {active_background}")
             
-            await ctx.send(embed=embed)
+            await ctx.reply(embed=embed, mention_author=False)
             
         except Exception as e:
             import logging
             log = logging.getLogger("red.unicornia")
             log.error(f"Error in level check for {member.display_name}: {e}", exc_info=True)
-            await ctx.send(f"❌ Error retrieving level data: {e}")
+            await ctx.reply(f"❌ Error retrieving level data: {e}", mention_author=False)
     
     @level_group.command(name="leaderboard", aliases=["lb", "top"])
+    @app_commands.describe(limit="Number of users to show")
     async def level_leaderboard(self, ctx, limit: int = 10):
         """Show the XP leaderboard for this server"""
         if not await self.config.xp_enabled():
-            await ctx.send("❌ XP system is disabled.")
+            await ctx.reply("❌ XP system is disabled.", mention_author=False)
             return
         
         try:
@@ -110,7 +118,7 @@ class LevelCommands:
             top_users = await self.xp_system.get_filtered_leaderboard(ctx.guild)
             
             if not top_users:
-                await ctx.send("No XP data found for this server.")
+                await ctx.reply("No XP data found for this server.", mention_author=False)
                 return
             
             # Find user position
@@ -134,10 +142,10 @@ class LevelCommands:
                 formatter=xp_formatter
             )
             embed = await view.get_embed()
-            view.message = await ctx.send(embed=embed, view=view)
+            view.message = await ctx.reply(embed=embed, view=view, mention_author=False)
             
         except Exception as e:
             import logging
             log = logging.getLogger("red.unicornia")
             log.error(f"Error in xp leaderboard: {e}", exc_info=True)
-            await ctx.send(f"❌ Error retrieving leaderboard: {e}")
+            await ctx.reply(f"❌ Error retrieving leaderboard: {e}", mention_author=False)

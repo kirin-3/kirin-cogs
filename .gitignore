@@ -1,8 +1,6 @@
 *.pyc
 /redenv/*
 /redenv
-docs/
-# Added by Claude Task Master
 # Logs
 logs
 *.log
@@ -12,13 +10,16 @@ yarn-error.log*
 dev-debug.log
 pnpm-debug.log*
 lerna-debug.log*
+
+# Miscellaneous
+plans/
+docs/
 unicorn_docs/docs/*
 nadeko/*
 nadeko/
 unicornia/Nadeko_Bot_Comprehensive_Documentation.md
 unicornia/test_xp_generation.py
 discord_py_new_features_explanation.md
-rebot_changelog.md
 profile/sticky.py
 
 # Dependency directories
@@ -73,7 +74,5 @@ coverage/
 *.temp
 .temp/
 .tmp/
-
-# Added by Claude Task Master
 .idea
 .vscode
