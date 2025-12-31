@@ -122,33 +122,52 @@ class CurrencyGeneration:
         """Pick up the last currency plant in the channel"""
         async with self.db._get_connection() as db:
             await self.db._setup_wal_mode(db)
-            # Find the last plant in this channel
-            cursor = await db.execute("""
-                SELECT Id, Amount FROM PlantedCurrency
-                WHERE ChannelId = ?
-                ORDER BY Id DESC LIMIT 1
-            """, (channel_id,))
             
-            plant = await cursor.fetchone()
-            if not plant:
-                return None
-            
-            plant_id, amount = plant
-            
-            # Remove the plant (Atomic check using rowcount)
-            cursor = await db.execute("DELETE FROM PlantedCurrency WHERE Id = ?", (plant_id,))
-            
-            if cursor.rowcount == 0:
-                # Already picked by someone else in the split second between SELECT and DELETE
+            try:
+                # Find the last plant in this channel
+                cursor = await db.execute("""
+                    SELECT Id, Amount FROM PlantedCurrency
+                    WHERE ChannelId = ?
+                    ORDER BY Id DESC LIMIT 1
+                """, (channel_id,))
+                
+                plant = await cursor.fetchone()
+                if not plant:
+                    return None
+                
+                plant_id, amount = plant
+                
+                # Remove the plant (Atomic check using rowcount)
+                cursor = await db.execute("DELETE FROM PlantedCurrency WHERE Id = ?", (plant_id,))
+                
+                if cursor.rowcount == 0:
+                    # Already picked by someone else in the split second between SELECT and DELETE
+                    await db.commit()
+                    return None
+                
+                # Give currency to user
+                if amount > 0:
+                    # We inline the add_currency logic here to avoid a deadlock
+                    # because self.db.economy.add_currency tries to acquire the same lock we already hold
+                    
+                    # Update user currency
+                    await db.execute("""
+                        INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
+                        ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount + ?
+                    """, (user_id, amount, amount))
+                    
+                    # Log transaction
+                    await db.execute("""
+                        INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, Reason, DateAdded)
+                        VALUES (?, ?, ?, ?, ?, datetime('now'))
+                    """, (user_id, amount, "plant_pick", str(plant_id), f"Picked plant {plant_id}"))
+                
                 await db.commit()
-                return None
-            
-            # Give currency to user
-            if amount > 0:
-                await self.db.economy.add_currency(user_id, amount, "plant_pick", str(plant_id), note=f"Picked plant {plant_id}")
-            
-            await db.commit()
-            return amount
+                return amount
+                
+            except Exception:
+                await db.execute("ROLLBACK")
+                raise
 
 
 class CurrencyDecay:
