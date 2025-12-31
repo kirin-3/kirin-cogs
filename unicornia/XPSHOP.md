@@ -41,7 +41,7 @@ After editing `xp_config.yml`, run the following command to apply changes withou
 ## Commands
 
 ### User Commands
-- `[p]xpshop backgrounds`: View and buy available backgrounds.
+- `[p]xpshop backgrounds` (Aliases: `bg`, `bgs`): View and buy available backgrounds.
 - `[p]xpshop buy <key>`: Purchase a specific background.
 - `[p]xpshop use <key>`: Equip a purchased background.
 - `[p]xpshop owned`: View your inventory of owned backgrounds.
@@ -61,3 +61,4 @@ You can create exclusive backgrounds that are not available for purchase by sett
 To give a hidden background to a user, use:
 ```
 [p]xpshop give @User background_key
+```

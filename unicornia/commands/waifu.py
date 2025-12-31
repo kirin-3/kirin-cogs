@@ -31,56 +31,89 @@ class WaifuCommands:
         try:
             # Check if user is already claimed
             current_owner = await self.db.waifu.get_waifu_owner(member.id)
-            if current_owner:
-                if current_owner == ctx.author.id:
-                    await ctx.send("❌ You already own this waifu!")
-                    return
-                else:
-                    await ctx.send("❌ This user is already claimed by someone else!")
-                    return
+            if current_owner == ctx.author.id:
+                await ctx.send("❌ You already own this waifu!")
+                return
             
-            # Set default price if not provided
-            if price is None:
-                price = await self.db.waifu.get_waifu_price(member.id)
+            current_waifu_price = await self.db.waifu.get_waifu_price(member.id)
+            currency_symbol = await self.config.currency_symbol()
             
-            # Check affinity for discount
-            target_affinity = await self.db.waifu.get_waifu_affinity(member.id)
+            # Determine claim type and price
+            is_force_claim = False
+            final_price = 0
             discount_text = ""
-            final_price = price
             
-            if target_affinity == ctx.author.id:
-                # 20% Discount
-                final_price = int(price * 0.8)
-                discount_text = f" (20% affinity discount applied! Original: {price:,})"
+            if current_owner:
+                # Force Claim logic
+                is_force_claim = True
+                final_price = int(current_waifu_price * 1.2)
+                # Ignore user provided price for force claims to enforce rule
+            else:
+                # Normal Claim logic
+                base_price = price if price is not None else current_waifu_price
+                
+                # Check affinity for discount
+                target_affinity = await self.db.waifu.get_waifu_affinity(member.id)
+                final_price = base_price
+                
+                if target_affinity == ctx.author.id:
+                    # 20% Discount
+                    final_price = int(base_price * 0.8)
+                    discount_text = f" (20% affinity discount applied! Original: {base_price:,})"
             
             # Check if user has enough currency
             user_balance = await self.db.economy.get_user_currency(ctx.author.id)
             if user_balance < final_price:
-                currency_symbol = await self.config.currency_symbol()
                 await ctx.send(f"❌ You need {currency_symbol}{final_price:,} but only have {currency_symbol}{user_balance:,}!")
                 return
             
-            # Claim the waifu
-            success = await self.db.waifu.claim_waifu(member.id, ctx.author.id, final_price)
-            if success:
-                # Deduct currency
-                await self.db.economy.remove_currency(ctx.author.id, final_price, "waifu_claim", str(member.id), note=f"Claimed {member.display_name}")
-                # Log currency transaction
-                # Note: remove_currency might also log, but we keep this explicit log as per original behavior/request
-                await self.db.economy.log_currency_transaction(ctx.author.id, "waifu_claim", -final_price, f"Claimed {member.display_name}")
+            if is_force_claim:
+                # 1. Deduct currency from claimer
+                removed = await self.db.economy.remove_currency(ctx.author.id, final_price, "waifu_claim", str(member.id), note=f"Force Claimed {member.display_name}")
+                if not removed:
+                    await ctx.send("❌ Transaction failed (Insufficient funds during processing).")
+                    return
                 
-                currency_symbol = await self.config.currency_symbol()
+                # 2. Add currency to previous owner
+                await self.db.economy.add_currency(current_owner, final_price, "waifu_sold", str(member.id), other_id=ctx.author.id, note=f"Force claimed by {ctx.author.display_name}")
+                
+                # 3. Transfer waifu (updates owner and sets new price)
+                await self.db.waifu.transfer_waifu(member.id, ctx.author.id, final_price)
+                
+                old_owner_member = ctx.guild.get_member(current_owner)
+                old_owner_name = old_owner_member.display_name if old_owner_member else "Unknown"
+                
                 embed = discord.Embed(
-                    title="💕 Waifu Claimed!",
-                    description=f"You successfully claimed **{member.display_name}** as your waifu!",
-                    color=discord.Color.pink()
+                    title="💔 Waifu Sniped!",
+                    description=f"You force-claimed **{member.display_name}** from **{old_owner_name}**!",
+                    color=discord.Color.red()
                 )
-                embed.add_field(name="Price Paid", value=f"{currency_symbol}{final_price:,}{discount_text}", inline=True)
-                embed.add_field(name="New Owner", value=ctx.author.display_name, inline=True)
+                embed.add_field(name="Price Paid (120%)", value=f"{currency_symbol}{final_price:,}", inline=True)
+                embed.add_field(name="Compensation to Owner", value=f"{currency_symbol}{final_price:,}", inline=True)
                 embed.set_thumbnail(url=member.display_avatar.url)
                 await ctx.send(embed=embed)
+                
             else:
-                await ctx.send("❌ Failed to claim waifu. Please try again.")
+                # Normal Claim
+                success = await self.db.waifu.claim_waifu(member.id, ctx.author.id, final_price)
+                if success:
+                    # Deduct currency
+                    await self.db.economy.remove_currency(ctx.author.id, final_price, "waifu_claim", str(member.id), note=f"Claimed {member.display_name}")
+                    # Log currency transaction
+                    # Note: remove_currency might also log, but we keep this explicit log as per original behavior/request
+                    await self.db.economy.log_currency_transaction(ctx.author.id, "waifu_claim", -final_price, f"Claimed {member.display_name}")
+                    
+                    embed = discord.Embed(
+                        title="💕 Waifu Claimed!",
+                        description=f"You successfully claimed **{member.display_name}** as your waifu!",
+                        color=discord.Color.pink()
+                    )
+                    embed.add_field(name="Price Paid", value=f"{currency_symbol}{final_price:,}{discount_text}", inline=True)
+                    embed.add_field(name="New Owner", value=ctx.author.display_name, inline=True)
+                    embed.set_thumbnail(url=member.display_avatar.url)
+                    await ctx.send(embed=embed)
+                else:
+                    await ctx.send("❌ Failed to claim waifu. Please try again.")
                 
         except Exception as e:
             await ctx.send(f"❌ Error claiming waifu: {e}")

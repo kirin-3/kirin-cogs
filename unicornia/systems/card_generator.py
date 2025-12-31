@@ -346,7 +346,7 @@ class XPCardGenerator:
             draw.text((current_draw_x, draw_y), seg_text, font=seg_font, fill=fill, anchor=draw_anchor)
             current_draw_x += segment_widths[i]
 
-    async def _download_image(self, url: str) -> bytes | None:
+    async def _download_image(self, url: str, cache_to_disk: bool = False) -> bytes | None:
         """Download and cache image bytes from URL (with SSRF protection and Cache Limit)"""
         if not url:
             return None
@@ -420,8 +420,19 @@ class XPCardGenerator:
                         self.images_cache[url] = image_data
                         self.images_cache.move_to_end(url)
                         
-                        # Optional: Save to local storage for future use?
-                        # For now, we only read if it exists.
+                        if cache_to_disk:
+                            try:
+                                if not os.path.exists(local_images_dir):
+                                    os.makedirs(local_images_dir)
+                                
+                                filename = os.path.basename(url)
+                                if filename:
+                                    save_path = os.path.join(local_images_dir, filename)
+                                    with open(save_path, "wb") as f:
+                                        f.write(image_data)
+                                    log.info(f"Cached image to {save_path}")
+                            except Exception as e:
+                                log.error(f"Failed to cache image locally: {e}")
                         
                         return image_data
         except Exception as e:
@@ -705,11 +716,19 @@ class XPCardGenerator:
         # Parallel downloads
         tasks = [
             self._get_user_avatar(avatar_url),
-            self._download_image(bg_url) if bg_url else asyncio.sleep(0, result=None),
+            self._download_image(bg_url, cache_to_disk=True) if bg_url else asyncio.sleep(0, result=None),
             self._download_image(club_icon_url) if club_icon_url else asyncio.sleep(0, result=None)
         ]
         
         avatar, background_bytes, club_icon_bytes = await asyncio.gather(*tasks)
+
+        # Fallback: If background failed and not default, try default
+        if background_bytes is None and background_key != "default":
+            log.warning(f"Failed to load background '{background_key}', attempting fallback to default.")
+            default_config = self.xp_config.get("shop", {}).get("bgs", {}).get("default", {})
+            default_url = default_config.get("url", "")
+            if default_url:
+                background_bytes = await self._download_image(default_url, cache_to_disk=True)
         
         # Process club icon if bytes
         club_icon = None

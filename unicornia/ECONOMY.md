@@ -15,17 +15,20 @@ The economy system is built on a modular architecture separating data access, bu
 The currency (default name "Slut points") flows through the system via several mechanisms:
 
 *   **Sources (Faucets)**:
-    *   **Daily Rewards (`[p]timely`)**: Users claim a daily amount, which increases with streaks, supporter status, and server boosting.
+    *   **Daily Rewards (`[p]timely`)**: Users claim a daily amount.
+        *   **Streak Bonus**: Increases with consecutive daily claims (Caps at 30 days / 300 bonus).
+        *   **Supporter Bonus**: Extra currency for users with specific supporter roles.
+        *   **Booster Bonus**: Extra currency for Server Boosters.
     *   **Currency Generation**: Random currency spawns in chat channels (`[p]pick`), simulating "flowers" from Nadeko.
     *   **Gambling Wins**: Users can win currency from games like Blackjack, Slots, and Betroll.
     *   **Rakeback**: Users earn back 5% of their gambling losses, claimed via `[p]economy rakeback`.
 
 *   **Sinks**:
     *   **Shop Purchases**: Buying roles, items, XP card backgrounds, or Discord Nitro removes currency from circulation.
-    *   **Gambling Losses**: A house edge is built into games to naturally remove currency over time (deflationary pressure).
+    *   **Gambling Losses**: A house edge is built into games to naturally remove currency over time.
     *   **Waifu Gifts**: Gifts increase a waifu's value but cost currency, effectively removing it from the user's wallet.
-    *   **Transfer Fees**: Transferring waifus incurs a 10% (or 60% for affinity) tax.
-    *   **Decay**: An optional system to slowly decay balances of wealthy users to control inflation.
+    *   **Transfer Fees**: Transferring waifus incurs a **10%** (or **60%** if affinity matches) tax.
+    *   **Decay**: An automated system to slowly decay balances of wealthy users to control inflation.
 
 ## Database Schema
 
@@ -81,29 +84,36 @@ Users have a separate "Bank" account. This separation is useful for:
 
 ### 3. Gambling System
 The gambling module integrates deeply with the economy:
-*   **Provably Fair RNG**: Uses Python's `secrets` module for cryptographically secure random number generation, preventing prediction exploits.
-*   **Rakeback**: Tracks total losses per user and accumulates a 5% rebate, encouraging continued play even after losses.
-*   **Global Stats**: Tracks `GamblingStats` (global) and `UserBetStats` (per-user) to monitor the economy's health and game fairness.
+*   **Provably Fair RNG**: Uses Python's `secrets` module for cryptographically secure random number generation.
+*   **Rakeback**: Tracks total losses per user and accumulates a 5% rebate.
+*   **Global Stats**: Tracks `GamblingStats` (global) and `UserBetStats` (per-user) to monitor the economy's health.
 
 **Supported Games:**
-*   **Blackjack**: Full implementation with Hit/Stand logic and 2.5x payout for Natural 21.
-*   **Slots**: Multi-line payout logic matching Nadeko's original probability table.
-*   **Betroll**: Simple 1-100 roll (Win if 66+).
-*   **Lucky Ladder**: A high-risk, high-reward multiplier ladder.
-*   **Rock Paper Scissors**: PVP against the bot.
+*   **Blackjack**: Interactive game with Hit/Stand logic and **2.5x** payout for Natural 21.
+*   **Slots**: Multi-line payout logic matching Nadeko's original probability table (Jokers/Triples).
+*   **Betroll**: Simple 1-100 roll (Win if 66+). Payout: 2x.
+*   **Lucky Ladder**: A high-risk, high-reward game with 8 rungs. Multipliers range from 0.1x to **2.4x**.
+*   **Rock Paper Scissors**: PVP against the bot. Win 2x.
+*   **Betflip**: Coin flip guess. Payout: **1.95x**.
 
 ### 4. Waifu Economy
 Waifus act as unique assets that can be traded.
 *   **Claiming**: Users can claim others for a price.
-*   **Value Growth**: The price of a waifu generally increases as they are traded or gifted items.
-*   **Affinity**: Setting an affinity provides a discount on re-claiming but increases transfer taxes, adding strategic depth to "ownership."
+*   **Value Growth**: The price of a waifu increases as they are gifted items.
+*   **Affinity**: Setting an affinity provides a **20% discount** on claiming that user.
+*   **Transfer Logic**: Transferring a waifu incurs a tax, and the waifu's price is *reduced* by the tax amount, resetting their market value slightly.
 
 ### 5. Shop System
 The shop allows admins to sell:
-*   **Roles**: Automatically assigned upon purchase.
-*   **Commands**: (In development) Trigger custom commands.
-*   **XP Backgrounds**: Visual customization for the leveling system.
+*   **Roles**: Automatically assigned upon purchase (checks for requirements).
+*   **Items**: Added to user inventory.
+*   **XP Backgrounds**: Visual customization for the leveling system (`[p]xpshop`).
 *   **Nitro Shop**: Buy Discord Nitro Boost or Basic subscriptions.
+
+### 6. Currency Decay
+An optional anti-inflation system that decays balances over time.
+*   **Configurable**: Admins can set `decay_percent`, `decay_max_amount`, `decay_min_threshold`, and `decay_hour_interval`.
+*   **Scope**: Decays both wallet and bank balances if total wealth exceeds the threshold.
 
 ## Configuration
 
@@ -113,7 +123,8 @@ Admins can configure the economy via `[p]unicornia config` or by editing `unicor
 *   `currency_symbol`: Emoji/Symbol used in displays.
 *   `timely_amount`: Base amount for daily claims.
 *   `generation_chance`: Probability of currency spawning in chat (0.0-1.0).
-*   `decay_percent`: Percentage of wealth removed per interval (Anti-inflation).
+*   `decay_percent`: Percentage of wealth removed per interval.
+*   `gambling_min_bet` / `gambling_max_bet`: Betting limits.
 
 ## Migration Guide (Nadeko -> Unicornia)
 

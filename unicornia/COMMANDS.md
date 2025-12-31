@@ -21,13 +21,13 @@ Commands for configuring the Unicornia system.
 | `[p]unicornia guild currencyreward <level> <amount>` | Set a currency reward for reaching a specific level. | Admin |
 | `[p]unicornia guild listcurrencyrewards` | List all configured currency rewards. | Admin |
 | `[p]unicornia guild listrolerewards` | List all configured role rewards. | Admin |
-| `[p]unicornia blacklist` | Base command for blacklist management. Alias: `bl` | Admin/Manage Guild |
-| `[p]unicornia blacklist command add <command> [channel]` | Disable a command in a channel. Alias: `cmd add` | Admin/Manage Guild |
-| `[p]unicornia blacklist command remove <command> [channel]` | Re-enable a command in a channel. Alias: `cmd rm` | Admin/Manage Guild |
-| `[p]unicornia blacklist command list` | List blacklisted commands. Alias: `cmd list` | Admin/Manage Guild |
-| `[p]unicornia blacklist system add <system> [channel]` | Disable an entire system in a channel. Alias: `sys add` | Admin/Manage Guild |
-| `[p]unicornia blacklist system remove <system> [channel]` | Re-enable a system in a channel. Alias: `sys rm` | Admin/Manage Guild |
-| `[p]unicornia blacklist system list` | List blacklisted systems. Alias: `sys list` | Admin/Manage Guild |
+| `[p]unicornia whitelist` | Base command for whitelist management. Alias: `wl` | Admin/Manage Guild |
+| `[p]unicornia whitelist command add <command> [channel]` | Restrict a command to a channel. Alias: `cmd add` | Admin/Manage Guild |
+| `[p]unicornia whitelist command remove <command> [channel]` | Remove restriction for a command in a channel. Alias: `cmd rm` | Admin/Manage Guild |
+| `[p]unicornia whitelist command list` | List whitelisted commands. Alias: `cmd list` | Admin/Manage Guild |
+| `[p]unicornia whitelist system add <system> [channel]` | Restrict an entire system to a channel. Alias: `sys add` | Admin/Manage Guild |
+| `[p]unicornia whitelist system remove <system> [channel]` | Remove restriction for a system in a channel. Alias: `sys rm` | Admin/Manage Guild |
+| `[p]unicornia whitelist system list` | List whitelisted systems. Alias: `sys list` | Admin/Manage Guild |
 
 ## Clubs
 Social groups that users can join, level up, and manage.

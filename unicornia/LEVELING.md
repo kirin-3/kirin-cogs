@@ -15,7 +15,7 @@ The system is designed for scale, handling high-traffic servers without blocking
 1.  **Event**: A user sends a message or joins a voice channel.
 2.  **Validation**:
     *   **Global Toggle**: Checks if XP is enabled via global config.
-    *   **Cooldown**: Verifies the user isn't on cooldown (Default: 180s, Configurable).
+    *   **Cooldown**: Verifies the user isn't on cooldown (Default: 60s, Configurable).
     *   **Whitelist Check**: **Critical**: XP is **Whitelist Only**. The channel (or its parent Category/Thread) MUST be in the `xp_included_channels` list.
     *   **Role Exclusion**: Checks if the user has any excluded roles.
 3.  **Calculation**:
@@ -29,7 +29,7 @@ The system is designed for scale, handling high-traffic servers without blocking
 ## Performance Optimization
 
 ### 1. Write-Back Buffering
-Database writes are the most expensive operation. By buffering XP gains in memory (`self.xp_buffer`) and flushing them in batches, we reduce thousands of potential DB write operations per minute into a single bulk operation.
+Database writes are the most expensive operation. By buffering XP gains in memory (`self.xp_buffer`) and flushing them in batches every 30 seconds, we reduce thousands of potential DB write operations per minute into a single bulk operation.
 
 ### 2. LRU Caching
 A Least Recently Used (LRU) cache (`self.user_xp_cache`) stores the level stats of active users.
@@ -47,6 +47,7 @@ The system generates dynamic images showing a user's progress.
 *   **Animated GIFs**: Supports animated backgrounds (rendering frame-by-frame).
 *   **Club Integration**: Displays the user's club icon and name if they belong to one.
 *   **Font Fallback**: robust handling of special characters (Unicode/Emoji) using fallback fonts (Noto Sans, DejaVu, etc.).
+*   **Progress Bar**: Visual skewed bar indicating progress to next level.
 
 ### 2. Voice XP
 A background task (`_voice_xp_loop`) awards XP every minute to users in voice channels.
@@ -116,6 +117,7 @@ The `XpCardGenerator` uses **Pillow (PIL)** for rendering.
 *   **Thread Execution**: The heavy image processing (compositing, text drawing) runs in a separate thread executor to prevent blocking the bot's event loop.
 *   **SSRF Protection**: Image downloads are validated to prevent Server-Side Request Forgery attacks.
 *   **Local Caching**: Downloaded images are cached in memory (LRU) to reduce bandwidth.
+*   **Animated Support**: Deconstructs GIFs into frames, applies overlay to each frame, and reconstructs the GIF.
 
 ## Configuration Files
 

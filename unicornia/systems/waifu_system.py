@@ -118,26 +118,16 @@ class WaifuSystem:
         current_price = waifu[2]
         affinity_id = waifu[3]
         
-        # Calculate fee
-        # 10% fee normally, 60% if affinity
-        fee_percent = 0.60 if affinity_id == user.id else 0.10
-        fee = int(current_price * fee_percent)
+        # Fee removed as per request
+        fee = 0
         
-        # Check balance
-        user_balance = await self.db.economy.get_user_currency(user.id)
-        if user_balance < fee:
-            return False, f"Insufficient currency. Transfer fee is {fee} ({(fee_percent*100):.0f}% of value)."
-            
-        # Deduct fee
-        await self.db.economy.remove_currency(user.id, fee, "waifu_transfer", f"Transfer waifu {waifu_id} to {new_owner.id}")
-        
-        # New price
-        new_price = max(1, current_price - fee) # Transferred waifu's price will be reduced by the fee amount.
+        # New price remains the same (no fee reduction)
+        new_price = current_price
         
         # Perform transfer
         await self.db.waifu.transfer_waifu(waifu_id, new_owner.id, new_price)
         
-        return True, f"Successfully transferred waifu to {new_owner.display_name}. Fee paid: {fee}. New price: {new_price}."
+        return True, f"Successfully transferred waifu to {new_owner.display_name}."
 
     async def reset_waifu(self, waifu_id: int) -> Tuple[bool, str]:
         """Admin reset waifu.

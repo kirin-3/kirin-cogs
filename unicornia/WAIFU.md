@@ -7,7 +7,7 @@ The Unicornia Waifu System is a trading game where users can "claim" each other 
 ### 1. Claiming
 *   **Base Price**: Every unclaimed user starts with a price of **50** Slut points.
 *   **Buying**: To claim a user, you must pay their current price.
-*   **Profit**: When you buy a waifu from another user, the previous owner receives the payment, often resulting in a profit if the waifu's value increased.
+*   **Force Claim**: You can claim a waifu owned by someone else by paying **120%** of their current price. The previous owner receives this payment.
 
 ### 2. Affinity
 Users can set an "affinity" towards another user (`[p]waifu affinity @user`). This signifies a special interest or relationship.
@@ -16,13 +16,12 @@ Users can set an "affinity" towards another user (`[p]waifu affinity @user`). Th
 
 ### 3. Gifts and Value
 You can increase (or decrease) a waifu's market value by giving them gifts (`[p]waifu gift`).
-*   **Value Calculation**: Most gifts increase the waifu's price by roughly 90% of the gift's cost. Some items (like "Potato") decrease the value.
+*   **Value Calculation**: Gifts increase the waifu's price by roughly **90%** of the gift's cost. Some items (like "Potato") decrease the value.
 *   **Inventory**: Gifts are stored in the waifu's inventory and are permanent additions to their value profile.
 
 ### 4. Transfer & Taxes
 You can transfer ownership of a waifu to another user (`[p]waifu transfer`).
-*   **Standard Tax**: Transfers incur a **10% fee** (deducted from your wallet).
-*   **Affinity Tax**: If the waifu has an affinity for you, the transfer fee jumps to **60%**. This discourages "trading away" someone who likes you.
+*   **No Tax**: Transfers are free. There is no fee or price reduction.
 
 ### 5. Divorce and Reset
 *   **Divorce**: You can free a waifu you own (`[p]waifu divorce`). They become unclaimed, but their price remains.
