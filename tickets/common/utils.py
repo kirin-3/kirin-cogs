@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from collections import defaultdict
 from contextlib import suppress
 from datetime import datetime
@@ -92,10 +93,16 @@ async def close_ticket(
     closed = int(datetime.now().timestamp())
     closer_name = escape_markdown(closedby)
 
+    color = discord.Color.green()
+    if status == "Not Verified":
+        color = discord.Color.red()
+
+    ticket_num = re.search(r"\d+", channel.name)
+    title = f"Ticket Closed #{ticket_num.group()}" if ticket_num else "Ticket Closed"
+
     embed = discord.Embed(
-        title="Ticket Closed",
-        color=discord.Color.green(),
-        timestamp=datetime.now(),
+        title=title,
+        color=color,
     )
     embed.add_field(name="Created by", value=f"{member.display_name} ({member.name})", inline=True)
     embed.add_field(name="User ID", value=str(member.id), inline=True)

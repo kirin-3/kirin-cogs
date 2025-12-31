@@ -29,7 +29,6 @@ DEFAULT_GUILD = {
     
     # Legacy / Optional
     "required_roles": [],
-    "close_reason": True,
     
     # Active Tickets
     "opened": {},  # All opened tickets {user_id: {channel_id: ticket_data}}

@@ -189,54 +189,39 @@ class VerificationStatusView(View):
         self.owner_id = owner_id
         self.channel = channel
         self.conf = conf
-        
-        self.select = discord.ui.Select(
-            placeholder="Select Verification Status",
-            min_values=1,
-            max_values=1,
-            options=[
-                discord.SelectOption(label="Verified", value="Verified", emoji="✅"),
-                discord.SelectOption(label="Not Verified", value="Not Verified", emoji="❌"),
-            ]
+
+    @discord.ui.button(label="Verified", style=ButtonStyle.success, emoji="✅")
+    async def verified(self, interaction: Interaction, button: Button):
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("Closing...", ephemeral=True)
+
+        owner = self.channel.guild.get_member(int(self.owner_id))
+        if not owner:
+            owner = await self.bot.fetch_user(int(self.owner_id))
+
+        await close_ticket(
+            bot=self.bot,
+            member=owner,
+            guild=self.channel.guild,
+            channel=self.channel,
+            conf=self.conf,
+            reason="Verified",
+            closedby=interaction.user.name,
+            config=self.config,
+            status="Verified",
         )
-        self.select.callback = self.select_callback
-        self.add_item(self.select)
 
-    async def select_callback(self, interaction: Interaction):
-        if not self.select.values:
-            return
-        status = self.select.values[0]
-        requires_reason = self.conf.get("close_reason", True)
-        
-        if requires_reason:
-            modal = CloseReasonModal(
-                self.bot,
-                self.config,
-                self.owner_id,
-                self.channel,
-                self.conf,
-                status
-            )
-            await interaction.response.send_modal(modal)
-        else:
-            await interaction.response.defer(ephemeral=True)
-            await interaction.followup.send("Closing...", ephemeral=True)
-            
-            owner = self.channel.guild.get_member(int(self.owner_id))
-            if not owner:
-                owner = await self.bot.fetch_user(int(self.owner_id))
-
-            await close_ticket(
-                bot=self.bot,
-                member=owner,
-                guild=self.channel.guild,
-                channel=self.channel,
-                conf=self.conf,
-                reason=None,
-                closedby=interaction.user.name,
-                config=self.config,
-                status=status,
-            )
+    @discord.ui.button(label="Not Verified", style=ButtonStyle.danger, emoji="❌")
+    async def not_verified(self, interaction: Interaction, button: Button):
+        modal = CloseReasonModal(
+            self.bot,
+            self.config,
+            self.owner_id,
+            self.channel,
+            self.conf,
+            "Not Verified",
+        )
+        await interaction.response.send_modal(modal)
 
 
 class CloseView(View):
