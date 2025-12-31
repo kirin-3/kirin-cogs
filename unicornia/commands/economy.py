@@ -1,7 +1,7 @@
 import discord
 from redbot.core import commands, checks, app_commands
 from redbot.core.utils.views import SimpleMenu
-from typing import Optional
+from typing import Optional, Union
 from ..utils import validate_text_input
 from ..views import LeaderboardView, BalanceActions
 
@@ -382,18 +382,29 @@ class EconomyCommands:
         """Bank commands for storing currency"""
         pass
     
-    @bank_group.command(name="deposit", aliases=["dep"])
-    async def bank_deposit(self, ctx, amount: int):
+    @bank_group.command(name="deposit", aliases=["dep", "d"])
+    async def bank_deposit(self, ctx, amount: Union[int, str]):
         """Deposit Slut points into your bank account"""
-        if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
-            return
-        
-        if amount <= 0:
-            await ctx.send("❌ Amount must be positive.")
-            return
-        
         try:
+            if not await self.config.economy_enabled():
+                await ctx.send("❌ Economy system is disabled.")
+                return
+            
+            if isinstance(amount, str):
+                if amount.lower() == "all":
+                    wallet, _ = await self.economy_system.get_balance(ctx.author.id)
+                    amount = wallet
+                    if amount <= 0:
+                        await ctx.send("❌ You don't have anything in your wallet to deposit.")
+                        return
+                else:
+                    await ctx.send("❌ Invalid amount. Please use a number or 'all'.")
+                    return
+
+            if amount <= 0:
+                await ctx.send("❌ Amount must be positive.")
+                return
+            
             success = await self.economy_system.deposit_bank(ctx.author.id, amount)
             if success:
                 currency_symbol = await self.config.currency_symbol()
@@ -405,18 +416,29 @@ class EconomyCommands:
         except Exception as e:
             await ctx.send(f"❌ Error depositing Slut points: {e}")
     
-    @bank_group.command(name="withdraw", aliases=["with"])
-    async def bank_withdraw(self, ctx, amount: int):
+    @bank_group.command(name="withdraw", aliases=["with", "w"])
+    async def bank_withdraw(self, ctx, amount: Union[int, str]):
         """Withdraw Slut points from your bank account"""
-        if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
-            return
-        
-        if amount <= 0:
-            await ctx.send("❌ Amount must be positive.")
-            return
-        
         try:
+            if not await self.config.economy_enabled():
+                await ctx.send("❌ Economy system is disabled.")
+                return
+            
+            if isinstance(amount, str):
+                if amount.lower() == "all":
+                    _, bank = await self.economy_system.get_balance(ctx.author.id)
+                    amount = bank
+                    if amount <= 0:
+                        await ctx.send("❌ You don't have anything in your bank to withdraw.")
+                        return
+                else:
+                    await ctx.send("❌ Invalid amount. Please use a number or 'all'.")
+                    return
+
+            if amount <= 0:
+                await ctx.send("❌ Amount must be positive.")
+                return
+            
             success = await self.economy_system.withdraw_bank(ctx.author.id, amount)
             if success:
                 currency_symbol = await self.config.currency_symbol()
