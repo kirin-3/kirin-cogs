@@ -3,7 +3,7 @@ Economy and currency system for Unicornia
 """
 
 import discord
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 from redbot.core import commands
 from redbot.core.utils.chat_formatting import humanize_number
 from ..database import DatabaseManager
