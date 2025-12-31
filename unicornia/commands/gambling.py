@@ -296,7 +296,7 @@ class GamblingCommands:
         except Exception as e:
             await ctx.reply(f"❌ Error in lucky ladder: {e}", mention_author=False)
 
-    @gambling_group.command(name="mines")
+    @gambling_group.command(name="mines", aliases=["minesweeper"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet", mines="Number of mines (1-19)")
     async def gambling_mines(self, ctx, amount: Optional[str] = None, mines: int = 3):

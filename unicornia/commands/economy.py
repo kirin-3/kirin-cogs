@@ -383,21 +383,23 @@ class EconomyCommands:
         pass
     
     @bank_group.command(name="deposit", aliases=["dep", "d"])
-    async def bank_deposit(self, ctx, amount: Union[int, str]):
+    async def bank_deposit(self, ctx, amount: str):
         """Deposit Slut points into your bank account"""
         try:
             if not await self.config.economy_enabled():
                 await ctx.send("❌ Economy system is disabled.")
                 return
             
-            if isinstance(amount, str):
-                if amount.lower() == "all":
-                    wallet, _ = await self.economy_system.get_balance(ctx.author.id)
-                    amount = wallet
-                    if amount <= 0:
-                        await ctx.send("❌ You don't have anything in your wallet to deposit.")
-                        return
-                else:
+            if amount.lower() == "all":
+                wallet, _ = await self.economy_system.get_balance(ctx.author.id)
+                amount = wallet
+                if amount <= 0:
+                    await ctx.send("❌ You don't have anything in your wallet to deposit.")
+                    return
+            else:
+                try:
+                    amount = int(amount.replace(",", ""))
+                except ValueError:
                     await ctx.send("❌ Invalid amount. Please use a number or 'all'.")
                     return
 
@@ -417,21 +419,23 @@ class EconomyCommands:
             await ctx.send(f"❌ Error depositing Slut points: {e}")
     
     @bank_group.command(name="withdraw", aliases=["with", "w"])
-    async def bank_withdraw(self, ctx, amount: Union[int, str]):
+    async def bank_withdraw(self, ctx, amount: str):
         """Withdraw Slut points from your bank account"""
         try:
             if not await self.config.economy_enabled():
                 await ctx.send("❌ Economy system is disabled.")
                 return
             
-            if isinstance(amount, str):
-                if amount.lower() == "all":
-                    _, bank = await self.economy_system.get_balance(ctx.author.id)
-                    amount = bank
-                    if amount <= 0:
-                        await ctx.send("❌ You don't have anything in your bank to withdraw.")
-                        return
-                else:
+            if amount.lower() == "all":
+                _, bank = await self.economy_system.get_balance(ctx.author.id)
+                amount = bank
+                if amount <= 0:
+                    await ctx.send("❌ You don't have anything in your bank to withdraw.")
+                    return
+            else:
+                try:
+                    amount = int(amount.replace(",", ""))
+                except ValueError:
                     await ctx.send("❌ Invalid amount. Please use a number or 'all'.")
                     return
 
