@@ -1,0 +1,9 @@
+{
+    "author": ["Kilo Code"],
+    "name": "Profile",
+    "short": "Create and manage user profiles with sticky messages.",
+    "description": "Asks user a series of questions to create a profile embed in a specified channel. Uses sticky messages to keep the creation button accessible.",
+    "requirements": [],
+    "tags": ["profile", "social", "sticky"],
+    "min_bot_version": "3.5.0"
+}
