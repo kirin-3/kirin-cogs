@@ -270,6 +270,14 @@ class Unicornia(
         if not ctx.guild:
             return True
 
+        # Exception for 'pick' command: Allow if in a generation channel
+        # This ensures users can always pick up currency where it spawns,
+        # regardless of restrictive system whitelists.
+        if ctx.command.name == 'pick':
+             gen_channels = await self.config.generation_channels()
+             if ctx.channel.id in gen_channels:
+                 return True
+
         # 1. Check Command Whitelist (Specific Rule Overrides General)
         command_whitelist = await self.config.guild(ctx.guild).command_whitelist()
         to_check = ctx.command

@@ -80,7 +80,7 @@ class CurrencyGeneration:
         amount = random.randint(self.gen_min, self.gen_max)
         
         # Store the plant for pickup (no password)
-        await self._create_plant(message.guild.id, message.channel.id, amount)
+        plant_id = await self._create_plant(message.guild.id, message.channel.id, amount)
         
         # Get random image
         cog_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -94,39 +94,54 @@ class CurrencyGeneration:
         
         msg_content = f"A wild {amount}{self.currency_symbol} has appeared! Pick them up by typing `&pick`"
         
+        sent_message = None
         if image_file:
             image_path = os.path.join(images_dir, image_file)
             try:
                 file = discord.File(image_path, filename="currency.png")
-                await message.channel.send(content=msg_content, file=file)
+                sent_message = await message.channel.send(content=msg_content, file=file)
             except Exception as e:
                 print(f"Error sending currency generation image: {e}")
-                await message.channel.send(content=msg_content)
+                sent_message = await message.channel.send(content=msg_content)
         else:
-            await message.channel.send(content=msg_content)
+            sent_message = await message.channel.send(content=msg_content)
+            
+        if sent_message:
+            await self._update_plant_message_id(plant_id, sent_message.id)
 
         # Update cooldown
         self.generation_cooldowns[user_id] = current_time
     
-    async def _create_plant(self, guild_id: int, channel_id: int, amount: int):
+    async def _create_plant(self, guild_id: int, channel_id: int, amount: int) -> int:
         """Create a currency plant"""
         async with self.db._get_connection() as db:
             await self.db._setup_wal_mode(db)
-            await db.execute("""
+            cursor = await db.execute("""
                 INSERT INTO PlantedCurrency (GuildId, ChannelId, Amount, Password)
                 VALUES (?, ?, ?, ?)
             """, (guild_id, channel_id, amount, "")) # Empty password
+            plant_id = cursor.lastrowid
+            await db.commit()
+            return plant_id
+            
+    async def _update_plant_message_id(self, plant_id: int, message_id: int):
+        """Update the message ID for a plant"""
+        async with self.db._get_connection() as db:
+            await self.db._setup_wal_mode(db)
+            await db.execute("""
+                UPDATE PlantedCurrency SET MessageId = ? WHERE Id = ?
+            """, (message_id, plant_id))
             await db.commit()
     
-    async def pick_plant(self, user_id: int, channel_id: int) -> Optional[int]:
-        """Pick up the last currency plant in the channel"""
+    async def pick_plant(self, user_id: int, channel_id: int) -> Optional[tuple[int, Optional[int]]]:
+        """Pick up the last currency plant in the channel. Returns (amount, message_id)."""
         async with self.db._get_connection() as db:
             await self.db._setup_wal_mode(db)
             
             try:
                 # Find the last plant in this channel
                 cursor = await db.execute("""
-                    SELECT Id, Amount FROM PlantedCurrency
+                    SELECT Id, Amount, MessageId FROM PlantedCurrency
                     WHERE ChannelId = ?
                     ORDER BY Id DESC LIMIT 1
                 """, (channel_id,))
@@ -135,7 +150,7 @@ class CurrencyGeneration:
                 if not plant:
                     return None
                 
-                plant_id, amount = plant
+                plant_id, amount, message_id = plant
                 
                 # Remove the plant (Atomic check using rowcount)
                 cursor = await db.execute("DELETE FROM PlantedCurrency WHERE Id = ?", (plant_id,))
@@ -163,7 +178,7 @@ class CurrencyGeneration:
                     """, (user_id, amount, "plant_pick", str(plant_id), f"Picked plant {plant_id}"))
                 
                 await db.commit()
-                return amount
+                return amount, message_id
                 
             except Exception:
                 await db.execute("ROLLBACK")

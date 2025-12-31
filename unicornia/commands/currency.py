@@ -17,10 +17,22 @@ class CurrencyCommands:
             return
         
         try:
-            amount = await self.currency_generation.pick_plant(ctx.author.id, ctx.channel.id)
-            if amount:
+            result = await self.currency_generation.pick_plant(ctx.author.id, ctx.channel.id)
+            if result:
+                amount, message_id = result
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"✅ You picked up {amount}{currency_symbol}!")
+                # Auto-delete confirmation after 30 seconds
+                await ctx.send(f"✅ You picked up {amount}{currency_symbol}!", delete_after=30)
+                
+                # Delete original message if ID exists
+                if message_id:
+                    try:
+                        msg = await ctx.channel.fetch_message(message_id)
+                        await msg.delete()
+                    except (discord.NotFound, discord.Forbidden):
+                        pass # Already deleted or no permissions
+                    except Exception:
+                        pass # Ignore other errors
             else:
                 await ctx.send("❌ No currency to pick up here.")
                 
