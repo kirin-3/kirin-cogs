@@ -763,6 +763,7 @@ class MinesView(ui.View):
         self.finished = False
         self.message = None
         self.current_multiplier = 1.0
+        self.end_time = discord.utils.utcnow().timestamp() + 120
         
         # Init grid
         self._init_grid()
@@ -777,6 +778,14 @@ class MinesView(ui.View):
             
         # Cashout button (Row 4)
         cashout_btn = ui.Button(style=discord.ButtonStyle.success, label="Cash Out", row=4, custom_id="cashout")
+        
+        # Try to parse currency symbol as emoji
+        try:
+            cashout_btn.emoji = discord.PartialEmoji.from_str(self.currency_symbol)
+        except:
+            # Fallback if not a valid emoji string
+            pass
+            
         cashout_btn.callback = self.cashout_callback
         self.add_item(cashout_btn)
         
@@ -869,11 +878,14 @@ class MinesView(ui.View):
         # Update Cashout Button
         payout = int(self.amount * self.current_multiplier)
         cashout_btn = [x for x in self.children if x.custom_id == "cashout"][0]
-        cashout_btn.label = f"Cash Out {self.currency_symbol}{payout:,}"
+        # Only show amount in label, emoji is separate
+        cashout_btn.label = f"Cash Out {humanize_number(payout)}"
         cashout_btn.disabled = False
         
-        # Update Message
-        await interaction.response.edit_message(content=f"**Mines** | Multiplier: **{self.current_multiplier:.2f}x** | Next Payout: {self.currency_symbol}{payout:,}", view=self)
+        # Update Message with Timer
+        timer_str = f"<t:{int(self.end_time)}:R>"
+        msg = f"**Mines** | Multiplier: **{self.current_multiplier:.2f}x** | Next Payout: {self.currency_symbol}{humanize_number(payout)}\nTime remaining: {timer_str}"
+        await interaction.response.edit_message(content=msg, view=self)
 
     async def cashout_callback(self, interaction: discord.Interaction):
         await self.game_over(interaction, True)

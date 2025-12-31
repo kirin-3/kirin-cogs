@@ -576,4 +576,5 @@ class GamblingSystem:
         view = MinesView(ctx, self, user_id, amount, mines_indices, 20, currency_symbol)
         
         # Send message
-        await ctx.send(f"**Mines** | Bet: {currency_symbol}{amount:,} | Mines: {mines}\nClick the buttons to reveal safe spots 💎. Avoid the mines 💣!", view=view)
+        timer_str = f"<t:{int(view.end_time)}:R>"
+        await ctx.send(f"**Mines** | Bet: {currency_symbol}{amount:,} | Mines: {mines}\nClick the buttons to reveal safe spots 💎. Avoid the mines 💣!\nTime remaining: {timer_str}", view=view)
