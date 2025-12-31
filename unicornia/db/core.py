@@ -113,8 +113,8 @@ class CoreDB:
                     AvatarId TEXT,
                     ClubId INTEGER,
                     IsClubAdmin INTEGER DEFAULT 0,
-                    TotalXp INTEGER DEFAULT 0,
-                    CurrencyAmount INTEGER DEFAULT 0
+                    TotalXp INTEGER DEFAULT 0 CHECK (TotalXp >= 0),
+                    CurrencyAmount INTEGER DEFAULT 0 CHECK (CurrencyAmount >= 0)
                 )
             """)
             
@@ -122,7 +122,7 @@ class CoreDB:
                 CREATE TABLE IF NOT EXISTS UserXpStats (
                     UserId INTEGER,
                     GuildId INTEGER,
-                    Xp INTEGER DEFAULT 0,
+                    Xp INTEGER DEFAULT 0 CHECK (Xp >= 0),
                     PRIMARY KEY (UserId, GuildId)
                 )
             """)
@@ -134,7 +134,7 @@ class CoreDB:
                     ChannelId INTEGER,
                     UserId INTEGER,
                     MessageId INTEGER,
-                    Amount INTEGER,
+                    Amount INTEGER CHECK (Amount > 0),
                     Password TEXT
                 )
             """)
@@ -169,7 +169,7 @@ class CoreDB:
             await db.execute("""
             CREATE TABLE IF NOT EXISTS BankUsers (
                 UserId INTEGER PRIMARY KEY,
-                Balance INTEGER NOT NULL DEFAULT 0
+                Balance INTEGER NOT NULL DEFAULT 0 CHECK (Balance >= 0)
             )
             """)
             
@@ -177,9 +177,9 @@ class CoreDB:
             await db.execute("""
             CREATE TABLE IF NOT EXISTS GamblingStats (
                 Feature TEXT PRIMARY KEY,
-                BetAmount INTEGER NOT NULL DEFAULT 0,
-                WinAmount INTEGER NOT NULL DEFAULT 0,
-                LossAmount INTEGER NOT NULL DEFAULT 0
+                BetAmount INTEGER NOT NULL DEFAULT 0 CHECK (BetAmount >= 0),
+                WinAmount INTEGER NOT NULL DEFAULT 0 CHECK (WinAmount >= 0),
+                LossAmount INTEGER NOT NULL DEFAULT 0 CHECK (LossAmount >= 0)
             )
             """)
             
@@ -189,10 +189,10 @@ class CoreDB:
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 UserId INTEGER NOT NULL,
                 Game TEXT NOT NULL,
-                BetAmount INTEGER NOT NULL DEFAULT 0,
-                WinAmount INTEGER NOT NULL DEFAULT 0,
-                LossAmount INTEGER NOT NULL DEFAULT 0,
-                MaxWin INTEGER NOT NULL DEFAULT 0,
+                BetAmount INTEGER NOT NULL DEFAULT 0 CHECK (BetAmount >= 0),
+                WinAmount INTEGER NOT NULL DEFAULT 0 CHECK (WinAmount >= 0),
+                LossAmount INTEGER NOT NULL DEFAULT 0 CHECK (LossAmount >= 0),
+                MaxWin INTEGER NOT NULL DEFAULT 0 CHECK (MaxWin >= 0),
                 UNIQUE(UserId, Game)
             )
             """)
@@ -236,7 +236,7 @@ class CoreDB:
                 Description TEXT,
                 ImageUrl TEXT DEFAULT '',
                 BannerUrl TEXT DEFAULT '',
-                Xp INTEGER DEFAULT 0,
+                Xp INTEGER DEFAULT 0 CHECK (Xp >= 0),
                 OwnerId INTEGER,
                 DateAdded TEXT DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(Name)
@@ -279,7 +279,7 @@ class CoreDB:
             await db.execute("""
             CREATE TABLE IF NOT EXISTS Rakeback (
                 UserId INTEGER PRIMARY KEY,
-                RakebackBalance INTEGER NOT NULL DEFAULT 0
+                RakebackBalance INTEGER NOT NULL DEFAULT 0 CHECK (RakebackBalance >= 0)
             )
             """)
             
@@ -298,13 +298,13 @@ class CoreDB:
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     GuildId INTEGER,
                     `Index` INTEGER,
-                    Price INTEGER,
+                    Price INTEGER CHECK (Price >= 0),
                     Name TEXT,
                     AuthorId INTEGER,
                     Type INTEGER,
                     RoleName TEXT,
                     RoleId INTEGER,
-                    RoleRequirement INTEGER,
+                    RoleRequirement INTEGER CHECK (RoleRequirement >= 0),
                     Command TEXT
                 )
             """)
@@ -324,7 +324,7 @@ class CoreDB:
                     WaifuId INTEGER PRIMARY KEY,
                     ClaimerId INTEGER,
                     Affinity INTEGER,
-                    Price INTEGER DEFAULT 50,
+                    Price INTEGER DEFAULT 50 CHECK (Price >= 0),
                     DateAdded TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -357,7 +357,7 @@ class CoreDB:
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     XpSettingsId INTEGER,
                     Level INTEGER,
-                    Amount INTEGER
+                    Amount INTEGER CHECK (Amount > 0)
                 )
             """)
             
@@ -377,7 +377,7 @@ class CoreDB:
                 UserId INTEGER,
                 GuildId INTEGER,
                 ShopEntryId INTEGER,
-                Quantity INTEGER DEFAULT 1,
+                Quantity INTEGER DEFAULT 1 CHECK (Quantity > 0),
                 DateAdded TEXT DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (UserId, GuildId, ShopEntryId),
                 FOREIGN KEY (ShopEntryId) REFERENCES ShopEntry(Id) ON DELETE CASCADE
@@ -509,7 +509,6 @@ class CoreDB:
 
     async def migrate_from_nadeko(self):
         """Migrate data from existing Nadeko database"""
-        # Try multiple possible paths for Nadeko database
         possible_paths = [
             self.nadeko_db_path,
             "/data/nadeko.db",
@@ -518,447 +517,89 @@ class CoreDB:
             "data/nadeko/nadeko.db"
         ]
         
-        nadeko_db_path = None
-        for path in possible_paths:
-            if path and Path(path).exists():
-                nadeko_db_path = path
-                break
+        nadeko_db_path = next((path for path in possible_paths if path and Path(path).exists()), None)
         
         if not nadeko_db_path:
-            log.info("No Nadeko database found in any of the expected locations, skipping migration")
-            log.info(f"Searched paths: {possible_paths}")
+            log.info("No Nadeko database found, skipping migration.")
             return
-        
+
         log.info(f"Starting migration from Nadeko database at {nadeko_db_path}...")
         
         try:
-            async with aiosqlite.connect(nadeko_db_path) as nadeko_db:
-                # Check database size first
-                cursor = await nadeko_db.execute("SELECT COUNT(*) FROM DiscordUser")
-                user_count = (await cursor.fetchone())[0]
-                log.info(f"Found {user_count} users to migrate from DiscordUser table")
+            async with aiosqlite.connect(nadeko_db_path) as nadeko_db, self._get_connection() as db:
+                # Use a single transaction for the entire migration for atomicity
+                await db.execute("BEGIN")
                 
-                # Migrate DiscordUser data with batch processing
-                migrated_users = 0
-                batch_size = 1000
-                batch_data = []
-                
-                async with nadeko_db.execute("SELECT UserId, Username, AvatarId, TotalXp, CurrencyAmount, ClubId, IsClubAdmin FROM DiscordUser") as cursor:
-                    async for row in cursor:
-                        # row = (user_id, username, avatar_id, total_xp, currency_amount, club_id, is_club_admin)
-                        batch_data.append(row)
-                        migrated_users += 1
+                try:
+                    # Helper to execute batch migration for a table
+                    async def batch_migrate(table_name, select_query, insert_query, params_transform=None):
+                        log.info(f"Migrating {table_name}...")
+                        data = []
+                        async with nadeko_db.execute(select_query) as cursor:
+                            async for row in cursor:
+                                data.append(params_transform(row) if params_transform else row)
                         
-                        # Process batch when it reaches batch_size
-                        if len(batch_data) >= batch_size:
-                            async with self._get_connection() as db:
-                                await db.executemany("""
-                                    INSERT OR REPLACE INTO DiscordUser (UserId, Username, AvatarId, TotalXp, CurrencyAmount, ClubId, IsClubAdmin)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                                """, batch_data)
-                                await db.commit()
-                            log.info(f"Migrated {migrated_users}/{user_count} users...")
-                            batch_data.clear()
-                
-                # Process remaining batch
-                if batch_data:
-                    async with self._get_connection() as db:
-                        await db.executemany("""
-                            INSERT OR REPLACE INTO DiscordUser (UserId, Username, AvatarId, TotalXp, CurrencyAmount, ClubId, IsClubAdmin)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """, batch_data)
-                        await db.commit()
-                
-                log.info(f"Completed DiscordUser migration: {migrated_users} users")
-                
-                # Migrate UserXpStats data
-                cursor = await nadeko_db.execute("SELECT COUNT(*) FROM UserXpStats")
-                xp_count = (await cursor.fetchone())[0]
-                log.info(f"Found {xp_count} XP stats to migrate from UserXpStats table")
-                
-                migrated_xp = 0
-                batch_data = []
-                
-                async with nadeko_db.execute("SELECT UserId, GuildId, Xp FROM UserXpStats") as cursor:
-                    async for row in cursor:
-                        user_id, guild_id, xp = row
-                        batch_data.append((user_id, guild_id, xp))
-                        migrated_xp += 1
-                        
-                        # Process batch when it reaches batch_size
-                        if len(batch_data) >= batch_size:
-                            async with self._get_connection() as db:
-                                await db.executemany("""
-                                    INSERT OR REPLACE INTO UserXpStats (UserId, GuildId, Xp)
-                                    VALUES (?, ?, ?)
-                                """, batch_data)
-                                await db.commit()
-                            log.info(f"Migrated {migrated_xp}/{xp_count} XP stats...")
-                            batch_data.clear()
-                
-                # Process remaining batch
-                if batch_data:
-                    async with self._get_connection() as db:
-                        await db.executemany("""
-                            INSERT OR REPLACE INTO UserXpStats (UserId, GuildId, Xp)
-                            VALUES (?, ?, ?)
-                        """, batch_data)
-                        await db.commit()
-                
-                log.info(f"Completed UserXpStats migration: {migrated_xp} entries")
-                
-                # Migrate BankUsers data
-                async with nadeko_db.execute("SELECT UserId, Balance FROM BankUsers") as cursor:
-                    async for row in cursor:
-                        user_id, balance = row
-                        async with self._get_connection() as db:
-                            await db.execute("""
-                                INSERT OR REPLACE INTO BankUsers (UserId, Balance)
-                                VALUES (?, ?)
-                            """, (user_id, balance))
-                            await db.commit()
-                
-                # Migrate PlantedCurrency data
-                async with nadeko_db.execute("SELECT GuildId, ChannelId, UserId, MessageId, Amount, Password FROM PlantedCurrency") as cursor:
-                    async for row in cursor:
-                        guild_id, channel_id, user_id, message_id, amount, password = row
-                        async with self._get_connection() as db:
-                            await db.execute("""
-                                INSERT OR REPLACE INTO PlantedCurrency (GuildId, ChannelId, UserId, MessageId, Amount, Password)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                            """, (guild_id, channel_id, user_id, message_id, amount, password))
-                            await db.commit()
-                
-                # Migrate ShopEntry data (if exists)
-                try:
-                    async with nadeko_db.execute("SELECT Id, GuildId, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command FROM ShopEntry") as cursor:
-                        async for row in cursor:
-                            entry_id, guild_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command = row
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO ShopEntry (Id, GuildId, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                """, (entry_id, guild_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command))
-                                await db.commit()
-                except Exception as e:
-                    log.info(f"ShopEntry table not found or empty: {e}")
-                
-                # Migrate ShopEntryItem data (if exists)
-                try:
-                    async with nadeko_db.execute("SELECT Id, ShopEntryId, Text FROM ShopEntryItem") as cursor:
-                        async for row in cursor:
-                            item_id, shop_entry_id, text = row
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO ShopEntryItem (Id, ShopEntryId, Text)
-                                    VALUES (?, ?, ?)
-                                """, (item_id, shop_entry_id, text))
-                                await db.commit()
-                except Exception as e:
-                    log.info(f"ShopEntryItem table not found or empty: {e}")
-                
-                # Migrate XpCurrencyReward data (if exists)
-                try:
-                    # Join with XpSettings to get GuildId
-                    query = """
-                        SELECT xcr.Id, xs.GuildId, xcr.Level, xcr.Amount 
-                        FROM XpCurrencyReward xcr
-                        JOIN XpSettings xs ON xcr.XpSettingsId = xs.Id
-                    """
-                    async with nadeko_db.execute(query) as cursor:
-                        async for row in cursor:
-                            reward_id, guild_id, level, amount = row
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO XpCurrencyReward (Id, XpSettingsId, Level, Amount)
-                                    VALUES (?, ?, ?, ?)
-                                """, (reward_id, guild_id, level, amount))
-                                await db.commit()
-                    log.info("Migrated XP Currency Rewards")
-                except Exception as e:
-                    log.info(f"XpCurrencyReward migration failed (table might be missing): {e}")
-                
-                # Migrate GCChannelId data (if exists)
-                try:
-                    async with nadeko_db.execute("SELECT Id, GuildId, ChannelId FROM GCChannelId") as cursor:
-                        async for row in cursor:
-                            gc_id, guild_id, channel_id = row
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO GCChannelId (Id, GuildId, ChannelId)
-                                    VALUES (?, ?, ?)
-                                """, (gc_id, guild_id, channel_id))
-                                await db.commit()
-                except Exception as e:
-                    log.info(f"GCChannelId table not found or empty: {e}")
+                        if data:
+                            await db.executemany(insert_query, data)
+                            log.info(f"Migrated {len(data)} records for {table_name}")
 
-                # Migrate Waifu Tables
-                try:
-                    # WaifuInfo - Join with DiscordUser to get Snowflakes
-                    # Note: Nadeko stores Internal IDs (int) in WaifuInfo, but Unicornia uses Snowflakes (ulong)
-                    query = """
-                        SELECT
-                            w.UserId as WaifuId,
-                            c.UserId as ClaimerId,
-                            a.UserId as AffinityId,
-                            wi.Price,
-                            wi.DateAdded
-                        FROM WaifuInfo wi
-                        JOIN DiscordUser w ON wi.WaifuId = w.Id
-                        LEFT JOIN DiscordUser c ON wi.ClaimerId = c.Id
-                        LEFT JOIN DiscordUser a ON wi.AffinityId = a.Id
-                    """
-                    async with nadeko_db.execute(query) as cursor:
-                        async for row in cursor:
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO WaifuInfo (WaifuId, ClaimerId, Affinity, Price, DateAdded)
-                                    VALUES (?, ?, ?, ?, ?)
-                                """, row)
-                                await db.commit()
-                    log.info("Migrated WaifuInfo")
+                    # --- DiscordUser and UserXpStats (already batched, but integrated here) ---
+                    discord_user_data = await nadeko_db.execute_fetchall("SELECT UserId, Username, AvatarId, TotalXp, CurrencyAmount, ClubId, IsClubAdmin FROM DiscordUser")
+                    if discord_user_data:
+                        await db.executemany("INSERT OR REPLACE INTO DiscordUser (UserId, Username, AvatarId, TotalXp, CurrencyAmount, ClubId, IsClubAdmin) VALUES (?, ?, ?, ?, ?, ?, ?)", discord_user_data)
 
-                    # WaifuItem - Join to get Snowflake WaifuId via WaifuInfo relation
-                    # Nadeko: WaifuItem.WaifuInfoId -> WaifuInfo.Id -> WaifuInfo.WaifuId (internal) -> DiscordUser.Id -> DiscordUser.UserId
-                    query = """
-                        SELECT
-                            w.UserId as WaifuId,
-                            itm.ItemEmoji,
-                            itm.Name,
-                            itm.DateAdded
-                        FROM WaifuItem itm
-                        JOIN WaifuInfo wi ON itm.WaifuInfoId = wi.Id
-                        JOIN DiscordUser w ON wi.WaifuId = w.Id
-                    """
-                    async with nadeko_db.execute(query) as cursor:
-                        async for row in cursor:
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO WaifuItem (WaifuInfoId, ItemEmoji, Name, DateAdded)
-                                    VALUES (?, ?, ?, ?)
-                                """, row)
-                                await db.commit()
-                    log.info("Migrated WaifuItem")
+                    user_xp_stats_data = await nadeko_db.execute_fetchall("SELECT UserId, GuildId, Xp FROM UserXpStats")
+                    if user_xp_stats_data:
+                        await db.executemany("INSERT OR REPLACE INTO UserXpStats (UserId, GuildId, Xp) VALUES (?, ?, ?)", user_xp_stats_data)
 
-                    # WaifuUpdates - Join to get Snowflakes
-                    query = """
-                        SELECT
-                            u.UserId as UserId,
-                            o.UserId as OldId,
-                            n.UserId as NewId,
-                            wu.UpdateType,
-                            wu.DateAdded
-                        FROM WaifuUpdates wu
-                        JOIN DiscordUser u ON wu.UserId = u.Id
-                        LEFT JOIN DiscordUser o ON wu.OldId = o.Id
-                        LEFT JOIN DiscordUser n ON wu.NewId = n.Id
-                    """
-                    async with nadeko_db.execute(query) as cursor:
-                        async for row in cursor:
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO WaifuUpdates (UserId, OldId, NewId, UpdateType, DateAdded)
-                                    VALUES (?, ?, ?, ?, ?)
-                                """, row)
-                                await db.commit()
-                    log.info("Migrated WaifuUpdates")
-                except Exception as e:
-                    log.warning(f"Waifu migration partial failure: {e}")
+                    # --- Other Tables (now batched) ---
+                    await batch_migrate("BankUsers", "SELECT UserId, Balance FROM BankUsers", "INSERT OR REPLACE INTO BankUsers (UserId, Balance) VALUES (?, ?)")
+                    await batch_migrate("PlantedCurrency", "SELECT GuildId, ChannelId, UserId, MessageId, Amount, Password FROM PlantedCurrency", "INSERT OR REPLACE INTO PlantedCurrency (GuildId, ChannelId, UserId, MessageId, Amount, Password) VALUES (?, ?, ?, ?, ?, ?)")
+                    await batch_migrate("ShopEntry", "SELECT Id, GuildId, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command FROM ShopEntry", "INSERT OR REPLACE INTO ShopEntry (Id, GuildId, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                    await batch_migrate("ShopEntryItem", "SELECT Id, ShopEntryId, Text FROM ShopEntryItem", "INSERT OR REPLACE INTO ShopEntryItem (Id, ShopEntryId, Text) VALUES (?, ?, ?)")
 
-                # Migrate Club Tables
-                try:
-                    # ClubInfo - Join with DiscordUser to get Snowflake OwnerId
-                    async with nadeko_db.execute("""
-                        SELECT c.Id, c.Name, c.Description, c.ImageUrl, c.BannerUrl, c.Xp, u.UserId, c.DateAdded
-                        FROM Clubs c
-                        LEFT JOIN DiscordUser u ON c.OwnerId = u.Id
-                    """) as cursor:
-                        async for row in cursor:
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO Clubs (Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                                """, row)
-                                await db.commit()
-                    log.info("Migrated Clubs")
+                    # Waifu Tables
+                    await batch_migrate("WaifuInfo", "SELECT w.UserId, c.UserId, a.UserId, wi.Price, wi.DateAdded FROM WaifuInfo wi JOIN DiscordUser w ON wi.WaifuId = w.Id LEFT JOIN DiscordUser c ON wi.ClaimerId = c.Id LEFT JOIN DiscordUser a ON wi.AffinityId = a.Id", "INSERT OR REPLACE INTO WaifuInfo (WaifuId, ClaimerId, Affinity, Price, DateAdded) VALUES (?, ?, ?, ?, ?)")
+                    await batch_migrate("WaifuItem", "SELECT w.UserId, itm.ItemEmoji, itm.Name, itm.DateAdded FROM WaifuItem itm JOIN WaifuInfo wi ON itm.WaifuInfoId = wi.Id JOIN DiscordUser w ON wi.WaifuId = w.Id", "INSERT OR REPLACE INTO WaifuItem (WaifuInfoId, ItemEmoji, Name, DateAdded) VALUES (?, ?, ?, ?)")
+                    await batch_migrate("WaifuUpdates", "SELECT u.UserId, o.UserId, n.UserId, wu.UpdateType, wu.DateAdded FROM WaifuUpdates wu JOIN DiscordUser u ON wu.UserId = u.Id LEFT JOIN DiscordUser o ON wu.OldId = o.Id LEFT JOIN DiscordUser n ON wu.NewId = n.Id", "INSERT OR REPLACE INTO WaifuUpdates (UserId, OldId, NewId, UpdateType, DateAdded) VALUES (?, ?, ?, ?, ?)")
 
-                    # ClubApplicants - Join with DiscordUser to get Snowflake UserId
-                    async with nadeko_db.execute("""
-                        SELECT ca.ClubId, u.UserId
-                        FROM ClubApplicants ca
-                        JOIN DiscordUser u ON ca.UserId = u.Id
-                    """) as cursor:
-                        async for row in cursor:
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO ClubApplicants (ClubId, UserId)
-                                    VALUES (?, ?)
-                                """, row)
-                                await db.commit()
-                    log.info("Migrated ClubApplicants")
+                    # Club Tables
+                    await batch_migrate("Clubs", "SELECT c.Id, c.Name, c.Description, c.ImageUrl, c.BannerUrl, c.Xp, u.UserId, c.DateAdded FROM Clubs c LEFT JOIN DiscordUser u ON c.OwnerId = u.Id", "INSERT OR REPLACE INTO Clubs (Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                    await batch_migrate("ClubApplicants", "SELECT ca.ClubId, u.UserId FROM ClubApplicants ca JOIN DiscordUser u ON ca.UserId = u.Id", "INSERT OR REPLACE INTO ClubApplicants (ClubId, UserId) VALUES (?, ?)")
+                    await batch_migrate("ClubBans", "SELECT cb.ClubId, u.UserId FROM ClubBans cb JOIN DiscordUser u ON cb.UserId = u.Id", "INSERT OR REPLACE INTO ClubBans (ClubId, UserId) VALUES (?, ?)")
 
-                    # ClubBans - Join with DiscordUser to get Snowflake UserId
-                    async with nadeko_db.execute("""
-                        SELECT cb.ClubId, u.UserId
-                        FROM ClubBans cb
-                        JOIN DiscordUser u ON cb.UserId = u.Id
-                    """) as cursor:
-                        async for row in cursor:
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO ClubBans (ClubId, UserId)
-                                    VALUES (?, ?)
-                                """, row)
-                                await db.commit()
-                    log.info("Migrated ClubBans")
-                except Exception as e:
-                    log.warning(f"Club migration partial failure: {e}")
-
-                # Migrate XP Configuration
-                # XpSettings
-                try:
-                    async with nadeko_db.execute("SELECT GuildId, XpRateMultiplier, XpPerMessage, XpMinutesTimeout FROM XpSettings") as cursor:
-                        async for row in cursor:
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO XpSettings (GuildId, XpRateMultiplier, XpPerMessage, XpMinutesTimeout)
-                                    VALUES (?, ?, ?, ?)
-                                """, row)
-                                await db.commit()
-                    log.info("Migrated XP Settings")
-                except Exception as e:
-                    log.warning(f"XP Settings migration partial failure: {e}")
-
-                # XpRoleReward
-                try:
-                    # Join with XpSettings to get GuildId
-                    query = """
-                        SELECT xs.GuildId, xrr.Level, xrr.RoleId, xrr.Remove
-                        FROM XpRoleReward xrr
-                        JOIN XpSettings xs ON xrr.XpSettingsId = xs.Id
-                    """
-                    rewards_migrated = 0
-                    async with nadeko_db.execute(query) as cursor:
-                        async for row in cursor:
-                            guild_id, level, role_id, remove = row
-                            async with self._get_connection() as db:
-                                # Ensure Remove is boolean (0 or 1)
-                                remove_bool = 1 if remove else 0
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove)
-                                    VALUES (?, ?, ?, ?)
-                                """, (guild_id, level, role_id, remove_bool))
-                                await db.commit()
-                            rewards_migrated += 1
+                    # XP Config
+                    await batch_migrate("XpSettings", "SELECT GuildId, XpRateMultiplier, XpPerMessage, XpMinutesTimeout FROM XpSettings", "INSERT OR REPLACE INTO XpSettings (GuildId, XpRateMultiplier, XpPerMessage, XpMinutesTimeout) VALUES (?, ?, ?, ?)")
                     
-                    log.info(f"Migrated {rewards_migrated} XP Role Rewards using JOIN")
+                    # Role Rewards with fallback
+                    rewards_query = "SELECT xs.GuildId, xrr.Level, xrr.RoleId, xrr.Remove FROM XpRoleReward xrr JOIN XpSettings xs ON xrr.XpSettingsId = xs.Id"
+                    rewards_data = await nadeko_db.execute_fetchall(rewards_query)
+                    if rewards_data:
+                        await db.executemany("INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove) VALUES (?, ?, ?, ?)", [(g, l, r, 1 if rem else 0) for g, l, r, rem in rewards_data])
+                    else:
+                        # Fallback logic
+                        settings_map = {row[0]: row[1] for row in await nadeko_db.execute_fetchall("SELECT Id, GuildId FROM XpSettings")}
+                        if settings_map:
+                            rewards_fallback_data = await nadeko_db.execute_fetchall("SELECT XpSettingsId, Level, RoleId, Remove FROM XpRoleReward")
+                            rewards_to_insert = [(settings_map[sid], l, rid, 1 if rem else 0) for sid, l, rid, rem in rewards_fallback_data if sid in settings_map]
+                            if rewards_to_insert:
+                                await db.executemany("INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove) VALUES (?, ?, ?, ?)", rewards_to_insert)
 
-                    # Fallback if 0 rewards found: Try manual mapping
-                    if rewards_migrated == 0:
-                        log.info("Attempting manual mapping fallback for Role Rewards...")
-                        
-                        # 1. Fetch all XpSettings to build {Id: GuildId} map
-                        xp_settings_map = {}
-                        try:
-                            async with nadeko_db.execute("SELECT Id, GuildId FROM XpSettings") as cursor:
-                                async for row in cursor:
-                                    xp_settings_map[row[0]] = row[1]
-                            log.info(f"Loaded {len(xp_settings_map)} XpSettings mappings.")
-                        except Exception as e:
-                            log.error(f"Failed to load XpSettings for fallback: {e}")
-                        
-                        if not xp_settings_map:
-                            log.warning("No XpSettings found, cannot migrate Role Rewards.")
-                        else:
-                            # 2. Fetch all XpRoleReward and map manually
-                            try:
-                                async with nadeko_db.execute("SELECT XpSettingsId, Level, RoleId, Remove FROM XpRoleReward") as cursor:
-                                    async for row in cursor:
-                                        xp_settings_id, level, role_id, remove = row
-                                        if xp_settings_id in xp_settings_map:
-                                            guild_id = xp_settings_map[xp_settings_id]
-                                            async with self._get_connection() as db:
-                                                remove_bool = 1 if remove else 0
-                                                await db.execute("""
-                                                    INSERT OR REPLACE INTO XpRoleReward (GuildId, Level, RoleId, Remove)
-                                                    VALUES (?, ?, ?, ?)
-                                                """, (guild_id, level, role_id, remove_bool))
-                                                await db.commit()
-                                            rewards_migrated += 1
-                                        else:
-                                            log.warning(f"Skipping Role Reward with unknown XpSettingsId: {xp_settings_id}")
-                                log.info(f"Migrated {rewards_migrated} XP Role Rewards using fallback mapping")
-                            except Exception as e:
-                                log.error(f"Failed to fetch XpRoleReward for fallback: {e}")
+                    # Shop Items
+                    await batch_migrate("XpShopOwnedItem", "SELECT UserId, ItemType, IsUsing, ItemKey FROM XpShopOwnedItem", "INSERT OR REPLACE INTO XpShopOwnedItem (UserId, ItemType, IsUsing, ItemKey) VALUES (?, ?, ?, ?)")
 
-                except Exception as e:
-                    log.warning(f"XP Role Rewards migration failure: {e}")
+                    # Gambling Stats
+                    await batch_migrate("GamblingStats", "SELECT Feature, BetAmount, WinAmount, LossAmount FROM GamblingStats", "INSERT OR REPLACE INTO GamblingStats (Feature, BetAmount, WinAmount, LossAmount) VALUES (?, ?, ?, ?)")
+                    await batch_migrate("UserBetStats", "SELECT UserId, Game, BetAmount, WinAmount, LossAmount, MaxWin FROM UserBetStats", "INSERT OR REPLACE INTO UserBetStats (UserId, Game, BetAmount, WinAmount, LossAmount, MaxWin) VALUES (?, ?, ?, ?, ?, ?)")
+
+                    await db.commit()
+                    log.info("Migration from Nadeko database completed successfully")
                 
-                # XpExcludedItem migration removed (Whitelisted channels are now in Red Config)
+                except Exception:
+                    await db.execute("ROLLBACK")
+                    log.error("Migration failed, rolling back changes.")
+                    raise
 
-                # Migrate XpShopOwnedItem
-                try:
-                    cursor = await nadeko_db.execute("SELECT COUNT(*) FROM XpShopOwnedItem")
-                    count = (await cursor.fetchone())[0]
-                    log.info(f"Found {count} XP Shop items to migrate")
-
-                    migrated_items = 0
-                    batch_data = []
-
-                    async with nadeko_db.execute("SELECT UserId, ItemType, IsUsing, ItemKey FROM XpShopOwnedItem") as cursor:
-                        async for row in cursor:
-                            # row: (UserId, ItemType, IsUsing, ItemKey)
-                            batch_data.append(row)
-                            migrated_items += 1
-                            
-                            if len(batch_data) >= 1000:
-                                async with self._get_connection() as db:
-                                    await db.executemany("""
-                                        INSERT OR REPLACE INTO XpShopOwnedItem (UserId, ItemType, IsUsing, ItemKey)
-                                        VALUES (?, ?, ?, ?)
-                                    """, batch_data)
-                                    await db.commit()
-                                batch_data.clear()
-                    
-                    if batch_data:
-                        async with self._get_connection() as db:
-                            await db.executemany("""
-                                INSERT OR REPLACE INTO XpShopOwnedItem (UserId, ItemType, IsUsing, ItemKey)
-                                VALUES (?, ?, ?, ?)
-                            """, batch_data)
-                            await db.commit()
-
-                    log.info(f"Migrated {migrated_items} XP Shop Owned Items")
-                except Exception as e:
-                    log.warning(f"XP Shop Owned Items migration partial failure: {e}")
-
-                # Migrate Gambling Stats
-                try:
-                    # GamblingStats
-                    async with nadeko_db.execute("SELECT Feature, BetAmount, WinAmount, LossAmount FROM GamblingStats") as cursor:
-                        async for row in cursor:
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO GamblingStats (Feature, BetAmount, WinAmount, LossAmount)
-                                    VALUES (?, ?, ?, ?)
-                                """, row)
-                                await db.commit()
-
-                    # UserBetStats
-                    async with nadeko_db.execute("SELECT UserId, Game, BetAmount, WinAmount, LossAmount, MaxWin FROM UserBetStats") as cursor:
-                        async for row in cursor:
-                            async with self._get_connection() as db:
-                                await db.execute("""
-                                    INSERT OR REPLACE INTO UserBetStats (UserId, Game, BetAmount, WinAmount, LossAmount, MaxWin)
-                                    VALUES (?, ?, ?, ?, ?, ?)
-                                """, row)
-                                await db.commit()
-                    log.info("Migrated Gambling Stats")
-                except Exception as e:
-                    log.warning(f"Gambling stats migration partial failure: {e}")
-                
-                log.info("Migration from Nadeko database completed successfully")
-                
         except Exception as e:
             log.error(f"Error during migration from Nadeko database: {e}")
             raise
@@ -983,19 +624,19 @@ class CoreDB:
             for table in tables_to_clean:
                 try:
                     await db.execute(f"DELETE FROM {table} WHERE UserId = ?", (user_id,))
-                except Exception as e:
+                except aiosqlite.Error as e:
                     # Some tables might not exist or have different column names
                     log.warning(f"Could not clean table {table} for user {user_id}: {e}")
             
             # Clean waifu tables with different column names
             try:
                 await db.execute("DELETE FROM WaifuInfo WHERE ClaimerId = ?", (user_id,))
-            except Exception:
+            except aiosqlite.Error:
                 pass
                 
             try:
                 await db.execute("DELETE FROM WaifuUpdates WHERE OldId = ? OR NewId = ?", (user_id, user_id))
-            except Exception:
+            except aiosqlite.Error:
                 pass
             
             await db.commit()
