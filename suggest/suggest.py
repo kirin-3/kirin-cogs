@@ -46,7 +46,9 @@ class Suggest(commands.Cog):
 
     async def cog_load(self):
         # Ensure sticky message logic runs on reload if needed
-        pass
+        current_id = await self.config.next_id()
+        if current_id < 132:
+            await self.config.next_id.set(132)
 
     async def get_suggestion_channel(self) -> Optional[discord.TextChannel]:
         return self.bot.get_channel(SUGGEST_CHANNEL_ID)
