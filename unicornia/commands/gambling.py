@@ -296,6 +296,28 @@ class GamblingCommands:
         except Exception as e:
             await ctx.reply(f"❌ Error in lucky ladder: {e}", mention_author=False)
 
+    @gambling_group.command(name="mines")
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(amount="Amount to bet", mines="Number of mines (1-19)")
+    async def gambling_mines(self, ctx, amount: str, mines: int = 3):
+        """Play Mines"""
+        if not await self.config.gambling_enabled():
+            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
+            return
+        
+        if not await self.config.economy_enabled():
+            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
+            return
+        
+        amount = await self._resolve_bet(ctx, amount)
+        if amount is None:
+            return
+            
+        try:
+            await self.gambling_system.play_mines(ctx, amount, mines)
+        except Exception as e:
+            await ctx.reply(f"❌ Error in Mines: {e}", mention_author=False)
+
     # Top-level aliases for gambling commands
     @commands.hybrid_command(name="betroll", aliases=["roll"])
     @commands.cooldown(1, 1, commands.BucketType.user)
@@ -337,3 +359,10 @@ class GamblingCommands:
     async def top_luckyladder(self, ctx, amount: str):
         """Play lucky ladder"""
         await self.gambling_lucky_ladder(ctx, amount)
+
+    @commands.hybrid_command(name="mines")
+    @commands.cooldown(1, 1, commands.BucketType.user)
+    @app_commands.describe(amount="Amount to bet", mines="Number of mines (1-19)")
+    async def top_mines(self, ctx, amount: str, mines: int = 3):
+        """Play Mines"""
+        await self.gambling_mines(ctx, amount, mines)

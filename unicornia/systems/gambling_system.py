@@ -9,6 +9,7 @@ from redbot.core import commands
 from discord import ui
 from ..database import DatabaseManager
 from ..types import GamblingResult
+from ..views import MinesView
 
 class BlackjackView(ui.View):
     def __init__(self, ctx, system, user_id, amount, user_hand, dealer_hand, deck, currency_symbol):
@@ -537,3 +538,42 @@ class GamblingSystem:
             "won_amount": won_amount,
             "profit": won_amount - amount
         }
+
+    async def play_mines(self, ctx: commands.Context, amount: int, mines: int):
+        """Play Mines game"""
+        user = ctx.author
+        user_id = user.id
+        
+        # Check limits
+        limit_error = await self._check_limits(amount)
+        if limit_error:
+            await ctx.send(f"❌ {limit_error}")
+            return
+
+        # Check mines count (1-19 for 20 cells)
+        if mines < 1 or mines > 19:
+            await ctx.send("❌ Number of mines must be between 1 and 19.")
+            return
+
+        # Check balance
+        balance = await self.db.economy.get_user_currency(user_id)
+        currency_symbol = await self.config.currency_symbol()
+        
+        if balance < amount:
+            await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{balance:,}.")
+            return
+
+        # Deduct bet immediately
+        await self.db.economy.remove_currency(user_id, amount, "mines", "start", note="Mines start")
+        
+        # Generate mines
+        # 20 cells, indices 0-19. We need unique indices.
+        mines_indices = set()
+        while len(mines_indices) < mines:
+            mines_indices.add(secrets.randbelow(20))
+            
+        # Create View
+        view = MinesView(ctx, self, user_id, amount, mines_indices, 20, currency_symbol)
+        
+        # Send message
+        await ctx.send(f"**Mines** | Bet: {currency_symbol}{amount:,} | Mines: {mines}\nClick the buttons to reveal safe spots 💎. Avoid the mines 💣!", view=view)

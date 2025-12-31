@@ -747,3 +747,172 @@ class BalanceActions(ui.View):
              
         except Exception as e:
              await interaction.followup.send(f"❌ Error loading leaderboard: {e}", ephemeral=True)
+
+class MinesView(ui.View):
+    def __init__(self, ctx, system, user_id: int, amount: int, mines_indices: set, total_cells: int = 20, currency_symbol: str = "$"):
+        super().__init__(timeout=120)
+        self.ctx = ctx
+        self.system = system
+        self.user_id = user_id
+        self.amount = amount
+        self.mines_indices = mines_indices
+        self.total_cells = total_cells
+        self.currency_symbol = currency_symbol
+        
+        self.revealed_indices = set()
+        self.finished = False
+        self.message = None
+        self.current_multiplier = 1.0
+        
+        # Init grid
+        self._init_grid()
+        
+    def _init_grid(self):
+        # Create 20 buttons for 5x4 grid
+        for i in range(self.total_cells):
+            # Row 0-3 (5 per row)
+            button = ui.Button(style=discord.ButtonStyle.secondary, label="\u200b", row=i // 5, custom_id=f"mine_{i}")
+            button.callback = self.make_callback(i)
+            self.add_item(button)
+            
+        # Cashout button (Row 4)
+        cashout_btn = ui.Button(style=discord.ButtonStyle.success, label="Cash Out", row=4, custom_id="cashout")
+        cashout_btn.callback = self.cashout_callback
+        self.add_item(cashout_btn)
+        
+    def make_callback(self, index):
+        async def callback(interaction: discord.Interaction):
+            await self.handle_click(interaction, index)
+        return callback
+        
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("This game is not for you!", ephemeral=True)
+            return False
+        return True
+        
+    async def on_timeout(self):
+        if not self.finished:
+            # Auto-loss on timeout? Or auto-cashout?
+            # Standard is auto-loss or just end. Let's auto-cashout if they have winnings, else return money?
+            # Actually standard gambling is loss on timeout to prevent exploits (wait for crash/disconnect).
+            # But here it's simple bot. Let's mark as finished and disable.
+            self.finished = True
+            for child in self.children:
+                child.disabled = True
+            if self.message:
+                try:
+                    await self.message.edit(view=self)
+                except: pass
+        self.stop()
+        
+    async def handle_click(self, interaction: discord.Interaction, index: int):
+        if self.finished or index in self.revealed_indices:
+            await interaction.response.defer()
+            return
+            
+        if index in self.mines_indices:
+            # BOOM
+            await self.game_over(interaction, False, index)
+        else:
+            # Safe
+            self.revealed_indices.add(index)
+            await self.update_game_state(interaction)
+            
+    async def update_game_state(self, interaction: discord.Interaction):
+        # Calculate new multiplier
+        # Formula: current_mult * (remaining_cells / remaining_safe)
+        # remaining_cells includes the one we just picked? No, previous step.
+        # Let's use standard combinations: C(Total, Mines) / C(Total - Revealed, Mines)
+        # Or simpler: 
+        # Round 1: 20 total, M mines. Probability safe = (20-M)/20. Multiplier = 1/P.
+        # Round 2: 19 total, M mines. P = (19-M)/19. Mult *= 1/P.
+        
+        mines_count = len(self.mines_indices)
+        revealed_count = len(self.revealed_indices)
+        
+        # Check if all safes revealed
+        if revealed_count == (self.total_cells - mines_count):
+            await self.game_over(interaction, True)
+            return
+            
+        # Calculate Multiplier
+        # Recalculate from scratch to avoid float drift
+        mult = 1.0
+        for i in range(revealed_count):
+            # Step i (0 to revealed-1)
+            # Available cells: Total - i
+            # Safe cells: (Total - Mines) - i
+            # Prob = Safe / Available
+            # Mult_step = Available / Safe
+            available = self.total_cells - i
+            safe = (self.total_cells - mines_count) - i
+            mult *= (available / safe)
+            
+        self.current_multiplier = mult
+        
+        # Update Button Visuals
+        for item in self.children:
+            if item.custom_id and item.custom_id.startswith("mine_"):
+                idx = int(item.custom_id.split("_")[1])
+                if idx in self.revealed_indices:
+                    item.style = discord.ButtonStyle.success
+                    item.label = None
+                    item.emoji = "💎"
+                    item.disabled = True
+                else:
+                    item.style = discord.ButtonStyle.secondary
+                    item.label = "\u200b"
+                    item.emoji = None
+                    item.disabled = False
+        
+        # Update Cashout Button
+        payout = int(self.amount * self.current_multiplier)
+        cashout_btn = [x for x in self.children if x.custom_id == "cashout"][0]
+        cashout_btn.label = f"Cash Out {self.currency_symbol}{payout:,}"
+        cashout_btn.disabled = False
+        
+        # Update Message
+        await interaction.response.edit_message(content=f"**Mines** | Multiplier: **{self.current_multiplier:.2f}x** | Next Payout: {self.currency_symbol}{payout:,}", view=self)
+
+    async def cashout_callback(self, interaction: discord.Interaction):
+        await self.game_over(interaction, True)
+
+    async def game_over(self, interaction: discord.Interaction, won: bool, hit_mine_index: int = None):
+        self.finished = True
+        
+        # Disable all buttons and reveal mines
+        for item in self.children:
+            item.disabled = True
+            if item.custom_id and item.custom_id.startswith("mine_"):
+                idx = int(item.custom_id.split("_")[1])
+                if idx in self.mines_indices:
+                    item.style = discord.ButtonStyle.danger
+                    item.emoji = "💣"
+                    if idx == hit_mine_index:
+                        item.style = discord.ButtonStyle.danger # Highlight hit mine? Already danger.
+                elif idx in self.revealed_indices:
+                    item.style = discord.ButtonStyle.success
+                    item.emoji = "💎"
+                else:
+                    item.style = discord.ButtonStyle.secondary
+                    item.emoji = None # Keep hidden
+        
+        if won:
+            payout = int(self.amount * self.current_multiplier)
+            profit = payout - self.amount
+            
+            # DB Update
+            # Log win (profit is added to balance, amount was already deducted)
+            # Actually, usually play_mines deducts bet. So we add back the full payout.
+            await self.system.db.economy.add_currency(self.user_id, payout, "mines", "win", note=f"Mines Win {len(self.revealed_indices)} steps")
+            await self.system._log_gambling_result(self.user_id, "mines", self.amount, True, payout)
+            
+            msg = f"🎉 **Cash Out!** You won **{self.currency_symbol}{payout:,}**! (Profit: {self.currency_symbol}{profit:,})"
+        else:
+            # Log loss
+            await self.system._log_gambling_result(self.user_id, "mines", self.amount, False)
+            msg = f"💥 **BOOM!** You hit a mine and lost **{self.currency_symbol}{self.amount:,}**."
+            
+        await interaction.response.edit_message(content=msg, view=self)
+        self.stop()

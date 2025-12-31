@@ -40,7 +40,7 @@ class CurrencyCommands:
                     except Exception:
                         pass # Ignore other errors
             else:
-                await ctx.send("❌ No currency to pick up here.")
+                await ctx.send("❌ No currency to pick up here.", delete_after=15)
                 
         except Exception as e:
             await ctx.send(f"❌ Error picking currency: {e}")
