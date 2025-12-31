@@ -1,0 +1,9 @@
+{
+    "author": ["Kirin"],
+    "name": "Suggest",
+    "short": "Suggestion system with sticky message and voting.",
+    "description": "A suggestion system that uses a sticky message with a button to submit suggestions, and tracks votes via reactions.",
+    "requirements": [],
+    "tags": ["suggestion", "sticky", "voting"],
+    "min_bot_version": "3.5.0"
+}
