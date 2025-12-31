@@ -379,7 +379,7 @@ class XPSystem:
         currency_rewards = await self.db.xp.get_xp_currency_rewards(guild.id)
         currency_gained = 0
         for level, amount in currency_rewards:
-            if level == new_level:
+            if level == new_level and amount > 0:
                 await self.db.economy.add_currency(user.id, amount, "level_reward", f"level_{new_level}", note=f"Level {new_level} reward")
                 currency_gained += amount
         

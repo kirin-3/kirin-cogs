@@ -229,7 +229,8 @@ class GamblingSystem:
             }
         else:
             # Lose
-            await self.db.economy.remove_currency(user_id, amount, "betroll", f"roll_{roll}", note=f"Betroll loss: {roll} < {threshold}")
+            if amount > 0:
+                await self.db.economy.remove_currency(user_id, amount, "betroll", f"roll_{roll}", note=f"Betroll loss: {roll} < {threshold}")
             return True, {
                 "won": False,
                 "roll": roll,
@@ -291,7 +292,8 @@ class GamblingSystem:
                     "profit": win_amount - amount
                 }
             elif result == "lose":
-                await self.db.economy.remove_currency(user_id, amount, "rps", f"loss_{user_choice}_{bot_choice}", note=f"RPS loss: {choices[user_choice]} vs {choices[bot_choice]}")
+                if amount > 0:
+                    await self.db.economy.remove_currency(user_id, amount, "rps", f"loss_{user_choice}_{bot_choice}", note=f"RPS loss: {choices[user_choice]} vs {choices[bot_choice]}")
                 return True, {
                     "result": result,
                     "user_choice": choices[user_choice],
@@ -351,10 +353,11 @@ class GamblingSystem:
             won_amount = int(amount * 1.2)
             win_type = "single_joker"
         
-        if won_amount > 0:
-            await self.db.economy.add_currency(user_id, won_amount - amount, "slots", f"rolls_{rolls[0]}{rolls[1]}{rolls[2]}", note=f"Slots {win_type}: {rolls}")
-        else:
-            await self.db.economy.remove_currency(user_id, amount, "slots", f"rolls_{rolls[0]}{rolls[1]}{rolls[2]}", note=f"Slots loss: {rolls}")
+        profit = won_amount - amount
+        if profit > 0:
+            await self.db.economy.add_currency(user_id, profit, "slots", f"rolls_{rolls[0]}{rolls[1]}{rolls[2]}", note=f"Slots {win_type}: {rolls}")
+        elif profit < 0:
+            await self.db.economy.remove_currency(user_id, -profit, "slots", f"rolls_{rolls[0]}{rolls[1]}{rolls[2]}", note=f"Slots loss: {rolls}")
         
         return True, {
             "rolls": rolls,
@@ -383,7 +386,8 @@ class GamblingSystem:
             return
 
         # Deduct bet immediately
-        await self.db.economy.remove_currency(user_id, amount, "blackjack", "start", note="Blackjack start")
+        if amount > 0:
+            await self.db.economy.remove_currency(user_id, amount, "blackjack", "start", note="Blackjack start")
         
         # Deck logic
         deck = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 4 # 11 is Ace
@@ -470,7 +474,9 @@ class GamblingSystem:
             win_amount = int(amount * 1.95)
             profit = win_amount - amount
             
-            await self.db.economy.add_currency(user_id, profit, "betflip", f"{guess_str}_{result_str}", note=f"Betflip win: {guess_str} == {result_str}")
+            if profit > 0:
+                await self.db.economy.add_currency(user_id, profit, "betflip", f"{guess_str}_{result_str}", note=f"Betflip win: {guess_str} == {result_str}")
+            
             await self._log_gambling_result(user_id, "betflip", amount, True, win_amount)
             
             return True, {
@@ -481,7 +487,8 @@ class GamblingSystem:
                 "profit": profit
             }
         else:
-            await self.db.economy.remove_currency(user_id, amount, "betflip", f"{guess_str}_{result_str}", note=f"Betflip loss: {guess_str} != {result_str}")
+            if amount > 0:
+                await self.db.economy.remove_currency(user_id, amount, "betflip", f"{guess_str}_{result_str}", note=f"Betflip loss: {guess_str} != {result_str}")
             await self._log_gambling_result(user_id, "betflip", amount, False)
             
             return True, {
@@ -518,10 +525,11 @@ class GamblingSystem:
         
         won_amount = int(amount * multiplier)
         
-        if won_amount > amount:
-            await self.db.economy.add_currency(user_id, won_amount - amount, "lucky_ladder", f"rung_{rung}", note=f"Lucky ladder rung {rung + 1}: {multiplier}x")
-        else:
-            await self.db.economy.remove_currency(user_id, amount - won_amount, "lucky_ladder", f"rung_{rung}", note=f"Lucky ladder rung {rung + 1}: {multiplier}x")
+        profit = won_amount - amount
+        if profit > 0:
+            await self.db.economy.add_currency(user_id, profit, "lucky_ladder", f"rung_{rung}", note=f"Lucky ladder rung {rung + 1}: {multiplier}x")
+        elif profit < 0:
+            await self.db.economy.remove_currency(user_id, -profit, "lucky_ladder", f"rung_{rung}", note=f"Lucky ladder rung {rung + 1}: {multiplier}x")
         
         return True, {
             "rung": rung + 1,

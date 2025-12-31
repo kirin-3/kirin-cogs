@@ -37,6 +37,8 @@ class EconomyRepository:
         Returns:
             bool: Always True (success)
         """
+        if amount <= 0:
+            raise ValueError("Amount must be a positive integer.")
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
             try:
@@ -72,6 +74,8 @@ class EconomyRepository:
         Returns:
             bool: True if successful, False if insufficient funds.
         """
+        if amount <= 0:
+            raise ValueError("Amount must be a positive integer.")
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
             try:
@@ -116,6 +120,8 @@ class EconomyRepository:
         Returns:
             bool: True if successful, False if insufficient funds.
         """
+        if amount <= 0:
+            raise ValueError("Amount must be a positive integer.")
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
             try:
@@ -179,6 +185,8 @@ class EconomyRepository:
         Returns:
             True if successful, False otherwise.
         """
+        if amount <= 0:
+            raise ValueError("Amount must be a positive integer.")
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
             try:
@@ -221,6 +229,8 @@ class EconomyRepository:
         Returns:
             True if successful, False otherwise.
         """
+        if amount <= 0:
+            raise ValueError("Amount must be a positive integer.")
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
             try:
@@ -284,6 +294,8 @@ class EconomyRepository:
             user_id: Discord user ID.
             new_balance: New balance amount.
         """
+        if new_balance < 0:
+            raise ValueError("Balance must be a non-negative integer.")
         async with self.db._get_connection() as db:
             await db.execute("""
                 INSERT OR REPLACE INTO BankUsers (UserId, Balance)
@@ -325,6 +337,8 @@ class EconomyRepository:
         Returns:
             True if claimed, False if on cooldown.
         """
+        if amount <= 0:
+            raise ValueError("Amount must be a positive integer.")
         if not await self.check_timely_cooldown(user_id, cooldown_hours):
             return False
         
@@ -366,6 +380,8 @@ class EconomyRepository:
             user_id: Discord user ID.
             streak: New streak count.
         """
+        if streak < 0:
+            raise ValueError("Streak must be a non-negative integer.")
         async with self.db._get_connection() as db:
             await db.execute("""
                 INSERT OR REPLACE INTO TimelyCooldown (UserId, LastClaim, Streak)
@@ -457,6 +473,11 @@ class EconomyRepository:
             win_amount: Amount won.
             loss_amount: Amount lost.
         """
+        if bet_amount < 0 or win_amount < 0 or loss_amount < 0:
+            raise ValueError("Amounts must be non-negative integers.")
+        if bet_amount == 0 and win_amount == 0 and loss_amount == 0:
+            return # Nothing to do
+
         async with self.db._get_connection() as db:
             await db.execute("""
                 INSERT OR REPLACE INTO GamblingStats (Feature, BetAmount, WinAmount, LossAmount)
@@ -478,6 +499,11 @@ class EconomyRepository:
             loss_amount: Amount lost.
             current_win: Current win amount (for max win check).
         """
+        if bet_amount < 0 or win_amount < 0 or loss_amount < 0 or current_win < 0:
+            raise ValueError("Amounts must be non-negative integers.")
+        if bet_amount == 0 and win_amount == 0 and loss_amount == 0 and current_win == 0:
+            return # Nothing to do
+
         async with self.db._get_connection() as db:
             
             # Get current max win
@@ -537,6 +563,8 @@ class EconomyRepository:
             user_id: User ID.
             amount: Amount to add.
         """
+        if amount <= 0:
+            raise ValueError("Amount must be a positive integer.")
         async with self.db._get_connection() as db:
             await db.execute("""
                 INSERT OR REPLACE INTO Rakeback (UserId, RakebackBalance)

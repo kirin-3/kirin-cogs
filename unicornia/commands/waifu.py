@@ -27,6 +27,10 @@ class WaifuCommands:
         if member == ctx.author:
             await ctx.send("❌ You can't claim yourself as a waifu!")
             return
+
+        if price is not None and price <= 0:
+            await ctx.send("❌ Price must be greater than 0.")
+            return
         
         try:
             # Check if user is already claimed
@@ -68,6 +72,10 @@ class WaifuCommands:
                 return
             
             if is_force_claim:
+                if final_price <= 0:
+                    await ctx.send("❌ Error: Calculated force claim price is 0 or negative.")
+                    return
+
                 # 1. Deduct currency from claimer
                 removed = await self.db.economy.remove_currency(ctx.author.id, final_price, "waifu_claim", str(member.id), note=f"Force Claimed {member.display_name}")
                 if not removed:
@@ -95,6 +103,10 @@ class WaifuCommands:
                 
             else:
                 # Normal Claim
+                if final_price <= 0:
+                    await ctx.send("❌ Error: Calculated claim price is 0 or negative.")
+                    return
+
                 success = await self.db.waifu.claim_waifu(member.id, ctx.author.id, final_price)
                 if success:
                     # Deduct currency

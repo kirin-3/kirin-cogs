@@ -59,6 +59,9 @@ class EconomySystem:
         Returns:
             Success boolean.
         """
+        if amount <= 0:
+            return False
+            
         # add_currency returns True now (bug fix)
         success = await self.db.economy.add_currency(user_id, amount, "award", "admin", note=note)
         
@@ -77,6 +80,9 @@ class EconomySystem:
         Returns:
             Success boolean.
         """
+        if amount <= 0:
+            return False
+            
         success = await self.db.economy.remove_currency(user_id, amount, "take", "admin", note=note)
         if success:
             await self.db.economy.log_currency_transaction(user_id, "take", -amount, note)

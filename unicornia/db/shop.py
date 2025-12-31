@@ -260,10 +260,11 @@ class ShopRepository:
                 pass
             
             # Deduct currency (Atomic check via remove_currency)
-            success = await self.db.economy.remove_currency(user_id, price, "shop_purchase", str(entry_id), note=f"Purchased: {name}")
-            
-            if not success:
-                return False, f"Insufficient currency or transaction failed."
+            if price > 0:
+                success = await self.db.economy.remove_currency(user_id, price, "shop_purchase", str(entry_id), note=f"Purchased: {name}")
+                
+                if not success:
+                    return False, f"Insufficient currency or transaction failed."
             
             # Transaction already logged in remove_currency
             

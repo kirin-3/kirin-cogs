@@ -144,7 +144,8 @@ class CurrencyGeneration:
                 return None
             
             # Give currency to user
-            await self.db.economy.add_currency(user_id, amount, "plant_pick", str(plant_id), note=f"Picked plant {plant_id}")
+            if amount > 0:
+                await self.db.economy.add_currency(user_id, amount, "plant_pick", str(plant_id), note=f"Picked plant {plant_id}")
             
             await db.commit()
             return amount
