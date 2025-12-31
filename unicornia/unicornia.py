@@ -81,8 +81,8 @@ class Unicornia(
         default_guild = {
             "excluded_roles": [],
             "xp_included_channels": [],
-            "command_blacklist": {}, # {command_name: [channel_ids]}
-            "system_blacklist": {}   # {system_name: [channel_ids]}
+            "command_whitelist": {}, # {command_name: [channel_ids]}
+            "system_whitelist": {}   # {system_name: [channel_ids]}
         }
         
         self.config.register_global(**default_global)
@@ -263,14 +263,26 @@ class Unicornia(
         if not self._check_systems_ready():
             raise SystemNotReadyError()
 
-        # Check blacklists (Skip for bot owner)
+        # Check whitelists (Skip for bot owner)
         if await self.bot.is_owner(ctx.author):
             return True
             
         if not ctx.guild:
             return True
-            
-        # 1. Check System Blacklist
+
+        # 1. Check Command Whitelist (Specific Rule Overrides General)
+        command_whitelist = await self.config.guild(ctx.guild).command_whitelist()
+        to_check = ctx.command
+        while to_check:
+            if to_check.qualified_name in command_whitelist:
+                # Rule exists for this command
+                if ctx.channel.id in command_whitelist[to_check.qualified_name]:
+                    return True # Allowed by specific rule
+                else:
+                    return False # Blocked (Whitelisted for other channels)
+            to_check = to_check.parent
+
+        # 2. Check System Whitelist (General Rule)
         # Determine system from module name (e.g. unicornia.commands.economy -> economy)
         try:
             module_parts = ctx.command.callback.__module__.split('.')
@@ -285,21 +297,14 @@ class Unicornia(
         except Exception:
             system_name = 'unknown'
             
-        system_blacklist = await self.config.guild(ctx.guild).system_blacklist()
-        if system_name in system_blacklist:
-            if ctx.channel.id in system_blacklist[system_name]:
-                return False
-                
-        # 2. Check Command Blacklist (check command and all parents)
-        command_blacklist = await self.config.guild(ctx.guild).command_blacklist()
-        
-        to_check = ctx.command
-        while to_check:
-            if to_check.qualified_name in command_blacklist:
-                if ctx.channel.id in command_blacklist[to_check.qualified_name]:
-                    return False
-            to_check = to_check.parent
+        system_whitelist = await self.config.guild(ctx.guild).system_whitelist()
+        if system_name in system_whitelist:
+            if ctx.channel.id in system_whitelist[system_name]:
+                return True
+            else:
+                return False # Blocked (Whitelisted for other channels)
 
+        # 3. Default Allow (No rules matched)
         return True
 
     def _check_systems_ready(self) -> bool:

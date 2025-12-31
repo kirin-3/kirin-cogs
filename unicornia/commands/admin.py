@@ -266,21 +266,21 @@ class AdminCommands:
         else:
             await menu(ctx, pages, DEFAULT_CONTROLS)
 
-    @unicornia_group.group(name="blacklist", aliases=["bl"])
+    @unicornia_group.group(name="whitelist", aliases=["wl"])
     @checks.admin_or_permissions(manage_guild=True)
-    async def blacklist_group(self, ctx):
+    async def whitelist_group(self, ctx):
         """Manage command and system usage restrictions"""
         pass
 
-    # --- Command Blacklist ---
-    @blacklist_group.group(name="command", aliases=["cmd"])
-    async def bl_command_group(self, ctx):
-        """Manage command blacklists"""
+    # --- Command Whitelist ---
+    @whitelist_group.group(name="command", aliases=["cmd"])
+    async def wl_command_group(self, ctx):
+        """Manage command whitelists"""
         pass
 
-    @bl_command_group.command(name="add")
-    async def bl_command_add(self, ctx, command_name: str, channel: discord.TextChannel = None):
-        """Disable a command in a channel (or current channel if none specified)"""
+    @wl_command_group.command(name="add")
+    async def wl_command_add(self, ctx, command_name: str, channel: discord.TextChannel = None):
+        """Restrict a command to a channel (or current channel if none specified)"""
         channel = channel or ctx.channel
         
         # Verify command exists and belongs to Unicornia
@@ -290,50 +290,53 @@ class AdminCommands:
             return
             
         if cmd.cog_name != self.qualified_name:
-            await ctx.send(f"❌ You can only blacklist commands from {self.qualified_name} cog.")
+            await ctx.send(f"❌ You can only whitelist commands from {self.qualified_name} cog.")
             return
             
-        async with self.config.guild(ctx.guild).command_blacklist() as blacklist:
+        async with self.config.guild(ctx.guild).command_whitelist() as whitelist:
             full_name = cmd.qualified_name
-            if full_name not in blacklist:
-                blacklist[full_name] = []
+            if full_name not in whitelist:
+                whitelist[full_name] = []
             
-            if channel.id not in blacklist[full_name]:
-                blacklist[full_name].append(channel.id)
-                await ctx.send(f"✅ Command `{full_name}` disabled in {channel.mention}.")
+            if channel.id not in whitelist[full_name]:
+                whitelist[full_name].append(channel.id)
+                await ctx.send(f"✅ Command `{full_name}` is now allowed in {channel.mention}.")
             else:
-                await ctx.send(f"❌ Command `{full_name}` is already disabled in {channel.mention}.")
+                await ctx.send(f"❌ Command `{full_name}` is already allowed in {channel.mention}.")
 
-    @bl_command_group.command(name="remove", aliases=["rm", "del"])
-    async def bl_command_remove(self, ctx, command_name: str, channel: discord.TextChannel = None):
-        """Re-enable a command in a channel"""
+    @wl_command_group.command(name="remove", aliases=["rm", "del"])
+    async def wl_command_remove(self, ctx, command_name: str, channel: discord.TextChannel = None):
+        """Remove a channel from command's whitelist"""
         channel = channel or ctx.channel
         
-        # Verify command exists (optional, but good for UX, though we rely on stored key)
+        # Verify command exists (optional)
         cmd = self.bot.get_command(command_name)
         full_name = cmd.qualified_name if cmd else command_name
             
-        async with self.config.guild(ctx.guild).command_blacklist() as blacklist:
-            if full_name in blacklist and channel.id in blacklist[full_name]:
-                blacklist[full_name].remove(channel.id)
-                if not blacklist[full_name]:
-                    del blacklist[full_name]
-                await ctx.send(f"✅ Command `{full_name}` re-enabled in {channel.mention}.")
+        async with self.config.guild(ctx.guild).command_whitelist() as whitelist:
+            if full_name in whitelist and channel.id in whitelist[full_name]:
+                whitelist[full_name].remove(channel.id)
+                # If list is empty, remove the key (back to "run everywhere" unless system restricted)
+                if not whitelist[full_name]:
+                    del whitelist[full_name]
+                    await ctx.send(f"✅ Removed restrictions for `{full_name}` in {channel.mention}. It now runs based on system rules.")
+                else:
+                    await ctx.send(f"✅ Command `{full_name}` is no longer allowed in {channel.mention}.")
             else:
-                await ctx.send(f"❌ Command `{full_name}` is not disabled in {channel.mention}.")
+                await ctx.send(f"❌ Command `{full_name}` is not whitelisted in {channel.mention}.")
 
-    @bl_command_group.command(name="list")
-    async def bl_command_list(self, ctx):
-        """List blacklisted commands"""
-        blacklist = await self.config.guild(ctx.guild).command_blacklist()
-        if not blacklist:
-            await ctx.send("No commands are blacklisted.")
+    @wl_command_group.command(name="list")
+    async def wl_command_list(self, ctx):
+        """List whitelisted commands"""
+        whitelist = await self.config.guild(ctx.guild).command_whitelist()
+        if not whitelist:
+            await ctx.send("No commands are restricted (whitelisted).")
             return
             
-        embed = discord.Embed(title="Blacklisted Commands", color=discord.Color.red())
+        embed = discord.Embed(title="Whitelisted Commands", color=discord.Color.green())
         
         has_entries = False
-        for cmd_name, channels in blacklist.items():
+        for cmd_name, channels in whitelist.items():
             if not channels:
                 continue
             has_entries = True
@@ -348,19 +351,19 @@ class AdminCommands:
             embed.add_field(name=cmd_name, value=", ".join(channel_mentions), inline=False)
             
         if not has_entries:
-            await ctx.send("No commands are blacklisted.")
+            await ctx.send("No commands are restricted.")
         else:
             await ctx.send(embed=embed)
 
-    # --- System Blacklist ---
-    @blacklist_group.group(name="system", aliases=["sys"])
-    async def bl_system_group(self, ctx):
-        """Manage system blacklists"""
+    # --- System Whitelist ---
+    @whitelist_group.group(name="system", aliases=["sys"])
+    async def wl_system_group(self, ctx):
+        """Manage system whitelists"""
         pass
     
-    @bl_system_group.command(name="add")
-    async def bl_system_add(self, ctx, system: str, channel: discord.TextChannel = None):
-        """Disable an entire system in a channel"""
+    @wl_system_group.command(name="add")
+    async def wl_system_add(self, ctx, system: str, channel: discord.TextChannel = None):
+        """Restrict an entire system to a channel"""
         channel = channel or ctx.channel
         system = system.lower()
         
@@ -370,43 +373,46 @@ class AdminCommands:
              await ctx.send(f"❌ Invalid system. Valid systems: {', '.join(valid_systems)}")
              return
             
-        async with self.config.guild(ctx.guild).system_blacklist() as blacklist:
-            if system not in blacklist:
-                blacklist[system] = []
+        async with self.config.guild(ctx.guild).system_whitelist() as whitelist:
+            if system not in whitelist:
+                whitelist[system] = []
             
-            if channel.id not in blacklist[system]:
-                blacklist[system].append(channel.id)
-                await ctx.send(f"✅ System `{system}` disabled in {channel.mention}.")
+            if channel.id not in whitelist[system]:
+                whitelist[system].append(channel.id)
+                await ctx.send(f"✅ System `{system}` is now allowed in {channel.mention}.")
             else:
-                await ctx.send(f"❌ System `{system}` is already disabled in {channel.mention}.")
+                await ctx.send(f"❌ System `{system}` is already allowed in {channel.mention}.")
 
-    @bl_system_group.command(name="remove", aliases=["rm", "del"])
-    async def bl_system_remove(self, ctx, system: str, channel: discord.TextChannel = None):
-        """Re-enable a system in a channel"""
+    @wl_system_group.command(name="remove", aliases=["rm", "del"])
+    async def wl_system_remove(self, ctx, system: str, channel: discord.TextChannel = None):
+        """Remove a channel from system's whitelist"""
         channel = channel or ctx.channel
         system = system.lower()
         
-        async with self.config.guild(ctx.guild).system_blacklist() as blacklist:
-            if system in blacklist and channel.id in blacklist[system]:
-                blacklist[system].remove(channel.id)
-                if not blacklist[system]:
-                    del blacklist[system]
-                await ctx.send(f"✅ System `{system}` re-enabled in {channel.mention}.")
+        async with self.config.guild(ctx.guild).system_whitelist() as whitelist:
+            if system in whitelist and channel.id in whitelist[system]:
+                whitelist[system].remove(channel.id)
+                # If list is empty, remove the key (runs everywhere)
+                if not whitelist[system]:
+                    del whitelist[system]
+                    await ctx.send(f"✅ Removed restrictions for system `{system}` in {channel.mention}. It now runs everywhere.")
+                else:
+                    await ctx.send(f"✅ System `{system}` is no longer allowed in {channel.mention}.")
             else:
-                await ctx.send(f"❌ System `{system}` is not disabled in {channel.mention}.")
+                await ctx.send(f"❌ System `{system}` is not whitelisted in {channel.mention}.")
 
-    @bl_system_group.command(name="list")
-    async def bl_system_list(self, ctx):
-        """List blacklisted systems"""
-        blacklist = await self.config.guild(ctx.guild).system_blacklist()
-        if not blacklist:
-            await ctx.send("No systems are blacklisted.")
+    @wl_system_group.command(name="list")
+    async def wl_system_list(self, ctx):
+        """List whitelisted systems"""
+        whitelist = await self.config.guild(ctx.guild).system_whitelist()
+        if not whitelist:
+            await ctx.send("No systems are restricted (whitelisted).")
             return
             
-        embed = discord.Embed(title="Blacklisted Systems", color=discord.Color.red())
+        embed = discord.Embed(title="Whitelisted Systems", color=discord.Color.green())
         
         has_entries = False
-        for sys_name, channels in blacklist.items():
+        for sys_name, channels in whitelist.items():
             if not channels:
                 continue
             has_entries = True
@@ -421,7 +427,7 @@ class AdminCommands:
             embed.add_field(name=sys_name.title(), value=", ".join(channel_mentions), inline=False)
             
         if not has_entries:
-            await ctx.send("No systems are blacklisted.")
+            await ctx.send("No systems are restricted.")
         else:
             await ctx.send(embed=embed)
 
