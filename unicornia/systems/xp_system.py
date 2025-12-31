@@ -4,11 +4,12 @@ XP and Leveling system for Unicornia
 
 import time
 import discord
-from typing import Optional, Any
+from typing import Optional, List, Tuple
 from collections import OrderedDict
 from redbot.core import commands
 from redbot.core.utils.chat_formatting import humanize_number
-from ..database import DatabaseManager, LevelStats
+from ..database import DatabaseManager
+from ..types import LevelStats
 from .card_generator import XPCardGenerator
 import os
 import asyncio
@@ -387,16 +388,40 @@ class XPSystem:
         await channel.send(embed=embed)
     
     async def get_user_level_stats(self, user_id: int, guild_id: int) -> LevelStats:
-        """Get user's level statistics"""
+        """Get user's level statistics.
+        
+        Args:
+            user_id: User ID.
+            guild_id: Guild ID.
+            
+        Returns:
+            LevelStats object.
+        """
         xp = await self.db.xp.get_user_xp(user_id, guild_id)
         return self.db.calculate_level_stats(xp)
     
-    async def get_leaderboard(self, guild_id: int, limit: int = 10, offset: int = 0):
-        """Get XP leaderboard for a guild"""
+    async def get_leaderboard(self, guild_id: int, limit: int = 10, offset: int = 0) -> List[Tuple]:
+        """Get XP leaderboard for a guild.
+        
+        Args:
+            guild_id: Guild ID.
+            limit: Limit results.
+            offset: Offset results.
+            
+        Returns:
+            List of (UserId, Xp) tuples.
+        """
         return await self.db.xp.get_top_xp_users(guild_id, limit, offset)
 
-    async def get_filtered_leaderboard(self, guild: discord.Guild):
-        """Get filtered XP leaderboard for a guild (only current members)"""
+    async def get_filtered_leaderboard(self, guild: discord.Guild) -> List[Tuple]:
+        """Get filtered XP leaderboard for a guild (only current members).
+        
+        Args:
+            guild: Discord guild.
+            
+        Returns:
+            List of (UserId, Xp) tuples.
+        """
         all_users = await self.db.xp.get_all_guild_xp(guild.id)
         
         filtered_users = []
@@ -409,7 +434,16 @@ class XPSystem:
         return filtered_users[:300]
     
     def get_progress_bar(self, current_xp: int, required_xp: int, length: int = 10) -> str:
-        """Generate a progress bar for XP"""
+        """Generate a progress bar for XP.
+        
+        Args:
+            current_xp: Current XP amount.
+            required_xp: Required XP for next level.
+            length: Length of the bar in characters.
+            
+        Returns:
+            Progress bar string.
+        """
         if required_xp == 0:
             return "█" * length
         

@@ -3,10 +3,11 @@ Club system for Unicornia - Logic for club management
 """
 
 import discord
-from typing import Optional, Any
+from typing import Optional, List, Tuple
 from redbot.core import commands
 from ..database import DatabaseManager
 from ..utils import validate_club_name
+from ..types import ClubData, ClubMember, ClubUserInfo
 
 class ClubSystem:
     """Handles club logic and management"""
@@ -24,8 +25,16 @@ class ClubSystem:
             return True
         return False
     
-    async def create_club(self, user: discord.Member, club_name: str) -> tuple[bool, str]:
-        """Create a new club"""
+    async def create_club(self, user: discord.Member, club_name: str) -> Tuple[bool, str]:
+        """Create a new club.
+        
+        Args:
+            user: Discord member creating the club.
+            club_name: Name of the club.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         # Check if name is valid
         if not validate_club_name(club_name):
             return False, "Club name is invalid. Max 20 chars, alphanumeric and simple symbols only."
@@ -47,8 +56,16 @@ class ClubSystem:
         except Exception as e:
             return False, f"Error creating club: {e}"
 
-    async def get_club_info(self, club_identifier: str = None, user: discord.Member = None) -> tuple[dict[str, Any] | None, str]:
-        """Get club info by name or member"""
+    async def get_club_info(self, club_identifier: str = None, user: discord.Member = None) -> Tuple[Optional[ClubData], str]:
+        """Get club info by name or member.
+        
+        Args:
+            club_identifier: Name of the club.
+            user: Discord member to check club for.
+            
+        Returns:
+            Tuple of (ClubData or None, message).
+        """
         club = None
         
         if club_identifier:
@@ -63,7 +80,7 @@ class ClubSystem:
             return None, "Please specify a club name or user."
             
         # Club tuple: Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded
-        club_data = {
+        club_data: ClubData = {
             'id': club[0],
             'name': club[1],
             'description': club[2],
@@ -76,8 +93,16 @@ class ClubSystem:
         
         return club_data, "Success"
 
-    async def transfer_club(self, owner: discord.Member, new_owner: discord.Member) -> tuple[bool, str]:
-        """Transfer club ownership"""
+    async def transfer_club(self, owner: discord.Member, new_owner: discord.Member) -> Tuple[bool, str]:
+        """Transfer club ownership.
+        
+        Args:
+            owner: Current owner.
+            new_owner: New owner.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         club = await self.db.club.get_club_by_member(owner.id)
         if not club:
             return False, "You are not in a club."
@@ -97,8 +122,17 @@ class ClubSystem:
         
         return True, f"Club ownership transferred to **{new_owner.display_name}**."
 
-    async def set_club_icon(self, user: discord.Member, url: str, is_admin: bool = False) -> tuple[bool, str]:
-        """Set club icon"""
+    async def set_club_icon(self, user: discord.Member, url: str, is_admin: bool = False) -> Tuple[bool, str]:
+        """Set club icon.
+        
+        Args:
+            user: Discord member.
+            url: Image URL.
+            is_admin: Admin override.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return False, "You are not in a club."
@@ -109,8 +143,17 @@ class ClubSystem:
         await self.db.club.update_club_settings(club[0], ImageUrl=url)
         return True, "Club icon updated."
 
-    async def set_club_banner(self, user: discord.Member, url: str, is_admin: bool = False) -> tuple[bool, str]:
-        """Set club banner"""
+    async def set_club_banner(self, user: discord.Member, url: str, is_admin: bool = False) -> Tuple[bool, str]:
+        """Set club banner.
+        
+        Args:
+            user: Discord member.
+            url: Image URL.
+            is_admin: Admin override.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return False, "You are not in a club."
@@ -121,8 +164,17 @@ class ClubSystem:
         await self.db.club.update_club_settings(club[0], BannerUrl=url)
         return True, "Club banner updated."
 
-    async def set_club_description(self, user: discord.Member, desc: str, is_admin: bool = False) -> tuple[bool, str]:
-        """Set club description"""
+    async def set_club_description(self, user: discord.Member, desc: str, is_admin: bool = False) -> Tuple[bool, str]:
+        """Set club description.
+        
+        Args:
+            user: Discord member.
+            desc: Description text.
+            is_admin: Admin override.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return False, "You are not in a club."
@@ -139,8 +191,17 @@ class ClubSystem:
         await self.db.club.update_club_settings(club[0], Description=desc)
         return True, "Club description updated."
 
-    async def rename_club(self, user: discord.Member, new_name: str, is_admin: bool = False) -> tuple[bool, str]:
-        """Rename club"""
+    async def rename_club(self, user: discord.Member, new_name: str, is_admin: bool = False) -> Tuple[bool, str]:
+        """Rename club.
+        
+        Args:
+            user: Discord member.
+            new_name: New club name.
+            is_admin: Admin override.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return False, "You are not in a club."
@@ -161,8 +222,15 @@ class ClubSystem:
         await self.db.club.update_club_settings(club[0], Name=new_name)
         return True, f"Club renamed to **{new_name}**."
 
-    async def disband_club(self, user: discord.Member) -> tuple[bool, str]:
-        """Disband club"""
+    async def disband_club(self, user: discord.Member) -> Tuple[bool, str]:
+        """Disband club.
+        
+        Args:
+            user: Discord member (must be owner or admin).
+            
+        Returns:
+            Tuple of (success, message).
+        """
         club = await self.db.club.get_club_by_member(user.id)
         
         if not club:
@@ -174,8 +242,15 @@ class ClubSystem:
         await self.db.club.disband_club(club[0])
         return True, f"Club **{club[1]}** has been disbanded."
 
-    async def leave_club(self, user: discord.Member) -> tuple[bool, str]:
-        """Leave club"""
+    async def leave_club(self, user: discord.Member) -> Tuple[bool, str]:
+        """Leave club.
+        
+        Args:
+            user: Discord member.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return False, "You are not in a club."
@@ -186,8 +261,16 @@ class ClubSystem:
         await self.db.club.leave_club(user.id)
         return True, f"You have left **{club[1]}**."
 
-    async def apply_to_club(self, user: discord.Member, club_name: str) -> tuple[bool, str]:
-        """Apply to a club"""
+    async def apply_to_club(self, user: discord.Member, club_name: str) -> Tuple[bool, str]:
+        """Apply to a club.
+        
+        Args:
+            user: Discord member.
+            club_name: Name of the club.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         user_club = await self.db.club.get_club_by_member(user.id)
         if user_club:
             return False, "You are already in a club."
@@ -205,8 +288,16 @@ class ClubSystem:
         await self.db.club.apply_to_club(user.id, target_club[0])
         return True, f"Applied to **{target_club[1]}**."
 
-    async def accept_application(self, admin: discord.Member, applicant_name: str) -> tuple[bool, str]:
-        """Accept a club application"""
+    async def accept_application(self, admin: discord.Member, applicant_name: str) -> Tuple[bool, str]:
+        """Accept a club application.
+        
+        Args:
+            admin: Club owner.
+            applicant_name: Username of applicant.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         club = await self.db.club.get_club_by_member(admin.id)
         if not club:
             return False, "You are not in a club."
@@ -225,8 +316,16 @@ class ClubSystem:
         await self.db.club.accept_club_application(club[0], target[0])
         return True, f"Accepted **{target[1]}** into the club."
 
-    async def reject_application(self, admin: discord.Member, applicant_name: str) -> tuple[bool, str]:
-        """Reject a club application"""
+    async def reject_application(self, admin: discord.Member, applicant_name: str) -> Tuple[bool, str]:
+        """Reject a club application.
+        
+        Args:
+            admin: Club owner.
+            applicant_name: Username of applicant.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         club = await self.db.club.get_club_by_member(admin.id)
         if not club:
             return False, "You are not in a club."
@@ -243,8 +342,16 @@ class ClubSystem:
         await self.db.club.reject_club_application(club[0], target[0])
         return True, f"Rejected application from **{target[1]}**."
 
-    async def kick_member(self, admin: discord.Member, member_name: str) -> tuple[bool, str]:
-        """Kick a member"""
+    async def kick_member(self, admin: discord.Member, member_name: str) -> Tuple[bool, str]:
+        """Kick a member.
+        
+        Args:
+            admin: Club owner.
+            member_name: Username of member to kick.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         club = await self.db.club.get_club_by_member(admin.id)
         
         if not club:
@@ -265,8 +372,16 @@ class ClubSystem:
         await self.db.club.kick_club_member(target[0])
         return True, f"Kicked **{target[1]}** from the club."
 
-    async def ban_member(self, admin: discord.Member, member_name: str) -> tuple[bool, str]:
-        """Ban a member"""
+    async def ban_member(self, admin: discord.Member, member_name: str) -> Tuple[bool, str]:
+        """Ban a member.
+        
+        Args:
+            admin: Club owner.
+            member_name: Username of member to ban.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         club = await self.db.club.get_club_by_member(admin.id)
         if not club:
             return False, "You are not in a club."
@@ -286,8 +401,16 @@ class ClubSystem:
         await self.db.club.ban_club_member(club[0], target[0])
         return True, f"Banned **{target[1]}** from the club."
 
-    async def unban_member(self, admin: discord.Member, member_name: str) -> tuple[bool, str]:
-        """Unban a member"""
+    async def unban_member(self, admin: discord.Member, member_name: str) -> Tuple[bool, str]:
+        """Unban a member.
+        
+        Args:
+            admin: Club owner.
+            member_name: Username of member to unban.
+            
+        Returns:
+            Tuple of (success, message).
+        """
         club = await self.db.club.get_club_by_member(admin.id)
         if not club:
             return False, "You are not in a club."
@@ -304,8 +427,15 @@ class ClubSystem:
         await self.db.club.unban_club_member(club[0], target[0])
         return True, f"Unbanned **{target[1]}**."
 
-    async def get_members(self, club_id: int) -> list[dict[str, Any]]:
-        """Get formatted list of members"""
+    async def get_members(self, club_id: int) -> List[ClubMember]:
+        """Get formatted list of members.
+        
+        Args:
+            club_id: Club ID.
+            
+        Returns:
+            List of ClubMember dicts.
+        """
         members = await self.db.club.get_club_members(club_id)
         # Tuple: UserId, Username, AvatarId, TotalXp, IsClubAdmin
         return [
@@ -319,15 +449,29 @@ class ClubSystem:
             for m in members
         ]
 
-    async def get_leaderboard(self, page: int = 1) -> list[tuple[str, int]]:
-        """Get club leaderboard"""
+    async def get_leaderboard(self, page: int = 1) -> List[Tuple[str, int]]:
+        """Get club leaderboard.
+        
+        Args:
+            page: Page number (1-based).
+            
+        Returns:
+            List of (Name, Xp) tuples.
+        """
         # page is 1-based index
         data = await self.db.club.get_club_leaderboard_page(page - 1)
         # Tuple: Id, Name, Xp
         return [(d[1], d[2]) for d in data]
 
-    async def get_applicants(self, user: discord.Member) -> tuple[list[dict] | None, str]:
-        """Get list of club applicants"""
+    async def get_applicants(self, user: discord.Member) -> Tuple[Optional[List[ClubUserInfo]], str]:
+        """Get list of club applicants.
+        
+        Args:
+            user: Discord member (club owner).
+            
+        Returns:
+            Tuple of (List of ClubUserInfo objects or None, message).
+        """
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return None, "You are not in a club."
@@ -348,8 +492,15 @@ class ClubSystem:
             for a in applicants
         ], "Success"
 
-    async def get_banned_members(self, user: discord.Member) -> tuple[list[dict] | None, str]:
-        """Get list of banned members"""
+    async def get_banned_members(self, user: discord.Member) -> Tuple[Optional[List[ClubUserInfo]], str]:
+        """Get list of banned members.
+        
+        Args:
+            user: Discord member (club owner).
+            
+        Returns:
+            Tuple of (List of ClubUserInfo objects or None, message).
+        """
         club = await self.db.club.get_club_by_member(user.id)
         if not club:
             return None, "You are not in a club."

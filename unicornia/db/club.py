@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Tuple
+from typing import List, Optional, Tuple
 
 class ClubRepository:
     """Repository for Club system database operations"""
@@ -6,8 +6,16 @@ class ClubRepository:
     def __init__(self, db):
         self.db = db
 
-    async def create_club(self, owner_id: int, name: str):
-        """Create a new club"""
+    async def create_club(self, owner_id: int, name: str) -> int:
+        """Create a new club.
+        
+        Args:
+            owner_id: Discord user ID of the owner.
+            name: Name of the club.
+            
+        Returns:
+            The ID of the newly created club.
+        """
         async with self.db._get_connection() as db:
             
             # Insert club
@@ -18,16 +26,23 @@ class ClubRepository:
             
             # Update user
             await db.execute("""
-                UPDATE DiscordUser 
-                SET ClubId = ?, IsClubAdmin = 1 
+                UPDATE DiscordUser
+                SET ClubId = ?, IsClubAdmin = 1
                 WHERE UserId = ?
             """, (club_id, owner_id))
             
             await db.commit()
             return club_id
 
-    async def get_club(self, club_id: int):
-        """Get club by ID"""
+    async def get_club(self, club_id: int) -> Optional[Tuple]:
+        """Get club by ID.
+        
+        Args:
+            club_id: Club ID.
+            
+        Returns:
+            Club tuple or None.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded
@@ -35,8 +50,15 @@ class ClubRepository:
             """, (club_id,))
             return await cursor.fetchone()
 
-    async def get_club_by_name(self, name: str):
-        """Get club by name"""
+    async def get_club_by_name(self, name: str) -> Optional[Tuple]:
+        """Get club by name.
+        
+        Args:
+            name: Club name.
+            
+        Returns:
+            Club tuple or None.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded
@@ -44,8 +66,15 @@ class ClubRepository:
             """, (name,))
             return await cursor.fetchone()
 
-    async def get_club_by_member(self, user_id: int):
-        """Get club by member user ID"""
+    async def get_club_by_member(self, user_id: int) -> Optional[Tuple]:
+        """Get club by member user ID.
+        
+        Args:
+            user_id: Discord user ID.
+            
+        Returns:
+            Club tuple or None.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT c.Id, c.Name, c.Description, c.ImageUrl, c.BannerUrl, c.Xp, c.OwnerId, c.DateAdded
@@ -55,31 +84,52 @@ class ClubRepository:
             """, (user_id,))
             return await cursor.fetchone()
 
-    async def get_club_members(self, club_id: int):
-        """Get all members of a club"""
+    async def get_club_members(self, club_id: int) -> List[Tuple]:
+        """Get all members of a club.
+        
+        Args:
+            club_id: Club ID.
+            
+        Returns:
+            List of member tuples.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT UserId, Username, AvatarId, TotalXp, IsClubAdmin 
+                SELECT UserId, Username, AvatarId, TotalXp, IsClubAdmin
                 FROM DiscordUser WHERE ClubId = ?
             """, (club_id,))
             return await cursor.fetchall()
 
-    async def get_club_applicants(self, club_id: int):
-        """Get applicants for a club"""
+    async def get_club_applicants(self, club_id: int) -> List[Tuple]:
+        """Get applicants for a club.
+        
+        Args:
+            club_id: Club ID.
+            
+        Returns:
+            List of applicant tuples.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT u.UserId, u.Username, u.AvatarId, u.TotalXp 
+                SELECT u.UserId, u.Username, u.AvatarId, u.TotalXp
                 FROM ClubApplicants ca
                 JOIN DiscordUser u ON ca.UserId = u.UserId
                 WHERE ca.ClubId = ?
             """, (club_id,))
             return await cursor.fetchall()
 
-    async def get_club_bans(self, club_id: int):
-        """Get banned users for a club"""
+    async def get_club_bans(self, club_id: int) -> List[Tuple]:
+        """Get banned users for a club.
+        
+        Args:
+            club_id: Club ID.
+            
+        Returns:
+            List of banned user tuples.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT u.UserId, u.Username, u.AvatarId, u.TotalXp 
+                SELECT u.UserId, u.Username, u.AvatarId, u.TotalXp
                 FROM ClubBans cb
                 JOIN DiscordUser u ON cb.UserId = u.UserId
                 WHERE cb.ClubId = ?
@@ -102,16 +152,26 @@ class ClubRepository:
             """, (club_id, user_id))
             return await cursor.fetchone() is not None
 
-    async def apply_to_club(self, user_id: int, club_id: int):
-        """Apply to join a club"""
+    async def apply_to_club(self, user_id: int, club_id: int) -> None:
+        """Apply to join a club.
+        
+        Args:
+            user_id: Discord user ID.
+            club_id: Club ID.
+        """
         async with self.db._get_connection() as db:
             await db.execute("""
                 INSERT OR IGNORE INTO ClubApplicants (ClubId, UserId) VALUES (?, ?)
             """, (club_id, user_id))
             await db.commit()
 
-    async def accept_club_application(self, club_id: int, user_id: int):
-        """Accept a club application"""
+    async def accept_club_application(self, club_id: int, user_id: int) -> None:
+        """Accept a club application.
+        
+        Args:
+            club_id: Club ID.
+            user_id: Discord user ID.
+        """
         async with self.db._get_connection() as db:
             
             # Remove application
@@ -126,28 +186,46 @@ class ClubRepository:
             
             await db.commit()
 
-    async def reject_club_application(self, club_id: int, user_id: int):
-        """Reject a club application"""
+    async def reject_club_application(self, club_id: int, user_id: int) -> None:
+        """Reject a club application.
+        
+        Args:
+            club_id: Club ID.
+            user_id: Discord user ID.
+        """
         async with self.db._get_connection() as db:
             await db.execute("""
                 DELETE FROM ClubApplicants WHERE ClubId = ? AND UserId = ?
             """, (club_id, user_id))
             await db.commit()
 
-    async def leave_club(self, user_id: int):
-        """Leave current club"""
+    async def leave_club(self, user_id: int) -> None:
+        """Leave current club.
+        
+        Args:
+            user_id: Discord user ID.
+        """
         async with self.db._get_connection() as db:
             await db.execute("""
                 UPDATE DiscordUser SET ClubId = NULL, IsClubAdmin = 0 WHERE UserId = ?
             """, (user_id,))
             await db.commit()
 
-    async def kick_club_member(self, user_id: int):
-        """Kick member from club"""
+    async def kick_club_member(self, user_id: int) -> None:
+        """Kick member from club.
+        
+        Args:
+            user_id: Discord user ID.
+        """
         await self.leave_club(user_id)
 
-    async def ban_club_member(self, club_id: int, user_id: int):
-        """Ban member from club"""
+    async def ban_club_member(self, club_id: int, user_id: int) -> None:
+        """Ban member from club.
+        
+        Args:
+            club_id: Club ID.
+            user_id: Discord user ID.
+        """
         async with self.db._get_connection() as db:
             
             # Remove from club if member
@@ -167,16 +245,25 @@ class ClubRepository:
             
             await db.commit()
 
-    async def unban_club_member(self, club_id: int, user_id: int):
-        """Unban member from club"""
+    async def unban_club_member(self, club_id: int, user_id: int) -> None:
+        """Unban member from club.
+        
+        Args:
+            club_id: Club ID.
+            user_id: Discord user ID.
+        """
         async with self.db._get_connection() as db:
             await db.execute("""
                 DELETE FROM ClubBans WHERE ClubId = ? AND UserId = ?
             """, (club_id, user_id))
             await db.commit()
 
-    async def disband_club(self, club_id: int):
-        """Disband a club"""
+    async def disband_club(self, club_id: int) -> None:
+        """Disband a club.
+        
+        Args:
+            club_id: Club ID.
+        """
         async with self.db._get_connection() as db:
             
             # Remove all members
@@ -193,8 +280,13 @@ class ClubRepository:
             
             await db.commit()
 
-    async def update_club_settings(self, club_id: int, **kwargs):
-        """Update club settings (name, desc, icon, banner, owner)"""
+    async def update_club_settings(self, club_id: int, **kwargs) -> None:
+        """Update club settings.
+        
+        Args:
+            club_id: Club ID.
+            **kwargs: Settings to update (Name, Description, ImageUrl, BannerUrl, OwnerId).
+        """
         if not kwargs:
             return
             
@@ -202,11 +294,12 @@ class ClubRepository:
             
             updates = []
             params = []
+            allowed_columns = ['Name', 'Description', 'ImageUrl', 'BannerUrl', 'OwnerId']
             
-            for key, value in kwargs.items():
-                if key in ['Name', 'Description', 'ImageUrl', 'BannerUrl', 'OwnerId']:
-                    updates.append(f"{key} = ?")
-                    params.append(value)
+            for column in allowed_columns:
+                if column in kwargs:
+                    updates.append(f"{column} = ?")
+                    params.append(kwargs[column])
             
             if not updates:
                 return
@@ -217,16 +310,29 @@ class ClubRepository:
             await db.execute(query, params)
             await db.commit()
 
-    async def toggle_club_admin(self, user_id: int, is_admin: bool):
-        """Toggle club admin status for a user"""
+    async def toggle_club_admin(self, user_id: int, is_admin: bool) -> None:
+        """Toggle club admin status for a user.
+        
+        Args:
+            user_id: Discord user ID.
+            is_admin: Admin status.
+        """
         async with self.db._get_connection() as db:
             await db.execute("""
                 UPDATE DiscordUser SET IsClubAdmin = ? WHERE UserId = ?
             """, (1 if is_admin else 0, user_id))
             await db.commit()
 
-    async def get_club_leaderboard_page(self, page: int = 0, limit: int = 9):
-        """Get club leaderboard page"""
+    async def get_club_leaderboard_page(self, page: int = 0, limit: int = 9) -> List[Tuple]:
+        """Get club leaderboard page.
+        
+        Args:
+            page: Page number (0-based).
+            limit: Items per page.
+            
+        Returns:
+            List of club tuples (Id, Name, Xp).
+        """
         offset = page * limit
         async with self.db._get_connection() as db:
             cursor = await db.execute("""

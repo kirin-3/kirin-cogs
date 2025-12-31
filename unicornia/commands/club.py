@@ -294,7 +294,11 @@ class ClubCommands:
     @commands.admin_or_permissions(manage_guild=True)
     async def club_rename(self, ctx, *, new_name: str):
         """Rename the club (Owner/Server Mod)"""
-            
+        # Immediate length check to prevent DoS from massive input strings
+        if len(new_name) > 20:
+            await ctx.send("❌ Club name is too long (max 20 chars).")
+            return
+
         if not validate_club_name(new_name):
             await ctx.send("❌ Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols.")
             return
@@ -341,7 +345,11 @@ class ClubCommands:
     @commands.admin_or_permissions(manage_guild=True)
     async def club_desc(self, ctx, *, description: str):
         """Set club description (Owner/Server Mod)"""
-            
+        # Immediate length check to prevent DoS from massive input strings
+        if len(description) > 150:
+            await ctx.send("❌ Description is too long (max 150 chars).")
+            return
+
         if not validate_text_input(description, max_length=150):
             await ctx.send("❌ Description is too long (max 150 chars).")
             return

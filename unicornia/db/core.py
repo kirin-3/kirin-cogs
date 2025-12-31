@@ -5,22 +5,15 @@ Core Database Logic
 import aiosqlite
 import math
 import logging
+import asyncio
 from pathlib import Path
-from typing import Optional, Any
-from dataclasses import dataclass
+from typing import Optional
 from datetime import datetime
 from contextlib import asynccontextmanager
 
+from ..types import LevelStats
+
 log = logging.getLogger("red.unicornia.database")
-
-
-@dataclass
-class LevelStats:
-    """Represents a user's level statistics"""
-    level: int
-    level_xp: int
-    required_xp: int
-    total_xp: int
 
 
 class CoreDB:
@@ -31,6 +24,7 @@ class CoreDB:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.nadeko_db_path = nadeko_db_path
         self._conn = None
+        self._lock = asyncio.Lock()
 
     async def connect(self) -> None:
         """Establish a persistent database connection.
@@ -54,9 +48,10 @@ class CoreDB:
     @asynccontextmanager
     async def _get_connection(self):
         """Yield the persistent database connection"""
-        if self._conn is None:
-            await self.connect()
-        yield self._conn
+        async with self._lock:
+            if self._conn is None:
+                await self.connect()
+            yield self._conn
     
     async def _setup_wal_mode(self, db: aiosqlite.Connection) -> None:
         """Set up WAL mode and optimizations for a database connection.
@@ -451,7 +446,14 @@ class CoreDB:
     # Level calculation methods (using Nadeko's exact formula)
     @staticmethod
     def calculate_level_stats(total_xp: int) -> LevelStats:
-        """Calculate level statistics from total XP (using Nadeko's formula)"""
+        """Calculate level statistics from total XP (using Nadeko's formula).
+        
+        Args:
+            total_xp: The total accumulated XP.
+            
+        Returns:
+            LevelStats object containing level breakdown.
+        """
         if total_xp < 0:
             total_xp = 0
 
@@ -469,19 +471,40 @@ class CoreDB:
     
     @staticmethod
     def get_level_by_total_xp(total_xp: int) -> int:
-        """Get level from total XP (Nadeko's formula)"""
+        """Get level from total XP (Nadeko's formula).
+        
+        Args:
+            total_xp: Total XP.
+            
+        Returns:
+            Calculated level.
+        """
         if total_xp < 0:
             total_xp = 0
         return int((-7.0 / 2) + (1 / 6.0 * math.sqrt((8 * total_xp) + 441)))
     
     @staticmethod
     def get_total_xp_req_for_level(level: int) -> int:
-        """Get total XP required for a specific level (Nadeko's formula)"""
+        """Get total XP required for a specific level (Nadeko's formula).
+        
+        Args:
+            level: The target level.
+            
+        Returns:
+            Total XP required to reach that level.
+        """
         return ((9 * level * level) + (63 * level)) // 2
     
     @staticmethod
     def get_required_xp_for_next_level(level: int) -> int:
-        """Get XP required for next level (Nadeko's formula)"""
+        """Get XP required for next level (Nadeko's formula).
+        
+        Args:
+            level: Current level.
+            
+        Returns:
+            XP required to advance to next level.
+        """
         return (9 * (level + 1)) + 27
 
     async def migrate_from_nadeko(self):

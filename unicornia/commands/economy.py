@@ -71,6 +71,11 @@ class EconomyCommands:
             await ctx.send("❌ You can't give Slut points to yourself.")
             return
             
+        # Immediate length check to prevent DoS from massive input strings
+        if len(note) > 200:
+            await ctx.send("❌ Note is too long (max 200 chars).")
+            return
+
         if not validate_text_input(note, max_length=200):
             await ctx.send("❌ Note is too long (max 200 chars).")
             return
@@ -277,6 +282,11 @@ class EconomyCommands:
             await ctx.send("❌ Amount must be positive.")
             return
         
+        # Immediate length check to prevent DoS from massive input strings
+        if len(note) > 200:
+            await ctx.send("❌ Note is too long (max 200 chars).")
+            return
+
         try:
             await self.economy_system.award_currency(member.id, amount, note)
             currency_symbol = await self.config.currency_symbol()
@@ -321,6 +331,11 @@ class EconomyCommands:
             await ctx.send("❌ Amount must be positive.")
             return
         
+        # Immediate length check to prevent DoS from massive input strings
+        if len(note) > 200:
+            await ctx.send("❌ Note is too long (max 200 chars).")
+            return
+
         try:
             success = await self.economy_system.take_currency(member.id, amount, note)
             if success:

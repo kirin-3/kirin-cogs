@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Optional, List, Tuple
 
 class ShopRepository:
     """Repository for Shop system database operations"""
@@ -8,14 +8,20 @@ class ShopRepository:
 
     # Shop item type constants
     SHOP_TYPE_ROLE = 0
-    SHOP_TYPE_COMMAND = 1  # Deprecated
     SHOP_TYPE_EFFECT = 2
     SHOP_TYPE_OTHER = 3
     SHOP_TYPE_ITEM = 4
 
     # Shop Entry Methods
-    async def get_shop_entries(self, guild_id: int):
-        """Get all shop entries for a guild"""
+    async def get_shop_entries(self, guild_id: int) -> List[Tuple]:
+        """Get all shop entries for a guild.
+        
+        Args:
+            guild_id: Discord guild ID.
+            
+        Returns:
+            List of shop entry tuples.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT Id, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command
@@ -23,8 +29,15 @@ class ShopRepository:
             """, (guild_id,))
             return await cursor.fetchall()
 
-    async def get_shop_entries_with_items(self, guild_id: int):
-        """Get all shop entries with their items for a guild (Optimized N+1)"""
+    async def get_shop_entries_with_items(self, guild_id: int) -> List[Tuple]:
+        """Get all shop entries with their items for a guild (Optimized N+1).
+        
+        Args:
+            guild_id: Discord guild ID.
+            
+        Returns:
+            List of shop entry tuples with joined item data.
+        """
         async with self.db._get_connection() as db:
             query = """
                 SELECT
@@ -39,8 +52,16 @@ class ShopRepository:
             cursor = await db.execute(query, (guild_id,))
             return await cursor.fetchall()
 
-    async def get_shop_entry(self, guild_id: int, entry_id: int):
-        """Get a specific shop entry"""
+    async def get_shop_entry(self, guild_id: int, entry_id: int) -> Optional[Tuple]:
+        """Get a specific shop entry.
+        
+        Args:
+            guild_id: Discord guild ID.
+            entry_id: Shop entry ID.
+            
+        Returns:
+            Shop entry tuple or None if not found.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT Id, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command
@@ -48,8 +69,16 @@ class ShopRepository:
             """, (guild_id, entry_id))
             return await cursor.fetchone()
 
-    async def get_shop_entry_by_index(self, guild_id: int, index: int):
-        """Get a specific shop entry by its index"""
+    async def get_shop_entry_by_index(self, guild_id: int, index: int) -> Optional[Tuple]:
+        """Get a specific shop entry by its index.
+        
+        Args:
+            guild_id: Discord guild ID.
+            index: Shop entry index.
+            
+        Returns:
+            Shop entry tuple or None if not found.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT Id, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command
@@ -59,8 +88,24 @@ class ShopRepository:
 
     async def add_shop_entry(self, guild_id: int, index: int, price: int, name: str, author_id: int,
                            entry_type: int, role_name: str = None, role_id: int = None,
-                           role_requirement: int = None, command: str = None):
-        """Add a new shop entry"""
+                           role_requirement: int = None, command: str = None) -> int:
+        """Add a new shop entry.
+        
+        Args:
+            guild_id: Discord guild ID.
+            index: Display index.
+            price: Item price.
+            name: Item name.
+            author_id: ID of the creator.
+            entry_type: Item type ID.
+            role_name: Name of role (optional).
+            role_id: ID of role (optional).
+            role_requirement: ID of required role (optional).
+            command: Command string (optional).
+            
+        Returns:
+            ID of the new shop entry.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 INSERT INTO ShopEntry (GuildId, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command)
@@ -71,8 +116,23 @@ class ShopRepository:
 
     async def update_shop_entry(self, guild_id: int, entry_id: int, price: int = None, name: str = None,
                               entry_type: int = None, role_name: str = None, role_id: int = None,
-                              role_requirement: int = None, command: str = None):
-        """Update a shop entry"""
+                              role_requirement: int = None, command: str = None) -> bool:
+        """Update a shop entry.
+        
+        Args:
+            guild_id: Discord guild ID.
+            entry_id: Shop entry ID.
+            price: New price (optional).
+            name: New name (optional).
+            entry_type: New type (optional).
+            role_name: New role name (optional).
+            role_id: New role ID (optional).
+            role_requirement: New role requirement (optional).
+            command: New command (optional).
+            
+        Returns:
+            True if updated, False if no changes made.
+        """
         async with self.db._get_connection() as db:
             
             # Build dynamic update query
@@ -111,8 +171,16 @@ class ShopRepository:
             await db.commit()
             return True
 
-    async def delete_shop_entry(self, guild_id: int, entry_id: int):
-        """Delete a shop entry"""
+    async def delete_shop_entry(self, guild_id: int, entry_id: int) -> bool:
+        """Delete a shop entry.
+        
+        Args:
+            guild_id: Discord guild ID.
+            entry_id: Shop entry ID.
+            
+        Returns:
+            True if deleted, False otherwise.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 DELETE FROM ShopEntry WHERE GuildId = ? AND Id = ?
@@ -120,32 +188,57 @@ class ShopRepository:
             await db.commit()
             return cursor.rowcount > 0
 
-    async def get_shop_entry_items(self, entry_id: int):
-        """Get items for a shop entry"""
+    async def get_shop_entry_items(self, entry_id: int) -> List[Tuple[int, str]]:
+        """Get items for a shop entry.
+        
+        Args:
+            entry_id: Shop entry ID.
+            
+        Returns:
+            List of (Id, Text) tuples.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT Id, Text FROM ShopEntryItem WHERE ShopEntryId = ?
             """, (entry_id,))
             return await cursor.fetchall()
 
-    async def add_shop_entry_item(self, entry_id: int, text: str):
-        """Add an item to a shop entry"""
+    async def add_shop_entry_item(self, entry_id: int, text: str) -> None:
+        """Add an item to a shop entry.
+        
+        Args:
+            entry_id: Shop entry ID.
+            text: Item text.
+        """
         async with self.db._get_connection() as db:
             await db.execute("""
                 INSERT INTO ShopEntryItem (ShopEntryId, Text) VALUES (?, ?)
             """, (entry_id, text))
             await db.commit()
 
-    async def delete_shop_entry_item(self, item_id: int):
-        """Delete a shop entry item"""
+    async def delete_shop_entry_item(self, item_id: int) -> None:
+        """Delete a shop entry item.
+        
+        Args:
+            item_id: Shop entry item ID.
+        """
         async with self.db._get_connection() as db:
             await db.execute("""
                 DELETE FROM ShopEntryItem WHERE Id = ?
             """, (item_id,))
             await db.commit()
 
-    async def purchase_shop_item(self, user_id: int, guild_id: int, entry_id: int) -> tuple[bool, str]:
-        """Purchase a shop item"""
+    async def purchase_shop_item(self, user_id: int, guild_id: int, entry_id: int) -> Tuple[bool, str]:
+        """Purchase a shop item.
+        
+        Args:
+            user_id: Discord user ID.
+            guild_id: Discord guild ID.
+            entry_id: Shop entry ID.
+            
+        Returns:
+            Tuple containing success boolean and status message.
+        """
         async with self.db._get_connection() as db:
             
             # Get shop entry
@@ -177,8 +270,16 @@ class ShopRepository:
             return True, f"Successfully purchased {name} for {price:,} currency"
 
     # Inventory Methods
-    async def get_user_inventory(self, guild_id: int, user_id: int):
-        """Get a user's inventory for a guild"""
+    async def get_user_inventory(self, guild_id: int, user_id: int) -> List[Tuple]:
+        """Get a user's inventory for a guild.
+        
+        Args:
+            guild_id: Discord guild ID.
+            user_id: Discord user ID.
+            
+        Returns:
+            List of inventory item tuples.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT

@@ -4,10 +4,11 @@ Gambling system for Unicornia
 
 import secrets
 import discord
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Tuple
 from redbot.core import commands
 from discord import ui
 from ..database import DatabaseManager
+from ..types import GamblingResult
 
 class BlackjackView(ui.View):
     def __init__(self, ctx, system, user_id, amount, user_hand, dealer_hand, deck, currency_symbol):
@@ -191,8 +192,16 @@ class GamblingSystem:
             return f"Bet cannot exceed {max_bet}."
         return None
 
-    async def betroll(self, user_id: int, amount: int) -> Tuple[bool, Dict[str, Any]]:
-        """Play betroll game"""
+    async def betroll(self, user_id: int, amount: int) -> Tuple[bool, GamblingResult]:
+        """Play betroll game.
+        
+        Args:
+            user_id: Discord user ID.
+            amount: Bet amount.
+            
+        Returns:
+            Tuple of (success, result data).
+        """
         # Check limits
         limit_error = await self._check_limits(amount)
         if limit_error:
@@ -228,8 +237,17 @@ class GamblingSystem:
                 "loss_amount": amount
             }
     
-    async def rock_paper_scissors(self, user_id: int, choice: str, amount: int = 0) -> Tuple[bool, Dict[str, Any]]:
-        """Play rock paper scissors"""
+    async def rock_paper_scissors(self, user_id: int, choice: str, amount: int = 0) -> Tuple[bool, GamblingResult]:
+        """Play rock paper scissors.
+        
+        Args:
+            user_id: Discord user ID.
+            choice: User's weapon choice.
+            amount: Bet amount (optional).
+            
+        Returns:
+            Tuple of (success, result data).
+        """
         choice = choice.lower()
         if choice not in ["rock", "paper", "scissors", "r", "p", "s"]:
             return False, {"error": "invalid_choice"}
@@ -293,8 +311,16 @@ class GamblingSystem:
                 "bot_choice": choices[bot_choice]
             }
     
-    async def slots(self, user_id: int, amount: int) -> Tuple[bool, Dict[str, Any]]:
-        """Play slots game"""
+    async def slots(self, user_id: int, amount: int) -> Tuple[bool, GamblingResult]:
+        """Play slots game.
+        
+        Args:
+            user_id: Discord user ID.
+            amount: Bet amount.
+            
+        Returns:
+            Tuple of (success, result data).
+        """
         # Check limits
         limit_error = await self._check_limits(amount)
         if limit_error:
@@ -400,8 +426,17 @@ class GamblingSystem:
         embed = view.get_embed()
         view.message = await ctx.send(embed=embed, view=view)
 
-    async def bet_flip(self, user_id: int, amount: int, guess: str) -> Tuple[bool, Dict[str, Any]]:
-        """Play betflip game"""
+    async def bet_flip(self, user_id: int, amount: int, guess: str) -> Tuple[bool, GamblingResult]:
+        """Play betflip game.
+        
+        Args:
+            user_id: Discord user ID.
+            amount: Bet amount.
+            guess: Heads or Tails.
+            
+        Returns:
+            Tuple of (success, result data).
+        """
         # Check limits
         limit_error = await self._check_limits(amount)
         if limit_error:
@@ -456,8 +491,16 @@ class GamblingSystem:
                 "loss_amount": amount
             }
 
-    async def lucky_ladder(self, user_id: int, amount: int) -> Tuple[bool, Dict[str, Any]]:
-        """Play lucky ladder game"""
+    async def lucky_ladder(self, user_id: int, amount: int) -> Tuple[bool, GamblingResult]:
+        """Play lucky ladder game.
+        
+        Args:
+            user_id: Discord user ID.
+            amount: Bet amount.
+            
+        Returns:
+            Tuple of (success, result data).
+        """
         # Check limits
         limit_error = await self._check_limits(amount)
         if limit_error:

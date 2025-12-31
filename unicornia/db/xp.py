@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Tuple
+from typing import List, Tuple
 
 class XPRepository:
     """Repository for XP system database operations"""
@@ -11,25 +11,25 @@ class XPRepository:
         """Get user's XP in a guild.
         
         Args:
-            user_id: Discord user ID
-            guild_id: Discord guild ID
+            user_id: Discord user ID.
+            guild_id: Discord guild ID.
             
         Returns:
-            int: The user's XP amount, or 0 if not found.
+            The user's XP amount, or 0 if not found.
         """
         async with self.db._get_connection() as db:
             cursor = await db.execute("SELECT Xp FROM UserXpStats WHERE UserId = ? AND GuildId = ?", (user_id, guild_id))
             row = await cursor.fetchone()
             return row[0] if row else 0
             
-    async def get_all_user_xp(self, user_id: int) -> list[tuple[int, int]]:
+    async def get_all_user_xp(self, user_id: int) -> List[Tuple[int, int]]:
         """Get user's XP across all guilds.
         
         Args:
-            user_id: Discord user ID
+            user_id: Discord user ID.
             
         Returns:
-            list[tuple[int, int]]: A list of (GuildId, XP) tuples.
+            A list of (GuildId, XP) tuples.
         """
         async with self.db._get_connection() as db:
             cursor = await db.execute("SELECT GuildId, Xp FROM UserXpStats WHERE UserId = ?", (user_id,))
@@ -39,9 +39,9 @@ class XPRepository:
         """Add XP to user in a guild.
         
         Args:
-            user_id: Discord user ID
-            guild_id: Discord guild ID
-            amount: Amount of XP to add
+            user_id: Discord user ID.
+            guild_id: Discord guild ID.
+            amount: Amount of XP to add.
         """
         async with self.db._get_connection() as db:
             await db.execute("""
@@ -57,11 +57,11 @@ class XPRepository:
             
             await db.commit()
 
-    async def add_xp_bulk(self, updates: List[Tuple[int, int, int]]):
-        """Add XP to multiple users in bulk
+    async def add_xp_bulk(self, updates: List[Tuple[int, int, int]]) -> None:
+        """Add XP to multiple users in bulk.
         
         Args:
-            updates: List of (user_id, guild_id, amount) tuples
+            updates: List of (user_id, guild_id, amount) tuples.
         """
         if not updates:
             return
@@ -87,8 +87,15 @@ class XPRepository:
             await db.commit()
 
     # XP Settings Methods
-    async def get_xp_settings(self, guild_id: int):
-        """Get XP settings for guild"""
+    async def get_xp_settings(self, guild_id: int) -> Tuple:
+        """Get XP settings for guild.
+        
+        Args:
+            guild_id: Guild ID.
+            
+        Returns:
+            Tuple of (multiplier, per_message, timeout).
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT XpRateMultiplier, XpPerMessage, XpMinutesTimeout FROM XpSettings WHERE GuildId = ?
@@ -107,24 +114,46 @@ class XPRepository:
             return result
 
     # XP Role Rewards Methods
-    async def get_xp_role_rewards(self, guild_id: int, level: int):
-        """Get role rewards for a specific level"""
+    async def get_xp_role_rewards(self, guild_id: int, level: int) -> List[Tuple]:
+        """Get role rewards for a specific level.
+        
+        Args:
+            guild_id: Guild ID.
+            level: Target level.
+            
+        Returns:
+            List of (RoleId, Remove) tuples.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT RoleId, Remove FROM XpRoleReward WHERE GuildId = ? AND Level = ?
             """, (guild_id, level))
             return await cursor.fetchall()
 
-    async def get_all_xp_role_rewards(self, guild_id: int):
-        """Get all role rewards for a guild"""
+    async def get_all_xp_role_rewards(self, guild_id: int) -> List[Tuple]:
+        """Get all role rewards for a guild.
+        
+        Args:
+            guild_id: Guild ID.
+            
+        Returns:
+            List of (Level, RoleId, Remove) tuples.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT Level, RoleId, Remove FROM XpRoleReward WHERE GuildId = ? ORDER BY Level ASC
             """, (guild_id,))
             return await cursor.fetchall()
 
-    async def add_xp_role_reward(self, guild_id: int, level: int, role_id: int, remove: bool = False):
-        """Add XP role reward"""
+    async def add_xp_role_reward(self, guild_id: int, level: int, role_id: int, remove: bool = False) -> None:
+        """Add XP role reward.
+        
+        Args:
+            guild_id: Guild ID.
+            level: Level requirement.
+            role_id: Role ID.
+            remove: Whether to remove role on level up.
+        """
         async with self.db._get_connection() as db:
             # Prevent duplicates
             cursor = await db.execute("SELECT Id FROM XpRoleReward WHERE GuildId = ? AND Level = ? AND RoleId = ?", (guild_id, level, role_id))
@@ -134,24 +163,43 @@ class XPRepository:
                 """, (guild_id, level, role_id, remove))
                 await db.commit()
 
-    async def remove_xp_role_reward(self, guild_id: int, level: int, role_id: int):
-        """Remove XP role reward"""
+    async def remove_xp_role_reward(self, guild_id: int, level: int, role_id: int) -> None:
+        """Remove XP role reward.
+        
+        Args:
+            guild_id: Guild ID.
+            level: Level requirement.
+            role_id: Role ID.
+        """
         async with self.db._get_connection() as db:
             await db.execute("DELETE FROM XpRoleReward WHERE GuildId = ? AND Level = ? AND RoleId = ?", (guild_id, level, role_id))
             await db.commit()
 
 
     # XP currency reward methods
-    async def get_xp_currency_rewards(self, guild_id: int):
-        """Get XP currency rewards for a guild (XpSettingsId is GuildId)"""
+    async def get_xp_currency_rewards(self, guild_id: int) -> List[Tuple]:
+        """Get XP currency rewards for a guild (XpSettingsId is GuildId).
+        
+        Args:
+            guild_id: Guild ID.
+            
+        Returns:
+            List of (Level, Amount) tuples.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT Level, Amount FROM XpCurrencyReward WHERE XpSettingsId = ? ORDER BY Level ASC
             """, (guild_id,))
             return await cursor.fetchall()
     
-    async def add_xp_currency_reward(self, guild_id: int, level: int, amount: int):
-        """Add or update an XP currency reward"""
+    async def add_xp_currency_reward(self, guild_id: int, level: int, amount: int) -> None:
+        """Add or update an XP currency reward.
+        
+        Args:
+            guild_id: Guild ID.
+            level: Level requirement.
+            amount: Currency amount.
+        """
         async with self.db._get_connection() as db:
             # Check if exists
             cursor = await db.execute("SELECT Id FROM XpCurrencyReward WHERE XpSettingsId = ? AND Level = ?", (guild_id, level))
@@ -171,8 +219,16 @@ class XPRepository:
             await db.commit()
 
     # XP Shop methods
-    async def get_user_xp_items(self, user_id: int, item_type: int = None):
-        """Get user's owned XP shop items"""
+    async def get_user_xp_items(self, user_id: int, item_type: int = None) -> List[Tuple]:
+        """Get user's owned XP shop items.
+        
+        Args:
+            user_id: User ID.
+            item_type: Optional item type filter.
+            
+        Returns:
+            List of item tuples.
+        """
         async with self.db._get_connection() as db:
             
             # Ensure user has default background (free for everyone)
@@ -181,21 +237,26 @@ class XPRepository:
             
             if item_type is not None:
                 cursor = await db.execute("""
-                    SELECT Id, UserId, ItemType, ItemKey FROM XpShopOwnedItem 
+                    SELECT Id, UserId, ItemType, ItemKey FROM XpShopOwnedItem
                     WHERE UserId = ? AND ItemType = ?
                 """, (user_id, item_type))
             else:
                 cursor = await db.execute("""
-                    SELECT Id, UserId, ItemType, ItemKey FROM XpShopOwnedItem 
+                    SELECT Id, UserId, ItemType, ItemKey FROM XpShopOwnedItem
                     WHERE UserId = ?
                 """, (user_id,))
             return await cursor.fetchall()
     
-    async def _ensure_default_background(self, user_id: int, db):
-        """Ensure user has the default background and it's set as active if no other is active"""
+    async def _ensure_default_background(self, user_id: int, db) -> None:
+        """Ensure user has the default background and it's set as active if no other is active.
+        
+        Args:
+            user_id: User ID.
+            db: Database connection.
+        """
         # Check if user already has default background
         cursor = await db.execute("""
-            SELECT COUNT(*) FROM XpShopOwnedItem 
+            SELECT COUNT(*) FROM XpShopOwnedItem
             WHERE UserId = ? AND ItemType = 1 AND ItemKey = 'default'
         """, (user_id,))
         count = (await cursor.fetchone())[0]
@@ -203,7 +264,7 @@ class XPRepository:
         if count == 0:
             # Check if user has any active background
             cursor = await db.execute("""
-                SELECT COUNT(*) FROM XpShopOwnedItem 
+                SELECT COUNT(*) FROM XpShopOwnedItem
                 WHERE UserId = ? AND ItemType = 1 AND IsUsing = TRUE
             """, (user_id,))
             has_active = (await cursor.fetchone())[0] > 0
@@ -215,17 +276,36 @@ class XPRepository:
             await db.commit()
     
     async def user_owns_xp_item(self, user_id: int, item_type: int, item_key: str) -> bool:
-        """Check if user owns a specific XP shop item"""
+        """Check if user owns a specific XP shop item.
+        
+        Args:
+            user_id: User ID.
+            item_type: Item type.
+            item_key: Item key.
+            
+        Returns:
+            True if owned, False otherwise.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT COUNT(*) FROM XpShopOwnedItem 
+                SELECT COUNT(*) FROM XpShopOwnedItem
                 WHERE UserId = ? AND ItemType = ? AND ItemKey = ?
             """, (user_id, item_type, item_key))
             count = (await cursor.fetchone())[0]
             return count > 0
     
     async def purchase_xp_item(self, user_id: int, item_type: int, item_key: str, price: int) -> bool:
-        """Purchase an XP shop item"""
+        """Purchase an XP shop item.
+        
+        Args:
+            user_id: User ID.
+            item_type: Item type.
+            item_key: Item key.
+            price: Price.
+            
+        Returns:
+            Success boolean.
+        """
         async with self.db._get_connection() as db:
             
             # Check if user already owns this item
@@ -257,7 +337,16 @@ class XPRepository:
             return True
 
     async def give_xp_item(self, user_id: int, item_type: int, item_key: str) -> bool:
-        """Give an XP shop item to a user without cost"""
+        """Give an XP shop item to a user without cost.
+        
+        Args:
+            user_id: User ID.
+            item_type: Item type.
+            item_key: Item key.
+            
+        Returns:
+            Success boolean.
+        """
         async with self.db._get_connection() as db:
             
             # Check if user already owns this item
@@ -273,7 +362,15 @@ class XPRepository:
             return True
     
     async def get_active_xp_item(self, user_id: int, item_type: int) -> str:
-        """Get the user's active XP item of a given type"""
+        """Get the user's active XP item of a given type.
+        
+        Args:
+            user_id: User ID.
+            item_type: Item type.
+            
+        Returns:
+            Item key string.
+        """
         async with self.db._get_connection() as db:
             
             # Ensure user has default background
@@ -281,7 +378,7 @@ class XPRepository:
                 await self._ensure_default_background(user_id, db)
             
             cursor = await db.execute("""
-                SELECT ItemKey FROM XpShopOwnedItem 
+                SELECT ItemKey FROM XpShopOwnedItem
                 WHERE UserId = ? AND ItemType = ? AND IsUsing = TRUE
             """, (user_id, item_type))
             result = await cursor.fetchone()
@@ -293,7 +390,16 @@ class XPRepository:
             return "default"
     
     async def set_active_xp_item(self, user_id: int, item_type: int, item_key: str) -> bool:
-        """Set an XP item as active (user must own it first)"""
+        """Set an XP item as active (user must own it first).
+        
+        Args:
+            user_id: User ID.
+            item_type: Item type.
+            item_key: Item key.
+            
+        Returns:
+            Success boolean.
+        """
         async with self.db._get_connection() as db:
             
             # Check if user owns the item
@@ -302,15 +408,15 @@ class XPRepository:
             
             # Set all items of this type to not using
             await db.execute("""
-                UPDATE XpShopOwnedItem 
-                SET IsUsing = FALSE 
+                UPDATE XpShopOwnedItem
+                SET IsUsing = FALSE
                 WHERE UserId = ? AND ItemType = ?
             """, (user_id, item_type))
             
             # Set the specified item as using
             await db.execute("""
-                UPDATE XpShopOwnedItem 
-                SET IsUsing = TRUE 
+                UPDATE XpShopOwnedItem
+                SET IsUsing = TRUE
                 WHERE UserId = ? AND ItemType = ? AND ItemKey = ?
             """, (user_id, item_type, item_key))
             
@@ -318,20 +424,37 @@ class XPRepository:
             return True
     
     async def get_user_rank_in_guild(self, user_id: int, guild_id: int) -> int:
-        """Get user's XP rank in a guild"""
+        """Get user's XP rank in a guild.
+        
+        Args:
+            user_id: User ID.
+            guild_id: Guild ID.
+            
+        Returns:
+            Rank integer.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
-                SELECT COUNT(*) + 1 FROM UserXpStats 
+                SELECT COUNT(*) + 1 FROM UserXpStats
                 WHERE GuildId = ? AND Xp > (
-                    SELECT COALESCE(Xp, 0) FROM UserXpStats 
+                    SELECT COALESCE(Xp, 0) FROM UserXpStats
                     WHERE UserId = ? AND GuildId = ?
                 )
             """, (guild_id, user_id, guild_id))
             rank = (await cursor.fetchone())[0]
             return rank
 
-    async def get_top_xp_users(self, guild_id: int, limit: int = 10, offset: int = 0):
-        """Get top XP users in a guild"""
+    async def get_top_xp_users(self, guild_id: int, limit: int = 10, offset: int = 0) -> List[Tuple]:
+        """Get top XP users in a guild.
+        
+        Args:
+            guild_id: Guild ID.
+            limit: Limit results.
+            offset: Offset results.
+            
+        Returns:
+            List of (UserId, Xp) tuples.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT UserId, Xp FROM UserXpStats
@@ -341,8 +464,15 @@ class XPRepository:
             """, (guild_id, limit, offset))
             return await cursor.fetchall()
 
-    async def get_all_guild_xp(self, guild_id: int):
-        """Get all XP users in a guild for filtering"""
+    async def get_all_guild_xp(self, guild_id: int) -> List[Tuple]:
+        """Get all XP users in a guild for filtering.
+        
+        Args:
+            guild_id: Guild ID.
+            
+        Returns:
+            List of (UserId, Xp) tuples.
+        """
         async with self.db._get_connection() as db:
             cursor = await db.execute("""
                 SELECT UserId, Xp FROM UserXpStats

@@ -7,11 +7,12 @@ import asyncio
 import time
 import os
 import aiosqlite
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, List
 from datetime import datetime, timedelta
 import discord
 from redbot.core import commands
 from ..database import DatabaseManager
+from ..types import DecayStats
 
 
 class CurrencyGeneration:
@@ -296,8 +297,12 @@ class CurrencyDecay:
                 await db.commit()
                 # print(f"Processed decay for {len(wallet_updates) + len(bank_updates)} balances")
     
-    async def get_decay_stats(self) -> Dict[str, Any]:
-        """Get decay statistics"""
+    async def get_decay_stats(self) -> DecayStats:
+        """Get decay statistics.
+        
+        Returns:
+            DecayStats dictionary.
+        """
         decay_percent = await self.config.decay_percent()
         max_decay = await self.config.decay_max_amount()
         min_threshold = await self.config.decay_min_threshold()
