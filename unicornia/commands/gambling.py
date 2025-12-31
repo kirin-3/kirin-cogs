@@ -299,8 +299,34 @@ class GamblingCommands:
     @gambling_group.command(name="mines")
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet", mines="Number of mines (1-19)")
-    async def gambling_mines(self, ctx, amount: str, mines: int = 3):
+    async def gambling_mines(self, ctx, amount: Optional[str] = None, mines: int = 3):
         """Play Mines"""
+        if amount is None:
+            embed = discord.Embed(
+                title="💣 Mines - How to Play",
+                description="Mines is a high-stakes gambling game where you reveal safe spots on a grid to increase your multiplier.",
+                color=discord.Color.red()
+            )
+            embed.add_field(
+                name="How it works",
+                value=(
+                    "1. Bet an amount of currency and choose the number of mines (1-19).\n"
+                    "2. Click the buttons 🟦 to reveal what's underneath.\n"
+                    "3. Find safe spots 💎 to increase your multiplier.\n"
+                    "4. Hit a mine 💣 and you lose your bet.\n"
+                    "5. Click **Cash Out** at any time to take your winnings!"
+                ),
+                inline=False
+            )
+            embed.add_field(
+                name="Usage",
+                value=f"`{ctx.clean_prefix}mines <amount> [mines]`\nExample: `{ctx.clean_prefix}mines 100 3` (Bet 100, 3 mines)",
+                inline=False
+            )
+            embed.set_footer(text=f"Default mines: 3. Max mines: 19.")
+            await ctx.send(embed=embed)
+            return
+
         if not await self.config.gambling_enabled():
             await ctx.reply("❌ Gambling is disabled.", mention_author=False)
             return
@@ -363,6 +389,6 @@ class GamblingCommands:
     @commands.hybrid_command(name="mines")
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet", mines="Number of mines (1-19)")
-    async def top_mines(self, ctx, amount: str, mines: int = 3):
+    async def top_mines(self, ctx, amount: Optional[str] = None, mines: int = 3):
         """Play Mines"""
         await self.gambling_mines(ctx, amount, mines)
