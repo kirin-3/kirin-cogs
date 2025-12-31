@@ -92,7 +92,7 @@ class CurrencyGeneration:
             if images:
                 image_file = random.choice(images)
         
-        msg_content = f"A wild {amount}{self.currency_symbol} has appeared! Pick them up by typing `&pick`"
+        msg_content = f"A wild {amount}{self.currency_symbol} has appeared! Pick them up by typing `&pick` or `.pick`"
         
         sent_message = None
         if image_file:

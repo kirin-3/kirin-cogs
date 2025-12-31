@@ -22,8 +22,14 @@ class CurrencyCommands:
                 amount, message_id = result
                 currency_symbol = await self.config.currency_symbol()
                 # Auto-delete confirmation after 30 seconds
-                await ctx.send(f"✅ You picked up {amount}{currency_symbol}!", delete_after=30)
+                await ctx.reply(f"You picked up {amount}{currency_symbol}!", mention_author=False, delete_after=30)
                 
+                # Delete user command message after 30 seconds
+                try:
+                    await ctx.message.delete(delay=30)
+                except Exception:
+                    pass
+
                 # Delete original message if ID exists
                 if message_id:
                     try:
