@@ -39,7 +39,7 @@ class Confess(commands.Cog):
         if not channel:
             return await interaction.response.send_message("Confession channel not found.", ephemeral=True)
             
-        confession_content = f"**Anonymous Confession**\n>>> {content}"
+        confession_content = f"**Anonymous Confession**\n>>> {discord.utils.escape_mentions(content)}"
         
         try:
             await channel.send(content=confession_content, allowed_mentions=discord.AllowedMentions.none())
@@ -50,6 +50,33 @@ class Confess(commands.Cog):
             return await interaction.response.send_message("Something went wrong.", ephemeral=True)
             
         await interaction.response.send_message("Your confession has been sent, you are forgiven now.", ephemeral=True)
+        
+        # Logging to bot owners
+        log_embed = discord.Embed(
+            title="New Confession Log",
+            description=content,
+            timestamp=datetime.now(timezone.utc),
+            color=discord.Color.red()
+        )
+        log_embed.set_author(name=f"{interaction.user} ({interaction.user.id})", icon_url=interaction.user.display_avatar.url)
+        log_embed.set_footer(text=f"Channel: {channel.name} ({channel.id})")
+
+        owners = self.bot.owner_ids
+        if not owners:
+            try:
+                info = await self.bot.application_info()
+                owners = {info.owner.id}
+            except Exception:
+                owners = set()
+
+        for owner_id in owners:
+            try:
+                owner = await self.bot.fetch_user(owner_id)
+                if owner:
+                    await owner.send(embed=log_embed)
+            except Exception as e:
+                log.error(f"Failed to send confession log to owner {owner_id}: {e}")
+
         await self._maybe_repost_sticky(channel)
 
     # Sticky Logic
