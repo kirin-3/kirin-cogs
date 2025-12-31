@@ -183,7 +183,7 @@ class ProfileBuilderView(View):
                     self.data[field_id] = val
 
             self._setup_buttons()
-            await interaction.edit_original_response(view=self)
+            await interaction.message.edit(view=self)
             
         return callback
 

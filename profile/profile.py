@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, List, Optional, cast
 
 import discord
 from redbot.core import Config, commands, checks
@@ -24,7 +24,8 @@ class Profile(commands.Cog):
         default_global = {
             "channel_id": PROFILE_CHANNEL_ID,
             "sticky_message_id": None,
-            "sticky_locked": False
+            "sticky_locked": False,
+            "cooldown": 3
         }
         default_user = {
             "profile_data": {},
@@ -34,7 +35,8 @@ class Profile(commands.Cog):
         self.config.register_global(**default_global)
         self.config.register_user(**default_user)
         
-        self._sticky_lock = asyncio.Lock()
+        self.locked_channels = set()
+        self._channel_cvs: Dict[discord.TextChannel, asyncio.Condition] = {}
         self.bot.add_view(ProfileStickyView(self))
 
     async def cog_load(self):
@@ -174,7 +176,7 @@ class Profile(commands.Cog):
         if message.channel.id != channel_id:
             return
         
-        await self._maybe_repost_sticky(message.channel)
+        await self._maybe_repost_sticky(message.channel, responding_to_message=message)
 
     @commands.Cog.listener()
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
@@ -186,40 +188,106 @@ class Profile(commands.Cog):
         if payload.message_id == sticky_id:
             channel = self.bot.get_channel(payload.channel_id)
             if channel:
-                await self._repost_sticky(channel)
+                await self._maybe_repost_sticky(channel)
 
-    async def _maybe_repost_sticky(self, channel: discord.TextChannel):
-        sticky_id = await self.config.sticky_message_id()
+    async def _maybe_repost_sticky(
+        self,
+        channel: discord.TextChannel,
+        responding_to_message: Optional[discord.Message] = None,
+    ) -> None:
+        cv = self._channel_cvs.setdefault(channel, asyncio.Condition())
         
-        # Check if the sticky is already at the bottom
-        if sticky_id:
-            # We check the last message ID. If it's the sticky, we do nothing.
+        async with cv:
+            await cv.wait_for(lambda: channel not in self.locked_channels)
+
+            sticky_id = await self.config.sticky_message_id()
+            if sticky_id is None:
+                # No sticky exists, send one if this is the right channel
+                channel_id = await self.config.channel_id()
+                if channel.id != channel_id:
+                    return
+                await self._repost_sticky(channel)
+                return
+
+            last_message_created_at = discord.utils.snowflake_time(sticky_id)
+            if responding_to_message and (
+                responding_to_message.id == sticky_id
+                or responding_to_message.created_at < last_message_created_at
+            ):
+                return
+
+            # Cooldown check
+            utcnow = datetime.now(timezone.utc)
+            # Since we don't have the last message object easily available with timestamp
+            # without fetching, we'll fetch it if needed or just use a simpler check.
+            # But let's try to be accurate.
+            try:
+                # We need the full message to get created_at
+                # actually, get_partial_message doesn't have created_at populated.
+                # So we might need to fetch it once or store the timestamp in config.
+                # In sticky.py they seem to assume it's available?
+                # Wait, last_message = channel.get_partial_message(last_message_id)
+                # then last_message.created_at.
+                # Actually, partial message DOES NOT have created_at.
+                # So sticky.py must be fetching it somewhere or it's a bug there too?
+                # Ah, in sticky.py line 209: last_message = channel.get_partial_message(last_message_id)
+                # then line 215: responding_to_message.created_at < last_message.created_at
+                # PartialMessage DOES NOT have created_at.
+                # Wait, let me check discord.py docs.
+                # "PartialMessage objects do not have any state beyond their ID and channel."
+                # So sticky.py might be flawed if it doesn't fetch.
+                # But maybe they are using the fact that snowflake IDs include timestamps.
+                
+                last_msg_timestamp = discord.utils.snowflake_time(sticky_id)
+                time_since = utcnow - last_msg_timestamp
+                cooldown = await self.config.cooldown()
+                time_to_wait = cooldown - time_since.total_seconds()
+            except Exception:
+                time_to_wait = 0
+
+        if time_to_wait > 0:
+            await asyncio.sleep(time_to_wait)
+
+        async with cv:
+            await cv.wait_for(lambda: channel not in self.locked_channels)
+            # Re-check if still needed
+            new_sticky_id = await self.config.sticky_message_id()
+            if new_sticky_id != sticky_id:
+                return # Changed during sleep
+            
+            # Check if it's already at the bottom
             if channel.last_message_id == sticky_id:
                 return
 
-        await self._repost_sticky(channel)
+            await self._repost_sticky(channel)
 
     async def _repost_sticky(self, channel: discord.TextChannel):
-        async with self._sticky_lock:
-            # Re-fetch sticky ID after acquiring lock
-            old_sticky_id = await self.config.sticky_message_id()
-            
-            # Delete old sticky
-            if old_sticky_id:
-                try:
-                    msg = channel.get_partial_message(old_sticky_id)
-                    await msg.delete()
-                except discord.NotFound:
-                    pass
-                except Exception as e:
-                    log.error(f"Failed to delete old sticky: {e}")
+        cv = self._channel_cvs.setdefault(channel, asyncio.Condition())
+        async with cv:
+            self.locked_channels.add(channel)
+            try:
+                # Re-fetch sticky ID after acquiring lock
+                old_sticky_id = await self.config.sticky_message_id()
+                
+                # Delete old sticky
+                if old_sticky_id:
+                    try:
+                        msg = channel.get_partial_message(old_sticky_id)
+                        await msg.delete()
+                    except discord.NotFound:
+                        pass
+                    except Exception as e:
+                        log.error(f"Failed to delete old sticky: {e}")
 
-            # Send new sticky
-            view = ProfileStickyView(self)
-            embed = discord.Embed(
-                title="User Profiles",
-                description="Click the buttons below to create, edit, or delete your profile in this channel.",
-                color=discord.Color.blue()
-            )
-            new_sticky = await channel.send(embed=embed, view=view)
-            await self.config.sticky_message_id.set(new_sticky.id)
+                # Send new sticky
+                view = ProfileStickyView(self)
+                embed = discord.Embed(
+                    title="User Profiles",
+                    description="Click the buttons below to create, edit, or delete your profile in this channel.",
+                    color=discord.Color.blue()
+                )
+                new_sticky = await channel.send(embed=embed, view=view)
+                await self.config.sticky_message_id.set(new_sticky.id)
+            finally:
+                self.locked_channels.remove(channel)
+                cv.notify_all()
