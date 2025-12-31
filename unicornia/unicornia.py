@@ -10,7 +10,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import discord
 from redbot.core import commands, Config, checks
@@ -203,6 +203,59 @@ class Unicornia(
             log.error(f"Error deleting user data for {user_id}: {e}")
             raise
     
+    # -------------------------------------------------------------------------
+    # Public API for other cogs
+    # -------------------------------------------------------------------------
+
+    async def get_balance(self, user_id: int) -> Tuple[int, int]:
+        """
+        Get a user's balance.
+        
+        Args:
+            user_id: The ID of the user.
+            
+        Returns:
+            A tuple of (wallet_balance, bank_balance).
+        """
+        if not self._check_systems_ready():
+            return 0, 0
+        return await self.economy_system.get_balance(user_id)
+
+    async def add_balance(self, user_id: int, amount: int, reason: str = "External API", source: str = "external") -> bool:
+        """
+        Add currency to a user's wallet.
+        
+        Args:
+            user_id: The ID of the user.
+            amount: The amount to add.
+            reason: The reason for the transaction.
+            source: The source of the funds (default: "external").
+            
+        Returns:
+            True if successful, False otherwise.
+        """
+        if not self._check_systems_ready():
+            return False
+        # using db layer directly to allow custom transaction type/extra
+        return await self.db.economy.add_currency(user_id, amount, "api_add", extra=source, note=reason)
+
+    async def remove_balance(self, user_id: int, amount: int, reason: str = "External API", source: str = "external") -> bool:
+        """
+        Remove currency from a user's wallet.
+        
+        Args:
+            user_id: The ID of the user.
+            amount: The amount to remove.
+            reason: The reason for the transaction.
+            source: The source of the deduction (default: "external").
+            
+        Returns:
+            True if successful, False if insufficient funds.
+        """
+        if not self._check_systems_ready():
+            return False
+        return await self.db.economy.remove_currency(user_id, amount, "api_remove", extra=source, note=reason)
+
     async def cog_check(self, ctx: commands.Context) -> bool:
         """Global check for all commands in this cog"""
         if not self._check_systems_ready():
