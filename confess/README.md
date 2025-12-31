@@ -1,0 +1,1 @@
+# This is a fork of confession cog from https://github.com/Jintaku/Jintaku-Cogs-V3
