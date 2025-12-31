@@ -25,7 +25,7 @@ class Suggest(commands.Cog):
         self.config = Config.get_conf(self, identifier=2115656421364, force_registration=True)
         
         default_global = {
-            "next_id": 1,
+            "next_id": 132,
             "sticky_message_id": None,
         }
         self.config.register_global(**default_global)
@@ -140,7 +140,7 @@ class Suggest(commands.Cog):
                 down_count = reaction.count - 1 if reaction.me else reaction.count
                 
         embed.add_field(name="Results", value=f"{up_emoji} {up_count} - {down_count} {down_emoji}", inline=False)
-        embed.set_footer(text=f"{status_text} by {ctx.author.display_name}")
+        embed.set_footer(text=f"{status_text}")
 
         await msg.edit(embed=embed)
         
