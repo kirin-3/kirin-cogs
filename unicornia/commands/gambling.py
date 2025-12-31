@@ -35,7 +35,7 @@ class GamblingCommands:
     @gambling_group.command(name="betroll", aliases=["roll"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
-    async def gambling_betroll(self, ctx, amount: Union[int, str]):
+    async def gambling_betroll(self, ctx, amount: str):
         """Bet on a dice roll (1-100)"""
         if not await self.config.gambling_enabled():
             await ctx.reply("❌ Gambling is disabled.", mention_author=False)
@@ -71,7 +71,7 @@ class GamblingCommands:
     @gambling_group.command(name="rps", aliases=["rockpaperscissors"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(choice="rock, paper, or scissors", amount="Amount to bet")
-    async def gambling_rps(self, ctx, choice: Optional[str] = None, amount: Union[int, str] = 0):
+    async def gambling_rps(self, ctx, choice: Optional[str] = None, amount: str = "0"):
         """Play rock paper scissors"""
         if not await self.config.gambling_enabled():
             await ctx.reply("❌ Gambling is disabled.", mention_author=False)
@@ -82,7 +82,7 @@ class GamblingCommands:
             return
 
         # Handle flexible arguments: [p]rps 100 -> choice="100", amount=0
-        if choice and (choice.isdigit() or choice.lower() == "all") and amount == 0:
+        if choice and (choice.isdigit() or choice.lower() == "all") and (amount == "0" or amount == 0):
             amount = choice
             choice = None
             
@@ -96,7 +96,7 @@ class GamblingCommands:
                 return
             choice = view.choice
         
-        if amount != 0:
+        if amount != "0" and amount != 0:
             amount = await self._resolve_bet(ctx, amount)
             if amount is None:
                 return
@@ -135,7 +135,7 @@ class GamblingCommands:
     @gambling_group.command(name="slots")
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
-    async def gambling_slots(self, ctx, amount: Union[int, str]):
+    async def gambling_slots(self, ctx, amount: str):
         """Play slots"""
         if not await self.config.gambling_enabled():
             await ctx.reply("❌ Gambling is disabled.", mention_author=False)
@@ -173,7 +173,7 @@ class GamblingCommands:
     @gambling_group.command(name="blackjack", aliases=["21"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
-    async def gambling_blackjack(self, ctx, amount: Union[int, str]):
+    async def gambling_blackjack(self, ctx, amount: str):
         """Play blackjack"""
         if not await self.config.gambling_enabled():
             await ctx.reply("❌ Gambling is disabled.", mention_author=False)
@@ -188,20 +188,6 @@ class GamblingCommands:
             return
             
         try:
-            # Note: play_blackjack handles interaction and responses internally
-            # We assume it uses ctx.send, but we can't easily patch it without seeing the method.
-            # However, if it uses ctx.send, it won't reply. 
-            # We can try to monkeypatch ctx.send for this call if needed, or update play_blackjack.
-            # But play_blackjack is likely in another file or imported.
-            # Wait, Line 188: await self.gambling_system.play_blackjack(ctx, amount)
-            # `unicornia/systems/gambling_system.py` contains the logic.
-            # Since I am editing commands files, I should probably check if I can modify the system call.
-            # Or just leave it as is if it's complex.
-            # User instructions were "Analyze the following files in unicornia/commands/".
-            # I will assume I only touch these files.
-            # If play_blackjack uses ctx.send internally, I can't change it here easily.
-            # But I can wrap `ctx` to override `send`? No, that's hacking.
-            # I'll stick to what I can control.
             await self.gambling_system.play_blackjack(ctx, amount)
         except Exception as e:
             await ctx.reply(f"❌ Error in blackjack: {e}", mention_author=False)
@@ -209,7 +195,7 @@ class GamblingCommands:
     @gambling_group.command(name="betflip", aliases=["bf"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet", guess="heads or tails")
-    async def gambling_betflip(self, ctx, amount: Union[int, str], guess: Optional[str] = None):
+    async def gambling_betflip(self, ctx, amount: str, guess: Optional[str] = None):
         """Bet on a coin flip (Heads or Tails)
         
         Usage: [p]gambling betflip 100 heads
@@ -277,7 +263,7 @@ class GamblingCommands:
     @gambling_group.command(name="luckyladder", aliases=["ladder"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
-    async def gambling_lucky_ladder(self, ctx, amount: Union[int, str]):
+    async def gambling_lucky_ladder(self, ctx, amount: str):
         """Play lucky ladder"""
         if not await self.config.gambling_enabled():
             await ctx.reply("❌ Gambling is disabled.", mention_author=False)
@@ -314,40 +300,40 @@ class GamblingCommands:
     @commands.hybrid_command(name="betroll", aliases=["roll"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
-    async def top_betroll(self, ctx, amount: Union[int, str]):
+    async def top_betroll(self, ctx, amount: str):
         """Bet on a dice roll (1-100)"""
         await self.gambling_betroll(ctx, amount)
 
     @commands.hybrid_command(name="rps", aliases=["rockpaperscissors"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(choice="rock, paper, or scissors", amount="Amount to bet")
-    async def top_rps(self, ctx, choice: Optional[str] = None, amount: Union[int, str] = 0):
+    async def top_rps(self, ctx, choice: Optional[str] = None, amount: str = "0"):
         """Play rock paper scissors"""
         await self.gambling_rps(ctx, choice, amount)
 
     @commands.hybrid_command(name="slots")
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
-    async def top_slots(self, ctx, amount: Union[int, str]):
+    async def top_slots(self, ctx, amount: str):
         """Play slots"""
         await self.gambling_slots(ctx, amount)
 
     @commands.command(name="blackjack", aliases=["21"])
     @commands.cooldown(1, 1, commands.BucketType.user)
-    async def top_blackjack(self, ctx, amount: Union[int, str]):
+    async def top_blackjack(self, ctx, amount: str):
         """Play blackjack"""
         await self.gambling_blackjack(ctx, amount)
 
     @commands.hybrid_command(name="betflip", aliases=["bf"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet", guess="heads or tails")
-    async def top_betflip(self, ctx, amount: Union[int, str], guess: Optional[str] = None):
+    async def top_betflip(self, ctx, amount: str, guess: Optional[str] = None):
         """Bet on a coin flip (Heads or Tails)"""
         await self.gambling_betflip(ctx, amount, guess)
 
     @commands.hybrid_command(name="luckyladder", aliases=["ladder"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
-    async def top_luckyladder(self, ctx, amount: Union[int, str]):
+    async def top_luckyladder(self, ctx, amount: str):
         """Play lucky ladder"""
         await self.gambling_lucky_ladder(ctx, amount)
