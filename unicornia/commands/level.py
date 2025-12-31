@@ -11,7 +11,7 @@ class LevelCommands:
         """Show the XP leaderboard for this server"""
         await self.level_leaderboard(ctx)
 
-    @commands.hybrid_group(name="level", aliases=["lvl", "xp"], invoke_without_command=True)
+    @commands.hybrid_group(name="level", aliases=["lvl"], invoke_without_command=True)
     async def level_group(self, ctx, member: Optional[discord.Member] = None):
         """Level and XP commands"""
         # If no subcommand is invoked, behave like the check command
