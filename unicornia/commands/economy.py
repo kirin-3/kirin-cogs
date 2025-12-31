@@ -3,7 +3,7 @@ from redbot.core import commands, checks, app_commands
 from redbot.core.utils.views import SimpleMenu
 from typing import Optional
 from ..utils import validate_text_input
-from ..views import LeaderboardView
+from ..views import LeaderboardView, BalanceActions
 
 class EconomyCommands:
     # Economy commands
@@ -51,11 +51,19 @@ class EconomyCommands:
                 title=f"{member.display_name}'s Balance",
                 color=member.color or discord.Color.green()
             )
-            embed.add_field(name=f"{currency_symbol} Currency", value=f"{currency_symbol}{wallet_balance:,}", inline=True)
-            embed.add_field(name="🏦 Bank", value=f"{currency_symbol}{bank_balance:,}", inline=True)
-            embed.add_field(name="💎 Total", value=f"{currency_symbol}{wallet_balance + bank_balance:,}", inline=True)
             
-            await ctx.reply(embed=embed, mention_author=False)
+            embed.set_thumbnail(url=member.display_avatar.url)
+            
+            total = wallet_balance + bank_balance
+            
+            embed.add_field(name="👛 Wallet", value=f"{currency_symbol}{wallet_balance:,}", inline=True)
+            embed.add_field(name="🏦 Bank", value=f"{currency_symbol}{bank_balance:,}", inline=True)
+            embed.add_field(name="💰 Total", value=f"{currency_symbol}{total:,}", inline=True)
+            
+            # View with actions
+            view = BalanceActions(ctx, self)
+            
+            await ctx.reply(embed=embed, view=view, mention_author=False)
             
         except Exception as e:
             await ctx.reply(f"❌ Error retrieving balance: {e}", mention_author=False)

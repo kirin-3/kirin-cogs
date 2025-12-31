@@ -622,7 +622,7 @@ class NitroShopView(ui.View):
         embed = discord.Embed(
             title="<a:zz_unicorn_dot:965576604212396092> Unicornia Nitro Shop",
             description=f"Exchange your hard-earned {currency_symbol} for Discord Nitro!\n"
-                        f"Items are delivered manually by Kirin after purchase.",
+            f"Items are delivered manually by Kirin after purchase.",
             color=discord.Color(0xff73fa)
         )
         
@@ -641,3 +641,109 @@ class NitroShopView(ui.View):
         embed.set_footer(text="Stock is limited! • No refunds once code is sent.")
         
         return embed
+
+class TransactionModal(ui.Modal):
+    def __init__(self, cog, transaction_type: str, title: str):
+        super().__init__(title=title)
+        self.cog = cog
+        self.transaction_type = transaction_type # "deposit" or "withdraw"
+        
+        self.amount = ui.TextInput(
+            label="Amount",
+            placeholder="Enter amount (e.g. 1000 or all)",
+            min_length=1,
+            max_length=20
+        )
+        self.add_item(self.amount)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        amount_str = self.amount.value.strip().lower()
+        
+        try:
+            # Handle "all"
+            if amount_str == "all":
+                wallet, bank = await self.cog.economy_system.get_balance(interaction.user.id)
+                if self.transaction_type == "deposit":
+                    amount = wallet
+                else: # withdraw
+                    amount = bank
+            else:
+                amount = int(amount_str.replace(",", "")) # Handle commas if user types "1,000"
+                
+            if amount <= 0:
+                await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
+                return
+                
+            currency_symbol = await self.cog.config.currency_symbol()
+            
+            if self.transaction_type == "deposit":
+                success = await self.cog.economy_system.deposit_bank(interaction.user.id, amount)
+                action = "Deposited"
+                from_loc = "wallet"
+                to_loc = "bank account"
+            else:
+                success = await self.cog.economy_system.withdraw_bank(interaction.user.id, amount)
+                action = "Withdrew"
+                from_loc = "bank account"
+                to_loc = "wallet"
+                
+            if success:
+                await interaction.response.send_message(f"✅ {action} {currency_symbol}{amount:,} to your {to_loc}!", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"❌ Insufficient funds in your {from_loc}.", ephemeral=True)
+                
+        except ValueError:
+             await interaction.response.send_message("❌ Invalid amount. Please enter a number or 'all'.", ephemeral=True)
+        except Exception as e:
+             await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+
+class BalanceActions(ui.View):
+    def __init__(self, ctx, cog):
+        super().__init__(timeout=60)
+        self.ctx = ctx
+        self.cog = cog
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.ctx.author.id:
+             await interaction.response.send_message("These buttons are not for you.", ephemeral=True)
+             return False
+        return True
+
+    @ui.button(label="Deposit", style=discord.ButtonStyle.success, emoji="📥")
+    async def deposit(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_modal(TransactionModal(self.cog, "deposit", "Deposit to Bank"))
+
+    @ui.button(label="Withdraw", style=discord.ButtonStyle.danger, emoji="📤")
+    async def withdraw(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_modal(TransactionModal(self.cog, "withdraw", "Withdraw from Bank"))
+
+    @ui.button(label="Leaderboard", style=discord.ButtonStyle.secondary, emoji="🏆")
+    async def leaderboard(self, interaction: discord.Interaction, button: ui.Button):
+        # Trigger leaderboard
+        await interaction.response.defer()
+        # Call the existing economy_leaderboard command logic
+        # Since it's an async command, we can invoke it, but invoking checks permissions etc.
+        # Alternatively, replicate logic. Replicating is safer for simple display.
+        
+        try:
+             # Logic from economy_leaderboard
+             top_users = await self.cog.economy_system.get_filtered_leaderboard(self.ctx.guild)
+             
+             if not top_users:
+                 await interaction.followup.send("No economy data found for this server.", ephemeral=True)
+                 return
+                 
+             user_position = None
+             for i, (uid, _) in enumerate(top_users):
+                 if uid == self.ctx.author.id:
+                     user_position = i
+                     break
+                     
+             currency_symbol = await self.cog.config.currency_symbol()
+             
+             view = LeaderboardView(self.ctx, top_users, user_position, currency_symbol)
+             embed = await view.get_embed()
+             view.message = await interaction.followup.send(embed=embed, view=view)
+             
+        except Exception as e:
+             await interaction.followup.send(f"❌ Error loading leaderboard: {e}", ephemeral=True)
