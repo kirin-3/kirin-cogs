@@ -206,7 +206,7 @@ class Profile(commands.Cog):
                 channel_id = await self.config.channel_id()
                 if channel.id != channel_id:
                     return
-                await self._repost_sticky(channel)
+                await self._do_repost_sticky(channel, cv)
                 return
 
             last_message_created_at = discord.utils.snowflake_time(sticky_id)
@@ -222,21 +222,6 @@ class Profile(commands.Cog):
             # without fetching, we'll fetch it if needed or just use a simpler check.
             # But let's try to be accurate.
             try:
-                # We need the full message to get created_at
-                # actually, get_partial_message doesn't have created_at populated.
-                # So we might need to fetch it once or store the timestamp in config.
-                # In sticky.py they seem to assume it's available?
-                # Wait, last_message = channel.get_partial_message(last_message_id)
-                # then last_message.created_at.
-                # Actually, partial message DOES NOT have created_at.
-                # So sticky.py must be fetching it somewhere or it's a bug there too?
-                # Ah, in sticky.py line 209: last_message = channel.get_partial_message(last_message_id)
-                # then line 215: responding_to_message.created_at < last_message.created_at
-                # PartialMessage DOES NOT have created_at.
-                # Wait, let me check discord.py docs.
-                # "PartialMessage objects do not have any state beyond their ID and channel."
-                # So sticky.py might be flawed if it doesn't fetch.
-                # But maybe they are using the fact that snowflake IDs include timestamps.
                 
                 last_msg_timestamp = discord.utils.snowflake_time(sticky_id)
                 time_since = utcnow - last_msg_timestamp
@@ -259,35 +244,38 @@ class Profile(commands.Cog):
             if channel.last_message_id == sticky_id:
                 return
 
-            await self._repost_sticky(channel)
+            await self._do_repost_sticky(channel, cv)
 
     async def _repost_sticky(self, channel: discord.TextChannel):
         cv = self._channel_cvs.setdefault(channel, asyncio.Condition())
         async with cv:
-            self.locked_channels.add(channel)
-            try:
-                # Re-fetch sticky ID after acquiring lock
-                old_sticky_id = await self.config.sticky_message_id()
-                
-                # Delete old sticky
-                if old_sticky_id:
-                    try:
-                        msg = channel.get_partial_message(old_sticky_id)
-                        await msg.delete()
-                    except discord.NotFound:
-                        pass
-                    except Exception as e:
-                        log.error(f"Failed to delete old sticky: {e}")
+            await self._do_repost_sticky(channel, cv)
 
-                # Send new sticky
-                view = ProfileStickyView(self)
-                embed = discord.Embed(
-                    title="User Profiles",
-                    description="Click the buttons below to create, edit, or delete your profile in this channel.",
-                    color=discord.Color.blue()
-                )
-                new_sticky = await channel.send(embed=embed, view=view)
-                await self.config.sticky_message_id.set(new_sticky.id)
-            finally:
-                self.locked_channels.remove(channel)
-                cv.notify_all()
+    async def _do_repost_sticky(self, channel: discord.TextChannel, cv: asyncio.Condition):
+        self.locked_channels.add(channel)
+        try:
+            # Re-fetch sticky ID after acquiring lock
+            old_sticky_id = await self.config.sticky_message_id()
+            
+            # Delete old sticky
+            if old_sticky_id:
+                try:
+                    msg = channel.get_partial_message(old_sticky_id)
+                    await msg.delete()
+                except discord.NotFound:
+                    pass
+                except Exception as e:
+                    log.error(f"Failed to delete old sticky: {e}")
+
+            # Send new sticky
+            view = ProfileStickyView(self)
+            embed = discord.Embed(
+                title="User Profiles",
+                description="Click the buttons below to create, edit, or delete your profile in this channel.",
+                color=discord.Color.blue()
+            )
+            new_sticky = await channel.send(embed=embed, view=view)
+            await self.config.sticky_message_id.set(new_sticky.id)
+        finally:
+            self.locked_channels.remove(channel)
+            cv.notify_all()
