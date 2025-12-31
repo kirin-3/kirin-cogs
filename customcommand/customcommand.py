@@ -21,6 +21,23 @@ class CustomCommand(commands.Cog):
         self.config.register_guild(**default_guild)
         self.role_id = 700121551483437128
         self._cooldown = commands.CooldownMapping.from_cooldown(1, 10, commands.BucketType.user)
+        self.command_cache = {}  # guild_id: {trigger: response}
+
+    async def cog_load(self):
+        """Pre-populate the cache on cog load."""
+        all_guilds_data = await self.config.all_guilds()
+        for guild_id, guild_data in all_guilds_data.items():
+            self.command_cache[guild_id] = guild_data.get("commands", {})
+
+    def cog_unload(self):
+        """Clear cache on cog unload."""
+        self.command_cache.clear()
+
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild: discord.Guild):
+        """Clear cache on guild remove."""
+        if guild.id in self.command_cache:
+            del self.command_cache[guild.id]
 
     async def log_action(self, ctx, action: str, trigger: str, response: str = None):
         """Log custom command actions to the hardcoded channel."""
@@ -156,6 +173,10 @@ class CustomCommand(commands.Cog):
             await ctx.send(f"You have reached your limit of {limit} custom command(s).")
             return
 
+        if not trigger.isalnum():
+            await ctx.send("Trigger must be alphanumeric.")
+            return
+
         if self.bot.get_command(trigger.lower()):
             await ctx.send("A command with this name already exists.")
             return
@@ -166,11 +187,15 @@ class CustomCommand(commands.Cog):
             return
 
         # Save new command
-        await self.config.guild(guild).commands.set_raw(trigger.lower(), value=response)
+        async with self.config.guild(guild).commands() as commands:
+            commands[trigger.lower()] = response
         
         # Update owner list
         user_commands.append(trigger.lower())
         await self.config.guild(guild).command_owners.set_raw(str(author.id), value=user_commands)
+
+        # Update cache
+        self.command_cache.setdefault(guild.id, {})[trigger.lower()] = response
 
         await self.log_action(ctx, "Created", trigger.lower(), response)
         await ctx.send(f"Custom command `{trigger}` has been created.")
@@ -190,7 +215,7 @@ class CustomCommand(commands.Cog):
         # Mod deletion logic
         if is_mod and trigger:
             trigger = trigger.lower()
-            all_commands = await self.config.guild(guild).commands()
+            all_commands = self.command_cache.get(guild.id, {})
             
             if trigger in all_commands:
                 # Find owner to clean up
@@ -203,9 +228,15 @@ class CustomCommand(commands.Cog):
                         owner_found = user_id
                         break
                 
-                # Delete
-                await self.config.guild(guild).commands.clear_raw(trigger)
+                # Delete from config
+                async with self.config.guild(guild).commands() as commands:
+                    if trigger in commands:
+                        del commands[trigger]
                 
+                # Delete from cache
+                if guild.id in self.command_cache and trigger in self.command_cache[guild.id]:
+                    del self.command_cache[guild.id][trigger]
+
                 if owner_found:
                     triggers = command_owners[owner_found]
                     if isinstance(triggers, str): triggers = [triggers]
@@ -219,13 +250,11 @@ class CustomCommand(commands.Cog):
                 await self.log_action(ctx, "Deleted (Mod)", trigger)
                 await ctx.send(f"Custom command `{trigger}` has been deleted by moderator.")
                 return
-            # If trigger provided but not found, check if it's user's own command (fall through)
-            # Actually, if it's not in all_commands, it doesn't exist at all.
             elif trigger not in all_commands:
                  await ctx.send("Command not found.")
                  return
 
-        # Regular user logic (or mod deleting own without args)
+        # Regular user logic
         command_owners = await self.config.guild(guild).command_owners()
         user_commands = command_owners.get(str(author.id))
 
@@ -233,7 +262,6 @@ class CustomCommand(commands.Cog):
             await ctx.send("You don't have a custom command to delete.")
             return
 
-        # Migration: handle if stored as string (legacy)
         if isinstance(user_commands, str):
             user_commands = [user_commands]
 
@@ -250,8 +278,12 @@ class CustomCommand(commands.Cog):
             await ctx.send("You don't own a command with that name.")
             return
 
-        # Delete
-        await self.config.guild(guild).commands.clear_raw(trigger)
+        # Delete from config and cache
+        async with self.config.guild(guild).commands() as commands:
+            if trigger in commands:
+                del commands[trigger]
+        if guild.id in self.command_cache and trigger in self.command_cache[guild.id]:
+            del self.command_cache[guild.id][trigger]
         
         user_commands.remove(trigger)
         if not user_commands:
@@ -266,22 +298,19 @@ class CustomCommand(commands.Cog):
     async def on_message_without_command(self, message: discord.Message):
         """
         Listens for messages to check for custom command triggers.
-        This will not trigger if the message is a valid command.
         """
         if message.author.bot or not message.guild:
             return
 
-        # This is necessary to check for custom command triggers on every message.
-        # It's designed to be as efficient as possible by only reading from config.
-        all_commands = await self.config.guild(message.guild).commands()
+        guild_commands = self.command_cache.get(message.guild.id, {})
         trigger = message.content.strip().lower()
 
-        if trigger in all_commands:
+        if trigger in guild_commands:
             bucket = self._cooldown.get_bucket(message)
             retry_after = bucket.update_rate_limit()
             if retry_after:
                 return
-            response = all_commands[trigger]
+            response = guild_commands[trigger]
             await message.channel.send(response)
 
 async def setup(bot):

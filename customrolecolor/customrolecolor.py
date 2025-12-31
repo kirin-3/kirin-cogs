@@ -87,6 +87,7 @@ class CustomRoleColor(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
+    @commands.cooldown(1, 10, commands.BucketType.user)
     async def myrolecolor(self, ctx, color: str, secondary_color: str = None):
         """
         Change the color of your assigned role.
@@ -164,11 +165,12 @@ class CustomRoleColor(commands.Cog):
                 await ctx.send(f"Changed color of {role.mention} to {color}.")
         except discord.Forbidden:
             await ctx.send("I don't have permission to edit that role.")
-        except Exception as e:
+        except discord.HTTPException as e:
             await ctx.send(f"An error occurred: {e}")
 
     @commands.command()
     @commands.guild_only()
+    @commands.cooldown(1, 10, commands.BucketType.user)
     async def myrolename(self, ctx, *, new_name: str):
         """
         Change the name of your assigned role.
@@ -189,16 +191,21 @@ class CustomRoleColor(commands.Cog):
             await ctx.send("I can't edit that role (it's higher than my top role).")
             return
 
+        if not (1 <= len(new_name) <= 100):
+            await ctx.send("Role name must be between 1 and 100 characters.")
+            return
+
         try:
             await role.edit(name=new_name, reason=f"Changed by {ctx.author}")
             await ctx.send(f"Changed name of your role to **{new_name}**.")
         except discord.Forbidden:
             await ctx.send("I don't have permission to edit that role.")
-        except Exception as e:
+        except discord.HTTPException as e:
             await ctx.send(f"An error occurred: {e}")
 
     @commands.command()
     @commands.guild_only()
+    @commands.cooldown(1, 10, commands.BucketType.user)
     async def myroleicon(self, ctx, emoji: str = None):
         """
         Change the icon of your assigned role.
@@ -269,11 +276,10 @@ class CustomRoleColor(commands.Cog):
             await ctx.send("I don't have permission to edit that role.")
         except discord.HTTPException as e:
             await ctx.send(f"Failed to set icon: {e}")
-        except Exception as e:
-            await ctx.send(f"An error occurred: {e}")
 
     @commands.command()
     @commands.guild_only()
+    @commands.cooldown(1, 10, commands.BucketType.user)
     async def myrolementionable(self, ctx, state: str):
         """
         Toggle whether your assigned role is mentionable.
@@ -306,7 +312,7 @@ class CustomRoleColor(commands.Cog):
             await ctx.send(f"{role.mention} is now {'mentionable' if mentionable else 'not mentionable'}.")
         except discord.Forbidden:
             await ctx.send("I don't have permission to edit that role.")
-        except Exception as e:
+        except discord.HTTPException as e:
             await ctx.send(f"An error occurred: {e}")
 
     @commands.command()

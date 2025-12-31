@@ -43,6 +43,8 @@ class XPRepository:
             guild_id: Discord guild ID.
             amount: Amount of XP to add.
         """
+        if amount <= 0:
+            raise ValueError("Amount must be a positive integer.")
         async with self.db._get_connection() as db:
             await db.execute("""
                 INSERT INTO UserXpStats (UserId, GuildId, Xp) VALUES (?, ?, ?)
@@ -69,10 +71,13 @@ class XPRepository:
         async with self.db._get_connection() as db:
             
             # Prepare params for UserXpStats: (user_id, guild_id, amount, amount)
-            xp_stats_params = [(u, g, a, a) for u, g, a in updates]
+            xp_stats_params = [(u, g, a, a) for u, g, a in updates if a > 0]
             
             # Prepare params for DiscordUser: (user_id, amount, amount)
-            user_params = [(u, a, a) for u, g, a in updates]
+            user_params = [(u, a, a) for u, g, a in updates if a > 0]
+
+            if not xp_stats_params:
+                return
             
             await db.executemany("""
                 INSERT INTO UserXpStats (UserId, GuildId, Xp) VALUES (?, ?, ?)
@@ -434,14 +439,15 @@ class XPRepository:
             Rank integer.
         """
         async with self.db._get_connection() as db:
-            cursor = await db.execute("""
+            user_xp_cursor = await db.execute("SELECT Xp FROM UserXpStats WHERE UserId = ? AND GuildId = ?", (user_id, guild_id))
+            user_xp_row = await user_xp_cursor.fetchone()
+            user_xp = user_xp_row[0] if user_xp_row else 0
+
+            rank_cursor = await db.execute("""
                 SELECT COUNT(*) + 1 FROM UserXpStats
-                WHERE GuildId = ? AND Xp > (
-                    SELECT COALESCE(Xp, 0) FROM UserXpStats
-                    WHERE UserId = ? AND GuildId = ?
-                )
-            """, (guild_id, user_id, guild_id))
-            rank = (await cursor.fetchone())[0]
+                WHERE GuildId = ? AND Xp > ?
+            """, (guild_id, user_xp))
+            rank = (await rank_cursor.fetchone())[0]
             return rank
 
     async def get_top_xp_users(self, guild_id: int, limit: int = 10, offset: int = 0) -> List[Tuple]:
