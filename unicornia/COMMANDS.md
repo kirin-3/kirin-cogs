@@ -21,6 +21,13 @@ Commands for configuring the Unicornia system.
 | `[p]unicornia guild currencyreward <level> <amount>` | Set a currency reward for reaching a specific level. | Admin |
 | `[p]unicornia guild listcurrencyrewards` | List all configured currency rewards. | Admin |
 | `[p]unicornia guild listrolerewards` | List all configured role rewards. | Admin |
+| `[p]unicornia blacklist` | Base command for blacklist management. Alias: `bl` | Admin/Manage Guild |
+| `[p]unicornia blacklist command add <command> [channel]` | Disable a command in a channel. Alias: `cmd add` | Admin/Manage Guild |
+| `[p]unicornia blacklist command remove <command> [channel]` | Re-enable a command in a channel. Alias: `cmd rm` | Admin/Manage Guild |
+| `[p]unicornia blacklist command list` | List blacklisted commands. Alias: `cmd list` | Admin/Manage Guild |
+| `[p]unicornia blacklist system add <system> [channel]` | Disable an entire system in a channel. Alias: `sys add` | Admin/Manage Guild |
+| `[p]unicornia blacklist system remove <system> [channel]` | Re-enable a system in a channel. Alias: `sys rm` | Admin/Manage Guild |
+| `[p]unicornia blacklist system list` | List blacklisted systems. Alias: `sys list` | Admin/Manage Guild |
 
 ## Clubs
 Social groups that users can join, level up, and manage.
@@ -55,6 +62,7 @@ Manage your wallet, bank, and transactions.
 | `[p]economy` | Base command for economy features. Aliases: `econ`, `money`. | |
 | `[p]economy balance [user]` | Check your or another user's wallet and bank balance. Aliases: `bal`, `wallet`. | |
 | `[p]balance [user]` | Global shortcut for balance check. Aliases: `bal`, `$`, `€`, `£`. | |
+| `[p]wallet [user]` | Global shortcut for balance check. | |
 | `[p]economy give <amount> <user>` | Give currency to another user from your wallet. | |
 | `[p]economy timely` | Claim your daily currency reward. Alias: `daily`. | |
 | `[p]timely` | Global shortcut to claim daily reward. Alias: `daily`. | |
@@ -93,6 +101,7 @@ Track your activity and earn rewards.
 | :--- | :--- |
 | `[p]level` | Base command for leveling. Aliases: `lvl`, `xp`. |
 | `[p]level check [user]` | Check your (or another user's) level, rank, and view XP card. Alias: `me`. |
+| `[p]xp [user]` | Global shortcut to check XP card. |
 | `[p]level leaderboard` | View the server XP leaderboard. Aliases: `lb`, `top`. |
 | `[p]xplb` | Global shortcut for XP leaderboard. |
 

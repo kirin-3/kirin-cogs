@@ -80,7 +80,9 @@ class Unicornia(
         
         default_guild = {
             "excluded_roles": [],
-            "xp_included_channels": []
+            "xp_included_channels": [],
+            "command_blacklist": {}, # {command_name: [channel_ids]}
+            "system_blacklist": {}   # {system_name: [channel_ids]}
         }
         
         self.config.register_global(**default_global)
@@ -260,6 +262,44 @@ class Unicornia(
         """Global check for all commands in this cog"""
         if not self._check_systems_ready():
             raise SystemNotReadyError()
+
+        # Check blacklists (Skip for bot owner)
+        if await self.bot.is_owner(ctx.author):
+            return True
+            
+        if not ctx.guild:
+            return True
+            
+        # 1. Check System Blacklist
+        # Determine system from module name (e.g. unicornia.commands.economy -> economy)
+        try:
+            module_parts = ctx.command.callback.__module__.split('.')
+            if 'unicornia' in module_parts and 'commands' in module_parts:
+                idx = module_parts.index('commands')
+                if idx + 1 < len(module_parts):
+                    system_name = module_parts[idx + 1]
+                else:
+                    system_name = 'core'
+            else:
+                system_name = 'unknown'
+        except Exception:
+            system_name = 'unknown'
+            
+        system_blacklist = await self.config.guild(ctx.guild).system_blacklist()
+        if system_name in system_blacklist:
+            if ctx.channel.id in system_blacklist[system_name]:
+                return False
+                
+        # 2. Check Command Blacklist (check command and all parents)
+        command_blacklist = await self.config.guild(ctx.guild).command_blacklist()
+        
+        to_check = ctx.command
+        while to_check:
+            if to_check.qualified_name in command_blacklist:
+                if ctx.channel.id in command_blacklist[to_check.qualified_name]:
+                    return False
+            to_check = to_check.parent
+
         return True
 
     def _check_systems_ready(self) -> bool:
