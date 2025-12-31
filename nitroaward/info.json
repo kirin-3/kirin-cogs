@@ -3,7 +3,6 @@
     "name": "NitroAward",
     "short": "Awards currency for server boosting",
     "description": "Gives 5000 currency to users when they boost the server using Unicornia API.",
-    "requirements": ["unicornia"],
     "tags": ["economy", "nitro", "boost"],
     "min_bot_version": "3.5.0"
 }
