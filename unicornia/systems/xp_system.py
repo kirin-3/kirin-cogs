@@ -199,6 +199,11 @@ class XPSystem:
         """Process a message for XP gain (Optimized)"""
         if message.author.bot or not message.guild:
             return
+
+        # Check if message is a command
+        ctx = await self.bot.get_context(message)
+        if ctx.valid:
+            return
         
         # Check cached config
         if not self._config_cache.get("xp_enabled", True):

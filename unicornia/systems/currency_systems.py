@@ -51,6 +51,11 @@ class CurrencyGeneration:
         """Process a message for potential currency generation"""
         if message.author.bot or not message.guild:
             return
+
+        # Check if message is a command
+        ctx = await self.bot.get_context(message)
+        if ctx.valid:
+            return
         
         # Fast checks using cache
         if not self.gen_enabled:
