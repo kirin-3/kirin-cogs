@@ -29,7 +29,8 @@ class Profile(commands.Cog):
         }
         default_user = {
             "profile_data": {},
-            "message_id": None
+            "message_id": None,
+            "last_delete": None
         }
         
         self.config.register_global(**default_global)
@@ -71,7 +72,23 @@ class Profile(commands.Cog):
         await ctx.tick()
 
     async def handle_create_edit(self, interaction: discord.Interaction):
-        user_data = await self.config.user(interaction.user).profile_data()
+        # Check 24h cooldown after deletion
+        user_conf = await self.config.user(interaction.user).all()
+        last_delete = user_conf.get("last_delete")
+        
+        if last_delete:
+            last_delete_dt = datetime.fromtimestamp(last_delete, timezone.utc)
+            now = datetime.now(timezone.utc)
+            diff = now - last_delete_dt
+            if diff.total_seconds() < 86400: # 24 hours
+                if not await self.bot.is_owner(interaction.user):
+                    hours_remaining = int((86400 - diff.total_seconds()) / 3600)
+                    return await interaction.response.send_message(
+                        f"You must wait 24 hours after deleting your profile to create a new one. (~{hours_remaining} hours remaining)",
+                        ephemeral=True
+                    )
+
+        user_data = user_conf["profile_data"]
         view = ProfileBuilderView(interaction.user, user_data)
         
         msg = "Welcome to the Profile Builder! Fill out the fields below. Required fields are marked with *."
@@ -105,6 +122,7 @@ class Profile(commands.Cog):
                     log.error(f"Failed to delete profile message for {interaction.user.id}: {e}")
             
             await self.config.user(interaction.user).clear()
+            await self.config.user(interaction.user).last_delete.set(datetime.now(timezone.utc).timestamp())
             await interaction.followup.send("Your profile has been deleted.", ephemeral=True)
 
     async def _update_profile_embed(self, user: discord.Member, data: ProfileData):
@@ -117,7 +135,7 @@ class Profile(commands.Cog):
             color=user.color,
             timestamp=datetime.now(timezone.utc)
         )
-        embed.set_author(name=f"{user}", icon_url=user.display_avatar.url)
+        embed.set_author(name=f"{user.display_name}", icon_url=user.display_avatar.url)
         embed.set_thumbnail(url=user.display_avatar.url)
         
         # Inline fields
@@ -146,7 +164,7 @@ class Profile(commands.Cog):
         elif data.get("picture"): # In case field name is "picture" in data
              embed.set_image(url=data["picture"])
 
-        embed.set_footer(text=f"Profile created by {user.name}")
+        embed.set_footer(text=f"Profile created by {user.display_name}")
 
         content = f"{user.mention}" # User mention as requested
 
