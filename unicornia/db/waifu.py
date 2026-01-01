@@ -34,19 +34,19 @@ class WaifuRepository:
             Success boolean.
         """
         async with self.db._get_connection() as db:
-            
-            # Check if waifu is already claimed
-            cursor = await db.execute("SELECT ClaimerId FROM WaifuInfo WHERE WaifuId = ?", (waifu_id,))
-            result = await cursor.fetchone()
-            
-            if result and result[0] is not None:
-                return False  # Already claimed
-            
-            # Update or insert waifu claim
-            await db.execute("""
-                INSERT OR REPLACE INTO WaifuInfo (WaifuId, ClaimerId, Price, DateAdded)
+            # Atomic insert-or-claim-if-unowned
+            cursor = await db.execute("""
+                INSERT INTO WaifuInfo (WaifuId, ClaimerId, Price, DateAdded)
                 VALUES (?, ?, ?, datetime('now'))
+                ON CONFLICT(WaifuId) DO UPDATE SET
+                    ClaimerId = excluded.ClaimerId,
+                    Price = excluded.Price,
+                    DateAdded = excluded.DateAdded
+                WHERE WaifuInfo.ClaimerId IS NULL
             """, (waifu_id, claimer_id, price))
+            
+            if cursor.rowcount == 0:
+                return False  # Already claimed
             
             # Log waifu update (Claimed = 0)
             await db.execute("""
@@ -119,6 +119,197 @@ class WaifuRepository:
             """, (waifu_id, old_owner_id, new_owner_id))
             
             await db.commit()
+
+    async def force_claim_waifu(self, waifu_id: int, claimer_id: int, old_owner_id: int, price: int, claimer_note: str, owner_note: str) -> bool:
+        """Atomically force claim a waifu: transfer currency and ownership.
+
+        Args:
+            waifu_id: Waifu ID.
+            claimer_id: New owner ID.
+            old_owner_id: Previous owner ID.
+            price: Price paid.
+            claimer_note: Note for claimer's transaction log.
+            owner_note: Note for old owner's transaction log.
+
+        Returns:
+            bool: True if successful, False if insufficient funds or other error.
+        """
+        async with self.db._get_connection() as db:
+            await db.execute("BEGIN")
+            try:
+                # 1. Deduct from claimer
+                cursor = await db.execute("""
+                    UPDATE DiscordUser
+                    SET CurrencyAmount = CurrencyAmount - ?
+                    WHERE UserId = ? AND CurrencyAmount >= ?
+                """, (price, claimer_id, price))
+
+                if cursor.rowcount == 0:
+                    # Insufficient funds
+                    await db.execute("ROLLBACK")
+                    return False
+
+                # 2. Add to old owner
+                await db.execute("""
+                    INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
+                    ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount + ?
+                """, (old_owner_id, price, price))
+
+                # 3. Transfer Waifu
+                await db.execute("""
+                    UPDATE WaifuInfo
+                    SET ClaimerId = ?, Price = ?
+                    WHERE WaifuId = ?
+                """, (claimer_id, price, waifu_id))
+
+                # 4. Logs
+                
+                # Log claimer transaction
+                await db.execute("""
+                    INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                """, (claimer_id, -price, "waifu_claim", str(waifu_id), None, claimer_note))
+
+                # Log old owner transaction
+                await db.execute("""
+                    INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                """, (old_owner_id, price, "waifu_sold", str(waifu_id), claimer_id, owner_note))
+
+                # Log waifu update
+                await db.execute("""
+                    INSERT INTO WaifuUpdates (UserId, OldId, NewId, UpdateType, DateAdded)
+                    VALUES (?, ?, ?, 2, datetime('now'))
+                """, (waifu_id, old_owner_id, claimer_id))
+
+                await db.commit()
+                return True
+
+            except Exception:
+                await db.execute("ROLLBACK")
+                raise
+
+    async def gift_waifu_transaction(self, giver_id: int, waifu_id: int, gift_name: str, gift_emoji: str, gift_price: int, new_waifu_price: int, note: str) -> bool:
+        """Atomically gift a waifu: deduct currency, update price, add item.
+
+        Args:
+            giver_id: Giver ID.
+            waifu_id: Waifu ID.
+            gift_name: Gift name.
+            gift_emoji: Gift emoji.
+            gift_price: Price of gift.
+            new_waifu_price: New price of waifu.
+            note: Transaction note.
+            
+        Returns:
+            bool: True if successful, False if insufficient funds.
+        """
+        async with self.db._get_connection() as db:
+            await db.execute("BEGIN")
+            try:
+                # 1. Deduct currency
+                cursor = await db.execute("""
+                    UPDATE DiscordUser
+                    SET CurrencyAmount = CurrencyAmount - ?
+                    WHERE UserId = ? AND CurrencyAmount >= ?
+                """, (gift_price, giver_id, gift_price))
+
+                if cursor.rowcount == 0:
+                    await db.execute("ROLLBACK")
+                    return False
+
+                # 2. Update waifu price (Upsert to ensure existence for FK constraint)
+                await db.execute("""
+                    INSERT INTO WaifuInfo (WaifuId, Price, DateAdded)
+                    VALUES (?, ?, datetime('now'))
+                    ON CONFLICT(WaifuId) DO UPDATE SET Price = ?
+                """, (waifu_id, new_waifu_price, new_waifu_price))
+
+                # 3. Add item
+                await db.execute("""
+                    INSERT INTO WaifuItem (WaifuInfoId, Name, ItemEmoji, DateAdded)
+                    VALUES (?, ?, ?, datetime('now'))
+                """, (waifu_id, gift_name, gift_emoji))
+
+                # 4. Log currency transaction
+                await db.execute("""
+                    INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, Reason, DateAdded)
+                    VALUES (?, ?, 'waifu_gift', ?, ?, datetime('now'))
+                """, (giver_id, -gift_price, f"Gift {gift_name} to {waifu_id}", note))
+
+                await db.commit()
+                return True
+
+            except Exception:
+                await db.execute("ROLLBACK")
+                raise
+
+    async def claim_waifu_transaction(self, waifu_id: int, claimer_id: int, price: int, note: str) -> bool:
+        """Atomically claim a waifu: deduct currency and set owner.
+
+        Args:
+            waifu_id: Waifu ID.
+            claimer_id: Claimer ID.
+            price: Price.
+            note: Transaction note.
+            
+        Returns:
+            bool: True if successful, False if insufficient funds or already claimed.
+        """
+        async with self.db._get_connection() as db:
+            await db.execute("BEGIN")
+            try:
+                # 0. Check if already claimed (Double check inside transaction to be safe)
+                cursor = await db.execute("SELECT ClaimerId FROM WaifuInfo WHERE WaifuId = ?", (waifu_id,))
+                result = await cursor.fetchone()
+                if result and result[0] is not None:
+                    await db.execute("ROLLBACK")
+                    return False
+
+                # 1. Deduct currency
+                cursor = await db.execute("""
+                    UPDATE DiscordUser
+                    SET CurrencyAmount = CurrencyAmount - ?
+                    WHERE UserId = ? AND CurrencyAmount >= ?
+                """, (price, claimer_id, price))
+
+                if cursor.rowcount == 0:
+                    await db.execute("ROLLBACK")
+                    return False
+
+                # 2. Update Waifu (Upsert to preserve Affinity/DateAdded)
+                cursor = await db.execute("""
+                    INSERT INTO WaifuInfo (WaifuId, ClaimerId, Price, DateAdded)
+                    VALUES (?, ?, ?, datetime('now'))
+                    ON CONFLICT(WaifuId) DO UPDATE SET
+                        ClaimerId = excluded.ClaimerId,
+                        Price = excluded.Price,
+                        DateAdded = excluded.DateAdded
+                    WHERE WaifuInfo.ClaimerId IS NULL
+                """, (waifu_id, claimer_id, price))
+
+                if cursor.rowcount == 0:
+                    await db.execute("ROLLBACK")
+                    return False
+
+                # 3. Log Waifu
+                await db.execute("""
+                    INSERT INTO WaifuUpdates (UserId, OldId, NewId, UpdateType, DateAdded)
+                    VALUES (?, ?, ?, 0, datetime('now'))
+                """, (waifu_id, 0, claimer_id))
+
+                # 4. Log Currency
+                await db.execute("""
+                    INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, Reason, DateAdded)
+                    VALUES (?, ?, 'waifu_claim', ?, ?, datetime('now'))
+                """, (claimer_id, -price, str(waifu_id), note))
+
+                await db.commit()
+                return True
+
+            except Exception:
+                await db.execute("ROLLBACK")
+                raise
 
     async def admin_reset_waifu(self, waifu_id: int) -> bool:
         """Admin reset waifu: remove claimer and set price to 50.

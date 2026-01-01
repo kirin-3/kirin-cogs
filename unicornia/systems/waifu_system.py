@@ -88,14 +88,18 @@ class WaifuSystem:
             effect_desc = f"increased by {effect}"
         
         # Transaction
-        # 1. Remove currency from giver
-        await self.db.economy.remove_currency(giver.id, gift["price"], "waifu_gift", f"Gift {gift['name']} to {target.id}")
+        success = await self.db.waifu.gift_waifu_transaction(
+            giver_id=giver.id,
+            waifu_id=target.id,
+            gift_name=gift["name"],
+            gift_emoji=gift["emoji"],
+            gift_price=gift["price"],
+            new_waifu_price=new_price,
+            note=""
+        )
         
-        # 2. Update waifu price
-        await self.db.waifu.update_waifu_price(target.id, new_price)
-        
-        # 3. Add item to waifu inventory/history
-        await self.db.waifu.add_waifu_item(target.id, gift["name"], gift["emoji"])
+        if not success:
+            return False, f"Not enough currency. You need {gift['price']}."
         
         return True, f"Gifted {gift['emoji']} **{gift['name']}** to **{target.display_name}**. Their price {effect_desc} to {new_price}."
 

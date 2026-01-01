@@ -83,38 +83,35 @@ class EconomyRepository:
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
             try:
-                success = await self._remove_currency(user_id, amount, transaction_type, extra, other_id, note, db)
+                # Atomic update with WHERE clause to prevent race conditions
+                cursor = await db.execute("""
+                    UPDATE DiscordUser
+                    SET CurrencyAmount = CurrencyAmount - ?
+                    WHERE UserId = ? AND CurrencyAmount >= ?
+                """, (amount, user_id, amount))
+                
+                if cursor.rowcount == 0:
+                    # Update failed - insufficient funds or user doesn't exist
+                    # Check if user exists but has no money, or doesn't exist
+                    check = await db.execute("SELECT 1 FROM DiscordUser WHERE UserId = ?", (user_id,))
+                    if not await check.fetchone():
+                        # Create user if doesn't exist (starts with 0, so still fails check)
+                        await db.execute("INSERT OR IGNORE INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, 0)", (user_id,))
+                    
+                    await db.commit()
+                    return False
+                
+                # Log transaction
+                await db.execute("""
+                    INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                """, (user_id, -amount, transaction_type, extra, other_id, note))
+                
                 await db.commit()
-                return success
+                return True
             except Exception:
                 await db.execute("ROLLBACK")
                 raise
-
-    async def _remove_currency(self, user_id: int, amount: int, transaction_type: str, extra: str, other_id: int, note: str, db) -> bool:
-        """Internal remove currency (no transaction control)."""
-        # Atomic update with WHERE clause to prevent race conditions
-        cursor = await db.execute("""
-            UPDATE DiscordUser
-            SET CurrencyAmount = CurrencyAmount - ?
-            WHERE UserId = ? AND CurrencyAmount >= ?
-        """, (amount, user_id, amount))
-        
-        if cursor.rowcount == 0:
-            # Update failed - insufficient funds or user doesn't exist
-            # Check if user exists but has no money, or doesn't exist
-            check = await db.execute("SELECT 1 FROM DiscordUser WHERE UserId = ?", (user_id,))
-            if not await check.fetchone():
-                # Create user if doesn't exist (starts with 0, so still fails check)
-                await db.execute("INSERT OR IGNORE INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, 0)", (user_id,))
-            return False
-        
-        # Log transaction
-        await db.execute("""
-            INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-        """, (user_id, -amount, transaction_type, extra, other_id, note))
-        
-        return True
 
     async def transfer_currency(self, from_user: int, to_user: int, amount: int, note: str = "") -> bool:
         """Atomically transfer currency between two users.
@@ -270,6 +267,35 @@ class EconomyRepository:
             except Exception:
                 await db.execute("ROLLBACK")
                 raise
+
+    async def _remove_currency(self, user_id: int, amount: int, transaction_type: str, extra: str, other_id: int, note: str, db) -> bool:
+        """Internal remove currency (no transaction control).
+        
+        Used by ShopRepository to participate in existing transactions.
+        """
+        # Atomic update with WHERE clause to prevent race conditions
+        cursor = await db.execute("""
+            UPDATE DiscordUser
+            SET CurrencyAmount = CurrencyAmount - ?
+            WHERE UserId = ? AND CurrencyAmount >= ?
+        """, (amount, user_id, amount))
+        
+        if cursor.rowcount == 0:
+            # Update failed - insufficient funds or user doesn't exist
+            # Check if user exists but has no money, or doesn't exist
+            check = await db.execute("SELECT 1 FROM DiscordUser WHERE UserId = ?", (user_id,))
+            if not await check.fetchone():
+                # Create user if doesn't exist (starts with 0, so still fails check)
+                await db.execute("INSERT OR IGNORE INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, 0)", (user_id,))
+            return False
+        
+        # Log transaction
+        await db.execute("""
+            INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        """, (user_id, -amount, transaction_type, extra, other_id, note))
+        
+        return True
 
     async def get_bank_user(self, user_id: int) -> Tuple[int]:
         """Get or create bank user.

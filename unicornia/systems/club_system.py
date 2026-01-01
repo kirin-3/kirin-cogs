@@ -256,7 +256,8 @@ class ClubSystem:
             return False, "You are not in a club."
             
         if club[6] == user.id:
-            return False, "Owner cannot leave the club. Transfer ownership or disband."
+            # If owner leaves, disband the club
+            return await self.disband_club(user)
             
         await self.db.club.leave_club(user.id)
         return True, f"You have left **{club[1]}**."

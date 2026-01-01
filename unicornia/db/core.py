@@ -60,6 +60,7 @@ class CoreDB:
             db: The database connection to configure.
         """
         await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA foreign_keys=ON")
         await db.execute("PRAGMA synchronous=NORMAL")
         await db.execute("PRAGMA cache_size=-4000") # Negative value = pages in KiB (4000KB ~ 4MB) -> actually let's use pages. Positive = pages. 4000 pages * 4KB = 16MB.
         await db.execute("PRAGMA temp_store=MEMORY")
