@@ -1,6 +1,7 @@
 import discord
 from redbot.core import commands, checks
 from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
+from redbot.core.utils.chat_formatting import box, humanize_number
 from typing import Optional
 
 class AdminCommands:
@@ -57,8 +58,13 @@ class AdminCommands:
 
     @unicornia_group.command(name="config")
     @checks.is_owner()
-    async def config_cmd(self, ctx, setting: str, *, value: str):
-        """Configure Unicornia settings"""
+    async def config_cmd(self, ctx, setting: str = None, *, value: str = None):
+        """Configure Unicornia settings
+        
+        Run without arguments to view all settings.
+        Run with setting name to view specific setting.
+        Run with setting name and value to update.
+        """
         valid_settings = [
             "currency_name", "currency_symbol", "xp_enabled", "economy_enabled",
             "gambling_enabled", "shop_enabled", "timely_amount", "timely_cooldown",
@@ -69,10 +75,67 @@ class AdminCommands:
             "gambling_min_bet", "gambling_max_bet"
         ]
         
+        if setting is None:
+            # Construct display
+            settings_display = []
+            
+            # Helper to get and format value
+            async def get_val(key):
+                val = await getattr(self.config, key)()
+                if isinstance(val, bool):
+                    return "Enabled" if val else "Disabled"
+                if isinstance(val, (int, float)):
+                     return humanize_number(val)
+                return str(val)
+
+            settings_display.append("[General]")
+            settings_display.append(f"Currency Name:       {await self.config.currency_name()}")
+            settings_display.append(f"Currency Symbol:     {await self.config.currency_symbol()}")
+            settings_display.append(f"XP System:           {await get_val('xp_enabled')}")
+            settings_display.append(f"Economy System:      {await get_val('economy_enabled')}")
+            settings_display.append(f"Gambling System:     {await get_val('gambling_enabled')}")
+            settings_display.append(f"Shop System:         {await get_val('shop_enabled')}")
+            
+            settings_display.append("\n[XP & Rewards]")
+            settings_display.append(f"XP Per Message:      {await get_val('xp_per_message')}")
+            settings_display.append(f"XP Cooldown:         {await get_val('xp_cooldown')}s")
+            settings_display.append(f"Daily Amount:        {await get_val('timely_amount')}")
+            settings_display.append(f"Daily Cooldown:      {await get_val('timely_cooldown')}h")
+
+            settings_display.append("\n[Currency Generation]")
+            settings_display.append(f"Enabled:             {await get_val('currency_generation_enabled')}")
+            settings_display.append(f"Chance:              {await get_val('generation_chance')}")
+            settings_display.append(f"Cooldown:            {await get_val('generation_cooldown')}s")
+            settings_display.append(f"Min Amount:          {await get_val('generation_min_amount')}")
+            settings_display.append(f"Max Amount:          {await get_val('generation_max_amount')}")
+            settings_display.append(f"Password Required:   {await get_val('generation_has_password')}")
+
+            settings_display.append("\n[Economy Decay]")
+            settings_display.append(f"Decay Percent:       {await get_val('decay_percent')}")
+            settings_display.append(f"Max Decay Amount:    {await get_val('decay_max_amount')}")
+            settings_display.append(f"Min Threshold:       {await get_val('decay_min_threshold')}")
+            settings_display.append(f"Interval:            {await get_val('decay_hour_interval')}h")
+            
+            settings_display.append("\n[Gambling]")
+            settings_display.append(f"Min Bet:             {await get_val('gambling_min_bet')}")
+            settings_display.append(f"Max Bet:             {await get_val('gambling_max_bet')}")
+
+            await ctx.send(box("\n".join(settings_display), lang="ini"))
+            return
+
         if setting not in valid_settings:
             await ctx.send(f"Invalid setting. Valid options: {', '.join(valid_settings)}")
             return
+            
+        if value is None:
+            # Display single setting
+            val = await getattr(self.config, setting)()
+            if isinstance(val, (int, float)):
+                val = humanize_number(val)
+            await ctx.send(f"**{setting}**: {val}")
+            return
         
+        # Update setting
         try:
             if setting in ["xp_enabled", "economy_enabled", "gambling_enabled", "shop_enabled", "currency_generation_enabled", "generation_has_password"]:
                 enabled = value.lower() in ["true", "yes", "1", "on"]
