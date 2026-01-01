@@ -307,7 +307,7 @@ class EconomyCommands:
         try:
             await self.economy_system.award_currency(member.id, amount, note)
             currency_symbol = await self.config.currency_symbol()
-            await ctx.send(f"✅ Awarded {currency_symbol}{amount:,} to {member.mention}!")
+            await ctx.send(f"✅ Awarded {currency_symbol}{amount:,} to {member.display_name}!")
             
         except Exception as e:
             await ctx.send(f"❌ Error awarding Slut points: {e}")
