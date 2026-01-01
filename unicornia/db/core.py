@@ -371,6 +371,15 @@ class CoreDB:
                     UNIQUE(GuildId, ChannelId)
                 )
             """)
+
+            # Bot Configuration table (For system persistence)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS BotConfig (
+                    Key TEXT PRIMARY KEY,
+                    Value TEXT,
+                    Description TEXT
+                )
+            """)
             
             # User Inventory table (New for v2 - converting Command items)
             await db.execute("""
@@ -428,6 +437,15 @@ class CoreDB:
                 PRIMARY KEY (UserId, GuildId, ShopEntryId),
                 FOREIGN KEY (ShopEntryId) REFERENCES ShopEntry(Id) ON DELETE CASCADE
             )
+            """)
+
+            # Create BotConfig table if it doesn't exist
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS BotConfig (
+                    Key TEXT PRIMARY KEY,
+                    Value TEXT,
+                    Description TEXT
+                )
             """)
             
             # Migrate Command items (Type 1) to Items (Type 4)

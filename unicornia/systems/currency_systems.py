@@ -8,7 +8,7 @@ import time
 import os
 import aiosqlite
 from typing import Optional, Dict, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import discord
 from redbot.core import commands
 from ..database import DatabaseManager
@@ -207,6 +207,18 @@ class CurrencyDecay:
             self._decay_task.cancel()
             self._decay_task = None
     
+    async def _get_last_decay_from_db(self) -> int:
+        """Fetch the last decay execution time from the database"""
+        async with self.db._get_connection() as db:
+            cursor = await db.execute("SELECT Value FROM BotConfig WHERE Key = 'LastDecayRun'")
+            row = await cursor.fetchone()
+            if row:
+                try:
+                    return int(row[0])
+                except (ValueError, TypeError):
+                    return 0
+            return 0
+
     async def _decay_loop(self):
         """Main decay loop"""
         await self.bot.wait_until_ready()
@@ -214,19 +226,32 @@ class CurrencyDecay:
         while True:
             try:
                 interval_hours = await self.config.decay_hour_interval()
-                last_run = await self.config.decay_last_run()
-                current_time = time.time()
+                
+                # Get last run from DB (more reliable) or Config (fallback)
+                last_run_db = await self._get_last_decay_from_db()
+                last_run_config = await self.config.decay_last_run()
+                last_run = max(last_run_db, last_run_config)
+                
+                current_time = int(time.time())
+                next_run = last_run + (interval_hours * 3600)
                 
                 # Check if enough time has passed since last run
-                if current_time - last_run >= interval_hours * 3600:
-                    await self._process_decay()
-                    await self.config.decay_last_run.set(int(time.time()))
+                if current_time >= next_run:
+                    # Process decay with current timestamp
+                    await self._process_decay(current_time)
+                    await self.config.decay_last_run.set(current_time)
                     
-                    # Wait full interval before next check
-                    await asyncio.sleep(interval_hours * 3600)
+                    # Recalculate next run from NOW (prevent double runs if we drifted)
+                    # or from scheduled time? Better from NOW to ensure spacing.
+                    next_run = current_time + (interval_hours * 3600)
+                    delay = next_run - int(time.time())
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+                    else:
+                         await asyncio.sleep(60)
                 else:
                     # Wait remaining time
-                    remaining = (interval_hours * 3600) - (current_time - last_run)
+                    remaining = next_run - current_time
                     if remaining > 0:
                         await asyncio.sleep(remaining)
                     else:
@@ -238,7 +263,7 @@ class CurrencyDecay:
                 print(f"Error in currency decay loop: {e}")
                 await asyncio.sleep(3600)  # Wait 1 hour before retrying
     
-    async def _process_decay(self):
+    async def _process_decay(self, execution_time: int):
         """Process currency decay for all users (Batch optimized) including bank"""
         decay_percent = await self.config.decay_percent()
         max_decay = await self.config.decay_max_amount()
@@ -250,6 +275,13 @@ class CurrencyDecay:
         async with self.db._get_connection() as db:
             await self.db._setup_wal_mode(db)
             
+            # Update LastDecayRun in DB within the same transaction
+            # This ensures atomicity: money is taken IF AND ONLY IF the timestamp is recorded.
+            await db.execute("""
+                INSERT OR REPLACE INTO BotConfig (Key, Value, Description)
+                VALUES ('LastDecayRun', ?, 'Timestamp of last currency decay execution')
+            """, (str(execution_time),))
+
             # Get wallet balances
             cursor = await db.execute("""
                 SELECT UserId, CurrencyAmount FROM DiscordUser
