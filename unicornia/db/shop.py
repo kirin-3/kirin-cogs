@@ -63,11 +63,15 @@ class ShopRepository:
             Shop entry tuple or None if not found.
         """
         async with self.db._get_connection() as db:
-            cursor = await db.execute("""
-                SELECT Id, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command
-                FROM ShopEntry WHERE GuildId = ? AND Id = ?
-            """, (guild_id, entry_id))
-            return await cursor.fetchone()
+            return await self._get_shop_entry(guild_id, entry_id, db)
+
+    async def _get_shop_entry(self, guild_id: int, entry_id: int, db) -> Optional[Tuple]:
+        """Internal get shop entry."""
+        cursor = await db.execute("""
+            SELECT Id, `Index`, Price, Name, AuthorId, Type, RoleName, RoleId, RoleRequirement, Command
+            FROM ShopEntry WHERE GuildId = ? AND Id = ?
+        """, (guild_id, entry_id))
+        return await cursor.fetchone()
 
     async def get_shop_entry_by_index(self, guild_id: int, index: int) -> Optional[Tuple]:
         """Get a specific shop entry by its index.
@@ -240,35 +244,45 @@ class ShopRepository:
             Tuple containing success boolean and status message.
         """
         async with self.db._get_connection() as db:
-            
-            # Get shop entry
-            entry = await self.get_shop_entry(guild_id, entry_id)
-            if not entry:
-                return False, "Shop item not found"
-            
-            entry_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command = entry
-            
-            # Check if user has enough currency
-            user_balance = await self.db.economy.get_user_currency(user_id)
-            if user_balance < price:
-                return False, f"Insufficient currency. You need {price:,} but have {user_balance:,}"
-            
-            # Check if user already owns this item (for role items)
-            if entry_type == 0:  # Role item
-                # Check if user already has the role
-                # This would need to be checked in the main cog with Discord API
-                pass
-            
-            # Deduct currency (Atomic check via remove_currency)
-            if price > 0:
-                success = await self.db.economy.remove_currency(user_id, price, "shop_purchase", str(entry_id), note=f"Purchased: {name}")
+            await db.execute("BEGIN")
+            try:
+                # Get shop entry
+                entry = await self._get_shop_entry(guild_id, entry_id, db)
+                if not entry:
+                    await db.execute("ROLLBACK")
+                    return False, "Shop item not found"
                 
-                if not success:
-                    return False, f"Insufficient currency or transaction failed."
-            
-            # Transaction already logged in remove_currency
-            
-            return True, f"Successfully purchased {name} for {price:,} currency"
+                entry_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command = entry
+                
+                # Check if user has enough currency
+                user_balance = await self.db.economy._get_user_currency(user_id, db)
+                if user_balance < price:
+                    await db.execute("ROLLBACK")
+                    return False, f"Insufficient currency. You need {price:,} but have {user_balance:,}"
+                
+                # Check if user already owns this item (for role items)
+                if entry_type == 0:  # Role item
+                    # Check if user already has the role
+                    # This would need to be checked in the main cog with Discord API
+                    pass
+                
+                # Deduct currency (Atomic check via remove_currency)
+                if price > 0:
+                    success = await self.db.economy._remove_currency(user_id, price, "shop_purchase", str(entry_id), other_id=None, note=f"Purchased: {name}", db=db)
+                    
+                    if not success:
+                        await db.execute("ROLLBACK")
+                        return False, f"Insufficient currency or transaction failed."
+                
+                # If Item type, add to inventory atomically
+                if entry_type == self.SHOP_TYPE_ITEM:
+                    await self._add_inventory_item(guild_id, user_id, entry_id, 1, db)
+
+                await db.commit()
+                return True, f"Successfully purchased {name} for {price:,} currency"
+            except Exception as e:
+                await db.execute("ROLLBACK")
+                raise e
 
     # Inventory Methods
     async def get_user_inventory(self, guild_id: int, user_id: int) -> List[Tuple]:
@@ -296,13 +310,17 @@ class ShopRepository:
     async def add_inventory_item(self, guild_id: int, user_id: int, entry_id: int, quantity: int = 1):
         """Add an item to user's inventory (Stacking)"""
         async with self.db._get_connection() as db:
-            await db.execute("""
-                INSERT INTO UserInventory (UserId, GuildId, ShopEntryId, Quantity)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(UserId, GuildId, ShopEntryId)
-                DO UPDATE SET Quantity = Quantity + excluded.Quantity
-            """, (user_id, guild_id, entry_id, quantity))
+            await self._add_inventory_item(guild_id, user_id, entry_id, quantity, db)
             await db.commit()
+
+    async def _add_inventory_item(self, guild_id: int, user_id: int, entry_id: int, quantity: int, db):
+        """Internal add inventory item."""
+        await db.execute("""
+            INSERT INTO UserInventory (UserId, GuildId, ShopEntryId, Quantity)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(UserId, GuildId, ShopEntryId)
+            DO UPDATE SET Quantity = Quantity + excluded.Quantity
+        """, (user_id, guild_id, entry_id, quantity))
 
     async def remove_inventory_item(self, guild_id: int, user_id: int, entry_id: int, quantity: int = 1) -> bool:
         """Remove an item from user's inventory"""

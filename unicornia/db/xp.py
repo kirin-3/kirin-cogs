@@ -292,12 +292,16 @@ class XPRepository:
             True if owned, False otherwise.
         """
         async with self.db._get_connection() as db:
-            cursor = await db.execute("""
-                SELECT COUNT(*) FROM XpShopOwnedItem
-                WHERE UserId = ? AND ItemType = ? AND ItemKey = ?
-            """, (user_id, item_type, item_key))
-            count = (await cursor.fetchone())[0]
-            return count > 0
+            return await self._user_owns_xp_item(user_id, item_type, item_key, db)
+
+    async def _user_owns_xp_item(self, user_id: int, item_type: int, item_key: str, db) -> bool:
+        """Internal check if user owns a specific XP shop item (using existing connection)."""
+        cursor = await db.execute("""
+            SELECT COUNT(*) FROM XpShopOwnedItem
+            WHERE UserId = ? AND ItemType = ? AND ItemKey = ?
+        """, (user_id, item_type, item_key))
+        count = (await cursor.fetchone())[0]
+        return count > 0
     
     async def purchase_xp_item(self, user_id: int, item_type: int, item_key: str, price: int) -> bool:
         """Purchase an XP shop item.
@@ -314,7 +318,7 @@ class XPRepository:
         async with self.db._get_connection() as db:
             
             # Check if user already owns this item
-            if await self.user_owns_xp_item(user_id, item_type, item_key):
+            if await self._user_owns_xp_item(user_id, item_type, item_key, db):
                 return False
             
             # Atomic deduction
@@ -355,7 +359,7 @@ class XPRepository:
         async with self.db._get_connection() as db:
             
             # Check if user already owns this item
-            if await self.user_owns_xp_item(user_id, item_type, item_key):
+            if await self._user_owns_xp_item(user_id, item_type, item_key, db):
                 return False
             
             # Add item to user's collection
@@ -408,7 +412,7 @@ class XPRepository:
         async with self.db._get_connection() as db:
             
             # Check if user owns the item
-            if not await self.user_owns_xp_item(user_id, item_type, item_key):
+            if not await self._user_owns_xp_item(user_id, item_type, item_key, db):
                 return False
             
             # Set all items of this type to not using

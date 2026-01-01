@@ -659,6 +659,10 @@ class ShopCommands:
             # Filter backgrounds to only show owned ones
             owned_backgrounds = {k: v for k, v in backgrounds.items() if k in owned_keys}
             
+            if not owned_backgrounds:
+                 await ctx.reply("❌ You own backgrounds, but none of them are currently available in the shop configuration.", mention_author=False)
+                 return
+            
             # Use the interactive view
             view = BackgroundShopView(ctx, owned_backgrounds, owned_keys)
             embed = await view.get_embed()

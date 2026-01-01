@@ -120,7 +120,8 @@ class ShopSystem:
         if user_balance < item['price']:
             return False, f"Insufficient Slut points. You need {item['price']:,} but have {user_balance:,}"
         
-        # Handle different item types
+        # Handle different item types - Pre-flight checks
+        role_to_add = None
         if item['type'] == self.db.shop.SHOP_TYPE_ROLE:
             # Role item
             if item['role_id']:
@@ -137,13 +138,7 @@ class ShopSystem:
                     if required_role and required_role not in user.roles:
                         return False, f"You need the {required_role.name} role to purchase this item"
                 
-                # Add role
-                try:
-                    await user.add_roles(role, reason=f"Shop purchase: {item['name']}")
-                except discord.Forbidden:
-                    return False, "I don't have permission to assign this role"
-                except discord.HTTPException:
-                    return False, "Failed to assign role"
+                role_to_add = role
         
         elif item['type'] == self.db.shop.SHOP_TYPE_ITEM:
             # Regular item - just inventory tracking
@@ -154,11 +149,16 @@ class ShopSystem:
         success, message = await self.db.shop.purchase_shop_item(user.id, guild_id, item['id'])
         if not success:
             return False, message
-            
-        # If purchase successful, add to inventory if it's an ITEM type
-        if item['type'] == self.db.shop.SHOP_TYPE_ITEM:
-            await self.db.shop.add_inventory_item(guild_id, user.id, item['id'], 1)
         
+        # Post-purchase actions (Role Assignment)
+        if role_to_add:
+            try:
+                await user.add_roles(role_to_add, reason=f"Shop purchase: {item['name']}")
+            except (discord.Forbidden, discord.HTTPException):
+                # Refund if role assignment fails
+                await self.db.economy.add_currency(user.id, item['price'], "shop_refund", str(item['id']), note=f"Refund for failed role assignment: {item['name']}")
+                return False, "Failed to assign role. Currency has been refunded."
+
         return True, f"Successfully purchased {item['name']} for {item['price']:,} Slut points"
     
     async def add_shop_item(self, guild_id: int, index: int, price: int, name: str, author_id: int,
