@@ -401,7 +401,7 @@ class LeaderboardView(ui.View):
         self.entries = entries # list of (user_id, balance)
         self.user_position = user_position # 0-based index in the entries list
         self.currency_symbol = currency_symbol
-        self.title = title or f"<:slut:686148402941001730> Economy Leaderboard"
+        self.title = title or f"{self.currency_symbol} Economy Leaderboard"
         self.formatter = formatter
         
         self.current_page = 0

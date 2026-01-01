@@ -51,7 +51,8 @@ class BackgroundShopView(discord.ui.View):
         desc = data.get('desc', '')
         url = data.get('url', '')
         
-        price_text = "FREE" if price == 0 else f"{price:,} <:slut:686148402941001730>"
+        currency_symbol = await self.ctx.cog.config.currency_symbol()
+        price_text = "FREE" if price == 0 else f"{price:,} {currency_symbol}"
         if key in self.user_owned:
             price_text = "Owned"
             
@@ -96,7 +97,8 @@ class BackgroundShopView(discord.ui.View):
         # Check balance
         user_balance = await self.ctx.cog.db.economy.get_user_currency(self.ctx.author.id)
         if user_balance < price:
-             await interaction.response.send_message(f"❌ Insufficient funds. You need {price:,} <:slut:686148402941001730>.", ephemeral=True)
+             currency_symbol = await self.ctx.cog.config.currency_symbol()
+             await interaction.response.send_message(f"❌ Insufficient funds. You need {price:,} {currency_symbol}.", ephemeral=True)
              return
 
         # Purchase
@@ -162,7 +164,7 @@ class ShopCommands:
             if success:
                 currency_symbol = await self.config.currency_symbol()
                 # Replace currency in message if it comes from system with generic term
-                message = message.replace("currency", "Slut points")
+                message = message.replace("currency", currency_symbol)
                 embed = discord.Embed(
                     title="✅ Purchase Successful!",
                     description=message,
@@ -584,15 +586,17 @@ class ShopCommands:
             # Check balance
             user_balance = await self.db.economy.get_user_currency(ctx.author.id)
             if user_balance < price:
-                await ctx.reply(f"❌ Insufficient Slut points! You have {user_balance:,} <:slut:686148402941001730> but need {price:,} <:slut:686148402941001730>.", mention_author=False)
+                currency_symbol = await self.config.currency_symbol()
+                await ctx.reply(f"❌ Insufficient Slut points! You have {user_balance:,} {currency_symbol} but need {price:,} {currency_symbol}.", mention_author=False)
                 return
 
             # Attempt purchase (item_type_id = 1 for backgrounds)
             success = await self.db.xp.purchase_xp_item(ctx.author.id, 1, item_key, price)
             
             if success:
+                currency_symbol = await self.config.currency_symbol()
                 item_name = items[item_key].get('name', item_key)
-                price_text = "FREE" if price == 0 else f"{price:,} <:slut:686148402941001730>"
+                price_text = "FREE" if price == 0 else f"{price:,} {currency_symbol}"
                 
                 # Auto-equip logic
                 equip_success = await self.db.xp.set_active_xp_item(ctx.author.id, 1, item_key)
@@ -609,8 +613,9 @@ class ShopCommands:
                 if await self.db.xp.user_owns_xp_item(ctx.author.id, 1, item_key):
                     await ctx.reply(f"❌ You already own this background!", mention_author=False)
                 else:
+                    currency_symbol = await self.config.currency_symbol()
                     user_currency = await self.db.economy.get_user_currency(ctx.author.id)
-                    await ctx.reply(f"❌ Insufficient Slut points! You have {user_currency:,} <:slut:686148402941001730> but need {price:,} <:slut:686148402941001730>.", mention_author=False)
+                    await ctx.reply(f"❌ Insufficient Slut points! You have {user_currency:,} {currency_symbol} but need {price:,} {currency_symbol}.", mention_author=False)
             
         except Exception as e:
             await ctx.reply(f"❌ Error processing purchase: {e}", mention_author=False)

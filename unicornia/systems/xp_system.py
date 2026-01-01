@@ -384,8 +384,8 @@ class XPSystem:
                 currency_gained += amount
         
         if currency_gained > 0:
-            currency_symbol = await self.config.currency_symbol()
-            footer_texts.append(f"Gained {currency_gained} {currency_symbol}")
+            currency_name = await self.config.currency_name()
+            footer_texts.append(f"Gained {currency_gained} {currency_name}")
 
         if footer_texts:
             embed.set_footer(text=" • ".join(footer_texts))
