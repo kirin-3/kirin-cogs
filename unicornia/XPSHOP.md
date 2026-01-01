@@ -44,7 +44,7 @@ After editing `xp_config.yml`, run the following command to apply changes withou
 - `[p]xpshop backgrounds` (Aliases: `bg`, `bgs`): View and buy available backgrounds.
 - `[p]xpshop buy <key>`: Purchase a specific background.
 - `[p]xpshop use <key>`: Equip a purchased background.
-- `[p]xpshop owned`: View your inventory of owned backgrounds.
+- `[p]xpshop owned` (Aliases: `inventory`, `inv`): View your inventory of owned backgrounds.
 - `[p]xpshopbuy <type> [key]`: Shortcut to buy XP shop items (e.g., `[p]xpshopbuy bg default`).
 
 ### Owner Commands

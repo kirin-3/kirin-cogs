@@ -101,6 +101,13 @@ shop:
       preview: ''
       price: 20000
       url: https://unicornia.net/botimages/makima2.gif
+    makima3:
+      desc: ''
+      name: Makima 3
+      preview: ''
+      price: 20
+      url: https://unicornia.net/botimages/makima3.gif
+      hidden: true
     pindown:
       desc: ''
       name: Pindown

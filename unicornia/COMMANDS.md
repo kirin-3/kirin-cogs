@@ -8,7 +8,7 @@ Commands for configuring the Unicornia system.
 | Command | Description | Permission |
 | :--- | :--- | :--- |
 | `[p]unicornia` | Base command for Unicornia configuration. Alias: `uni` | |
-| `[p]unicornia config <setting> <value>` | Configure global Unicornia settings. | Bot Owner |
+| `[p]unicornia config [setting] [value]` | Configure global Unicornia settings. | Bot Owner |
 | `[p]unicornia status` | Check the current status and configuration of Unicornia systems. | |
 | `[p]unicornia gen channel <operation> <channel>` | Add or remove a channel for currency generation. Operation: `add` or `remove`. | Bot Owner |
 | `[p]unicornia gen list` | List currency generation channels. | |
@@ -45,6 +45,10 @@ Social groups that users can join, level up, and manage.
 | `[p]club ban <user>` | Ban a member from the club. | Club Owner/Server Mod |
 | `[p]club unban <user>` | Unban a member from the club. | Club Owner/Server Mod |
 | `[p]club transfer <new_owner>` | Transfer club ownership to another member. | Club Owner |
+| `[p]club invite <user>` | Invite a user to your club. | Club Owner |
+| `[p]club invitations` | Base command for managing invitations. Aliases: `invites`. | |
+| `[p]club invitations accept <club_name>` | Accept a club invitation. | |
+| `[p]club invitations reject <club_name>` | Reject a club invitation. Alias: `decline`. | |
 | `[p]club applicants` | View pending club applications. Alias: `apps`. | Club Owner |
 | `[p]club bans` | View banned members. | Club Owner |
 | `[p]club rename <new_name>` | Rename the club. | Club Owner/Server Mod |
@@ -77,8 +81,8 @@ Manage your wallet, bank, and transactions.
 | `[p]pick` | Global shortcut to pick up generated currency from chat. | |
 | `[p]currency pick [password]` | Pick up generated currency from chat. | |
 | `[p]bank` | Base command for banking. | |
-| `[p]bank deposit <amount>` | Deposit currency from wallet to bank. Alias: `dep`. | |
-| `[p]bank withdraw <amount>` | Withdraw currency from bank to wallet. Alias: `with`. | |
+| `[p]bank deposit <amount>` | Deposit currency from wallet to bank. Alias: `dep`, `d`. | |
+| `[p]bank withdraw <amount>` | Withdraw currency from bank to wallet. Alias: `with`, `w`. | |
 | `[p]bank balance` | Check your bank balance. Alias: `bal`. | |
 
 ## Gambling
@@ -93,6 +97,7 @@ Games of chance to win (or lose) currency. All gambling commands have top-level 
 | `[p]gambling blackjack <amount>` | Play a game of Blackjack (21). Aliases: `bj`, `21`. Shortcut: `[p]blackjack`. |
 | `[p]gambling betflip <amount> <heads/tails>` | Bet on a coin flip. Alias: `bf`. Shortcut: `[p]betflip`. |
 | `[p]gambling luckyladder <amount>` | Climb the lucky ladder for increasing multipliers. Alias: `ladder`. Shortcut: `[p]luckyladder`. |
+| `[p]gambling mines <amount> [mines]` | Play Minesweeper. Reveal safe spots to multiply your bet. Alias: `minesweeper`. Shortcut: `[p]mines`. |
 
 ## Leveling
 Track your activity and earn rewards.

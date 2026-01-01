@@ -39,17 +39,212 @@ When the cog loads, it attempts to migrate data from an existing Nadeko Bot data
 *   `XpSettings`, `XpRoleReward`, `XpExcludedItem` (XP Configuration)
 *   `GamblingStats`, `UserBetStats` (Gambling Statistics)
 *   `ShopEntry`, `ShopEntryItem` (Shop Items)
+*   `XpShopOwnedItem` (XP Card Backgrounds)
 
 ## Database Schema
 
-Unicornia creates tables that match Nadeko's schema naming convention to ensure compatibility:
+Unicornia uses a schema compatible with Nadeko Bot but optimized for Red.
 
-*   `DiscordUser`: Core user data.
-*   `BankUsers`: Bank balances.
-*   `CurrencyTransactions`: Transaction history.
-*   `Clubs`: Club information.
-*   `WaifuInfo`: Waifu claims and affinity.
-*   `WaifuItem`: Waifu gifts/inventory.
-*   `WaifuUpdates`: Waifu transaction history.
+### Core User Data
 
-Note: The `InterestRate` column was removed from `BankUsers` as it is not used in the current version of Nadeko.
+#### `DiscordUser`
+The central table for user data.
+*   `UserId` (Integer, PK): Discord User ID.
+*   `Username` (Text): Cached username (for migration/display).
+*   `AvatarId` (Text): Cached avatar hash.
+*   `ClubId` (Integer): ID of the club the user belongs to.
+*   `IsClubAdmin` (Integer): 1 if admin, 0 otherwise.
+*   `TotalXp` (Integer): Total global XP.
+*   `CurrencyAmount` (Integer): Current wallet balance.
+
+### Economy
+
+#### `BankUsers`
+Stores separate bank balances.
+*   `UserId` (Integer, PK): Discord User ID.
+*   `Balance` (Integer): The amount stored in the bank.
+
+#### `CurrencyTransactions`
+A strict audit log of every balance change.
+*   `Id` (Integer, PK, Auto-increment)
+*   `UserId` (Integer): The user affected.
+*   `Type` (Text): Transaction type (e.g., "gift", "shop", "timely").
+*   `Amount` (Integer): The change amount.
+*   `Reason` (Text): Human-readable note.
+*   `OtherId` (Integer): ID of related entity (e.g., sender ID).
+*   `Extra` (Text): Additional metadata.
+*   `DateAdded` (Text): Timestamp.
+
+#### `Rakeback`
+Stores accumulated gambling losses for rakeback.
+*   `UserId` (Integer, PK)
+*   `RakebackBalance` (Integer): Amount available to claim (5% of losses).
+
+#### `TimelyCooldown`
+Tracks daily reward claims.
+*   `UserId` (Integer, PK)
+*   `LastClaim` (Text): Timestamp of last claim.
+*   `Streak` (Integer): Consecutive days claimed.
+
+#### `PlantedCurrency`
+Stores currently active "pickable" currency on the ground.
+*   `Id` (Integer, PK)
+*   `GuildId` (Integer)
+*   `ChannelId` (Integer)
+*   `UserId` (Integer): Who planted it (if manually dropped).
+*   `MessageId` (Integer)
+*   `Amount` (Integer)
+*   `Password` (Text, Optional): For protected drops.
+
+### XP System
+
+#### `UserXpStats`
+Tracks XP per server.
+*   `UserId` (Integer, PK)
+*   `GuildId` (Integer, PK)
+*   `Xp` (Integer): The current XP amount.
+
+#### `XpSettings`
+XP configuration per guild.
+*   `GuildId` (Integer, PK)
+*   `XpRateMultiplier` (Real)
+*   `XpPerMessage` (Integer)
+*   `XpMinutesTimeout` (Integer)
+
+#### `XpRoleReward`
+Roles awarded for reaching levels.
+*   `Id` (Integer, PK)
+*   `GuildId` (Integer)
+*   `Level` (Integer)
+*   `RoleId` (Integer)
+*   `Remove` (Boolean): If true, remove role instead of adding.
+
+#### `XpCurrencyReward`
+Currency awarded for reaching levels.
+*   `Id` (Integer, PK)
+*   `XpSettingsId` (Integer): FK to XpSettings (effectively GuildId).
+*   `Level` (Integer)
+*   `Amount` (Integer)
+
+#### `XpShopOwnedItem`
+Inventory for XP card customizations (Backgrounds).
+*   `Id` (Integer, PK)
+*   `UserId` (Integer)
+*   `ItemType` (Integer): 1 = Background.
+*   `ItemKey` (Text): Unique identifier string.
+*   `IsUsing` (Boolean): Whether this item is currently equipped.
+
+### Clubs
+
+#### `Clubs`
+Stores club information.
+*   `Id` (Integer, PK)
+*   `Name` (Text, Unique)
+*   `Description` (Text)
+*   `ImageUrl` (Text)
+*   `BannerUrl` (Text)
+*   `Xp` (Integer)
+*   `OwnerId` (Integer): Discord ID of the owner.
+*   `DateAdded` (Text)
+
+#### `ClubApplicants`
+Users applying to join clubs.
+*   `ClubId` (Integer, PK, FK)
+*   `UserId` (Integer, PK)
+*   `DateAdded` (Text)
+
+#### `ClubBans`
+Users banned from clubs.
+*   `ClubId` (Integer, PK, FK)
+*   `UserId` (Integer, PK)
+*   `DateAdded` (Text)
+
+#### `ClubInvitations`
+Pending invitations to users.
+*   `ClubId` (Integer, PK, FK)
+*   `UserId` (Integer, PK)
+*   `DateAdded` (Text)
+
+### Shop System
+
+#### `ShopEntry`
+Items available for purchase.
+*   `Id` (Integer, PK)
+*   `GuildId` (Integer)
+*   `Index` (Integer): Display order.
+*   `Price` (Integer)
+*   `Name` (Text)
+*   `AuthorId` (Integer)
+*   `Type` (Integer): Role, Item, Effect, etc.
+*   `RoleName` (Text)
+*   `RoleId` (Integer)
+*   `RoleRequirement` (Integer)
+*   `Command` (Text): Legacy/Unused.
+
+#### `UserInventory`
+Users' purchased shop items.
+*   `UserId` (Integer, PK)
+*   `GuildId` (Integer, PK)
+*   `ShopEntryId` (Integer, PK, FK)
+*   `Quantity` (Integer)
+*   `DateAdded` (Text)
+
+### Waifu System
+
+#### `WaifuInfo`
+Waifu status and value.
+*   `WaifuId` (Integer, PK): Discord User ID.
+*   `ClaimerId` (Integer): Owner ID.
+*   `Affinity` (Integer): User ID they like.
+*   `Price` (Integer)
+*   `DateAdded` (Text)
+
+#### `WaifuItem`
+Gifts given to waifus.
+*   `Id` (Integer, PK)
+*   `WaifuInfoId` (Integer, FK)
+*   `ItemEmoji` (Text)
+*   `Name` (Text)
+*   `DateAdded` (Text)
+
+#### `WaifuUpdates`
+History of claims and transfers.
+*   `Id` (Integer, PK)
+*   `UserId` (Integer): The waifu.
+*   `OldId` (Integer): Previous owner.
+*   `NewId` (Integer): New owner.
+*   `UpdateType` (Integer): 0=Claim, 1=Divorce, 2=Transfer, 99=Reset.
+*   `DateAdded` (Text)
+
+### Gambling Statistics
+
+#### `GamblingStats`
+Global gambling stats.
+*   `Feature` (Text, PK): Game name.
+*   `BetAmount` (Integer)
+*   `WinAmount` (Integer)
+*   `LossAmount` (Integer)
+
+#### `UserBetStats`
+Per-user gambling stats.
+*   `Id` (Integer, PK)
+*   `UserId` (Integer)
+*   `Game` (Text)
+*   `BetAmount` (Integer)
+*   `WinAmount` (Integer)
+*   `LossAmount` (Integer)
+*   `MaxWin` (Integer)
+
+### Configuration
+
+#### `BotConfig`
+Persistent system configuration.
+*   `Key` (Text, PK)
+*   `Value` (Text)
+*   `Description` (Text)
+
+#### `GCChannelId`
+Channels where currency generation is enabled.
+*   `Id` (Integer, PK)
+*   `GuildId` (Integer)
+*   `ChannelId` (Integer)

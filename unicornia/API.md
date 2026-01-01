@@ -41,7 +41,7 @@ Safely adds currency to a user's wallet. This operation is atomic and logs the t
 - `user_id` (int): The Discord ID of the user.
 - `amount` (int): The amount of currency to add.
 - `reason` (str, optional): A human-readable reason for the transaction (e.g., "Event Reward"). Defaults to "External API".
-- `source` (str, optional): The name of the source system or cog (e.g., "MyEventCog"). Defaults to "external".
+- `source` (str, optional): The name of the source system or cog (e.g., "MyEventCog"). Defaults to "external". This is stored in the `Extra` column of the transaction log.
 
 **Returns:**
 - `bool`: `True` if the transaction was successful, `False` if the system was not ready.
@@ -68,7 +68,7 @@ Safely removes currency from a user's wallet. This operation is atomic and check
 - `user_id` (int): The Discord ID of the user.
 - `amount` (int): The amount of currency to remove.
 - `reason` (str, optional): A human-readable reason for the transaction (e.g., "Entry Fee"). Defaults to "External API".
-- `source` (str, optional): The name of the source system or cog. Defaults to "external".
+- `source` (str, optional): The name of the source system or cog. Defaults to "external". This is stored in the `Extra` column of the transaction log.
 
 **Returns:**
 - `bool`: `True` if the transaction was successful. `False` if the user has insufficient funds or the system was not ready.

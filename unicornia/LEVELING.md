@@ -15,7 +15,7 @@ The system is designed for scale, handling high-traffic servers without blocking
 1.  **Event**: A user sends a message or joins a voice channel.
 2.  **Validation**:
     *   **Global Toggle**: Checks if XP is enabled via global config.
-    *   **Cooldown**: Verifies the user isn't on cooldown (Default: 60s, Configurable).
+    *   **Cooldown**: Verifies the user isn't on cooldown (Default: 180s, Configurable).
     *   **Whitelist Check**: **Critical**: XP is **Whitelist Only**. The channel (or its parent Category/Thread) MUST be in the `xp_included_channels` list.
     *   **Role Exclusion**: Checks if the user has any excluded roles.
 3.  **Calculation**:
@@ -88,8 +88,10 @@ Inventory for XP card customizations.
 ## Commands
 
 ### User
-*   `[p]level check [user]` (Alias: `[p]level`): View level, rank, and XP card.
-*   `[p]level leaderboard` (Alias: `[p]xplb`): View the server's top users.
+*   `[p]level check [user]` (Alias: `[p]level`, `[p]me`): View level, rank, and XP card.
+*   `[p]xp [user]`: Global shortcut for checking XP.
+*   `[p]level leaderboard` (Alias: `[p]lb`, `[p]top`): View the server's top users.
+*   `[p]xplb`: Global shortcut for XP leaderboard.
 *   `[p]xpshop backgrounds`: Browse and buy card backgrounds.
 *   `[p]xpshop buy <key>`: Purchase a background.
 *   `[p]xpshop use <key>`: Equip a background.

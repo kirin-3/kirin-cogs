@@ -34,13 +34,14 @@ You can transfer ownership of a waifu to another user (`[p]waifu transfer`).
 *   `[p]waifu transfer <waifu> <new_owner>`: Transfer ownership.
 *   `[p]waifu divorce <waifu>`: Release a waifu.
 *   `[p]waifu info [user]`: View price, owner, and gifts.
-*   `[p]waifu list [user]`: View waifus owned by a user.
-*   `[p]waifu leaderboard`: Top waifus by price.
+*   `[p]waifu list [user]`: View waifus owned by a user. Alias: `my`.
+*   `[p]waifu leaderboard`: Top waifus by price. Alias: `lb`, `top`.
 *   `[p]waifu affinity [user]`: Set your affinity.
 
 ### Gifting
 *   `[p]waifu gift <item> <user>`: Give an item.
-*   `[p]gifts`: List all available gifts and their prices.
+*   `[p]waifu gifts`: List all available gifts.
+*   `[p]gifts`: Global shortcut to list available gifts.
 
 ### Admin / Owner
 *   `[p]waifu reset <user>`: Reset a user's waifu status.

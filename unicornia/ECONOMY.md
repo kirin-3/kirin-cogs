@@ -20,7 +20,7 @@ The currency (default name "Slut points") flows through the system via several m
         *   **Supporter Bonus**: Extra currency for users with specific supporter roles.
         *   **Booster Bonus**: Extra currency for Server Boosters.
     *   **Currency Generation**: Random currency spawns in chat channels (`[p]pick`), simulating "flowers" from Nadeko.
-    *   **Gambling Wins**: Users can win currency from games like Blackjack, Slots, and Betroll.
+    *   **Gambling Wins**: Users can win currency from games like Blackjack, Slots, Mines, and Betroll.
     *   **Rakeback**: Users earn back 5% of their gambling losses, claimed via `[p]economy rakeback`.
 
 *   **Sinks**:
@@ -63,6 +63,11 @@ Stores currently active "pickable" currency on the ground.
 *   `Amount` (Integer)
 *   `Password` (String, Optional): If set, users must type the password to pick.
 
+### `Rakeback`
+Stores accumulated gambling losses.
+*   `UserId` (Integer, PK)
+*   `RakebackBalance` (Integer): Available to claim.
+
 ## Key Features
 
 ### 1. Atomic Transactions
@@ -95,6 +100,7 @@ The gambling module integrates deeply with the economy:
 *   **Lucky Ladder**: A high-risk, high-reward game with 8 rungs. Multipliers range from 0.1x to **2.4x**.
 *   **Rock Paper Scissors**: PVP against the bot. Win 2x.
 *   **Betflip**: Coin flip guess. Payout: **1.95x**.
+*   **Mines**: High-stakes game where you reveal safe spots on a grid to increase multiplier. (1-19 mines).
 
 ### 4. Waifu Economy
 Waifus act as unique assets that can be traded.
