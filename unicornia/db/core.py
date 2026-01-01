@@ -265,6 +265,17 @@ class CoreDB:
                 FOREIGN KEY (ClubId) REFERENCES Clubs(Id) ON DELETE CASCADE
             )
             """)
+
+            # Club Invitations table
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS ClubInvitations (
+                ClubId INTEGER,
+                UserId INTEGER,
+                DateAdded TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (ClubId, UserId),
+                FOREIGN KEY (ClubId) REFERENCES Clubs(Id) ON DELETE CASCADE
+            )
+            """)
             
             # Event table for currency events (matching Nadeko's Event)
             await db.execute("""
@@ -446,6 +457,17 @@ class CoreDB:
                     Value TEXT,
                     Description TEXT
                 )
+            """)
+
+            # Create ClubInvitations table if it doesn't exist
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS ClubInvitations (
+                ClubId INTEGER,
+                UserId INTEGER,
+                DateAdded TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (ClubId, UserId),
+                FOREIGN KEY (ClubId) REFERENCES Clubs(Id) ON DELETE CASCADE
+            )
             """)
             
             # Migrate Command items (Type 1) to Items (Type 4)

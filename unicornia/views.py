@@ -928,3 +928,55 @@ class MinesView(ui.View):
             
         await interaction.response.edit_message(content=msg, view=self)
         self.stop()
+
+class ClubInviteView(ui.View):
+    def __init__(self, club_name: str, club_id: int, club_system):
+        super().__init__(timeout=86400) # 24 hours
+        self.club_name = club_name
+        self.club_id = club_id
+        self.club_system = club_system
+        self.message = None
+
+    async def on_timeout(self):
+        if self.message:
+            for child in self.children:
+                child.disabled = True
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+        self.stop()
+
+    @ui.button(label="Accept Invite", style=discord.ButtonStyle.success)
+    async def accept(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.defer()
+        
+        success, msg = await self.club_system.accept_invitation(interaction.user, self.club_name)
+        
+        if success:
+            await interaction.followup.send(f"✅ {msg}", ephemeral=True)
+            for item in self.children:
+                item.disabled = True
+            try:
+                await interaction.message.edit(view=self)
+            except: pass
+            self.stop()
+        else:
+            await interaction.followup.send(f"❌ {msg}", ephemeral=True)
+
+    @ui.button(label="Decline", style=discord.ButtonStyle.danger)
+    async def decline(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.defer()
+        
+        success, msg = await self.club_system.reject_invitation(interaction.user, self.club_name)
+        
+        if success:
+            await interaction.followup.send(f"✅ {msg}", ephemeral=True)
+            for item in self.children:
+                item.disabled = True
+            try:
+                await interaction.message.edit(view=self)
+            except: pass
+            self.stop()
+        else:
+            await interaction.followup.send(f"❌ {msg}", ephemeral=True)

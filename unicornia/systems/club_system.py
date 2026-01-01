@@ -8,6 +8,7 @@ from redbot.core import commands
 from ..database import DatabaseManager
 from ..utils import validate_club_name
 from ..types import ClubData, ClubMember, ClubUserInfo
+from ..views import ClubInviteView
 
 class ClubSystem:
     """Handles club logic and management"""
@@ -283,6 +284,10 @@ class ClubSystem:
         if await self.db.club.check_club_ban(target_club[0], user.id):
             return False, "You are banned from this club."
             
+        if await self.db.club.check_club_invitation(target_club[0], user.id):
+             await self.accept_invitation(user, club_name)
+             return True, f"You have been invited to **{target_club[1]}**, so you joined immediately!"
+
         if await self.db.club.check_club_application(target_club[0], user.id):
             return False, "You have already applied to this club."
             
@@ -521,3 +526,135 @@ class ClubSystem:
             }
             for b in bans
         ], "Success"
+
+    async def invite_member(self, owner: discord.Member, user: discord.Member) -> Tuple[bool, str]:
+        """Invite a user to the club.
+        
+        Args:
+            owner: Club owner.
+            user: User to invite.
+            
+        Returns:
+            Tuple of (success, message).
+        """
+        club = await self.db.club.get_club_by_member(owner.id)
+        if not club:
+            return False, "You are not in a club."
+            
+        if not self._check_permission(owner, club[6], True): # Owner or admin
+             return False, "Only the club owner can invite members."
+
+        if user.bot:
+            return False, "You cannot invite bots."
+
+        # Check if user is already in a club
+        user_club = await self.db.club.get_club_by_member(user.id)
+        if user_club:
+            return False, "User is already in a club."
+            
+        # Check bans
+        if await self.db.club.check_club_ban(club[0], user.id):
+            return False, "User is banned from this club."
+            
+        # Check if already invited
+        if await self.db.club.check_club_invitation(club[0], user.id):
+            return False, "User is already invited."
+            
+        # Check if user has applied? If so, auto-accept
+        if await self.db.club.check_club_application(club[0], user.id):
+             # Auto accept application
+             await self.db.club.accept_club_application(club[0], user.id)
+             return True, f"User had a pending application and has been accepted into **{club[1]}**."
+
+        # Invite
+        await self.db.club.invite_to_club(club[0], user.id)
+        
+        # Send DM
+        try:
+            view = ClubInviteView(club[1], club[0], self)
+            embed = discord.Embed(
+                title=f"💌 Club Invitation: {club[1]}",
+                description=f"You have been invited to join **{club[1]}** by {owner.mention}!",
+                color=discord.Color.green()
+            )
+            view.message = await user.send(embed=embed, view=view)
+            return True, f"Invited **{user.display_name}** to the club."
+        except discord.Forbidden:
+            return True, f"Invited **{user.display_name}**, but could not send DM (DMs disabled)."
+        except Exception as e:
+            return True, f"Invited **{user.display_name}**, but DM failed: {e}"
+
+    async def accept_invitation(self, user: discord.Member, club_name: str) -> Tuple[bool, str]:
+        """Accept a club invitation.
+        
+        Args:
+            user: Discord member.
+            club_name: Name of the club.
+            
+        Returns:
+            Tuple of (success, message).
+        """
+        user_club = await self.db.club.get_club_by_member(user.id)
+        if user_club:
+            return False, "You are already in a club."
+            
+        target_club = await self.db.club.get_club_by_name(club_name)
+        if not target_club:
+            return False, "Club not found."
+            
+        # Check invitation
+        if not await self.db.club.check_club_invitation(target_club[0], user.id):
+            return False, "You do not have an invitation to this club."
+            
+        await self.db.club.remove_invitation(target_club[0], user.id)
+        
+        # Reuse accept_club_application to update user status
+        await self.db.club.accept_club_application(target_club[0], user.id)
+        
+        return True, f"You have joined **{target_club[1]}**!"
+
+    async def reject_invitation(self, user: discord.Member, club_name: str) -> Tuple[bool, str]:
+        """Reject a club invitation.
+        
+        Args:
+            user: Discord member.
+            club_name: Name of the club.
+            
+        Returns:
+            Tuple of (success, message).
+        """
+        target_club = await self.db.club.get_club_by_name(club_name)
+        if not target_club:
+            return False, "Club not found."
+            
+        if not await self.db.club.check_club_invitation(target_club[0], user.id):
+            return False, "You do not have an invitation to this club."
+            
+        await self.db.club.remove_invitation(target_club[0], user.id)
+        return True, f"Declined invitation to **{target_club[1]}**."
+
+    async def get_my_invitations(self, user: discord.Member) -> List[ClubData]:
+        """Get list of clubs inviting the user.
+        
+        Args:
+            user: Discord member.
+            
+        Returns:
+            List of ClubData.
+        """
+        clubs = await self.db.club.get_user_invitations(user.id)
+        # club tuple: Id, Name, Description, ImageUrl, BannerUrl, Xp, OwnerId, DateAdded
+        
+        return [
+            {
+                'id': c[0],
+                'name': c[1],
+                'description': c[2],
+                'image_url': c[3],
+                'banner_url': c[4],
+                'xp': c[5],
+                'owner_id': c[6],
+                'date_added': c[7]
+            }
+            for c in clubs
+        ]

@@ -152,6 +152,58 @@ class ClubRepository:
             """, (club_id, user_id))
             return await cursor.fetchone() is not None
 
+    async def check_club_invitation(self, club_id: int, user_id: int) -> bool:
+        """Check if user is invited to club"""
+        async with self.db._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT 1 FROM ClubInvitations WHERE ClubId = ? AND UserId = ?
+            """, (club_id, user_id))
+            return await cursor.fetchone() is not None
+
+    async def get_user_invitations(self, user_id: int) -> List[Tuple]:
+        """Get list of clubs inviting the user.
+        
+        Args:
+            user_id: Discord user ID.
+            
+        Returns:
+            List of club tuples.
+        """
+        async with self.db._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT c.Id, c.Name, c.Description, c.ImageUrl, c.BannerUrl, c.Xp, c.OwnerId, c.DateAdded
+                FROM ClubInvitations ci
+                JOIN Clubs c ON ci.ClubId = c.Id
+                WHERE ci.UserId = ?
+            """, (user_id,))
+            return await cursor.fetchall()
+
+    async def invite_to_club(self, club_id: int, user_id: int) -> None:
+        """Invite user to club.
+        
+        Args:
+            club_id: Club ID.
+            user_id: Discord user ID.
+        """
+        async with self.db._get_connection() as db:
+            await db.execute("""
+                INSERT OR IGNORE INTO ClubInvitations (ClubId, UserId) VALUES (?, ?)
+            """, (club_id, user_id))
+            await db.commit()
+
+    async def remove_invitation(self, club_id: int, user_id: int) -> None:
+        """Remove invitation.
+        
+        Args:
+            club_id: Club ID.
+            user_id: Discord user ID.
+        """
+        async with self.db._get_connection() as db:
+            await db.execute("""
+                DELETE FROM ClubInvitations WHERE ClubId = ? AND UserId = ?
+            """, (club_id, user_id))
+            await db.commit()
+
     async def apply_to_club(self, user_id: int, club_id: int) -> None:
         """Apply to join a club.
         
@@ -237,6 +289,11 @@ class ClubRepository:
             await db.execute("""
                 DELETE FROM ClubApplicants WHERE ClubId = ? AND UserId = ?
             """, (club_id, user_id))
+
+            # Remove invitation if exists
+            await db.execute("""
+                DELETE FROM ClubInvitations WHERE ClubId = ? AND UserId = ?
+            """, (club_id, user_id))
             
             # Add ban
             await db.execute("""
@@ -274,6 +331,7 @@ class ClubRepository:
             # Delete bans and applications
             await db.execute("DELETE FROM ClubApplicants WHERE ClubId = ?", (club_id,))
             await db.execute("DELETE FROM ClubBans WHERE ClubId = ?", (club_id,))
+            await db.execute("DELETE FROM ClubInvitations WHERE ClubId = ?", (club_id,))
             
             # Delete club
             await db.execute("DELETE FROM Clubs WHERE Id = ?", (club_id,))

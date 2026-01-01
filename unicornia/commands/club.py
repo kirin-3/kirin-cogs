@@ -239,6 +239,58 @@ class ClubCommands:
         else:
             await ctx.send(f"❌ {message}")
 
+    @club_group.command(name="invite")
+    async def club_invite(self, ctx, user: discord.Member):
+        """Invite a user to your club"""
+        success, message = await self.club_system.invite_member(ctx.author, user)
+        if success:
+            await ctx.send(f"✅ {message}")
+        else:
+            await ctx.send(f"❌ {message}")
+
+    @club_group.group(name="invitations", aliases=["invites"], invoke_without_command=True)
+    async def club_invitations(self, ctx):
+        """Manage club invitations"""
+        invites = await self.club_system.get_my_invitations(ctx.author)
+        
+        if not invites:
+            await ctx.send("You have no pending club invitations.")
+            return
+            
+        embed = discord.Embed(
+            title="💌 Club Invitations",
+            description="You have been invited to the following clubs:",
+            color=discord.Color.blue()
+        )
+        
+        for club in invites:
+            embed.add_field(
+                name=club['name'],
+                value=f"XP: {club['xp']:,}\nOwner ID: {club['owner_id']}",
+                inline=False
+            )
+            
+        embed.set_footer(text="Use [p]club invitations accept <club_name> to join.")
+        await ctx.send(embed=embed)
+
+    @club_invitations.command(name="accept")
+    async def club_invitations_accept(self, ctx, *, club_name: str):
+        """Accept a club invitation"""
+        success, message = await self.club_system.accept_invitation(ctx.author, club_name)
+        if success:
+            await ctx.send(f"✅ {message}")
+        else:
+            await ctx.send(f"❌ {message}")
+
+    @club_invitations.command(name="reject", aliases=["decline"])
+    async def club_invitations_reject(self, ctx, *, club_name: str):
+        """Reject a club invitation"""
+        success, message = await self.club_system.reject_invitation(ctx.author, club_name)
+        if success:
+            await ctx.send(f"✅ {message}")
+        else:
+            await ctx.send(f"❌ {message}")
+
     @club_group.command(name="applicants", aliases=["apps"])
     async def club_applicants(self, ctx):
         """View pending club applications (Owner only)"""
