@@ -205,7 +205,11 @@ class ShopBrowserView(ui.LayoutView):
         self.items_per_page = 10
         
         self.message = None
-        self.update_components()
+        self.currency_symbol = "$" # Default, updated in init()
+        
+    async def init(self):
+        self.currency_symbol = await self.ctx.cog.config.currency_symbol()
+        await self.update_components()
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.ctx.author.id:
@@ -239,54 +243,13 @@ class ShopBrowserView(ui.LayoutView):
         end = start + self.items_per_page
         return self.filtered_items[start:end]
 
-    async def get_embed(self):
-        currency_symbol = await self.ctx.cog.config.currency_symbol()
-        
-        embed = discord.Embed(
-            title="🛒 Shop Browser",
-            description=f"Purchase items with your {currency_symbol}!",
-            color=discord.Color.green()
-        )
-        
-        page_items = self.get_current_page_items()
-        
-        if not page_items:
-            embed.description = "No items found in this category."
-        
-        for item in page_items:
-            item_type = self.shop_system.get_type_name(item['type'])
-            emoji = self.shop_system.get_type_emoji(item['type'])
-            
-            price_text = f"{currency_symbol}{item['price']:,}"
-            desc = f"**Type:** {item_type}\n**Price:** {price_text}"
-            
-            if item['type'] == self.shop_system.db.shop.SHOP_TYPE_ROLE and item['role_name']:
-                desc += f"\n**Role:** {item['role_name']}"
-                if item['role_requirement']:
-                    req_role = self.ctx.guild.get_role(item['role_requirement'])
-                    req_name = req_role.name if req_role else "Unknown Role"
-                    desc += f"\n**Requires:** {req_name}"
-            
-            if item['additional_items']:
-                desc += f"\n**Includes:** {len(item['additional_items'])} items"
-                
-            embed.add_field(
-                name=f"{emoji} #{item['index']} - {item['name']}",
-                value=desc,
-                inline=True
-            )
-            
-        total_pages = (len(self.filtered_items) - 1) // self.items_per_page + 1
-        embed.set_footer(text=f"Page {self.current_page + 1}/{total_pages} • Total Items: {len(self.filtered_items)}")
-        return embed
-
-    def update_components(self):
+    async def update_components(self):
         self.clear_items()
         
+        # Header
+        self.add_item(ui.TextDisplay(content=f"## 🛒 Shop Browser\nPurchase items with your {self.currency_symbol}!"))
+        
         # 1. Category Select
-        # We need to map category IDs to names. Using logic from ShopSystem
-        # DB Types: 0=Role, 1=Command(Deprecated), 2=Effect, 3=Other, 4=Item
-        # Accessing via shop_system.db.shop constants for consistency
         shop_db = self.shop_system.db.shop
         categories = [
             ("All Categories", -1, "🌐"),
@@ -305,9 +268,6 @@ class ShopBrowserView(ui.LayoutView):
                 default=(value == self.current_category)
             ))
         
-        # Add label for Category
-        self.add_item(ui.TextDisplay(content="Start here: Filter by Category"))
-        
         cat_select = ui.Select(
             placeholder="Filter by category...",
             options=cat_options,
@@ -318,15 +278,41 @@ class ShopBrowserView(ui.LayoutView):
             self.current_category = int(cat_select.values[0])
             self.current_page = 0
             self.filter_items()
-            self.update_components()
-            embed = await self.get_embed()
-            await interaction.response.edit_message(embed=embed, view=self)
+            await self.update_components()
+            await interaction.response.edit_message(embed=None, view=self)
             
         cat_select.callback = cat_callback
         self.add_item(ui.ActionRow(cat_select))
         
-        # 2. Buy Select (if items exist)
+        # Item List Body
         page_items = self.get_current_page_items()
+        body_text = ""
+        
+        if not page_items:
+            body_text = "No items found in this category."
+        else:
+            for item in page_items:
+                item_type = self.shop_system.get_type_name(item['type'])
+                emoji = self.shop_system.get_type_emoji(item['type'])
+                price_text = f"{self.currency_symbol}{item['price']:,}"
+                
+                body_text += f"**{emoji} #{item['index']} - {item['name']}**\n"
+                body_text += f"Type: {item_type} | Price: {price_text}\n"
+                
+                if item['type'] == self.shop_system.db.shop.SHOP_TYPE_ROLE and item['role_name']:
+                    body_text += f"Role: {item['role_name']}\n"
+                
+                if item['additional_items']:
+                    body_text += f"Includes: {len(item['additional_items'])} items\n"
+                
+                body_text += "-------------------\n"
+        
+        # Add Body TextDisplay
+        if len(body_text) > 4000:
+            body_text = body_text[:3997] + "..."
+        self.add_item(ui.TextDisplay(content=body_text))
+        
+        # 2. Buy Select (if items exist)
         if page_items:
             buy_options = []
             for item in page_items:
@@ -334,12 +320,11 @@ class ShopBrowserView(ui.LayoutView):
                 price_str = f"{item['price']:,}"
                 buy_options.append(discord.SelectOption(
                     label=label[:100],
-                    value=str(item['index']), # Using index as value for purchase command
+                    value=str(item['index']),
                     description=f"Price: {price_str}",
                     emoji=self.shop_system.get_type_emoji(item['type'])
                 ))
             
-            # Add label for Buy Select
             self.add_item(ui.TextDisplay(content="Select an item to purchase:"))
             
             buy_select = ui.Select(
@@ -350,17 +335,12 @@ class ShopBrowserView(ui.LayoutView):
             
             async def buy_callback(interaction: discord.Interaction):
                 index = int(buy_select.values[0])
-                
                 await interaction.response.defer()
-                
                 success, msg, data = await self.shop_system.purchase_item(self.ctx.author, self.ctx.guild.id, index)
-                
                 if success:
-                    currency_symbol = await self.ctx.cog.config.currency_symbol()
                     price = data.get('price', 0)
                     item_name = data.get('item_name', 'Item')
-                    
-                    msg = f"Successfully purchased **{item_name}** for {price:,} {currency_symbol}!"
+                    msg = f"Successfully purchased **{item_name}** for {price:,} {self.currency_symbol}!"
                     await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
                 else:
                     await interaction.followup.send(f"❌ {msg}", ephemeral=True)
@@ -376,15 +356,13 @@ class ShopBrowserView(ui.LayoutView):
         
         async def prev_callback(interaction: discord.Interaction):
             self.current_page = max(0, self.current_page - 1)
-            self.update_components()
-            embed = await self.get_embed()
-            await interaction.response.edit_message(embed=embed, view=self)
+            await self.update_components()
+            await interaction.response.edit_message(embed=None, view=self)
             
         async def next_callback(interaction: discord.Interaction):
             self.current_page = min(total_pages - 1, self.current_page + 1)
-            self.update_components()
-            embed = await self.get_embed()
-            await interaction.response.edit_message(embed=embed, view=self)
+            await self.update_components()
+            await interaction.response.edit_message(embed=None, view=self)
             
         prev_btn.callback = prev_callback
         next_btn.callback = next_callback
@@ -730,35 +708,31 @@ class TransactionModal(ui.Modal):
         except Exception as e:
              await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
 
-class TransferView(ui.LayoutView):
+class TransferView(ui.View):
     def __init__(self, ctx, cog):
         super().__init__(timeout=60)
         self.ctx = ctx
         self.cog = cog
         
         # Bank Actions Row
-        self.add_item(ui.TextDisplay(content="Bank Actions"))
-        
         # Re-adding items with new rows
-        deposit_btn = ui.Button(label="Deposit", style=discord.ButtonStyle.success, emoji="📥")
+        deposit_btn = ui.Button(label="Deposit", style=discord.ButtonStyle.success, emoji="📥", row=0)
         deposit_btn.callback = self.deposit
+        self.add_item(deposit_btn)
         
-        withdraw_btn = ui.Button(label="Withdraw", style=discord.ButtonStyle.danger, emoji="📤")
+        withdraw_btn = ui.Button(label="Withdraw", style=discord.ButtonStyle.danger, emoji="📤", row=0)
         withdraw_btn.callback = self.withdraw
-        
-        self.add_item(ui.ActionRow(deposit_btn, withdraw_btn))
+        self.add_item(withdraw_btn)
         
         # Transfer Actions Row
-        self.add_item(ui.TextDisplay(content="Transfer Actions"))
-        
-        give_btn = ui.Button(label="Give Cash", style=discord.ButtonStyle.blurple, emoji="💸")
+        give_btn = ui.Button(label="Give Cash", style=discord.ButtonStyle.blurple, emoji="💸", row=1)
         give_btn.callback = self.give
+        self.add_item(give_btn)
         
         # Info
-        leaderboard_btn = ui.Button(label="Leaderboard", style=discord.ButtonStyle.secondary, emoji="🏆")
+        leaderboard_btn = ui.Button(label="Leaderboard", style=discord.ButtonStyle.secondary, emoji="🏆", row=1)
         leaderboard_btn.callback = self.leaderboard
-        
-        self.add_item(ui.ActionRow(give_btn, leaderboard_btn))
+        self.add_item(leaderboard_btn)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.ctx.author.id:

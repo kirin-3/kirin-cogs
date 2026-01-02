@@ -146,8 +146,8 @@ class ShopCommands:
                 return
             
             view = ShopBrowserView(ctx, items, self.shop_system)
-            embed = await view.get_embed()
-            view.message = await ctx.reply(embed=embed, view=view, mention_author=False)
+            await view.init()
+            view.message = await ctx.reply(view=view, mention_author=False)
             
         except Exception as e:
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error retrieving shop items: {e}", mention_author=False)
