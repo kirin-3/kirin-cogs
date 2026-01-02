@@ -160,9 +160,9 @@ class EconomyCommands:
                 # amount is next_claim_timestamp when success is False
                 next_claim_ts = amount_or_ts
                 if next_claim_ts > 0:
-                    await ctx.reply(f"❌ You've already claimed your daily reward.\nTry again <t:{next_claim_ts}:R> (<t:{next_claim_ts}:t>).", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> You've already claimed your daily reward.\nTry again <t:{next_claim_ts}:R> (<t:{next_claim_ts}:t>).", mention_author=False)
                 else:
-                    await ctx.reply("❌ You cannot claim your daily reward yet.", mention_author=False)
+                    await ctx.reply("<a:zz_NoTick:729318761655435355> You cannot claim your daily reward yet.", mention_author=False)
                 
         except Exception as e:
             await ctx.reply(f"❌ Error claiming daily reward: {e}", mention_author=False)
