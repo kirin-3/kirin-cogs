@@ -33,7 +33,7 @@ class UnicornDocsPrecomputed(commands.Cog):
         cog_dir = Path(__file__).parent
         self.VECTORS_PATH = str(cog_dir / "vectors")
         self.MODERATION_ROLES = [696020813299580940, 898586656842600549]
-        self.CHAT_MODEL = "mistralai/mistral-small-3.2-24b-instruct:free"
+        self.CHAT_MODEL = "tngtech/deepseek-r1t2-chimera:free"
         self.MAX_CHUNKS = 8  # Increased for more context
         
         # Only API key is configurable

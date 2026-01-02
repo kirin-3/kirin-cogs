@@ -19,10 +19,14 @@ class CurrencyCommands:
         try:
             result = await self.currency_generation.pick_plant(ctx.author.id, ctx.channel.id)
             if result:
-                amount, message_id = result
+                amount, message_id, is_fake = result
                 currency_symbol = await self.config.currency_symbol()
-                # Auto-delete confirmation after 30 seconds
-                await ctx.reply(f"You picked up {amount}{currency_symbol}!", mention_author=False, delete_after=30)
+                
+                if is_fake:
+                    await ctx.reply(f"Wait... it was a fake! You lost {amount}{currency_symbol}!", mention_author=False, delete_after=30)
+                else:
+                    # Auto-delete confirmation after 30 seconds
+                    await ctx.reply(f"You picked up {amount}{currency_symbol}!", mention_author=False, delete_after=30)
                 
                 # Delete user command message after 30 seconds
                 try:

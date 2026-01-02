@@ -79,8 +79,12 @@ class CurrencyGeneration:
         # Generate currency
         amount = random.randint(self.gen_min, self.gen_max)
         
-        # Store the plant for pickup (no password)
-        plant_id = await self._create_plant(message.guild.id, message.channel.id, amount)
+        # Fake generation check (1% of the time a generation happens)
+        is_fake = random.random() < 0.01
+        password = "FAKE" if is_fake else ""
+        
+        # Store the plant for pickup
+        plant_id = await self._create_plant(message.guild.id, message.channel.id, amount, password)
         
         # Get random image
         cog_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -92,7 +96,10 @@ class CurrencyGeneration:
             if images:
                 image_file = random.choice(images)
         
-        msg_content = f"A wild {amount}{self.currency_symbol} has appeared! Pick them up by typing `&pick` or `.pick`"
+        if is_fake:
+            msg_content = f"A fake {amount}{self.currency_symbol} has appeared! Pick them up by typing `&pick` or `.pick`"
+        else:
+            msg_content = f"A wild {amount}{self.currency_symbol} has appeared! Pick them up by typing `&pick` or `.pick`"
         
         sent_message = None
         if image_file:
@@ -112,14 +119,14 @@ class CurrencyGeneration:
         # Update cooldown
         self.generation_cooldowns[user_id] = current_time
     
-    async def _create_plant(self, guild_id: int, channel_id: int, amount: int) -> int:
+    async def _create_plant(self, guild_id: int, channel_id: int, amount: int, password: str = "") -> int:
         """Create a currency plant"""
         async with self.db._get_connection() as db:
             await self.db._setup_wal_mode(db)
             cursor = await db.execute("""
                 INSERT INTO PlantedCurrency (GuildId, ChannelId, Amount, Password)
                 VALUES (?, ?, ?, ?)
-            """, (guild_id, channel_id, amount, "")) # Empty password
+            """, (guild_id, channel_id, amount, password))
             plant_id = cursor.lastrowid
             await db.commit()
             return plant_id
@@ -133,15 +140,15 @@ class CurrencyGeneration:
             """, (message_id, plant_id))
             await db.commit()
     
-    async def pick_plant(self, user_id: int, channel_id: int) -> Optional[tuple[int, Optional[int]]]:
-        """Pick up the last currency plant in the channel. Returns (amount, message_id)."""
+    async def pick_plant(self, user_id: int, channel_id: int) -> Optional[tuple[int, Optional[int], bool]]:
+        """Pick up the last currency plant in the channel. Returns (amount, message_id, is_fake)."""
         async with self.db._get_connection() as db:
             await self.db._setup_wal_mode(db)
             
             try:
                 # Find the last plant in this channel
                 cursor = await db.execute("""
-                    SELECT Id, Amount, MessageId FROM PlantedCurrency
+                    SELECT Id, Amount, MessageId, Password FROM PlantedCurrency
                     WHERE ChannelId = ?
                     ORDER BY Id DESC LIMIT 1
                 """, (channel_id,))
@@ -150,7 +157,8 @@ class CurrencyGeneration:
                 if not plant:
                     return None
                 
-                plant_id, amount, message_id = plant
+                plant_id, amount, message_id, password = plant
+                is_fake = (password == "FAKE")
                 
                 # Remove the plant (Atomic check using rowcount)
                 cursor = await db.execute("DELETE FROM PlantedCurrency WHERE Id = ?", (plant_id,))
@@ -160,8 +168,25 @@ class CurrencyGeneration:
                     await db.commit()
                     return None
                 
-                # Give currency to user
-                if amount > 0:
+                if is_fake:
+                    # Fake currency! Take it away.
+                    # We inline the remove_currency logic (clamped at 0)
+                    
+                    # Update user currency (deduct, max 0)
+                    await db.execute("""
+                        UPDATE DiscordUser
+                        SET CurrencyAmount = MAX(0, CurrencyAmount - ?)
+                        WHERE UserId = ?
+                    """, (amount, user_id))
+                    
+                    # Log transaction
+                    await db.execute("""
+                        INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, Reason, DateAdded)
+                        VALUES (?, ?, ?, ?, ?, datetime('now'))
+                    """, (user_id, -amount, "fake_pick_loss", str(plant_id), f"Picked fake plant {plant_id}"))
+                    
+                # Give currency to user (if real)
+                elif amount > 0:
                     # We inline the add_currency logic here to avoid a deadlock
                     # because self.db.economy.add_currency tries to acquire the same lock we already hold
                     
@@ -178,7 +203,7 @@ class CurrencyGeneration:
                     """, (user_id, amount, "plant_pick", str(plant_id), f"Picked plant {plant_id}"))
                 
                 await db.commit()
-                return amount, message_id
+                return amount, message_id, is_fake
                 
             except Exception:
                 await db.execute("ROLLBACK")
