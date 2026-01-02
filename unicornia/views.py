@@ -246,8 +246,11 @@ class ShopBrowserView(ui.LayoutView):
     async def update_components(self):
         self.clear_items()
         
+        # Create Container to mimic Embed look
+        container = ui.Container(accent_color=discord.Color.green())
+        
         # Header
-        self.add_item(ui.TextDisplay(content=f"## 🛒 Shop Browser\nPurchase items with your {self.currency_symbol}!"))
+        container.add_item(ui.TextDisplay(content=f"## 🛒 Shop Browser\nPurchase items with your {self.currency_symbol}!"))
         
         # 1. Category Select
         shop_db = self.shop_system.db.shop
@@ -282,7 +285,7 @@ class ShopBrowserView(ui.LayoutView):
             await interaction.response.edit_message(embed=None, view=self)
             
         cat_select.callback = cat_callback
-        self.add_item(ui.ActionRow(cat_select))
+        container.add_item(ui.ActionRow(cat_select))
         
         # Item List Body
         page_items = self.get_current_page_items()
@@ -310,7 +313,7 @@ class ShopBrowserView(ui.LayoutView):
         # Add Body TextDisplay
         if len(body_text) > 4000:
             body_text = body_text[:3997] + "..."
-        self.add_item(ui.TextDisplay(content=body_text))
+        container.add_item(ui.TextDisplay(content=body_text))
         
         # 2. Buy Select (if items exist)
         if page_items:
@@ -325,7 +328,7 @@ class ShopBrowserView(ui.LayoutView):
                     emoji=self.shop_system.get_type_emoji(item['type'])
                 ))
             
-            self.add_item(ui.TextDisplay(content="Select an item to purchase:"))
+            container.add_item(ui.TextDisplay(content="Select an item to purchase:"))
             
             buy_select = ui.Select(
                 placeholder="Select an item to buy...",
@@ -346,7 +349,7 @@ class ShopBrowserView(ui.LayoutView):
                     await interaction.followup.send(f"❌ {msg}", ephemeral=True)
                     
             buy_select.callback = buy_callback
-            self.add_item(ui.ActionRow(buy_select))
+            container.add_item(ui.ActionRow(buy_select))
             
         # 3. Pagination Buttons
         total_pages = (len(self.filtered_items) - 1) // self.items_per_page + 1
@@ -370,7 +373,9 @@ class ShopBrowserView(ui.LayoutView):
         # Indicator Button (disabled)
         indicator = ui.Button(label=f"Page {self.current_page + 1}/{max(1, total_pages)}", style=discord.ButtonStyle.secondary, disabled=True)
         
-        self.add_item(ui.ActionRow(prev_btn, indicator, next_btn))
+        container.add_item(ui.ActionRow(prev_btn, indicator, next_btn))
+        
+        self.add_item(container)
 
 class LeaderboardView(ui.View):
     def __init__(self, ctx, entries: list[tuple[int, int]], user_position: int = None, currency_symbol: str = "$", title: str = None, formatter=None):
