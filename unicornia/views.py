@@ -189,7 +189,7 @@ class ApplicantProcessView(ui.View):
         else:
             await interaction.followup.send(f"❌ Error: {msg}", ephemeral=True)
 
-class ShopBrowserView(ui.View):
+class ShopBrowserView(ui.LayoutView):
     def __init__(self, ctx, items: list[dict], shop_system):
         super().__init__(timeout=120)
         self.ctx = ctx
@@ -306,12 +306,11 @@ class ShopBrowserView(ui.View):
             ))
         
         # Add label for Category
-        self.add_item(ui.Button(label="Start here: Filter by Category", disabled=True, row=0))
+        self.add_item(ui.TextDisplay(content="Start here: Filter by Category"))
         
         cat_select = ui.Select(
             placeholder="Filter by category...",
             options=cat_options,
-            row=1,
             custom_id="category_select"
         )
         
@@ -324,7 +323,7 @@ class ShopBrowserView(ui.View):
             await interaction.response.edit_message(embed=embed, view=self)
             
         cat_select.callback = cat_callback
-        self.add_item(cat_select)
+        self.add_item(ui.ActionRow(cat_select))
         
         # 2. Buy Select (if items exist)
         page_items = self.get_current_page_items()
@@ -341,12 +340,11 @@ class ShopBrowserView(ui.View):
                 ))
             
             # Add label for Buy Select
-            self.add_item(ui.Button(label="Select an item to purchase:", disabled=True, row=2))
+            self.add_item(ui.TextDisplay(content="Select an item to purchase:"))
             
             buy_select = ui.Select(
                 placeholder="Select an item to buy...",
                 options=buy_options,
-                row=3,
                 custom_id="buy_select"
             )
             
@@ -368,16 +366,13 @@ class ShopBrowserView(ui.View):
                     await interaction.followup.send(f"❌ {msg}", ephemeral=True)
                     
             buy_select.callback = buy_callback
-            self.add_item(buy_select)
+            self.add_item(ui.ActionRow(buy_select))
             
         # 3. Pagination Buttons
         total_pages = (len(self.filtered_items) - 1) // self.items_per_page + 1
         
-        # Shift rows down due to TextDisplays
-        row_idx = 4
-        
-        prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, row=row_idx, disabled=(self.current_page == 0))
-        next_btn = ui.Button(label="▶️", style=discord.ButtonStyle.secondary, row=row_idx, disabled=(self.current_page >= total_pages - 1))
+        prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, disabled=(self.current_page == 0))
+        next_btn = ui.Button(label="▶️", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages - 1))
         
         async def prev_callback(interaction: discord.Interaction):
             self.current_page = max(0, self.current_page - 1)
@@ -394,13 +389,10 @@ class ShopBrowserView(ui.View):
         prev_btn.callback = prev_callback
         next_btn.callback = next_callback
         
-        self.add_item(prev_btn)
-        
         # Indicator Button (disabled)
-        indicator = ui.Button(label=f"Page {self.current_page + 1}/{max(1, total_pages)}", style=discord.ButtonStyle.secondary, disabled=True, row=row_idx)
-        self.add_item(indicator)
+        indicator = ui.Button(label=f"Page {self.current_page + 1}/{max(1, total_pages)}", style=discord.ButtonStyle.secondary, disabled=True)
         
-        self.add_item(next_btn)
+        self.add_item(ui.ActionRow(prev_btn, indicator, next_btn))
 
 class LeaderboardView(ui.View):
     def __init__(self, ctx, entries: list[tuple[int, int]], user_position: int = None, currency_symbol: str = "$", title: str = None, formatter=None):
@@ -738,35 +730,35 @@ class TransactionModal(ui.Modal):
         except Exception as e:
              await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
 
-class TransferView(ui.View):
+class TransferView(ui.LayoutView):
     def __init__(self, ctx, cog):
         super().__init__(timeout=60)
         self.ctx = ctx
         self.cog = cog
         
         # Bank Actions Row
-        self.add_item(ui.Button(label="Bank Actions", disabled=True, row=0))
+        self.add_item(ui.TextDisplay(content="Bank Actions"))
         
         # Re-adding items with new rows
-        deposit_btn = ui.Button(label="Deposit", style=discord.ButtonStyle.success, emoji="📥", row=1)
+        deposit_btn = ui.Button(label="Deposit", style=discord.ButtonStyle.success, emoji="📥")
         deposit_btn.callback = self.deposit
-        self.add_item(deposit_btn)
         
-        withdraw_btn = ui.Button(label="Withdraw", style=discord.ButtonStyle.danger, emoji="📤", row=1)
+        withdraw_btn = ui.Button(label="Withdraw", style=discord.ButtonStyle.danger, emoji="📤")
         withdraw_btn.callback = self.withdraw
-        self.add_item(withdraw_btn)
+        
+        self.add_item(ui.ActionRow(deposit_btn, withdraw_btn))
         
         # Transfer Actions Row
-        self.add_item(ui.Button(label="Transfer Actions", disabled=True, row=2))
+        self.add_item(ui.TextDisplay(content="Transfer Actions"))
         
-        give_btn = ui.Button(label="Give Cash", style=discord.ButtonStyle.blurple, emoji="💸", row=3)
+        give_btn = ui.Button(label="Give Cash", style=discord.ButtonStyle.blurple, emoji="💸")
         give_btn.callback = self.give
-        self.add_item(give_btn)
         
         # Info
-        leaderboard_btn = ui.Button(label="Leaderboard", style=discord.ButtonStyle.secondary, emoji="🏆", row=3)
+        leaderboard_btn = ui.Button(label="Leaderboard", style=discord.ButtonStyle.secondary, emoji="🏆")
         leaderboard_btn.callback = self.leaderboard
-        self.add_item(leaderboard_btn)
+        
+        self.add_item(ui.ActionRow(give_btn, leaderboard_btn))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.ctx.author.id:
