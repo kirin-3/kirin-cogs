@@ -152,7 +152,9 @@ class EconomySystem:
                 last_claim_dt = datetime.fromisoformat(last_claim)
                 if now - last_claim_dt < timedelta(hours=24):
                     # Still on cooldown
-                    return False, 0, streak, {}
+                    next_claim_dt = last_claim_dt + timedelta(hours=24)
+                    next_claim_ts = int(next_claim_dt.timestamp())
+                    return False, next_claim_ts, streak, {}
             except ValueError:
                 # If date is invalid, treat as never claimed
                 pass

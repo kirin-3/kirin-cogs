@@ -109,13 +109,11 @@ class EconomyCommands:
             await ctx.send(f"❌ Error transferring Slut points: {e}")
     
     @economy_group.command(name="timely", aliases=["daily"])
-    @commands.cooldown(1, 86400, commands.BucketType.user)  # 24 hours cooldown
     async def economy_timely(self, ctx):
         """Claim your daily Slut points reward"""
         await self._timely_logic(ctx)
 
     @commands.hybrid_command(name="timely", aliases=["daily"])
-    @commands.cooldown(1, 86400, commands.BucketType.user)  # 24 hours cooldown
     async def global_timely(self, ctx):
         """Claim your daily reward"""
         await self._timely_logic(ctx)
@@ -127,9 +125,10 @@ class EconomyCommands:
             return
         
         try:
-            success, amount, streak, breakdown = await self.economy_system.claim_timely(ctx.author)
+            success, amount_or_ts, streak, breakdown = await self.economy_system.claim_timely(ctx.author)
             
             if success:
+                amount = amount_or_ts
                 currency_symbol = await self.config.currency_symbol()
                 
                 embed = discord.Embed(
@@ -158,8 +157,12 @@ class EconomyCommands:
                 embed.add_field(name="Reward Breakdown", value="\n".join(details), inline=False)
                 await ctx.reply(embed=embed, mention_author=False)
             else:
-                cooldown_hours = await self.config.timely_cooldown()
-                await ctx.reply(f"❌ You can claim your daily reward in {cooldown_hours} hours.", mention_author=False)
+                # amount is next_claim_timestamp when success is False
+                next_claim_ts = amount_or_ts
+                if next_claim_ts > 0:
+                    await ctx.reply(f"❌ You've already claimed your daily reward.\nTry again <t:{next_claim_ts}:R> (<t:{next_claim_ts}:t>).", mention_author=False)
+                else:
+                    await ctx.reply("❌ You cannot claim your daily reward yet.", mention_author=False)
                 
         except Exception as e:
             await ctx.reply(f"❌ Error claiming daily reward: {e}", mention_author=False)
