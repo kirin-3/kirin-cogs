@@ -16,27 +16,27 @@ class WaifuCommands:
         Usage: [p]waifu claim @user [price]
         """
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
             return
         
         
         if member.bot:
-            await ctx.send("❌ You can't claim bots as waifus!")
+            await ctx.send("<a:zz_NoTick:729318761655435355> You can't claim bots as waifus!")
             return
         
         if member == ctx.author:
-            await ctx.send("❌ You can't claim yourself as a waifu!")
+            await ctx.send("<a:zz_NoTick:729318761655435355> You can't claim yourself as a waifu!")
             return
 
         if price is not None and price <= 0:
-            await ctx.send("❌ Price must be greater than 0.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Price must be greater than 0.")
             return
         
         try:
             # Check if user is already claimed
             current_owner = await self.db.waifu.get_waifu_owner(member.id)
             if current_owner == ctx.author.id:
-                await ctx.send("❌ You already own this waifu!")
+                await ctx.send("<a:zz_NoTick:729318761655435355> You already own this waifu!")
                 return
             
             current_waifu_price = await self.db.waifu.get_waifu_price(member.id)
@@ -68,12 +68,12 @@ class WaifuCommands:
             # Check if user has enough currency
             user_balance = await self.db.economy.get_user_currency(ctx.author.id)
             if user_balance < final_price:
-                await ctx.send(f"❌ You need {currency_symbol}{final_price:,} but only have {currency_symbol}{user_balance:,}!")
+                await ctx.send(f"<a:zz_NoTick:729318761655435355> You need {currency_symbol}{final_price:,} but only have {currency_symbol}{user_balance:,}!")
                 return
             
             if is_force_claim:
                 if final_price <= 0:
-                    await ctx.send("❌ Error: Calculated force claim price is 0 or negative.")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> Error: Calculated force claim price is 0 or negative.")
                     return
 
                 # Atomically transfer currency and waifu
@@ -87,7 +87,7 @@ class WaifuCommands:
                 )
 
                 if not success:
-                    await ctx.send("❌ Transaction failed (Insufficient funds during processing).")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> Transaction failed (Insufficient funds during processing).")
                     return
                 
                 old_owner_member = ctx.guild.get_member(current_owner)
@@ -106,7 +106,7 @@ class WaifuCommands:
             else:
                 # Normal Claim
                 if final_price <= 0:
-                    await ctx.send("❌ Error: Calculated claim price is 0 or negative.")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> Error: Calculated claim price is 0 or negative.")
                     return
 
                 success = await self.db.waifu.claim_waifu_transaction(
@@ -127,10 +127,10 @@ class WaifuCommands:
                     embed.set_thumbnail(url=member.display_avatar.url)
                     await ctx.send(embed=embed)
                 else:
-                    await ctx.send("❌ Failed to claim waifu. It might have been claimed by someone else or you have insufficient funds.")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> Failed to claim waifu. It might have been claimed by someone else or you have insufficient funds.")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error claiming waifu: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error claiming waifu: {e}")
     
     @waifu_group.command(name="transfer")
     @commands.cooldown(1, 86400, commands.BucketType.user)
@@ -142,9 +142,9 @@ class WaifuCommands:
             
         success, message = await self.waifu_system.transfer_waifu(ctx.author, member.id, new_owner)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
-            await ctx.send(f"❌ {message}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @waifu_group.command(name="reset")
     @checks.is_owner()
@@ -156,9 +156,9 @@ class WaifuCommands:
             
         success, message = await self.waifu_system.reset_waifu(member.id)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
-            await ctx.send(f"❌ {message}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @waifu_group.command(name="divorce")
     async def waifu_divorce(self, ctx, member: discord.Member):
@@ -178,10 +178,10 @@ class WaifuCommands:
                 embed.set_thumbnail(url=member.display_avatar.url)
                 await ctx.send(embed=embed)
             else:
-                await ctx.send("❌ You don't own this waifu or they're not claimed!")
+                await ctx.send("<a:zz_NoTick:729318761655435355> You don't own this waifu or they're not claimed!")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error divorcing waifu: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error divorcing waifu: {e}")
     
     @waifu_group.command(name="gift")
     async def waifu_gift(self, ctx, gift_name: str, member: discord.Member):
@@ -192,9 +192,9 @@ class WaifuCommands:
             
         success, message = await self.waifu_system.gift_waifu(ctx.author, member, gift_name)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
-            await ctx.send(f"❌ {message}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @waifu_group.command(name="gifts")
     async def waifu_gifts_list(self, ctx):
@@ -330,7 +330,7 @@ class WaifuCommands:
             await ctx.reply(embed=embed, mention_author=False)
             
         except Exception as e:
-            await ctx.reply(f"❌ Error getting waifu info: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error getting waifu info: {e}", mention_author=False)
     
     @waifu_group.command(name="list", aliases=["my"])
     async def waifu_list(self, ctx, member: discord.Member = None):
@@ -344,7 +344,7 @@ class WaifuCommands:
         try:
             waifus = await self.db.waifu.get_user_waifus(target.id)
             if not waifus:
-                await ctx.send(f"❌ {target.display_name} doesn't have any waifus.")
+                await ctx.send(f"<a:zz_NoTick:729318761655435355> {target.display_name} doesn't have any waifus.")
                 return
             
             currency_symbol = await self.config.currency_symbol()
@@ -372,7 +372,7 @@ class WaifuCommands:
             await ctx.send(embed=embed)
             
         except Exception as e:
-            await ctx.send(f"❌ Error listing waifus: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error listing waifus: {e}")
     
     @waifu_group.command(name="leaderboard", aliases=["lb", "top"])
     async def waifu_leaderboard(self, ctx):
@@ -384,7 +384,7 @@ class WaifuCommands:
         try:
             leaderboard = await self.db.waifu.get_waifu_leaderboard(10)
             if not leaderboard:
-                await ctx.send("❌ No waifus found.")
+                await ctx.send("<a:zz_NoTick:729318761655435355> No waifus found.")
                 return
             
             currency_symbol = await self.config.currency_symbol()
@@ -408,7 +408,7 @@ class WaifuCommands:
             await ctx.send(embed=embed)
             
         except Exception as e:
-            await ctx.send(f"❌ Error getting leaderboard: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error getting leaderboard: {e}")
     
     @waifu_group.command(name="price")
     async def waifu_price(self, ctx, member: discord.Member, new_price: int):
@@ -421,15 +421,15 @@ class WaifuCommands:
             # Check if user owns this waifu
             current_owner = await self.db.waifu.get_waifu_owner(member.id)
             if current_owner != ctx.author.id:
-                await ctx.send("❌ You don't own this waifu!")
+                await ctx.send("<a:zz_NoTick:729318761655435355> You don't own this waifu!")
                 return
             
             await self.db.waifu.update_waifu_price(member.id, new_price)
             currency_symbol = await self.config.currency_symbol()
-            await ctx.send(f"✅ Set {member.display_name}'s price to {currency_symbol}{new_price:,}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> Set {member.display_name}'s price to {currency_symbol}{new_price:,}")
             
         except Exception as e:
-            await ctx.send(f"❌ Error updating waifu price: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error updating waifu price: {e}")
     
     @waifu_group.command(name="affinity")
     async def waifu_affinity(self, ctx, affinity_user: discord.Member = None):
@@ -453,11 +453,11 @@ class WaifuCommands:
                 return
 
             if affinity_user == ctx.author:
-                await ctx.reply("❌ You cannot set affinity to yourself!", mention_author=False)
+                await ctx.reply("<a:zz_NoTick:729318761655435355> You cannot set affinity to yourself!", mention_author=False)
                 return
 
             await self.db.waifu.set_waifu_affinity(ctx.author.id, affinity_user.id)
-            await ctx.reply(f"✅ You have set your affinity to **{affinity_user.display_name}**! They can now claim you for 20% off.", mention_author=False)
+            await ctx.reply(f"<a:zz_YesTick:729318762356015124> You have set your affinity to **{affinity_user.display_name}**! They can now claim you for 20% off.", mention_author=False)
             
         except Exception as e:
-            await ctx.reply(f"❌ Error setting affinity: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error setting affinity: {e}", mention_author=False)

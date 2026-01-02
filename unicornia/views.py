@@ -178,12 +178,12 @@ class ApplicantProcessView(ui.View):
             self.selected_user_id = None
             
             if not self.applicants:
-                 await interaction.followup.send(f"✅ Action complete: {msg}\nNo more applicants remaining.", ephemeral=True)
+                 await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> Action complete: {msg}\nNo more applicants remaining.", ephemeral=True)
                  self.clear_items()
-                 await interaction.edit_original_response(content="✅ All applicants processed.", view=None)
+                 await interaction.edit_original_response(content="<a:zz_YesTick:729318762356015124> All applicants processed.", view=None)
                  self.stop()
             else:
-                 await interaction.followup.send(f"✅ Action complete: {msg}", ephemeral=True)
+                 await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> Action complete: {msg}", ephemeral=True)
                  self.update_components()
                  await interaction.edit_original_response(view=self)
         else:
@@ -358,7 +358,7 @@ class ShopBrowserView(ui.View):
                     # Refresh currency symbol just in case
                     currency_symbol = await self.ctx.cog.config.currency_symbol()
                     msg = msg.replace("currency", currency_symbol) # Generic replace if needed
-                    await interaction.followup.send(f"✅ {msg}", ephemeral=True)
+                    await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
                 else:
                     await interaction.followup.send(f"❌ {msg}", ephemeral=True)
                     
@@ -605,7 +605,7 @@ class NitroShopView(ui.View):
                     await self.message.edit(view=self)
                 except: pass
                 
-                await interaction.followup.send(f"✅ {msg}", ephemeral=True)
+                await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
             else:
                 await interaction.followup.send(f"❌ {msg}", ephemeral=True)
         else:
@@ -688,7 +688,7 @@ class TransactionModal(ui.Modal):
                 to_loc = "wallet"
                 
             if success:
-                await interaction.response.send_message(f"✅ {action} {currency_symbol}{amount:,} to your {to_loc}!", ephemeral=True)
+                await interaction.response.send_message(f"<a:zz_YesTick:729318762356015124> {action} {currency_symbol}{amount:,} to your {to_loc}!", ephemeral=True)
             else:
                 await interaction.response.send_message(f"❌ Insufficient funds in your {from_loc}.", ephemeral=True)
                 
@@ -954,7 +954,7 @@ class ClubInviteView(ui.View):
         success, msg = await self.club_system.accept_invitation(interaction.user, self.club_name)
         
         if success:
-            await interaction.followup.send(f"✅ {msg}", ephemeral=True)
+            await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
             for item in self.children:
                 item.disabled = True
             try:
@@ -971,7 +971,7 @@ class ClubInviteView(ui.View):
         success, msg = await self.club_system.reject_invitation(interaction.user, self.club_name)
         
         if success:
-            await interaction.followup.send(f"✅ {msg}", ephemeral=True)
+            await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
             for item in self.children:
                 item.disabled = True
             try:

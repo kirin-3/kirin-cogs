@@ -375,7 +375,7 @@ class GamblingSystem:
         # Check limits
         limit_error = await self._check_limits(amount)
         if limit_error:
-            await ctx.send(f"❌ {limit_error}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> {limit_error}")
             return
 
         # Check balance
@@ -383,7 +383,7 @@ class GamblingSystem:
         currency_symbol = await self.config.currency_symbol()
         
         if balance < amount:
-            await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{balance:,}.")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol}currency. You have {currency_symbol}{balance:,}.")
             return
 
         # Deduct bet immediately
@@ -547,12 +547,12 @@ class GamblingSystem:
         # Check limits
         limit_error = await self._check_limits(amount)
         if limit_error:
-            await ctx.send(f"❌ {limit_error}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> {limit_error}")
             return
 
         # Check mines count (1-19 for 20 cells)
         if mines < 1 or mines > 19:
-            await ctx.send("❌ Number of mines must be between 1 and 19.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Number of mines must be between 1 and 19.")
             return
 
         # Check balance
@@ -560,7 +560,7 @@ class GamblingSystem:
         currency_symbol = await self.config.currency_symbol()
         
         if balance < amount:
-            await ctx.send(f"❌ You don't have enough {currency_symbol}currency. You have {currency_symbol}{balance:,}.")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol}currency. You have {currency_symbol}{balance:,}.")
             return
 
         # Deduct bet immediately

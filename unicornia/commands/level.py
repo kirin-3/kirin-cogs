@@ -33,7 +33,7 @@ class LevelCommands:
     async def _level_check_logic(self, ctx, member: discord.Member = None):
         """Logic for checking level/XP"""
         if not await self.config.xp_enabled():
-            await ctx.reply("❌ XP system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> XP system is disabled.", mention_author=False)
             return
         
         member = member or ctx.author
@@ -103,14 +103,14 @@ class LevelCommands:
             import logging
             log = logging.getLogger("red.unicornia")
             log.error(f"Error in level check for {member.display_name}: {e}", exc_info=True)
-            await ctx.reply(f"❌ Error retrieving level data: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error retrieving level data: {e}", mention_author=False)
     
     @level_group.command(name="leaderboard", aliases=["lb", "top"])
     @app_commands.describe(limit="Number of users to show")
     async def level_leaderboard(self, ctx, limit: int = 10):
         """Show the XP leaderboard for this server"""
         if not await self.config.xp_enabled():
-            await ctx.reply("❌ XP system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> XP system is disabled.", mention_author=False)
             return
         
         try:
@@ -148,4 +148,4 @@ class LevelCommands:
             import logging
             log = logging.getLogger("red.unicornia")
             log.error(f"Error in xp leaderboard: {e}", exc_info=True)
-            await ctx.reply(f"❌ Error retrieving leaderboard: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error retrieving leaderboard: {e}", mention_author=False)

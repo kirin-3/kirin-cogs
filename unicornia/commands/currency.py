@@ -13,7 +13,7 @@ class CurrencyCommands:
     async def pick_cmd(self, ctx):
         """Pick up generated currency"""
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
             return
         
         try:
@@ -40,10 +40,10 @@ class CurrencyCommands:
                     except Exception:
                         pass # Ignore other errors
             else:
-                await ctx.send("❌ No currency to pick up here.", delete_after=15)
+                await ctx.send("<a:zz_NoTick:729318761655435355> No currency to pick up here.", delete_after=15)
                 
         except Exception as e:
-            await ctx.send(f"❌ Error picking currency: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error picking currency: {e}")
             
     # Keep the old command as an alias or redirect if needed, or remove it.
     # For now, let's redirect it to the new one if they provide a password (ignore it)

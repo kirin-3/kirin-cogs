@@ -43,7 +43,7 @@ class NitroCommands:
             
         new_amount = await self.nitro_system.set_stock(type, amount)
         
-        await ctx.send(f"✅ Stock updated. New **Nitro {type.capitalize()}** stock: `{new_amount}`")
+        await ctx.send(f"<a:zz_YesTick:729318762356015124> Stock updated. New **Nitro {type.capitalize()}** stock: `{new_amount}`")
 
     @commands.command(name="nitroprice")
     @commands.is_owner()
@@ -63,4 +63,4 @@ class NitroCommands:
             
         await self.nitro_system.set_price(type, price)
         
-        await ctx.send(f"✅ Price updated. **Nitro {type.capitalize()}** now costs `{humanize_number(price)}` Slut points.")
+        await ctx.send(f"<a:zz_YesTick:729318762356015124> Price updated. **Nitro {type.capitalize()}** now costs `{humanize_number(price)}` Slut points.")

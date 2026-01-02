@@ -10,18 +10,18 @@ class GamblingCommands:
             if amount.lower() == "all":
                 balance = await self.db.economy.get_user_currency(ctx.author.id)
                 if balance <= 0:
-                    await ctx.reply("❌ You don't have any currency to bet.", mention_author=False)
+                    await ctx.reply("<a:zz_NoTick:729318761655435355> You don't have any currency to bet.", mention_author=False)
                     return None
                 return balance
             else:
                 try:
                     amount = int(amount)
                 except ValueError:
-                    await ctx.reply("❌ Invalid bet amount.", mention_author=False)
+                    await ctx.reply("<a:zz_NoTick:729318761655435355> Invalid bet amount.", mention_author=False)
                     return None
         
         if amount <= 0:
-            await ctx.reply("❌ Amount must be positive.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Amount must be positive.", mention_author=False)
             return None
             
         return amount
@@ -38,11 +38,11 @@ class GamblingCommands:
     async def gambling_betroll(self, ctx, amount: str):
         """Bet on a dice roll (1-100)"""
         if not await self.config.gambling_enabled():
-            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
         
         amount = await self._resolve_bet(ctx, amount)
@@ -54,9 +54,9 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.reply(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
                 else:
-                    await ctx.reply(f"❌ Error: {result.get('error', 'Unknown error')}", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error: {result.get('error', 'Unknown error')}", mention_author=False)
                 return
             
             currency_symbol = await self.config.currency_symbol()
@@ -66,7 +66,7 @@ class GamblingCommands:
                 await ctx.reply(f"🎲 You rolled **{result['roll']}** (needed {result['threshold']}+) and lost {currency_symbol}{result['loss_amount']:,}. Better luck next time!", mention_author=False)
                 
         except Exception as e:
-            await ctx.reply(f"❌ Error in gambling: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error in gambling: {e}", mention_author=False)
     
     @gambling_group.command(name="rps", aliases=["rockpaperscissors"])
     @commands.cooldown(1, 1, commands.BucketType.user)
@@ -74,11 +74,11 @@ class GamblingCommands:
     async def gambling_rps(self, ctx, choice: Optional[str] = None, amount: str = "0"):
         """Play rock paper scissors"""
         if not await self.config.gambling_enabled():
-            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
 
         # Handle flexible arguments: [p]rps 100 -> choice="100", amount=0
@@ -92,7 +92,7 @@ class GamblingCommands:
             await view.wait()
             
             if view.choice is None:
-                await ctx.reply("❌ Timed out.", mention_author=False)
+                await ctx.reply("<a:zz_NoTick:729318761655435355> Timed out.", mention_author=False)
                 return
             choice = view.choice
         
@@ -106,11 +106,11 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.reply(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
                 elif result.get("error") == "invalid_choice":
-                    await ctx.reply("❌ Please choose: rock, paper, or scissors", mention_author=False)
+                    await ctx.reply("<a:zz_NoTick:729318761655435355> Please choose: rock, paper, or scissors", mention_author=False)
                 else:
-                    await ctx.reply(f"❌ Error: {result.get('error', 'Unknown error')}", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error: {result.get('error', 'Unknown error')}", mention_author=False)
                 return
             
             currency_symbol = await self.config.currency_symbol()
@@ -130,7 +130,7 @@ class GamblingCommands:
                     await ctx.reply(f"{result['user_choice']} vs {result['bot_choice']} - It's a draw!", mention_author=False)
                 
         except Exception as e:
-            await ctx.reply(f"❌ Error in RPS: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error in RPS: {e}", mention_author=False)
     
     @gambling_group.command(name="slots")
     @commands.cooldown(1, 1, commands.BucketType.user)
@@ -138,11 +138,11 @@ class GamblingCommands:
     async def gambling_slots(self, ctx, amount: str):
         """Play slots"""
         if not await self.config.gambling_enabled():
-            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
         
         amount = await self._resolve_bet(ctx, amount)
@@ -154,9 +154,9 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.reply(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
                 else:
-                    await ctx.reply(f"❌ Error: {result.get('error', 'Unknown error')}", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error: {result.get('error', 'Unknown error')}", mention_author=False)
                 return
             
             currency_symbol = await self.config.currency_symbol()
@@ -168,7 +168,7 @@ class GamblingCommands:
                 await ctx.reply(f"🎰 **{rolls_str}** - Better luck next time! You lost {currency_symbol}{amount:,}.", mention_author=False)
                 
         except Exception as e:
-            await ctx.reply(f"❌ Error in slots: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error in slots: {e}", mention_author=False)
 
     @gambling_group.command(name="blackjack", aliases=["21"])
     @commands.cooldown(1, 1, commands.BucketType.user)
@@ -176,11 +176,11 @@ class GamblingCommands:
     async def gambling_blackjack(self, ctx, amount: str):
         """Play blackjack"""
         if not await self.config.gambling_enabled():
-            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
         
         amount = await self._resolve_bet(ctx, amount)
@@ -190,7 +190,7 @@ class GamblingCommands:
         try:
             await self.gambling_system.play_blackjack(ctx, amount)
         except Exception as e:
-            await ctx.reply(f"❌ Error in blackjack: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error in blackjack: {e}", mention_author=False)
 
     @gambling_group.command(name="betflip", aliases=["bf"])
     @commands.cooldown(1, 1, commands.BucketType.user)
@@ -202,11 +202,11 @@ class GamblingCommands:
         Or: [p]gambling betflip 100 (interactive)
         """
         if not await self.config.gambling_enabled():
-            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
         
         amount = await self._resolve_bet(ctx, amount)
@@ -219,7 +219,7 @@ class GamblingCommands:
             await view.wait()
             
             if view.choice is None:
-                await ctx.reply("❌ Timed out.", mention_author=False)
+                await ctx.reply("<a:zz_NoTick:729318761655435355> Timed out.", mention_author=False)
                 return
             guess = view.choice
             
@@ -229,11 +229,11 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.reply(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
                 elif result.get("error") == "invalid_guess":
-                    await ctx.reply("❌ Invalid guess. Please choose 'heads' or 'tails'.", mention_author=False)
+                    await ctx.reply("<a:zz_NoTick:729318761655435355> Invalid guess. Please choose 'heads' or 'tails'.", mention_author=False)
                 else:
-                    await ctx.reply(f"❌ Error: {result.get('error', 'Unknown error')}", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error: {result.get('error', 'Unknown error')}", mention_author=False)
                 return
             
             currency_symbol = await self.config.currency_symbol()
@@ -258,7 +258,7 @@ class GamblingCommands:
             await ctx.reply(embed=embed, mention_author=False)
             
         except Exception as e:
-            await ctx.reply(f"❌ Error in betflip: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error in betflip: {e}", mention_author=False)
     
     @gambling_group.command(name="luckyladder", aliases=["ladder"])
     @commands.cooldown(1, 1, commands.BucketType.user)
@@ -266,11 +266,11 @@ class GamblingCommands:
     async def gambling_lucky_ladder(self, ctx, amount: str):
         """Play lucky ladder"""
         if not await self.config.gambling_enabled():
-            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
         
         amount = await self._resolve_bet(ctx, amount)
@@ -282,9 +282,9 @@ class GamblingCommands:
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
-                    await ctx.reply(f"❌ You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol} Slut points. You have {currency_symbol}{result['balance']:,}.", mention_author=False)
                 else:
-                    await ctx.reply(f"❌ Error: {result.get('error', 'Unknown error')}", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error: {result.get('error', 'Unknown error')}", mention_author=False)
                 return
             
             currency_symbol = await self.config.currency_symbol()
@@ -294,7 +294,7 @@ class GamblingCommands:
                 await ctx.reply(f"🪜 Rung {result['rung']} - {result['multiplier']}x multiplier. You lost {currency_symbol}{amount - result['won_amount']:,}.", mention_author=False)
                 
         except Exception as e:
-            await ctx.reply(f"❌ Error in lucky ladder: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error in lucky ladder: {e}", mention_author=False)
 
     @gambling_group.command(name="mines", aliases=["minesweeper"])
     @commands.cooldown(1, 1, commands.BucketType.user)
@@ -328,11 +328,11 @@ class GamblingCommands:
             return
 
         if not await self.config.gambling_enabled():
-            await ctx.reply("❌ Gambling is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
             return
         
         if not await self.config.economy_enabled():
-            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
         
         amount = await self._resolve_bet(ctx, amount)
@@ -342,7 +342,7 @@ class GamblingCommands:
         try:
             await self.gambling_system.play_mines(ctx, amount, mines)
         except Exception as e:
-            await ctx.reply(f"❌ Error in Mines: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error in Mines: {e}", mention_author=False)
 
     # Top-level aliases for gambling commands
     @commands.hybrid_command(name="betroll", aliases=["roll"])

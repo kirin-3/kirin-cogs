@@ -27,7 +27,7 @@ class ClubManageModal(ui.Modal, title="Manage Club"):
         
         # Validate name
         if not validate_club_name(new_name):
-            await interaction.response.send_message("❌ Invalid club name.", ephemeral=True)
+            await interaction.response.send_message("<a:zz_NoTick:729318761655435355> Invalid club name.", ephemeral=True)
             return
 
         # Pass True for admin_override because Modal is only accessible if checks passed?
@@ -41,17 +41,17 @@ class ClubManageModal(ui.Modal, title="Manage Club"):
         if new_name != self.name.default:
             success, msg = await self.cog.club_system.rename_club(self.ctx.author, new_name, True)
             if not success:
-                await interaction.response.send_message(f"❌ Failed to rename: {msg}", ephemeral=True)
+                await interaction.response.send_message(f"<a:zz_NoTick:729318761655435355> Failed to rename: {msg}", ephemeral=True)
                 return
         
         # Update Description
         if new_desc != self.description.default:
             success, msg = await self.cog.club_system.set_club_description(self.ctx.author, new_desc, True)
             if not success:
-                await interaction.response.send_message(f"❌ Failed to update description: {msg}", ephemeral=True)
+                await interaction.response.send_message(f"<a:zz_NoTick:729318761655435355> Failed to update description: {msg}", ephemeral=True)
                 return
                 
-        await interaction.response.send_message("✅ Club updated successfully!", ephemeral=True)
+        await interaction.response.send_message("<a:zz_YesTick:729318762356015124> Club updated successfully!", ephemeral=True)
 
 class ClubInfoView(ui.View):
     def __init__(self, cog, ctx, club_data):
@@ -86,7 +86,7 @@ class ClubInfoView(ui.View):
         is_admin = interaction.user.guild_permissions.manage_guild
         
         if not (is_owner or is_admin):
-            await interaction.response.send_message("❌ You are not authorized to manage this club.", ephemeral=True)
+            await interaction.response.send_message("<a:zz_NoTick:729318761655435355> You are not authorized to manage this club.", ephemeral=True)
             return
             
         modal = ClubManageModal(self.cog, self.ctx, self.club_data['name'], self.club_data['description'])
@@ -105,14 +105,14 @@ class ClubCommands:
         """Create a new club"""
             
         if not validate_club_name(club_name):
-            await ctx.send("❌ Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols.")
             return
 
         success, message = await self.club_system.create_club(ctx.author, club_name)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
-            await ctx.send(f"❌ {message}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @club_group.command(name="info", aliases=["profile"])
     @app_commands.describe(club_name="Name of the club to view (optional)")
@@ -121,7 +121,7 @@ class ClubCommands:
             
         data, message = await self.club_system.get_club_info(club_name, ctx.author if not club_name else None)
         if not data:
-            await ctx.reply(f"❌ {message}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> {message}", mention_author=False)
             return
             
         # Format info embed
@@ -165,7 +165,7 @@ class ClubCommands:
             
         success, message = await self.club_system.leave_club(ctx.author)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -175,7 +175,7 @@ class ClubCommands:
             
         success, message = await self.club_system.apply_to_club(ctx.author, club_name)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -185,7 +185,7 @@ class ClubCommands:
             
         success, message = await self.club_system.accept_application(ctx.author, user.name)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -195,7 +195,7 @@ class ClubCommands:
             
         success, message = await self.club_system.reject_application(ctx.author, user.name)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -205,7 +205,7 @@ class ClubCommands:
             
         success, message = await self.club_system.kick_member(ctx.author, user.name)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -215,7 +215,7 @@ class ClubCommands:
             
         success, message = await self.club_system.ban_member(ctx.author, user.name)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -225,7 +225,7 @@ class ClubCommands:
             
         success, message = await self.club_system.unban_member(ctx.author, user.name)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -235,7 +235,7 @@ class ClubCommands:
             
         success, message = await self.club_system.transfer_club(ctx.author, new_owner)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -244,7 +244,7 @@ class ClubCommands:
         """Invite a user to your club"""
         success, message = await self.club_system.invite_member(ctx.author, user)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -278,7 +278,7 @@ class ClubCommands:
         """Accept a club invitation"""
         success, message = await self.club_system.accept_invitation(ctx.author, club_name)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -287,7 +287,7 @@ class ClubCommands:
         """Reject a club invitation"""
         success, message = await self.club_system.reject_invitation(ctx.author, club_name)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -349,20 +349,20 @@ class ClubCommands:
         """Rename the club (Owner/Server Mod)"""
         # Immediate length check to prevent DoS from massive input strings
         if len(new_name) > 20:
-            await ctx.send("❌ Club name is too long (max 20 chars).")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Club name is too long (max 20 chars).")
             return
 
         if not validate_club_name(new_name):
-            await ctx.send("❌ Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols.")
             return
 
         # Passed checks (Owner via logic or Mod via permission decorator)
         # We pass True to allow override if they have permissions
         success, message = await self.club_system.rename_club(ctx.author, new_name, True)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
-            await ctx.send(f"❌ {message}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @club_group.command(name="icon")
     @commands.admin_or_permissions(manage_guild=True)
@@ -370,14 +370,14 @@ class ClubCommands:
         """Set club icon URL (Owner/Server Mod)"""
             
         if not validate_url(url):
-            await ctx.send("❌ Invalid URL. Please provide a valid HTTP/HTTPS image URL.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Invalid URL. Please provide a valid HTTP/HTTPS image URL.")
             return
 
         success, message = await self.club_system.set_club_icon(ctx.author, url, True)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
-            await ctx.send(f"❌ {message}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @club_group.command(name="banner")
     @commands.admin_or_permissions(manage_guild=True)
@@ -390,7 +390,7 @@ class ClubCommands:
 
         success, message = await self.club_system.set_club_banner(ctx.author, url, True)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -404,12 +404,12 @@ class ClubCommands:
             return
 
         if not validate_text_input(description, max_length=150):
-            await ctx.send("❌ Description is too long (max 150 chars).")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Description is too long (max 150 chars).")
             return
 
         success, message = await self.club_system.set_club_description(ctx.author, description, True)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
             await ctx.send(f"❌ {message}")
 
@@ -424,14 +424,14 @@ class ClubCommands:
         await view.wait()
         
         if not view.result:
-            await msg.edit(content="❌ Disband cancelled.")
+            await msg.edit(content="<a:zz_NoTick:729318761655435355> Disband cancelled.")
             return
 
         success, message = await self.club_system.disband_club(ctx.author)
         if success:
-            await ctx.send(f"✅ {message}")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
-            await ctx.send(f"❌ {message}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @club_group.command(name="leaderboard", aliases=["lb"])
     @app_commands.describe(page="Page number")

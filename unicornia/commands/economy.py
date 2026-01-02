@@ -38,7 +38,7 @@ class EconomyCommands:
     async def _balance_logic(self, ctx, member: discord.Member = None):
         """Shared logic for balance commands"""
         if not await self.config.economy_enabled():
-            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
         
         member = member or ctx.author
@@ -66,47 +66,47 @@ class EconomyCommands:
             await ctx.reply(embed=embed, view=view, mention_author=False)
             
         except Exception as e:
-            await ctx.reply(f"❌ Error retrieving balance: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error retrieving balance: {e}", mention_author=False)
     
     @economy_group.command(name="give")
     async def economy_give(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
         """Give Slut points to another user"""
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
             return
         
         if amount <= 0:
-            await ctx.send("❌ Amount must be positive.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Amount must be positive.")
             return
         
         if member.bot:
-            await ctx.send("❌ You can't give Slut points to bots.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> You can't give Slut points to bots.")
             return
         
         if member == ctx.author:
-            await ctx.send("❌ You can't give Slut points to yourself.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> You can't give Slut points to yourself.")
             return
             
         # Immediate length check to prevent DoS from massive input strings
         if len(note) > 200:
-            await ctx.send("❌ Note is too long (max 200 chars).")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Note is too long (max 200 chars).")
             return
 
         if not validate_text_input(note, max_length=200):
-            await ctx.send("❌ Note is too long (max 200 chars).")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Note is too long (max 200 chars).")
             return
         
         try:
             success = await self.economy_system.give_currency(ctx.author.id, member.id, amount, note)
             if success:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"✅ You gave {currency_symbol}{amount:,} to {member.mention}!")
+                await ctx.send(f"<a:zz_YesTick:729318762356015124> You gave {currency_symbol}{amount:,} to {member.mention}!")
             else:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points.")
+                await ctx.send(f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol} Slut points.")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error transferring Slut points: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error transferring Slut points: {e}")
     
     @economy_group.command(name="timely", aliases=["daily"])
     async def economy_timely(self, ctx):
@@ -121,7 +121,7 @@ class EconomyCommands:
     async def _timely_logic(self, ctx):
         """Shared logic for timely commands"""
         if not await self.config.economy_enabled():
-            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
         
         try:
@@ -146,12 +146,12 @@ class EconomyCommands:
                 
                 # Supporter
                 supporter_amount = breakdown.get('supporter', 0)
-                supporter_mark = "✅" if supporter_amount > 0 else "❌"
+                supporter_mark = "<a:zz_YesTick:729318762356015124>" if supporter_amount > 0 else "<a:zz_NoTick:729318761655435355>"
                 details.append(f"• Supporter Bonus: {supporter_mark} {currency_symbol}{supporter_amount:,}")
                 
                 # Booster
                 booster_amount = breakdown.get('booster', 0)
-                booster_mark = "✅" if booster_amount > 0 else "❌"
+                booster_mark = "<a:zz_YesTick:729318762356015124>" if booster_amount > 0 else "<a:zz_NoTick:729318761655435355>"
                 details.append(f"• Booster Bonus: {booster_mark} {currency_symbol}{booster_amount:,}")
                 
                 embed.add_field(name="Reward Breakdown", value="\n".join(details), inline=False)
@@ -165,7 +165,7 @@ class EconomyCommands:
                     await ctx.reply("<a:zz_NoTick:729318761655435355> You cannot claim your daily reward yet.", mention_author=False)
                 
         except Exception as e:
-            await ctx.reply(f"❌ Error claiming daily reward: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error claiming daily reward: {e}", mention_author=False)
 
     @economy_group.command(name="history", aliases=["transactions", "tx"])
     async def economy_history(self, ctx, member: discord.Member = None):
@@ -196,7 +196,7 @@ class EconomyCommands:
             await ctx.send(embed=embed)
             
         except Exception as e:
-            await ctx.send(f"❌ Error retrieving transaction history: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error retrieving transaction history: {e}")
     
     @economy_group.command(name="stats", aliases=["gambling"])
     @app_commands.describe(member="The user to check stats for")
@@ -240,7 +240,7 @@ class EconomyCommands:
             await ctx.reply(embed=embed, mention_author=False)
             
         except Exception as e:
-            await ctx.reply(f"❌ Error retrieving gambling statistics: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error retrieving gambling statistics: {e}", mention_author=False)
     
     @economy_group.command(name="rakeback", aliases=["rb"])
     async def rakeback_command(self, ctx):
@@ -268,7 +268,7 @@ class EconomyCommands:
             await ctx.send(embed=embed)
             
         except Exception as e:
-            await ctx.send(f"❌ Error with rakeback: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error with rakeback: {e}")
     
     @economy_group.command(name="bank")
     async def bank_info(self, ctx, member: discord.Member = None):
@@ -288,68 +288,68 @@ class EconomyCommands:
             await ctx.reply(embed=embed, mention_author=False)
             
         except Exception as e:
-            await ctx.reply(f"❌ Error retrieving bank information: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error retrieving bank information: {e}", mention_author=False)
 
     @economy_group.command(name="award")
     @checks.is_owner()
     async def economy_award(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
         """Award Slut points to a user (owner only)"""
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
             return
         
         if amount <= 0:
-            await ctx.send("❌ Amount must be positive.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Amount must be positive.")
             return
         
         # Immediate length check to prevent DoS from massive input strings
         if len(note) > 200:
-            await ctx.send("❌ Note is too long (max 200 chars).")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Note is too long (max 200 chars).")
             return
 
         try:
             await self.economy_system.award_currency(member.id, amount, note)
             currency_symbol = await self.config.currency_symbol()
-            await ctx.send(f"✅ Awarded {currency_symbol}{amount:,} to {member.display_name}!")
+            await ctx.send(f"<a:zz_YesTick:729318762356015124> Awarded {currency_symbol}{amount:,} to {member.display_name}!")
             
         except Exception as e:
-            await ctx.send(f"❌ Error awarding Slut points: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error awarding Slut points: {e}")
     
     @economy_group.command(name="take")
     @checks.is_owner()
     async def economy_take(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
         """Take Slut points from a user (owner only)"""
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
             return
         
         if amount <= 0:
-            await ctx.send("❌ Amount must be positive.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Amount must be positive.")
             return
         
         # Immediate length check to prevent DoS from massive input strings
         if len(note) > 200:
-            await ctx.send("❌ Note is too long (max 200 chars).")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Note is too long (max 200 chars).")
             return
 
         try:
             success = await self.economy_system.take_currency(member.id, amount, note)
             if success:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"✅ Took {currency_symbol}{amount:,} from {member.mention}!")
+                await ctx.send(f"<a:zz_YesTick:729318762356015124> Took {currency_symbol}{amount:,} from {member.mention}!")
             else:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"❌ {member.mention} doesn't have enough {currency_symbol} Slut points.")
+                await ctx.send(f"<a:zz_NoTick:729318761655435355> {member.mention} doesn't have enough {currency_symbol} Slut points.")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error taking Slut points: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error taking Slut points: {e}")
     
     @economy_group.command(name="leaderboard", aliases=["lb", "top"])
     @commands.guild_only()
     async def economy_leaderboard(self, ctx):
         """Show the Slut points leaderboard"""
         if not await self.config.economy_enabled():
-            await ctx.send("❌ Economy system is disabled.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
             return
         
         try:
@@ -377,7 +377,7 @@ class EconomyCommands:
             import logging
             log = logging.getLogger("red.unicornia")
             log.error(f"Error in economy leaderboard: {e}", exc_info=True)
-            await ctx.send(f"❌ Error retrieving leaderboard: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error retrieving leaderboard: {e}")
     
     # Bank commands
     @commands.hybrid_group(name="bank")
@@ -390,78 +390,78 @@ class EconomyCommands:
         """Deposit Slut points into your bank account"""
         try:
             if not await self.config.economy_enabled():
-                await ctx.send("❌ Economy system is disabled.")
+                await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
                 return
             
             if amount.lower() == "all":
                 wallet, _ = await self.economy_system.get_balance(ctx.author.id)
                 amount = wallet
                 if amount <= 0:
-                    await ctx.send("❌ You don't have anything in your wallet to deposit.")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> You don't have anything in your wallet to deposit.")
                     return
             else:
                 try:
                     amount = int(amount.replace(",", ""))
                 except ValueError:
-                    await ctx.send("❌ Invalid amount. Please use a number or 'all'.")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> Invalid amount. Please use a number or 'all'.")
                     return
 
             if amount <= 0:
-                await ctx.send("❌ Amount must be positive.")
+                await ctx.send("<a:zz_NoTick:729318761655435355> Amount must be positive.")
                 return
             
             success = await self.economy_system.deposit_bank(ctx.author.id, amount)
             if success:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"✅ Deposited {currency_symbol}{amount:,} into your bank account!")
+                await ctx.send(f"<a:zz_YesTick:729318762356015124> Deposited {currency_symbol}{amount:,} into your bank account!")
             else:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points to deposit.")
+                await ctx.send(f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol} Slut points to deposit.")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error depositing Slut points: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error depositing Slut points: {e}")
     
     @bank_group.command(name="withdraw", aliases=["with", "w"])
     async def bank_withdraw(self, ctx, amount: str):
         """Withdraw Slut points from your bank account"""
         try:
             if not await self.config.economy_enabled():
-                await ctx.send("❌ Economy system is disabled.")
+                await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
                 return
             
             if amount.lower() == "all":
                 _, bank = await self.economy_system.get_balance(ctx.author.id)
                 amount = bank
                 if amount <= 0:
-                    await ctx.send("❌ You don't have anything in your bank to withdraw.")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> You don't have anything in your bank to withdraw.")
                     return
             else:
                 try:
                     amount = int(amount.replace(",", ""))
                 except ValueError:
-                    await ctx.send("❌ Invalid amount. Please use a number or 'all'.")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> Invalid amount. Please use a number or 'all'.")
                     return
 
             if amount <= 0:
-                await ctx.send("❌ Amount must be positive.")
+                await ctx.send("<a:zz_NoTick:729318761655435355> Amount must be positive.")
                 return
             
             success = await self.economy_system.withdraw_bank(ctx.author.id, amount)
             if success:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"✅ Withdrew {currency_symbol}{amount:,} from your bank account!")
+                await ctx.send(f"<a:zz_YesTick:729318762356015124> Withdrew {currency_symbol}{amount:,} from your bank account!")
             else:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.send(f"❌ You don't have enough {currency_symbol} Slut points in your bank account.")
+                await ctx.send(f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol} Slut points in your bank account.")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error withdrawing Slut points: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error withdrawing Slut points: {e}")
     
     @bank_group.command(name="balance", aliases=["bal"])
     async def bank_balance(self, ctx):
         """Check your bank balance"""
         if not await self.config.economy_enabled():
-            await ctx.reply("❌ Economy system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
         
         try:
@@ -470,4 +470,4 @@ class EconomyCommands:
             await ctx.reply(f"🏦 Your bank balance: {currency_symbol}{bank_balance:,}", mention_author=False)
                 
         except Exception as e:
-            await ctx.reply(f"❌ Error retrieving bank balance: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error retrieving bank balance: {e}", mention_author=False)

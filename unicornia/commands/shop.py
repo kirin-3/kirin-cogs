@@ -85,20 +85,20 @@ class BackgroundShopView(discord.ui.View):
             if success:
                 await interaction.response.send_message(f"✅ Equipped **{data.get('name', key)}**!", ephemeral=True)
             else:
-                await interaction.response.send_message(f"❌ Failed to equip.", ephemeral=True)
+                await interaction.response.send_message(f"<a:zz_NoTick:729318761655435355> Failed to equip.", ephemeral=True)
             return
 
         # Buy logic
         price = data.get('price', -1)
         if price == -1:
-            await interaction.response.send_message("❌ This item is unavailable.", ephemeral=True)
+            await interaction.response.send_message("<a:zz_NoTick:729318761655435355> This item is unavailable.", ephemeral=True)
             return
 
         # Check balance
         user_balance = await self.ctx.cog.db.economy.get_user_currency(self.ctx.author.id)
         if user_balance < price:
              currency_symbol = await self.ctx.cog.config.currency_symbol()
-             await interaction.response.send_message(f"❌ Insufficient funds. You need {price:,} {currency_symbol}.", ephemeral=True)
+             await interaction.response.send_message(f"<a:zz_NoTick:729318761655435355> Insufficient funds. You need {price:,} {currency_symbol}.", ephemeral=True)
              return
 
         # Purchase
@@ -115,7 +115,7 @@ class BackgroundShopView(discord.ui.View):
             await interaction.response.edit_message(embed=embed, view=self)
             await interaction.followup.send(f"✅ Purchased and equipped **{data.get('name', key)}**!", ephemeral=True)
         else:
-             await interaction.response.send_message("❌ Purchase failed.", ephemeral=True)
+             await interaction.response.send_message("<a:zz_NoTick:729318761655435355> Purchase failed.", ephemeral=True)
 
     @discord.ui.button(label="Next ▶️", style=discord.ButtonStyle.secondary)
     async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -136,7 +136,7 @@ class ShopCommands:
     async def shop_list(self, ctx):
         """View all available shop items"""
         if not await self.config.shop_enabled():
-            await ctx.reply("❌ Shop system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Shop system is disabled.", mention_author=False)
             return
         
         try:
@@ -150,13 +150,13 @@ class ShopCommands:
             view.message = await ctx.reply(embed=embed, view=view, mention_author=False)
             
         except Exception as e:
-            await ctx.reply(f"❌ Error retrieving shop items: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error retrieving shop items: {e}", mention_author=False)
     
     @shop_group.command(name="buy")
     async def shop_buy(self, ctx, index_or_id: int):
         """Buy a shop item by Index (recommended) or ID"""
         if not await self.config.shop_enabled():
-            await ctx.reply("❌ Shop system is disabled.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Shop system is disabled.", mention_author=False)
             return
         
         try:
@@ -177,22 +177,22 @@ class ShopCommands:
                 )
                 await ctx.reply(embed=embed, mention_author=False)
             else:
-                await ctx.reply(f"❌ {message}", mention_author=False)
+                await ctx.reply(f"<a:zz_NoTick:729318761655435355> {message}", mention_author=False)
                 
         except Exception as e:
-            await ctx.reply(f"❌ Error purchasing item: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error purchasing item: {e}", mention_author=False)
     
     @shop_group.command(name="info")
     async def shop_info(self, ctx, index_or_id: int):
         """Get detailed information about a shop item (by Index or ID)"""
         if not await self.config.shop_enabled():
-            await ctx.send("❌ Shop system is disabled.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Shop system is disabled.")
             return
         
         try:
             item = await self.shop_system.get_shop_item(ctx.guild.id, index_or_id)
             if not item:
-                await ctx.send("❌ Shop item not found.")
+                await ctx.send("<a:zz_NoTick:729318761655435355> Shop item not found.")
                 return
             
             currency_symbol = await self.config.currency_symbol()
@@ -221,7 +221,7 @@ class ShopCommands:
             await ctx.send(embed=embed)
             
         except Exception as e:
-            await ctx.send(f"❌ Error retrieving item info: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error retrieving item info: {e}")
     
     # Admin shop commands
     @shop_group.command(name="add")
@@ -235,7 +235,7 @@ class ShopCommands:
         - [p]shop add item 500 "Mystery Box"
         """
         if not await self.config.shop_enabled():
-            await ctx.send("❌ Shop system is disabled.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Shop system is disabled.")
             return
         
         try:
@@ -248,7 +248,7 @@ class ShopCommands:
             }
             
             if item_type.lower() not in type_map:
-                await ctx.send("❌ Invalid item type. Use: role, item, effect, or other")
+                await ctx.send("<a:zz_NoTick:729318761655435355> Invalid item type. Use: role, item, effect, or other")
                 return
             
             entry_type = type_map[item_type.lower()]
@@ -263,7 +263,7 @@ class ShopCommands:
             if entry_type == self.db.shop.SHOP_TYPE_ROLE:
                 # Parse role from details
                 if not details:
-                    await ctx.send("❌ Please specify a role for role items. Usage: `[p]shop add role 1000 \"VIP Role\" @VIPRole`")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> Please specify a role for role items. Usage: `[p]shop add role 1000 \"VIP Role\" @VIPRole`")
                     return
                 
                 # Try to find role mention or name
@@ -275,7 +275,7 @@ class ShopCommands:
                     role = discord.utils.get(ctx.guild.roles, name=details.strip())
                 
                 if not role:
-                    await ctx.send("❌ Role not found. Please mention the role or use the exact name.")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> Role not found. Please mention the role or use the exact name.")
                     return
                 
                 role_id = role.id
@@ -303,7 +303,7 @@ class ShopCommands:
             await ctx.send(embed=embed)
             
         except Exception as e:
-            await ctx.send(f"❌ Error adding shop item: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error adding shop item: {e}")
     
     @shop_group.command(name="edit")
     @commands.admin_or_permissions(manage_roles=True)
@@ -323,14 +323,14 @@ class ShopCommands:
         `[p]shop edit 1 role @SuperVIP`
         """
         if not await self.config.shop_enabled():
-            await ctx.send("❌ Shop system is disabled.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Shop system is disabled.")
             return
         
         try:
             # Get item
             item = await self.shop_system.get_shop_item(ctx.guild.id, item_id)
             if not item:
-                await ctx.send("❌ Shop item not found.")
+                await ctx.send("<a:zz_NoTick:729318761655435355> Shop item not found.")
                 return
             
             field = field.lower()
@@ -345,12 +345,12 @@ class ShopCommands:
                     updates['price'] = price
                     response_msg = f"Price updated to {price:,}"
                 except ValueError:
-                    await ctx.send("❌ Price must be a positive integer.")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> Price must be a positive integer.")
                     return
             
             elif field == "name":
                 if len(value) > 100:
-                    await ctx.send("❌ Name is too long (max 100 chars).")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> Name is too long (max 100 chars).")
                     return
                 updates['name'] = value
                 response_msg = f"Name updated to **{value}**"
@@ -363,7 +363,7 @@ class ShopCommands:
                     'other': self.db.shop.SHOP_TYPE_OTHER
                 }
                 if value.lower() not in type_map:
-                    await ctx.send("❌ Invalid type. Options: role, item, effect, other")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> Invalid type. Options: role, item, effect, other")
                     return
                 updates['entry_type'] = type_map[value.lower()]
                 response_msg = f"Type updated to **{value.title()}**"
@@ -384,7 +384,7 @@ class ShopCommands:
                         pass
                 
                 if not role:
-                    await ctx.send("❌ Role not found.")
+                    await ctx.send("<a:zz_NoTick:729318761655435355> Role not found.")
                     return
                 
                 updates['role_id'] = role.id
@@ -416,14 +416,14 @@ class ShopCommands:
                             pass
                     
                     if not role:
-                        await ctx.send("❌ Role not found.")
+                        await ctx.send("<a:zz_NoTick:729318761655435355> Role not found.")
                         return
                     
                     updates['role_requirement'] = role.id
                     response_msg = f"Role requirement set to **{role.name}**"
             
             else:
-                await ctx.send(f"❌ Invalid field. Available fields: name, price, type, role, req")
+                await ctx.send(f"<a:zz_NoTick:729318761655435355> Invalid field. Available fields: name, price, type, role, req")
                 return
             
             # Apply updates
@@ -432,24 +432,24 @@ class ShopCommands:
             if success:
                 await ctx.send(f"✅ Shop item #{item['index']} updated: {response_msg}")
             else:
-                await ctx.send("❌ Failed to update shop item.")
+                await ctx.send("<a:zz_NoTick:729318761655435355> Failed to update shop item.")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error editing shop item: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error editing shop item: {e}")
 
     @shop_group.command(name="remove", aliases=["delete", "del"])
     @commands.admin_or_permissions(manage_roles=True)
     async def shop_remove(self, ctx, item_id: int):
         """Remove a shop item (Admin only)"""
         if not await self.config.shop_enabled():
-            await ctx.send("❌ Shop system is disabled.")
+            await ctx.send("<a:zz_NoTick:729318761655435355> Shop system is disabled.")
             return
         
         try:
             # Get item info before deleting
             item = await self.shop_system.get_shop_item(ctx.guild.id, item_id)
             if not item:
-                await ctx.send("❌ Shop item not found.")
+                await ctx.send("<a:zz_NoTick:729318761655435355> Shop item not found.")
                 return
             
             # Pass item['id'] (actual DB ID) instead of item_id (which might be an Index)
@@ -457,10 +457,10 @@ class ShopCommands:
             if success:
                 await ctx.send(f"✅ Removed shop item: **{item['name']}**")
             else:
-                await ctx.send("❌ Failed to remove shop item.")
+                await ctx.send("<a:zz_NoTick:729318761655435355> Failed to remove shop item.")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error removing shop item: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error removing shop item: {e}")
 
     @commands.command(name="inventory", aliases=["inv", "bag"])
     async def show_inventory(self, ctx):
@@ -488,7 +488,7 @@ class ShopCommands:
             await ctx.send(embed=embed)
             
         except Exception as e:
-            await ctx.send(f"❌ Error loading inventory: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error loading inventory: {e}")
 
     # XP Shop commands
     @commands.command(name="xpshopbuy")
@@ -525,14 +525,14 @@ class ShopCommands:
         try:
             backgrounds = self.xp_system.card_generator.get_available_backgrounds()
             if not backgrounds:
-                await ctx.reply("❌ No backgrounds configured.", mention_author=False)
+                await ctx.reply("<a:zz_NoTick:729318761655435355> No backgrounds configured.", mention_author=False)
                 return
 
             # Filter hidden items
             visible_backgrounds = {k: v for k, v in backgrounds.items() if not v.get('hidden', False)}
             
             if not visible_backgrounds:
-                await ctx.reply("❌ No backgrounds available.", mention_author=False)
+                await ctx.reply("<a:zz_NoTick:729318761655435355> No backgrounds available.", mention_author=False)
                 return
 
             user_owned = await self.db.xp.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
@@ -548,12 +548,12 @@ class ShopCommands:
             import logging
             log = logging.getLogger("red.unicornia")
             log.error(f"Error loading XP backgrounds: {e}")
-            await ctx.reply("❌ Error loading backgrounds. Please check the configuration file.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> Error loading backgrounds. Please check the configuration file.", mention_author=False)
         except Exception as e:
             import logging
             log = logging.getLogger("red.unicornia")
             log.error(f"Unexpected error loading backgrounds: {e}", exc_info=True)
-            await ctx.reply("❌ An unexpected error occurred while loading backgrounds.", mention_author=False)
+            await ctx.reply("<a:zz_NoTick:729318761655435355> An unexpected error occurred while loading backgrounds.", mention_author=False)
     
     @xp_shop_group.command(name="buy")
     @app_commands.describe(item_key="Key of the background to buy")
@@ -571,23 +571,23 @@ class ShopCommands:
             price = self.xp_system.card_generator.get_background_price(item_key)
             
             if item_key not in items:
-                await ctx.reply(f"❌ Background `{item_key}` not found.", mention_author=False)
+                await ctx.reply(f"<a:zz_NoTick:729318761655435355> Background `{item_key}` not found.", mention_author=False)
                 return
             
             bg_data = items[item_key]
             if bg_data.get('hidden', False):
-                 await ctx.reply(f"❌ Background `{item_key}` is not available for purchase.", mention_author=False)
+                 await ctx.reply(f"<a:zz_NoTick:729318761655435355> Background `{item_key}` is not available for purchase.", mention_author=False)
                  return
 
             if price == -1:
-                await ctx.reply(f"❌ Background `{item_key}` is no longer available for purchase.", mention_author=False)
+                await ctx.reply(f"<a:zz_NoTick:729318761655435355> Background `{item_key}` is no longer available for purchase.", mention_author=False)
                 return
             
             # Check balance
             user_balance = await self.db.economy.get_user_currency(ctx.author.id)
             if user_balance < price:
                 currency_symbol = await self.config.currency_symbol()
-                await ctx.reply(f"❌ Insufficient Slut points! You have {user_balance:,} {currency_symbol} but need {price:,} {currency_symbol}.", mention_author=False)
+                await ctx.reply(f"<a:zz_NoTick:729318761655435355> Insufficient Slut points! You have {user_balance:,} {currency_symbol} but need {price:,} {currency_symbol}.", mention_author=False)
                 return
 
             # Attempt purchase (item_type_id = 1 for backgrounds)
@@ -611,14 +611,14 @@ class ShopCommands:
             else:
                 # Check why it failed
                 if await self.db.xp.user_owns_xp_item(ctx.author.id, 1, item_key):
-                    await ctx.reply(f"❌ You already own this background!", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> You already own this background!", mention_author=False)
                 else:
                     currency_symbol = await self.config.currency_symbol()
                     user_currency = await self.db.economy.get_user_currency(ctx.author.id)
-                    await ctx.reply(f"❌ Insufficient Slut points! You have {user_currency:,} {currency_symbol} but need {price:,} {currency_symbol}.", mention_author=False)
+                    await ctx.reply(f"<a:zz_NoTick:729318761655435355> Insufficient Slut points! You have {user_currency:,} {currency_symbol} but need {price:,} {currency_symbol}.", mention_author=False)
             
         except Exception as e:
-            await ctx.reply(f"❌ Error processing purchase: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error processing purchase: {e}", mention_author=False)
     
     @xp_shop_group.command(name="use")
     async def shop_use(self, ctx, item_key: str):
@@ -632,7 +632,7 @@ class ShopCommands:
         try:
             # Check if user owns the background
             if not await self.db.xp.user_owns_xp_item(ctx.author.id, 1, item_key):
-                await ctx.reply(f"❌ You don't own the background `{item_key}`. Purchase it first with `[p]xpshop buy {item_key}`.", mention_author=False)
+                await ctx.reply(f"<a:zz_NoTick:729318761655435355> You don't own the background `{item_key}`. Purchase it first with `[p]xpshop buy {item_key}`.", mention_author=False)
                 return
             
             # Set as active
@@ -643,10 +643,10 @@ class ShopCommands:
                 item_name = backgrounds.get(item_key, {}).get('name', item_key)
                 await ctx.reply(f"✅ Now using **{item_name}** as your XP background!", mention_author=False)
             else:
-                await ctx.reply(f"❌ Failed to set background. Make sure you own `{item_key}`.", mention_author=False)
+                await ctx.reply(f"<a:zz_NoTick:729318761655435355> Failed to set background. Make sure you own `{item_key}`.", mention_author=False)
                 
         except Exception as e:
-            await ctx.reply(f"❌ Error setting background: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error setting background: {e}", mention_author=False)
     
     @xp_shop_group.command(name="owned", aliases=["inventory", "inv"])
     async def shop_owned(self, ctx):
@@ -655,7 +655,7 @@ class ShopCommands:
         try:
             owned_items = await self.db.xp.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
             if not owned_items:
-                await ctx.reply("❌ You don't own any backgrounds yet. Use `[p]xpshop backgrounds` to see what's available!", mention_author=False)
+                await ctx.reply("<a:zz_NoTick:729318761655435355> You don't own any backgrounds yet. Use `[p]xpshop backgrounds` to see what's available!", mention_author=False)
                 return
 
             backgrounds = self.xp_system.card_generator.get_available_backgrounds()
@@ -665,7 +665,7 @@ class ShopCommands:
             owned_backgrounds = {k: v for k, v in backgrounds.items() if k in owned_keys}
             
             if not owned_backgrounds:
-                 await ctx.reply("❌ You own backgrounds, but none of them are currently available in the shop configuration.", mention_author=False)
+                 await ctx.reply("<a:zz_NoTick:729318761655435355> You own backgrounds, but none of them are currently available in the shop configuration.", mention_author=False)
                  return
             
             # Use the interactive view
@@ -676,7 +676,7 @@ class ShopCommands:
             view.message = await ctx.reply(embed=embed, view=view, mention_author=False)
             
         except Exception as e:
-            await ctx.reply(f"❌ Error loading owned backgrounds: {e}", mention_author=False)
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error loading owned backgrounds: {e}", mention_author=False)
     
     @xp_shop_group.command(name="reload")
     @commands.is_owner()
@@ -686,7 +686,7 @@ class ShopCommands:
             await self.xp_system.card_generator._load_xp_config()
             await ctx.send("✅ XP shop configuration reloaded successfully!")
         except Exception as e:
-            await ctx.send(f"❌ Error reloading configuration: {e}")
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error reloading configuration: {e}")
     
     @xp_shop_group.command(name="give")
     @commands.is_owner()
@@ -695,7 +695,7 @@ class ShopCommands:
         try:
             items = self.xp_system.card_generator.get_available_backgrounds()
             if item_key not in items:
-                await ctx.send(f"❌ Background `{item_key}` not found.")
+                await ctx.send(f"<a:zz_NoTick:729318761655435355> Background `{item_key}` not found.")
                 return
 
             success = await self.db.xp.give_xp_item(user.id, 1, item_key) # 1 = Background
@@ -704,7 +704,7 @@ class ShopCommands:
                 item_name = items[item_key].get('name', item_key)
                 await ctx.send(f"✅ Gave **{item_name}** to {user.mention}!")
             else:
-                await ctx.send(f"❌ {user.mention} already owns `{item_key}`.")
+                await ctx.send(f"<a:zz_NoTick:729318761655435355> {user.mention} already owns `{item_key}`.")
                 
         except Exception as e:
-             await ctx.send(f"❌ Error giving background: {e}")
+             await ctx.send(f"<a:zz_NoTick:729318761655435355> Error giving background: {e}")
