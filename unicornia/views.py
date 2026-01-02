@@ -202,7 +202,7 @@ class ShopBrowserView(ui.LayoutView):
         
         # Pagination state
         self.current_page = 0
-        self.items_per_page = 10
+        self.items_per_page = 7
         
         self.message = None
         self.currency_symbol = "$" # Default, updated in init()
@@ -289,31 +289,29 @@ class ShopBrowserView(ui.LayoutView):
         
         # Item List Body
         page_items = self.get_current_page_items()
-        body_text = ""
         
         if not page_items:
-            body_text = "No items found in this category."
+            container.add_item(ui.TextDisplay(content="No items found in this category."))
         else:
-            for item in page_items:
+            for i, item in enumerate(page_items):
                 item_type = self.shop_system.get_type_name(item['type'])
                 emoji = self.shop_system.get_type_emoji(item['type'])
                 price_text = f"{self.currency_symbol}{item['price']:,}"
                 
-                body_text += f"**{emoji} #{item['index']} - {item['name']}**\n"
-                body_text += f"Type: {item_type} | Price: {price_text}\n"
+                item_text = f"**{emoji} #{item['index']} - {item['name']}**\n"
+                item_text += f"Type: {item_type} | Price: {price_text}\n"
                 
                 if item['type'] == self.shop_system.db.shop.SHOP_TYPE_ROLE and item['role_name']:
-                    body_text += f"Role: {item['role_name']}\n"
+                    item_text += f"Role: {item['role_name']}\n"
                 
                 if item['additional_items']:
-                    body_text += f"Includes: {len(item['additional_items'])} items\n"
+                    item_text += f"Includes: {len(item['additional_items'])} items\n"
                 
-                body_text += "-------------------\n"
-        
-        # Add Body TextDisplay
-        if len(body_text) > 4000:
-            body_text = body_text[:3997] + "..."
-        container.add_item(ui.TextDisplay(content=body_text))
+                container.add_item(ui.TextDisplay(content=item_text))
+                
+                # Add Separator between items (not after the last one)
+                if i < len(page_items) - 1:
+                    container.add_item(ui.Separator())
         
         # 2. Buy Select (if items exist)
         if page_items:
