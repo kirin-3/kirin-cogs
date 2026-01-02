@@ -418,6 +418,31 @@ class CoreDB:
             await db.execute("CREATE INDEX IF NOT EXISTS idx_shop_entry_guild ON ShopEntry(GuildId, `Index`)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_user_inventory ON UserInventory(UserId, GuildId)")
 
+            # Stock Market tables
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS Stocks (
+                    Symbol TEXT PRIMARY KEY,
+                    Name TEXT,
+                    Emoji TEXT,
+                    CurrentPrice INTEGER,
+                    PreviousPrice INTEGER,
+                    TotalShares INTEGER DEFAULT 0,
+                    Volatility REAL DEFAULT 1.0,
+                    Hidden INTEGER DEFAULT 0
+                )
+            """)
+
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS StockHoldings (
+                    UserId INTEGER,
+                    Symbol TEXT,
+                    Amount INTEGER,
+                    AverageCost REAL,
+                    PRIMARY KEY (UserId, Symbol),
+                    FOREIGN KEY (Symbol) REFERENCES Stocks(Symbol) ON DELETE CASCADE
+                )
+            """)
+
             await db.commit()
             
             # Run schema updates for existing databases

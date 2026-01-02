@@ -3,7 +3,7 @@ Database models and operations for Unicornia
 """
 
 import logging
-from .db import CoreDB, ClubRepository, EconomyRepository, XPRepository, WaifuRepository, ShopRepository, LevelStats
+from .db import CoreDB, ClubRepository, EconomyRepository, XPRepository, WaifuRepository, ShopRepository, LevelStats, StockRepository
 
 log = logging.getLogger("red.unicornia.database")
 
@@ -17,3 +17,4 @@ class DatabaseManager(CoreDB):
         self.xp = XPRepository(self)
         self.waifu = WaifuRepository(self)
         self.shop = ShopRepository(self)
+        self.stock = StockRepository(self)

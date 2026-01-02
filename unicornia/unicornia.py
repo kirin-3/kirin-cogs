@@ -21,14 +21,15 @@ from .database import DatabaseManager
 from .systems import (
     XPSystem, EconomySystem, GamblingSystem,
     CurrencyGeneration, CurrencyDecay, ShopSystem,
-    ClubSystem, WaifuSystem, NitroSystem
+    ClubSystem, WaifuSystem, NitroSystem, MarketSystem
 )
+from .market_views import StockDashboardView
 from .utils import validate_url, validate_club_name
 from .errors import UnicorniaError, SystemNotReadyError
 from .commands import (
     ClubCommands, EconomyCommands, GamblingCommands,
     LevelCommands, WaifuCommands, ShopCommands,
-    AdminCommands, CurrencyCommands, NitroCommands
+    AdminCommands, CurrencyCommands, NitroCommands, StockCommands
 )
 
 log = logging.getLogger("red.unicornia")
@@ -38,7 +39,7 @@ log = logging.getLogger("red.unicornia")
 class Unicornia(
     ClubCommands, EconomyCommands, GamblingCommands,
     LevelCommands, WaifuCommands, ShopCommands,
-    AdminCommands, CurrencyCommands, NitroCommands, commands.Cog
+    AdminCommands, CurrencyCommands, NitroCommands, StockCommands, commands.Cog
 ):
     """Full-featured leveling and economy cog with Nadeko-like functionality"""
     
@@ -84,7 +85,9 @@ class Unicornia(
             "excluded_roles": [],
             "xp_included_channels": [],
             "command_whitelist": {}, # {command_name: [channel_ids]}
-            "system_whitelist": {}   # {system_name: [channel_ids]}
+            "system_whitelist": {},  # {system_name: [channel_ids]}
+            "market_channel": None,  # Channel ID for Stock Dashboard
+            "market_message": None   # Message ID for Stock Dashboard
         }
         
         self.config.register_global(**default_global)
@@ -98,7 +101,9 @@ class Unicornia(
         self.currency_generation = None
         self.currency_decay = None
         self.nitro_system = None
+        self.market_system = None
         self.wal_task = None
+        self.market_task = None
     
     async def cog_load(self):
         """Called when the cog is loaded - proper async initialization"""
@@ -123,12 +128,18 @@ class Unicornia(
             self.club_system = ClubSystem(self.db, self.config, self.bot)
             self.waifu_system = WaifuSystem(self.db, self.config, self.bot)
             self.nitro_system = NitroSystem(self.config, self.bot, self.economy_system)
+            self.market_system = MarketSystem(self.db, self.config, self.bot, self.economy_system)
+            await self.market_system.initialize()
+            
+            # Register Persistent Views
+            self.bot.add_view(StockDashboardView(self.market_system))
             
             # Start background tasks
             await self.currency_decay.start_decay_loop()
             
             # Start WAL maintenance task
             self.wal_task = asyncio.create_task(self._wal_maintenance_loop())
+            self.market_task = asyncio.create_task(self.market_loop())
             
             log.info("Unicornia: All systems initialized successfully")
         except Exception as e:
@@ -142,6 +153,13 @@ class Unicornia(
                 self.wal_task.cancel()
                 try:
                     await self.wal_task
+                except asyncio.CancelledError:
+                    pass
+            
+            if self.market_task:
+                self.market_task.cancel()
+                try:
+                    await self.market_task
                 except asyncio.CancelledError:
                     pass
             
@@ -330,9 +348,24 @@ class Unicornia(
             self.gambling_system is not None,
             self.currency_generation is not None,
             self.currency_decay is not None,
-            self.nitro_system is not None
+            self.nitro_system is not None,
+            self.market_system is not None
         ])
     
+    async def market_loop(self):
+        """Hourly market update loop"""
+        await self.bot.wait_until_ready()
+        while True:
+            try:
+                await asyncio.sleep(3600)  # Run every hour
+                if self.market_system:
+                    await self.market_system.market_tick()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                log.error(f"Error in market loop: {e}")
+                await asyncio.sleep(60)
+
     async def _wal_maintenance_loop(self):
         """Periodic WAL maintenance to prevent corruption and optimize performance"""
         while True:
@@ -382,4 +415,7 @@ class Unicornia(
         
         # Process currency generation
         await self.currency_generation.process_message(message)
+        
+        # Process market tracking
+        await self.market_system.process_message(message)
     
