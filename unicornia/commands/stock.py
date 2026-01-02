@@ -116,6 +116,23 @@ class StockCommands:
         )
         embed.set_image(url="https://media.discordapp.net/attachments/1000/market_banner.png") # Placeholder
         
+        # Initial Population of Top 20
+        stocks = self.market_system.stocks_cache.values()
+        if stocks:
+            desc = ""
+            sorted_stocks = sorted(stocks, key=lambda s: s['total_shares'], reverse=True)[:20]
+            for s in sorted_stocks:
+                price = s['price']
+                prev = s['previous_price']
+                change = price - prev
+                change_pct = (change / prev * 100) if prev > 0 else 0
+                arrow = "🟢" if change >= 0 else "🔴"
+                desc += f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%)\n"
+            
+            embed.add_field(name="📊 Top 20 Stocks", value=desc, inline=False)
+        else:
+            embed.add_field(name="📊 Top 20 Stocks", value="Market is empty.", inline=False)
+
         view = StockDashboardView(self.market_system)
         msg = await channel.send(embed=embed, view=view)
         

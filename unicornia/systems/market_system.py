@@ -166,12 +166,12 @@ class MarketSystem:
             if event_name:
                 embed.add_field(name="📢 MARKET NEWS", value=f"**{event_name}**", inline=False)
             
-            # Add ticker summary
+            # Add ticker summary (Top 20)
             stocks = self.stocks_cache.values()
             if stocks:
                 desc = ""
-                # Sort by volume desc
-                sorted_stocks = sorted(stocks, key=lambda s: s['total_shares'], reverse=True)[:10]
+                # Sort by volume desc (Market Cap might be better, but prompt asked for Top Stocks, volume is usually interest)
+                sorted_stocks = sorted(stocks, key=lambda s: s['total_shares'], reverse=True)[:20]
                 
                 for s in sorted_stocks:
                     price = s['price']
@@ -180,12 +180,10 @@ class MarketSystem:
                     change_pct = (change / prev * 100) if prev > 0 else 0
                     arrow = "🟢" if change >= 0 else "🔴"
                     
+                    # Short format for list
                     desc += f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%)\n"
                 
-                if len(stocks) > 10:
-                    desc += f"...and {len(stocks)-10} more."
-                    
-                embed.add_field(name="🔥 Top Movers", value=desc, inline=False)
+                embed.add_field(name="📊 Top 20 Stocks", value=desc, inline=False)
             
             embed.set_footer(text=f"Last Update: {discord.utils.utcnow().strftime('%H:%M UTC')}")
 

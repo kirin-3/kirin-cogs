@@ -189,7 +189,7 @@ class ApplicantProcessView(ui.View):
         else:
             await interaction.followup.send(f"❌ Error: {msg}", ephemeral=True)
 
-class ShopBrowserView(ui.View):
+class ShopBrowserView(ui.LayoutView):
     def __init__(self, ctx, items: list[dict], shop_system):
         super().__init__(timeout=120)
         self.ctx = ctx
@@ -306,7 +306,9 @@ class ShopBrowserView(ui.View):
             ))
         
         # Add label for Category
-        self.add_item(ui.TextDisplay(label="Start here: Filter by Category", row=0))
+        cat_label = ui.TextDisplay(content="Start here: Filter by Category")
+        cat_label.row = 0
+        self.add_item(cat_label)
         
         cat_select = ui.Select(
             placeholder="Filter by category...",
@@ -341,7 +343,9 @@ class ShopBrowserView(ui.View):
                 ))
             
             # Add label for Buy Select
-            self.add_item(ui.TextDisplay(label="Select an item to purchase:", row=2))
+            buy_label = ui.TextDisplay(content="Select an item to purchase:")
+            buy_label.row = 2
+            self.add_item(buy_label)
             
             buy_select = ui.Select(
                 placeholder="Select an item to buy...",
@@ -738,14 +742,16 @@ class TransactionModal(ui.Modal):
         except Exception as e:
              await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
 
-class TransferView(ui.View):
+class TransferView(ui.LayoutView):
     def __init__(self, ctx, cog):
         super().__init__(timeout=60)
         self.ctx = ctx
         self.cog = cog
         
         # Bank Actions Row
-        self.add_item(ui.TextDisplay(label="Bank Actions", row=0))
+        bank_label = ui.TextDisplay(content="Bank Actions")
+        bank_label.row = 0
+        self.add_item(bank_label)
         
         # Re-adding items with new rows
         deposit_btn = ui.Button(label="Deposit", style=discord.ButtonStyle.success, emoji="📥", row=1)
@@ -757,7 +763,9 @@ class TransferView(ui.View):
         self.add_item(withdraw_btn)
         
         # Transfer Actions Row
-        self.add_item(ui.TextDisplay(label="Transfer Actions", row=2))
+        transfer_label = ui.TextDisplay(content="Transfer Actions")
+        transfer_label.row = 2
+        self.add_item(transfer_label)
         
         give_btn = ui.Button(label="Give Cash", style=discord.ButtonStyle.blurple, emoji="💸", row=3)
         give_btn.callback = self.give
