@@ -358,8 +358,55 @@ class EconomyRepository:
                 return True
             
             last_claim = datetime.fromisoformat(row[0])
-            return (datetime.now() - last_claim).total_seconds() >= cooldown_seconds
+            return (datetime.utcnow() - last_claim).total_seconds() >= cooldown_seconds
     
+    async def attempt_timely_claim(self, user_id: int, cooldown_seconds: int = 86400) -> Optional[int]:
+        """Attempt to claim timely reward atomically.
+        
+        Args:
+            user_id: Discord user ID.
+            cooldown_seconds: Cooldown in seconds.
+            
+        Returns:
+            New streak if successful, None if on cooldown.
+        """
+        async with self.db._get_connection() as db:
+            await db.execute("BEGIN")
+            try:
+                # 1. Ensure user exists in TimelyCooldown
+                await db.execute("""
+                    INSERT OR IGNORE INTO TimelyCooldown (UserId, LastClaim, Streak)
+                    VALUES (?, datetime('now', '-100 years'), 0)
+                """, (user_id,))
+                
+                # 2. Update if eligible and return new streak
+                cursor = await db.execute("""
+                    UPDATE TimelyCooldown
+                    SET
+                        Streak = CASE
+                            WHEN datetime('now') <= datetime(LastClaim, '+48 hours') THEN Streak + 1
+                            ELSE 1
+                        END,
+                        LastClaim = datetime('now')
+                    WHERE UserId = ?
+                      AND (
+                          datetime('now') >= datetime(LastClaim, '+' || ? || ' seconds')
+                          OR LastClaim IS NULL
+                      )
+                    RETURNING Streak
+                """, (user_id, cooldown_seconds))
+                
+                row = await cursor.fetchone()
+                await db.commit()
+                
+                if row:
+                    return row[0]
+                return None
+                
+            except Exception:
+                await db.execute("ROLLBACK")
+                raise
+
     async def claim_timely(self, user_id: int, amount: int, cooldown_hours: int) -> bool:
         """Claim timely reward.
         
@@ -373,17 +420,15 @@ class EconomyRepository:
         """
         if amount <= 0:
             raise ValueError("Amount must be a positive integer.")
-        if not await self.check_timely_cooldown(user_id, cooldown_hours):
+            
+        # Use atomic check-and-update
+        streak = await self.attempt_timely_claim(user_id, cooldown_hours * 3600)
+        
+        if streak is None:
             return False
-        
+            
+        # If successful, award currency
         await self.add_currency(user_id, amount, "timely", "daily", note="Daily timely reward")
-        
-        async with self.db._get_connection() as db:
-            await db.execute("""
-                INSERT INTO TimelyCooldown (UserId, LastClaim) VALUES (?, ?)
-                ON CONFLICT(UserId) DO UPDATE SET LastClaim = ?
-            """, (user_id, datetime.now().isoformat(), datetime.now().isoformat()))
-            await db.commit()
         
         return True
 

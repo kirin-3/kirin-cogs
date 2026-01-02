@@ -11,6 +11,46 @@ class AdminCommands:
         """Unicornia - Full-featured leveling and economy system"""
         pass
 
+    @unicornia_group.group(name="migration")
+    @checks.is_owner()
+    async def migration_group(self, ctx):
+        """Manage Nadeko database migration"""
+        pass
+
+    @migration_group.command(name="setpath")
+    async def migration_setpath(self, ctx, path: str):
+        """Set the path to the Nadeko database file"""
+        await self.config.nadeko_db_path.set(path)
+        
+        # Update current instance
+        if self.db:
+            self.db.nadeko_db_path = path
+            
+        await ctx.send(f"✅ Nadeko DB path set to: `{path}`")
+
+    @migration_group.command(name="run")
+    async def migration_run(self, ctx):
+        """Run the migration from Nadeko database
+        
+        This will migrate users, economy, XP, and other data from the configured
+        Nadeko database file. This process may take some time.
+        """
+        nadeko_path = await self.config.nadeko_db_path()
+        if not nadeko_path:
+            await ctx.send("❌ No Nadeko DB path configured. Use `[p]unicornia migration setpath` first.")
+            return
+            
+        await ctx.send(f"⏳ Starting migration from `{nadeko_path}`... Check console for progress.")
+        try:
+            # Re-initialize DB with correct path if needed
+            if self.db and self.db.nadeko_db_path != nadeko_path:
+                self.db.nadeko_db_path = nadeko_path
+                
+            await self.db.migrate_from_nadeko()
+            await ctx.send("✅ Migration completed successfully!")
+        except Exception as e:
+            await ctx.send(f"❌ Migration failed: {e}")
+
     @unicornia_group.group(name="gen")
     @checks.is_owner()
     async def gen_group(self, ctx):

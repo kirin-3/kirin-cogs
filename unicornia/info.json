@@ -6,7 +6,6 @@
     "install_msg": "Unicornia cog loaded! To use your existing data, place your `nadeko.db` file in the cog's data folder or configure the path.",
     "tags": ["leveling", "economy", "migration", "nadeko", "waifu", "gambling"],
     "min_bot_version": "3.5.0",
-    "max_bot_version": "0.0.0",
     "hidden": false,
     "disabled": false,
     "type": "COG",

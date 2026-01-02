@@ -196,6 +196,18 @@ class VerificationStatusView(View):
         await interaction.followup.send("Closing...", ephemeral=True)
 
         owner = self.channel.guild.get_member(int(self.owner_id))
+        if owner:
+            role = self.channel.guild.get_role(1267157222530748439)
+            if role:
+                try:
+                    await owner.add_roles(role, reason="Ticket Verified")
+                except discord.Forbidden:
+                    log.warning(f"Could not assign Verified role to {owner.name}: Missing Permissions")
+                except Exception as e:
+                    log.error(f"Failed to assign Verified role to {owner.name}", exc_info=e)
+            else:
+                log.warning(f"Verified role (1267157222530748439) not found in guild {self.channel.guild.name}")
+
         if not owner:
             owner = await self.bot.fetch_user(int(self.owner_id))
 

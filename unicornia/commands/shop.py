@@ -160,21 +160,24 @@ class ShopCommands:
             return
         
         try:
-            success, message = await self.shop_system.purchase_item(ctx.author, ctx.guild.id, index_or_id)
+            success, message, data = await self.shop_system.purchase_item(ctx.author, ctx.guild.id, index_or_id)
             if success:
                 currency_symbol = await self.config.currency_symbol()
-                # Replace currency in message if it comes from system with generic term
-                message = message.replace("currency", currency_symbol)
+                
+                # Use structured data for formatting
+                item_name = data.get('item_name', 'Item')
+                price = data.get('price', 0)
+                remaining = data.get('remaining_balance', 0)
+                
+                description = f"You bought **{item_name}** for {price:,} {currency_symbol}!"
+                
                 embed = discord.Embed(
                     title="✅ Purchase Successful!",
-                    description=message,
+                    description=description,
                     color=discord.Color.green()
                 )
-                embed.add_field(
-                    name="💡 Tip",
-                    value="Use `[p]shop list` to see all available items!",
-                    inline=False
-                )
+                embed.set_footer(text=f"Remaining Balance: {remaining:,} {currency_symbol}")
+                
                 await ctx.reply(embed=embed, mention_author=False)
             else:
                 await ctx.reply(f"<a:zz_NoTick:729318761655435355> {message}", mention_author=False)

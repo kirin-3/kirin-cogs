@@ -1,11 +1,14 @@
 from PIL import Image, ImageDraw, ImageFont
 import io
+from pathlib import Path
 
 def generate_citation(action: str, member_name: str, reason: str):
     """Generate a 'papers, please' style citation image."""
+    base_dir = Path(__file__).parent
+
     # Load the base image
     try:
-        image = Image.open("base.png").convert("RGBA")
+        image = Image.open(base_dir / "base.png").convert("RGBA")
     except FileNotFoundError:
         # Fallback if base image is missing
         width, height = 400, 200
@@ -16,7 +19,7 @@ def generate_citation(action: str, member_name: str, reason: str):
 
     # Load the font
     try:
-        font = ImageFont.truetype("04B_03__.TTF", 16)
+        font = ImageFont.truetype(str(base_dir / "04B_03__.TTF"), 16)
     except IOError:
         font = ImageFont.load_default()
 

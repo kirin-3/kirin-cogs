@@ -88,6 +88,36 @@ class EconomySystem:
             await self.db.economy.log_currency_transaction(user_id, "take", -amount, note)
         return success
     
+    async def add_currency(self, user_id: int, amount: int, transaction_type: str = "api_add", extra: str = "external", note: str = "") -> bool:
+        """Add currency to a user (Generic API).
+        
+        Args:
+            user_id: User ID.
+            amount: Amount to add.
+            transaction_type: Type of transaction.
+            extra: Additional metadata (e.g. source).
+            note: Transaction note.
+            
+        Returns:
+            Success boolean.
+        """
+        return await self.db.economy.add_currency(user_id, amount, transaction_type, extra, note=note)
+
+    async def remove_currency(self, user_id: int, amount: int, transaction_type: str = "api_remove", extra: str = "external", note: str = "") -> bool:
+        """Remove currency from a user (Generic API).
+        
+        Args:
+            user_id: User ID.
+            amount: Amount to remove.
+            transaction_type: Type of transaction.
+            extra: Additional metadata (e.g. source).
+            note: Transaction note.
+            
+        Returns:
+            Success boolean.
+        """
+        return await self.db.economy.remove_currency(user_id, amount, transaction_type, extra, note=note)
+
     async def deposit_bank(self, user_id: int, amount: int) -> bool:
         """Deposit currency to bank.
         
@@ -140,40 +170,34 @@ class EconomySystem:
             Tuple of (success, total_amount, streak, breakdown).
         """
         user_id = user.id
-        # Get timely info
-        last_claim, streak = await self.db.economy.get_timely_info(user_id)
+        from datetime import datetime, timedelta, timezone
         
-        # Check cooldown (24 hours)
-        from datetime import datetime, timedelta
-        now = datetime.now()
+        # Get cooldown from config
+        cooldown_hours = await self.config.timely_cooldown()
+        cooldown_seconds = cooldown_hours * 3600
         
-        if last_claim:
-            try:
-                last_claim_dt = datetime.fromisoformat(last_claim)
-                if now - last_claim_dt < timedelta(hours=24):
-                    # Still on cooldown
-                    next_claim_dt = last_claim_dt + timedelta(hours=24)
+        # Attempt atomic claim
+        new_streak = await self.db.economy.attempt_timely_claim(user_id, cooldown_seconds)
+        
+        if new_streak is None:
+            # Failed (Cooldown)
+            # Fetch info to return next claim time
+            last_claim, streak = await self.db.economy.get_timely_info(user_id)
+            if last_claim:
+                try:
+                    last_claim_dt = datetime.fromisoformat(last_claim)
+                    # Ensure UTC for correct timestamp calculation since DB stores UTC
+                    if last_claim_dt.tzinfo is None:
+                         last_claim_dt = last_claim_dt.replace(tzinfo=timezone.utc)
+                         
+                    next_claim_dt = last_claim_dt + timedelta(seconds=cooldown_seconds)
                     next_claim_ts = int(next_claim_dt.timestamp())
                     return False, next_claim_ts, streak, {}
-            except ValueError:
-                # If date is invalid, treat as never claimed
-                pass
-        
-        # Calculate new streak
-        if last_claim:
-            try:
-                last_claim_dt = datetime.fromisoformat(last_claim)
-                if now - last_claim_dt <= timedelta(hours=48):  # Within 48 hours = maintain streak
-                    new_streak = streak + 1
-                else:
-                    new_streak = 1  # Reset streak
-            except ValueError:
-                # If date is invalid, treat as never claimed
-                new_streak = 1
-        else:
-            new_streak = 1
-        
-        # Calculate reward amount (base + streak bonus)
+                except ValueError:
+                    pass
+            return False, 0, 0, {}
+
+        # Success! Calculate reward amount (base + streak bonus)
         base_amount = await self.config.timely_amount()
         streak_bonus = min(new_streak * 10, 300)  # Max 300 bonus
         
@@ -199,7 +223,7 @@ class EconomySystem:
         
         # Award currency
         await self.db.economy.add_currency(user_id, total_amount, "timely", "system")
-        await self.db.economy.update_timely_claim(user_id, new_streak)
+        # Streak and Time were already updated by attempt_timely_claim
         await self.db.economy.log_currency_transaction(user_id, "timely", total_amount, f"Daily reward (streak: {new_streak})")
         
         return True, total_amount, new_streak, breakdown

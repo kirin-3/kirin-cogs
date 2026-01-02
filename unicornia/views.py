@@ -304,11 +304,14 @@ class ShopBrowserView(ui.View):
                 emoji=emoji,
                 default=(value == self.current_category)
             ))
-            
+        
+        # Add label for Category
+        self.add_item(ui.TextDisplay(label="Start here: Filter by Category", row=0))
+        
         cat_select = ui.Select(
             placeholder="Filter by category...",
             options=cat_options,
-            row=0,
+            row=1,
             custom_id="category_select"
         )
         
@@ -337,27 +340,29 @@ class ShopBrowserView(ui.View):
                     emoji=self.shop_system.get_type_emoji(item['type'])
                 ))
             
+            # Add label for Buy Select
+            self.add_item(ui.TextDisplay(label="Select an item to purchase:", row=2))
+            
             buy_select = ui.Select(
                 placeholder="Select an item to buy...",
                 options=buy_options,
-                row=1,
+                row=3,
                 custom_id="buy_select"
             )
             
             async def buy_callback(interaction: discord.Interaction):
                 index = int(buy_select.values[0])
-                # We need to find the item ID (not index) or pass index to purchase_item
-                # shop_system.purchase_item takes (user, guild_id, index_or_id)
-                # It handles index lookup internally.
                 
                 await interaction.response.defer()
                 
-                success, msg = await self.shop_system.purchase_item(self.ctx.author, self.ctx.guild.id, index)
+                success, msg, data = await self.shop_system.purchase_item(self.ctx.author, self.ctx.guild.id, index)
                 
                 if success:
-                    # Refresh currency symbol just in case
                     currency_symbol = await self.ctx.cog.config.currency_symbol()
-                    msg = msg.replace("currency", currency_symbol) # Generic replace if needed
+                    price = data.get('price', 0)
+                    item_name = data.get('item_name', 'Item')
+                    
+                    msg = f"Successfully purchased **{item_name}** for {price:,} {currency_symbol}!"
                     await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
                 else:
                     await interaction.followup.send(f"❌ {msg}", ephemeral=True)
@@ -368,8 +373,11 @@ class ShopBrowserView(ui.View):
         # 3. Pagination Buttons
         total_pages = (len(self.filtered_items) - 1) // self.items_per_page + 1
         
-        prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, row=2, disabled=(self.current_page == 0))
-        next_btn = ui.Button(label="▶️", style=discord.ButtonStyle.secondary, row=2, disabled=(self.current_page >= total_pages - 1))
+        # Shift rows down due to TextDisplays
+        row_idx = 4
+        
+        prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, row=row_idx, disabled=(self.current_page == 0))
+        next_btn = ui.Button(label="▶️", style=discord.ButtonStyle.secondary, row=row_idx, disabled=(self.current_page >= total_pages - 1))
         
         async def prev_callback(interaction: discord.Interaction):
             self.current_page = max(0, self.current_page - 1)
@@ -389,7 +397,7 @@ class ShopBrowserView(ui.View):
         self.add_item(prev_btn)
         
         # Indicator Button (disabled)
-        indicator = ui.Button(label=f"Page {self.current_page + 1}/{max(1, total_pages)}", style=discord.ButtonStyle.secondary, disabled=True, row=2)
+        indicator = ui.Button(label=f"Page {self.current_page + 1}/{max(1, total_pages)}", style=discord.ButtonStyle.secondary, disabled=True, row=row_idx)
         self.add_item(indicator)
         
         self.add_item(next_btn)
@@ -646,7 +654,7 @@ class TransactionModal(ui.Modal):
     def __init__(self, cog, transaction_type: str, title: str):
         super().__init__(title=title)
         self.cog = cog
-        self.transaction_type = transaction_type # "deposit" or "withdraw"
+        self.transaction_type = transaction_type # "deposit", "withdraw", or "give"
         
         self.amount = ui.TextInput(
             label="Amount",
@@ -655,6 +663,15 @@ class TransactionModal(ui.Modal):
             max_length=20
         )
         self.add_item(self.amount)
+        
+        if self.transaction_type == "give":
+            self.recipient = ui.TextInput(
+                label="Recipient (ID or exact Name)",
+                placeholder="User ID preferred",
+                min_length=1,
+                max_length=50
+            )
+            self.add_item(self.recipient)
 
     async def on_submit(self, interaction: discord.Interaction):
         amount_str = self.amount.value.strip().lower()
@@ -665,8 +682,8 @@ class TransactionModal(ui.Modal):
                 wallet, bank = await self.cog.economy_system.get_balance(interaction.user.id)
                 if self.transaction_type == "deposit":
                     amount = wallet
-                else: # withdraw
-                    amount = bank
+                else: # withdraw or give
+                    amount = bank if self.transaction_type == "withdraw" else wallet
             else:
                 amount = int(amount_str.replace(",", "")) # Handle commas if user types "1,000"
                 
@@ -678,30 +695,78 @@ class TransactionModal(ui.Modal):
             
             if self.transaction_type == "deposit":
                 success = await self.cog.economy_system.deposit_bank(interaction.user.id, amount)
-                action = "Deposited"
-                from_loc = "wallet"
-                to_loc = "bank account"
-            else:
+                msg = f"<a:zz_YesTick:729318762356015124> Deposited {currency_symbol}{amount:,} to your bank account!"
+                fail_msg = "❌ Insufficient funds in your wallet."
+                
+            elif self.transaction_type == "withdraw":
                 success = await self.cog.economy_system.withdraw_bank(interaction.user.id, amount)
-                action = "Withdrew"
-                from_loc = "bank account"
-                to_loc = "wallet"
+                msg = f"<a:zz_YesTick:729318762356015124> Withdrew {currency_symbol}{amount:,} from your bank account!"
+                fail_msg = "❌ Insufficient funds in your bank account."
+                
+            elif self.transaction_type == "give":
+                # Resolve recipient
+                target_str = self.recipient.value.strip()
+                target_user = None
+                
+                # Try by ID
+                if target_str.isdigit():
+                    target_user = interaction.guild.get_member(int(target_str))
+                
+                # Try by Name if not found
+                if not target_user:
+                    target_user = discord.utils.get(interaction.guild.members, name=target_str)
+                    
+                if not target_user:
+                    await interaction.response.send_message("❌ Recipient not found. Please use their ID or exact name.", ephemeral=True)
+                    return
+                    
+                if target_user.id == interaction.user.id:
+                    await interaction.response.send_message("❌ You cannot give money to yourself.", ephemeral=True)
+                    return
+
+                success = await self.cog.economy_system.give_currency(interaction.user.id, target_user.id, amount)
+                msg = f"<a:zz_YesTick:729318762356015124> Gave {currency_symbol}{amount:,} to {target_user.mention}!"
+                fail_msg = "❌ Insufficient funds in your wallet."
                 
             if success:
-                await interaction.response.send_message(f"<a:zz_YesTick:729318762356015124> {action} {currency_symbol}{amount:,} to your {to_loc}!", ephemeral=True)
+                await interaction.response.send_message(msg, ephemeral=True)
             else:
-                await interaction.response.send_message(f"❌ Insufficient funds in your {from_loc}.", ephemeral=True)
+                await interaction.response.send_message(fail_msg, ephemeral=True)
                 
         except ValueError:
              await interaction.response.send_message("❌ Invalid amount. Please enter a number or 'all'.", ephemeral=True)
         except Exception as e:
              await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
 
-class BalanceActions(ui.View):
+class TransferView(ui.View):
     def __init__(self, ctx, cog):
         super().__init__(timeout=60)
         self.ctx = ctx
         self.cog = cog
+        
+        # Bank Actions Row
+        self.add_item(ui.TextDisplay(label="Bank Actions", row=0))
+        
+        # Re-adding items with new rows
+        deposit_btn = ui.Button(label="Deposit", style=discord.ButtonStyle.success, emoji="📥", row=1)
+        deposit_btn.callback = self.deposit
+        self.add_item(deposit_btn)
+        
+        withdraw_btn = ui.Button(label="Withdraw", style=discord.ButtonStyle.danger, emoji="📤", row=1)
+        withdraw_btn.callback = self.withdraw
+        self.add_item(withdraw_btn)
+        
+        # Transfer Actions Row
+        self.add_item(ui.TextDisplay(label="Transfer Actions", row=2))
+        
+        give_btn = ui.Button(label="Give Cash", style=discord.ButtonStyle.blurple, emoji="💸", row=3)
+        give_btn.callback = self.give
+        self.add_item(give_btn)
+        
+        # Info
+        leaderboard_btn = ui.Button(label="Leaderboard", style=discord.ButtonStyle.secondary, emoji="🏆", row=3)
+        leaderboard_btn.callback = self.leaderboard
+        self.add_item(leaderboard_btn)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.ctx.author.id:
@@ -709,21 +774,18 @@ class BalanceActions(ui.View):
              return False
         return True
 
-    @ui.button(label="Deposit", style=discord.ButtonStyle.success, emoji="📥")
-    async def deposit(self, interaction: discord.Interaction, button: ui.Button):
+    async def deposit(self, interaction: discord.Interaction):
         await interaction.response.send_modal(TransactionModal(self.cog, "deposit", "Deposit to Bank"))
 
-    @ui.button(label="Withdraw", style=discord.ButtonStyle.danger, emoji="📤")
-    async def withdraw(self, interaction: discord.Interaction, button: ui.Button):
+    async def withdraw(self, interaction: discord.Interaction):
         await interaction.response.send_modal(TransactionModal(self.cog, "withdraw", "Withdraw from Bank"))
+        
+    async def give(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(TransactionModal(self.cog, "give", "Give Currency"))
 
-    @ui.button(label="Leaderboard", style=discord.ButtonStyle.secondary, emoji="🏆")
-    async def leaderboard(self, interaction: discord.Interaction, button: ui.Button):
+    async def leaderboard(self, interaction: discord.Interaction):
         # Trigger leaderboard
         await interaction.response.defer()
-        # Call the existing economy_leaderboard command logic
-        # Since it's an async command, we can invoke it, but invoking checks permissions etc.
-        # Alternatively, replicate logic. Replicating is safer for simple display.
         
         try:
              # Logic from economy_leaderboard

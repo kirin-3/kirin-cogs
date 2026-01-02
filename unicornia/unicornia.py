@@ -75,7 +75,9 @@ class Unicornia(
             "decay_last_run": 0, # Timestamp of last decay
             # Gambling limits
             "gambling_min_bet": 50,
-            "gambling_max_bet": 1000000
+            "gambling_max_bet": 1000000,
+            # Migration
+            "nadeko_db_path": None
         }
         
         default_guild = {
@@ -96,22 +98,20 @@ class Unicornia(
         self.currency_generation = None
         self.currency_decay = None
         self.nitro_system = None
+        self.wal_task = None
     
     async def cog_load(self):
         """Called when the cog is loaded - proper async initialization"""
         try:
             # Initialize database first
-            # Look for Nadeko database in the same directory as this cog
-            import os
             cog_dir = os.path.dirname(os.path.abspath(__file__))
-            nadeko_db_path = os.path.join(cog_dir, "nadeko.db")
             db_path = os.path.join(cog_dir, "data", "unicornia.db")
+            
+            nadeko_db_path = await self.config.nadeko_db_path()
+            
             self.db = DatabaseManager(db_path, nadeko_db_path)
             await self.db.connect()  # Establish persistent connection
             await self.db.initialize()
-            
-            # Migrate data from Nadeko database
-            await self.db.migrate_from_nadeko()
             
             # Initialize all systems
             self.xp_system = XPSystem(self.db, self.config, self.bot)
@@ -128,7 +128,7 @@ class Unicornia(
             await self.currency_decay.start_decay_loop()
             
             # Start WAL maintenance task
-            asyncio.create_task(self._wal_maintenance_loop())
+            self.wal_task = asyncio.create_task(self._wal_maintenance_loop())
             
             log.info("Unicornia: All systems initialized successfully")
         except Exception as e:
@@ -138,6 +138,13 @@ class Unicornia(
     async def cog_unload(self):
         """Called when the cog is unloaded - proper cleanup"""
         try:
+            if self.wal_task:
+                self.wal_task.cancel()
+                try:
+                    await self.wal_task
+                except asyncio.CancelledError:
+                    pass
+            
             if self.currency_decay:
                 await self.currency_decay.stop_decay_loop()
             
@@ -238,8 +245,7 @@ class Unicornia(
         """
         if not self._check_systems_ready():
             return False
-        # using db layer directly to allow custom transaction type/extra
-        return await self.db.economy.add_currency(user_id, amount, "api_add", extra=source, note=reason)
+        return await self.economy_system.add_currency(user_id, amount, transaction_type="api_add", extra=source, note=reason)
 
     async def remove_balance(self, user_id: int, amount: int, reason: str = "External API", source: str = "external") -> bool:
         """
@@ -256,7 +262,7 @@ class Unicornia(
         """
         if not self._check_systems_ready():
             return False
-        return await self.db.economy.remove_currency(user_id, amount, "api_remove", extra=source, note=reason)
+        return await self.economy_system.remove_currency(user_id, amount, transaction_type="api_remove", extra=source, note=reason)
 
     async def cog_check(self, ctx: commands.Context) -> bool:
         """Global check for all commands in this cog"""

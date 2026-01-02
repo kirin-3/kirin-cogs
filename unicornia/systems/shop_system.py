@@ -100,7 +100,7 @@ class ShopSystem:
             'additional_items': additional_items
         }
     
-    async def purchase_item(self, user: discord.Member, guild_id: int, item_id: int) -> Tuple[bool, str]:
+    async def purchase_item(self, user: discord.Member, guild_id: int, item_id: int) -> Tuple[bool, str, dict]:
         """Purchase a shop item.
         
         Args:
@@ -109,16 +109,16 @@ class ShopSystem:
             item_id: Item ID.
             
         Returns:
-            Tuple of (success, message).
+            Tuple of (success, message, data).
         """
         item = await self.get_shop_item(guild_id, item_id)
         if not item:
-            return False, "Shop item not found"
+            return False, "Shop item not found", {}
         
         # Check if user has enough currency
         user_balance = await self.db.economy.get_user_currency(user.id)
         if user_balance < item['price']:
-            return False, f"Insufficient Slut points. You need {item['price']:,} but have {user_balance:,}"
+            return False, f"Insufficient Slut points. You need {item['price']:,} but have {user_balance:,}", {}
         
         # Handle different item types - Pre-flight checks
         role_to_add = None
@@ -127,16 +127,16 @@ class ShopSystem:
             if item['role_id']:
                 role = user.guild.get_role(item['role_id'])
                 if not role:
-                    return False, "Role no longer exists"
+                    return False, "Role no longer exists", {}
                 
                 if role in user.roles:
-                    return False, "You already have this role"
+                    return False, "You already have this role", {}
                 
                 # Check role requirements
                 if item['role_requirement']:
                     required_role = user.guild.get_role(item['role_requirement'])
                     if required_role and required_role not in user.roles:
-                        return False, f"You need the {required_role.name} role to purchase this item"
+                        return False, f"You need the {required_role.name} role to purchase this item", {}
                 
                 role_to_add = role
         
@@ -148,7 +148,7 @@ class ShopSystem:
         # Use the actual ID from the item (in case we found it by index)
         success, message = await self.db.shop.purchase_shop_item(user.id, guild_id, item['id'])
         if not success:
-            return False, message
+            return False, message, {}
         
         # Post-purchase actions (Role Assignment)
         if role_to_add:
@@ -157,9 +157,16 @@ class ShopSystem:
             except (discord.Forbidden, discord.HTTPException):
                 # Refund if role assignment fails
                 await self.db.economy.add_currency(user.id, item['price'], "shop_refund", str(item['id']), note=f"Refund for failed role assignment: {item['name']}")
-                return False, "Failed to assign role. Currency has been refunded."
+                return False, "Failed to assign role. Currency has been refunded.", {}
 
-        return True, f"Successfully purchased {item['name']} for {item['price']:,} Slut points"
+        # Construct success data
+        data = {
+            'item_name': item['name'],
+            'price': item['price'],
+            'item_type': self.get_type_name(item['type']),
+            'remaining_balance': user_balance - item['price']
+        }
+        return True, f"Successfully purchased {item['name']}", data
     
     async def add_shop_item(self, guild_id: int, index: int, price: int, name: str, author_id: int,
                           item_type: int, role_name: str = None, role_id: int = None,

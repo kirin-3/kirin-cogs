@@ -131,15 +131,34 @@ async def close_ticket(
             pass
 
     if conf["dm"]:
+        notif_embed = embed
+        if status == "Verified":
+            notif_embed = discord.Embed(
+                description="**You are now verified in Unicornia, and have the Verified role.** This allows you send images NSFW media channels however to be able to view these channels you still need to be level 5, [more info can be found here.](https://discord.com/channels/684360255798509578/1074701057415987222/1074701115385450517)",
+                color=discord.Color.green(),
+            )
+        elif status == "Not Verified":
+            notif_embed = discord.Embed(
+                description="Your verification ticket was closed however you were **not verified**. If needed you can open a new one from [here.](https://discord.com/channels/684360255798509578/1267154732817055827/1455818419596296223)",
+                color=discord.Color.red(),
+            )
+
+        sent = False
         try:
-            if status == "Verified":
-                await member.send("You are now Verified.")
-            elif status == "Not Verified":
-                await member.send("You were not verified.")
-            else:
-                await member.send(embed=embed)
+            await member.send(embed=notif_embed)
+            sent = True
         except discord.Forbidden:
             pass
+        except Exception as e:
+            log.warning(f"Failed to DM user {member.id}: {e}")
+
+        if not sent:
+            fallback = bot.get_channel(686092688059400454)
+            if fallback:
+                try:
+                    await fallback.send(content=member.mention, embed=notif_embed)
+                except Exception as e:
+                    log.warning(f"Failed to send fallback notification: {e}")
 
     # Delete/close ticket channel
     try:

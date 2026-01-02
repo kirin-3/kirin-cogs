@@ -1,5 +1,7 @@
 import logging
 import discord
+import functools
+import asyncio
 
 from redbot.core import Config, commands
 from redbot.core.bot import Red
@@ -43,7 +45,8 @@ class UnicornModeration(commands.Cog):
         if not log_channel:
             return
 
-        image_buffer = generate_citation(action, member.display_name, reason)
+        task = functools.partial(generate_citation, action, member.display_name, reason)
+        image_buffer = await self.bot.loop.run_in_executor(None, task)
         file = discord.File(image_buffer, filename="citation.png")
         await log_channel.send(file=file)
 

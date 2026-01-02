@@ -53,13 +53,16 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
         self.views = []  # Saved views to end on reload
         self.view_cache: t.Dict[int, t.List[discord.ui.View]] = {}  # Saved views to end on reload
         self.initializing = False
+        self.startup_task: asyncio.Task | None = None
 
         self.auto_close.start()
 
     async def cog_load(self) -> None:
-        asyncio.create_task(self._startup())
+        self.startup_task = asyncio.create_task(self._startup())
 
     async def cog_unload(self) -> None:
+        if self.startup_task:
+            self.startup_task.cancel()
         for view in self.views:
             view.stop()
         self.auto_close.cancel()

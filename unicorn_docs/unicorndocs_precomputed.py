@@ -48,6 +48,37 @@ class UnicornDocsPrecomputed(commands.Cog):
         self._metadata = []
         self._config = {}
         self._loaded = False
+
+    def _load_data_sync(self, vectors_path: Path):
+        """Synchronous helper to load data from disk."""
+        config_file = vectors_path / "config.json"
+        embeddings_file = vectors_path / "embeddings.pkl"
+        metadata_file = vectors_path / "metadata.pkl"
+        
+        config = {}
+        embeddings = []
+        metadata = []
+        
+        # Load configuration
+        if config_file.exists():
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+        
+        # Check for essential files
+        if not embeddings_file.exists():
+             raise FileNotFoundError(f"Embeddings file not found at: {embeddings_file.absolute()}")
+             
+        if not metadata_file.exists():
+            raise FileNotFoundError(f"Metadata file not found at: {metadata_file.absolute()}")
+
+        # Load data
+        with open(embeddings_file, 'rb') as f:
+            embeddings = pickle.load(f)
+            
+        with open(metadata_file, 'rb') as f:
+            metadata = pickle.load(f)
+            
+        return config, embeddings, metadata
         
     async def load_vectors(self):
         """Load pre-computed vectors from the vectors directory."""
@@ -58,41 +89,28 @@ class UnicornDocsPrecomputed(commands.Cog):
             vectors_path = Path(self.VECTORS_PATH)
             log.info(f"Looking for vectors in: {vectors_path.absolute()}")
             
-            # Load configuration
-            config_file = vectors_path / "config.json"
-            if config_file.exists():
-                with open(config_file, 'r') as f:
-                    self._config = json.load(f)
-                log.info(f"Loaded config: {self._config}")
-            else:
-                log.warning(f"Config file not found at: {config_file.absolute()}")
+            # Offload blocking I/O to executor
+            config, embeddings, metadata = await self.bot.loop.run_in_executor(
+                None, self._load_data_sync, vectors_path
+            )
             
-            # Load embeddings
-            embeddings_file = vectors_path / "embeddings.pkl"
-            if embeddings_file.exists():
-                with open(embeddings_file, 'rb') as f:
-                    self._embeddings = pickle.load(f)
-                log.info(f"Loaded {len(self._embeddings)} embeddings")
-            else:
-                log.warning(f"Embeddings file not found at: {embeddings_file.absolute()}")
-                return
+            self._config = config
+            self._embeddings = embeddings
+            self._metadata = metadata
             
-            # Load metadata
-            metadata_file = vectors_path / "metadata.pkl"
-            if metadata_file.exists():
-                with open(metadata_file, 'rb') as f:
-                    self._metadata = pickle.load(f)
-                log.info(f"Loaded {len(self._metadata)} metadata entries")
-            else:
-                log.warning(f"Metadata file not found at: {metadata_file.absolute()}")
-                return
+            log.info(f"Loaded config: {self._config}")
+            log.info(f"Loaded {len(self._embeddings)} embeddings")
+            log.info(f"Loaded {len(self._metadata)} metadata entries")
                 
             self._loaded = True
             log.info("Pre-computed vectors loaded successfully")
             
+        except FileNotFoundError as e:
+            log.warning(str(e))
+            # Don't set loaded=True so we can retry if files appear later
         except Exception as e:
             log.error(f"Failed to load vectors: {e}")
-            self._loaded = True  # Don't retry
+            self._loaded = True  # Don't retry on other errors
 
     async def cog_load(self):
         """Called when the cog is loaded."""

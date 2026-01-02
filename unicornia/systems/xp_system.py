@@ -176,7 +176,20 @@ class XPSystem:
         updates = [(uid, gid, amount) for (uid, gid), amount in current_buffer.items()]
         
         # We assume cache is already updated during process_message
-        await self.db.xp.add_xp_bulk(updates)
+        try:
+            await self.db.xp.add_xp_bulk(updates)
+        except Exception as e:
+            # If DB write fails, restore buffer to prevent data loss
+            import logging
+            log = logging.getLogger("red.unicornia.xp")
+            log.error(f"Failed to flush XP buffer: {e}. Restoring {len(updates)} entries.")
+            
+            # Merge back into current buffer (which might have new entries)
+            for key, amount in current_buffer.items():
+                if key in self.xp_buffer:
+                    self.xp_buffer[key] += amount
+                else:
+                    self.xp_buffer[key] = amount
 
     def _get_user_cache_data(self, user_id: int, guild_id: int):
         """Get user data from cache, handling LRU"""

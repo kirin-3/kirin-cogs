@@ -3,7 +3,7 @@ from redbot.core import commands, checks, app_commands
 from redbot.core.utils.views import SimpleMenu
 from typing import Optional, Union
 from ..utils import validate_text_input
-from ..views import LeaderboardView, BalanceActions
+from ..views import LeaderboardView, TransferView
 
 class EconomyCommands:
     # Economy commands
@@ -61,7 +61,7 @@ class EconomyCommands:
             embed.add_field(name="💰 Total", value=f"{currency_symbol}{total:,}", inline=True)
             
             # View with actions
-            view = BalanceActions(ctx, self)
+            view = TransferView(ctx, self)
             
             await ctx.reply(embed=embed, view=view, mention_author=False)
             
