@@ -6,90 +6,29 @@ import discord
 from discord import ui
 from redbot.core.utils.chat_formatting import humanize_number
 
-class StockBuyModal(ui.Modal):
-    def __init__(self, market_system, stock_options: list[discord.SelectOption]):
-        super().__init__(title="Buy Stock")
+# --- Step 3: Final Transaction Modal (Amount Only) ---
+class StockAmountModal(ui.Modal):
+    def __init__(self, market_system, transaction_type: str, symbol: str):
+        super().__init__(title=f"{transaction_type.title()} {symbol}")
         self.market_system = market_system
-        
-        self.select_menu = ui.Select(
-            placeholder="Select a stock to buy...",
-            options=stock_options,
-            min_values=1,
-            max_values=1,
-            row=0
-        )
-        self.add_item(self.select_menu)
+        self.transaction_type = transaction_type # "buy" or "sell"
+        self.symbol = symbol
         
         self.amount_input = ui.TextInput(
             label="Amount (Shares)",
             placeholder="Enter number of shares",
             min_length=1,
             max_length=10,
-            style=discord.TextStyle.short,
-            row=1
+            style=discord.TextStyle.short
         )
         self.add_item(self.amount_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Access the selected value
-        if not self.select_menu.values:
-            await interaction.response.send_message("❌ Please select a stock.", ephemeral=True)
-            return
-            
-        symbol = self.select_menu.values[0]
-        amount_str = self.amount_input.value.strip()
-        
-        if not amount_str.isdigit():
-             await interaction.response.send_message("❌ Amount must be a positive number.", ephemeral=True)
-             return
-             
-        amount = int(amount_str)
-        if amount <= 0:
-            await interaction.response.send_message("❌ Amount must be greater than 0.", ephemeral=True)
-            return
-
-        success, msg = await self.market_system.buy_stock(interaction.user, symbol, amount)
-            
-        if success:
-            await interaction.response.send_message(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
-        else:
-            await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
-
-class StockSellModal(ui.Modal):
-    def __init__(self, market_system, stock_options: list[discord.SelectOption]):
-        super().__init__(title="Sell Stock")
-        self.market_system = market_system
-        
-        self.select_menu = ui.Select(
-            placeholder="Select a stock to sell...",
-            options=stock_options,
-            min_values=1,
-            max_values=1,
-            row=0
-        )
-        self.add_item(self.select_menu)
-        
-        self.amount_input = ui.TextInput(
-            label="Amount (Shares)",
-            placeholder="Enter number of shares (or 'all')",
-            min_length=1,
-            max_length=10,
-            style=discord.TextStyle.short,
-            row=1
-        )
-        self.add_item(self.amount_input)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        if not self.select_menu.values:
-            await interaction.response.send_message("❌ Please select a stock.", ephemeral=True)
-            return
-            
-        symbol = self.select_menu.values[0]
         amount_str = self.amount_input.value.strip().lower()
         
-        # Handle 'all'
-        if amount_str == "all":
-            holding = await self.market_system.db.stock.get_holding(interaction.user.id, symbol)
+        # Handle 'all' for selling
+        if self.transaction_type == "sell" and amount_str == "all":
+            holding = await self.market_system.db.stock.get_holding(interaction.user.id, self.symbol)
             if not holding:
                 await interaction.response.send_message("❌ Error finding holding.", ephemeral=True)
                 return
@@ -104,12 +43,60 @@ class StockSellModal(ui.Modal):
             await interaction.response.send_message("❌ Amount must be greater than 0.", ephemeral=True)
             return
 
-        success, msg = await self.market_system.sell_stock(interaction.user, symbol, amount)
+        # Execute Transaction
+        if self.transaction_type == "buy":
+            success, msg = await self.market_system.buy_stock(interaction.user, self.symbol, amount)
+        else:
+            success, msg = await self.market_system.sell_stock(interaction.user, self.symbol, amount)
             
         if success:
             await interaction.response.send_message(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
         else:
             await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+
+# --- Step 2: Selection Views (Ephemeral) ---
+
+class StockBuySelectView(ui.View):
+    def __init__(self, market_system, options: list[discord.SelectOption]):
+        super().__init__(timeout=60)
+        self.market_system = market_system
+        
+        # Select Menu
+        self.select = ui.Select(
+            placeholder="Select a stock to buy...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+        self.select.callback = self.on_select
+        self.add_item(self.select)
+
+    async def on_select(self, interaction: discord.Interaction):
+        symbol = self.select.values[0]
+        # Open the Amount Modal
+        await interaction.response.send_modal(StockAmountModal(self.market_system, "buy", symbol))
+
+class StockSellSelectView(ui.View):
+    def __init__(self, market_system, options: list[discord.SelectOption]):
+        super().__init__(timeout=60)
+        self.market_system = market_system
+        
+        # Select Menu
+        self.select = ui.Select(
+            placeholder="Select a stock to sell...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+        self.select.callback = self.on_select
+        self.add_item(self.select)
+
+    async def on_select(self, interaction: discord.Interaction):
+        symbol = self.select.values[0]
+        # Open the Amount Modal
+        await interaction.response.send_modal(StockAmountModal(self.market_system, "sell", symbol))
+
+# --- Step 1: Main Dashboard ---
 
 class StockDashboardView(ui.LayoutView):
     """Components V2 Dashboard for Unicornia Stock Exchange."""
@@ -223,7 +210,12 @@ class StockDashboardView(ui.LayoutView):
                 description=s['name'][:100]
             ))
             
-        await interaction.response.send_modal(StockBuyModal(self.market_system, options))
+        # Send Ephemeral View for Selection
+        await interaction.response.send_message(
+            "Select a stock to buy:", 
+            view=StockBuySelectView(self.market_system, options), 
+            ephemeral=True
+        )
 
     async def sell_button(self, interaction: discord.Interaction):
         # Fetch holdings first
@@ -242,7 +234,12 @@ class StockDashboardView(ui.LayoutView):
                 description=f"Current Price: {h['current_price']:,}"
             ))
             
-        await interaction.response.send_modal(StockSellModal(self.market_system, options))
+        # Send Ephemeral View for Selection
+        await interaction.response.send_message(
+            "Select a stock to sell:", 
+            view=StockSellSelectView(self.market_system, options), 
+            ephemeral=True
+        )
 
     async def portfolio_button(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
