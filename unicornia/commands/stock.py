@@ -5,6 +5,18 @@ from ..market_views import StockDashboardView, StockBuySelectView, StockSellSele
 
 class StockCommands:
     """Stock Market Commands for Unicornia"""
+    
+    async def ticker_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        stocks = self.market_system.stocks_cache.values()
+        choices = []
+        for s in stocks:
+            if current.upper() in s['symbol'] or current.lower() in s['name'].lower():
+                choices.append(app_commands.Choice(name=f"{s['symbol']} - {s['name']}", value=s['symbol']))
+        return choices[:25]
 
     @commands.hybrid_group(name="stock", aliases=["market", "stocks"])
     async def stock_group(self, ctx):
@@ -41,6 +53,7 @@ class StockCommands:
 
     @stock_group.command(name="buy")
     @app_commands.describe(ticker="Stock Symbol", amount="Number of shares")
+    @app_commands.autocomplete(ticker=ticker_autocomplete)
     async def stock_buy(self, ctx, ticker: str, amount: int):
         """Buy stocks."""
         success, msg = await self.market_system.buy_stock(ctx.author, ticker, amount)
@@ -51,6 +64,7 @@ class StockCommands:
 
     @stock_group.command(name="sell")
     @app_commands.describe(ticker="Stock Symbol", amount="Number of shares")
+    @app_commands.autocomplete(ticker=ticker_autocomplete)
     async def stock_sell(self, ctx, ticker: str, amount: int):
         """Sell stocks."""
         success, msg = await self.market_system.sell_stock(ctx.author, ticker, amount)

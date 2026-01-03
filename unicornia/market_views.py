@@ -54,47 +54,187 @@ class StockAmountModal(ui.Modal):
         else:
             await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
 
-# --- Step 2: Selection Views (Ephemeral) ---
+# --- Step 2: Selection Views (Ephemeral) with Pagination ---
 
 class StockBuySelectView(ui.View):
-    def __init__(self, market_system, options: list[discord.SelectOption]):
+    def __init__(self, market_system, all_stocks: list):
         super().__init__(timeout=60)
         self.market_system = market_system
+        self.all_stocks = all_stocks # Full list of stock dicts
+        self.current_page = 0
+        self.items_per_page = 25
         
+        self.select = None
+        self.update_components()
+
+    def update_components(self):
+        self.clear_items()
+        
+        # Calculate pagination
+        total_pages = max(1, (len(self.all_stocks) - 1) // self.items_per_page + 1)
+        start = self.current_page * self.items_per_page
+        end = start + self.items_per_page
+        page_stocks = self.all_stocks[start:end]
+        
+        # Create Select Options
+        options = []
+        for s in page_stocks:
+            options.append(discord.SelectOption(
+                label=f"{s['symbol']} - {s['price']:,}",
+                value=s['symbol'],
+                emoji=s['emoji'],
+                description=s['name'][:100]
+            ))
+            
+        if not options:
+            options.append(discord.SelectOption(label="No stocks available", value="NONE"))
+
         # Select Menu
         self.select = ui.Select(
-            placeholder="Select a stock to buy...",
+            placeholder=f"Select a stock to buy (Page {self.current_page + 1}/{total_pages})...",
             min_values=1,
             max_values=1,
-            options=options
+            options=options,
+            disabled=(not page_stocks)
         )
         self.select.callback = self.on_select
         self.add_item(self.select)
+        
+        # Pagination Buttons (Only if needed)
+        if total_pages > 1:
+            prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, disabled=(self.current_page == 0))
+            next_btn = ui.Button(label="▶️", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages - 1))
+            
+            prev_btn.callback = self.prev_page
+            next_btn.callback = self.next_page
+            
+            self.add_item(prev_btn)
+            self.add_item(next_btn)
 
     async def on_select(self, interaction: discord.Interaction):
         symbol = self.select.values[0]
-        # Open the Amount Modal
+        if symbol == "NONE": return
         await interaction.response.send_modal(StockAmountModal(self.market_system, "buy", symbol))
 
+    async def prev_page(self, interaction: discord.Interaction):
+        self.current_page = max(0, self.current_page - 1)
+        self.update_components()
+        await interaction.response.edit_message(view=self)
+
+    async def next_page(self, interaction: discord.Interaction):
+        total_pages = (len(self.all_stocks) - 1) // self.items_per_page + 1
+        self.current_page = min(total_pages - 1, self.current_page + 1)
+        self.update_components()
+        await interaction.response.edit_message(view=self)
+
 class StockSellSelectView(ui.View):
-    def __init__(self, market_system, options: list[discord.SelectOption]):
+    def __init__(self, market_system, user_holdings: list):
         super().__init__(timeout=60)
         self.market_system = market_system
+        self.user_holdings = user_holdings
+        self.current_page = 0
+        self.items_per_page = 25
         
-        # Select Menu
+        self.select = None
+        self.update_components()
+
+    def update_components(self):
+        self.clear_items()
+        
+        total_pages = max(1, (len(self.user_holdings) - 1) // self.items_per_page + 1)
+        start = self.current_page * self.items_per_page
+        end = start + self.items_per_page
+        page_holdings = self.user_holdings[start:end]
+        
+        options = []
+        for h in page_holdings:
+            options.append(discord.SelectOption(
+                label=f"{h['symbol']} (Owned: {h['amount']:,})",
+                value=h['symbol'],
+                emoji=h['emoji'],
+                description=f"Current Price: {h['current_price']:,}"
+            ))
+            
+        if not options:
+            options.append(discord.SelectOption(label="No stocks to sell", value="NONE"))
+
         self.select = ui.Select(
-            placeholder="Select a stock to sell...",
+            placeholder=f"Select a stock to sell (Page {self.current_page + 1}/{total_pages})...",
             min_values=1,
             max_values=1,
-            options=options
+            options=options,
+            disabled=(not page_holdings)
         )
         self.select.callback = self.on_select
         self.add_item(self.select)
+        
+        if total_pages > 1:
+            prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, disabled=(self.current_page == 0))
+            next_btn = ui.Button(label="▶️", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages - 1))
+            
+            prev_btn.callback = self.prev_page
+            next_btn.callback = self.next_page
+            
+            self.add_item(prev_btn)
+            self.add_item(next_btn)
 
     async def on_select(self, interaction: discord.Interaction):
         symbol = self.select.values[0]
-        # Open the Amount Modal
+        if symbol == "NONE": return
         await interaction.response.send_modal(StockAmountModal(self.market_system, "sell", symbol))
+
+    async def prev_page(self, interaction: discord.Interaction):
+        self.current_page = max(0, self.current_page - 1)
+        self.update_components()
+        await interaction.response.edit_message(view=self)
+
+    async def next_page(self, interaction: discord.Interaction):
+        total_pages = (len(self.user_holdings) - 1) // self.items_per_page + 1
+        self.current_page = min(total_pages - 1, self.current_page + 1)
+        self.update_components()
+        await interaction.response.edit_message(view=self)
+
+# --- Step 3: Show All Stocks View (V2) ---
+
+class StockListView(ui.LayoutView):
+    """Ephemeral V2 View to show all stocks."""
+    def __init__(self, market_system):
+        super().__init__(timeout=180)
+        self.market_system = market_system
+        self.update_components()
+
+    def update_components(self):
+        self.clear_items()
+        container = ui.Container(accent_color=discord.Color.gold())
+        container.add_item(ui.TextDisplay(content="## 📋 All Stocks (Live Prices)"))
+        container.add_item(ui.Separator())
+
+        # Sort by Price Descending
+        stocks = sorted(self.market_system.stocks_cache.values(), key=lambda s: s['price'], reverse=True)
+        
+        current_text = ""
+        for s in stocks:
+            price = s['price']
+            prev = s['previous_price']
+            change = price - prev
+            change_pct = (change / prev * 100) if prev > 0 else 0
+            arrow = "🟢" if change >= 0 else "🔴"
+            held = s.get('held_shares', 0)
+            
+            # Format: Emoji Ticker: Price (Change) | Circ: Amount
+            line = f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%) | Circ: {held:,}\n"
+            
+            # Check length limit (4000 safe margin)
+            if len(current_text) + len(line) > 4000:
+                container.add_item(ui.TextDisplay(content=current_text))
+                current_text = line
+            else:
+                current_text += line
+                
+        if current_text:
+            container.add_item(ui.TextDisplay(content=current_text))
+            
+        self.add_item(container)
 
 # --- Step 1: Main Dashboard ---
 
@@ -156,13 +296,13 @@ class StockDashboardView(ui.LayoutView):
             container.add_item(ui.TextDisplay(content=f"### ⚡ Top 10 Movers (1h)\n{changed_text}"))
             container.add_item(ui.Separator())
 
-        # 3. Top 10 Most Held
+        # 3. Top 10 In Circulation (Held)
         if self.market_system.top_held:
             held_text = generate_list_text(
                 self.market_system.top_held,
-                lambda s: f"| 👥 Owned: {s.get('held_shares', 0):,}"
+                lambda s: f"| 👥 Circ: {s.get('held_shares', 0):,}"
             )
-            container.add_item(ui.TextDisplay(content=f"### 🐋 Top 10 Most Held\n{held_text}"))
+            container.add_item(ui.TextDisplay(content=f"### 🐋 In Circulation (Top 10)\n{held_text}"))
         else:
             container.add_item(ui.TextDisplay(content="### 📊 Market Status\nMarket is initializing or empty."))
             
@@ -194,26 +334,16 @@ class StockDashboardView(ui.LayoutView):
         self.add_item(container)
 
     async def buy_button(self, interaction: discord.Interaction):
-        # Prepare stock options
-        stocks = sorted(self.market_system.stocks_cache.values(), key=lambda s: s['symbol'])
+        # Prepare stock options (Sorted by Price ASC)
+        stocks = sorted(self.market_system.stocks_cache.values(), key=lambda s: s['price'])
         if not stocks:
             await interaction.response.send_message("Market is empty.", ephemeral=True)
             return
             
-        # Create select options (Limit 25)
-        options = []
-        for s in stocks[:25]:
-            options.append(discord.SelectOption(
-                label=f"{s['symbol']} - {s['price']:,}",
-                value=s['symbol'],
-                emoji=s['emoji'],
-                description=s['name'][:100]
-            ))
-            
         # Send Ephemeral View for Selection
         await interaction.response.send_message(
             "Select a stock to buy:", 
-            view=StockBuySelectView(self.market_system, options), 
+            view=StockBuySelectView(self.market_system, stocks), 
             ephemeral=True
         )
 
@@ -224,20 +354,10 @@ class StockDashboardView(ui.LayoutView):
             await interaction.response.send_message("You don't own any stocks to sell.", ephemeral=True)
             return
             
-        # Create select options (Limit 25)
-        options = []
-        for h in holdings[:25]:
-            options.append(discord.SelectOption(
-                label=f"{h['symbol']} (Owned: {h['amount']:,})",
-                value=h['symbol'],
-                emoji=h['emoji'],
-                description=f"Current Price: {h['current_price']:,}"
-            ))
-            
         # Send Ephemeral View for Selection
         await interaction.response.send_message(
             "Select a stock to sell:", 
-            view=StockSellSelectView(self.market_system, options), 
+            view=StockSellSelectView(self.market_system, holdings), 
             ephemeral=True
         )
 
@@ -284,23 +404,11 @@ class StockDashboardView(ui.LayoutView):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     async def refresh_button(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        
-        stocks = self.market_system.stocks_cache.values()
-        if not stocks:
-            await interaction.followup.send("Market is closed/empty.", ephemeral=True)
-            return
-
-        embed = discord.Embed(title="📊 Live Prices (All Stocks)", color=discord.Color.gold())
-        desc = ""
-        for s in stocks:
-            price = s['price']
-            prev = s['previous_price']
-            change = price - prev
-            change_pct = (change / prev * 100) if prev > 0 else 0
-            arrow = "🟢" if change >= 0 else "🔴"
-            
-            desc += f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%)\n"
-            
-        embed.description = desc
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        # "Show All Stocks" button
+        if not self.market_system.stocks_cache:
+             await interaction.response.send_message("Market is empty.", ephemeral=True)
+             return
+             
+        # Send the V2 List View ephemerally
+        view = StockListView(self.market_system)
+        await interaction.response.send_message(view=view, ephemeral=True)
