@@ -159,47 +159,16 @@ class MarketSystem:
                 log.info(f"Dashboard message not found in {guild.name}, clearing config.")
                 continue
                 
-            # Rebuild Embed (similar to command)
-            embed = discord.Embed(
-                title="🏙️ Unicornia Stock Exchange",
-                description="Welcome to the Market! Use the buttons below to trade.\nPrices update hourly.",
-                color=discord.Color.purple()
-            )
-            embed.set_image(url="https://media.discordapp.net/attachments/1000/market_banner.png")
-            
-            if event_name:
-                embed.add_field(name="📢 MARKET NEWS", value=f"**{event_name}**", inline=False)
-            
-            # Add ticker summary (Top 20)
-            stocks = self.stocks_cache.values()
-            if stocks:
-                desc = ""
-                # Sort by volume desc (Market Cap might be better, but prompt asked for Top Stocks, volume is usually interest)
-                sorted_stocks = sorted(stocks, key=lambda s: s['total_shares'], reverse=True)[:20]
-                
-                for s in sorted_stocks:
-                    price = s['price']
-                    prev = s['previous_price']
-                    change = price - prev
-                    change_pct = (change / prev * 100) if prev > 0 else 0
-                    arrow = "🟢" if change >= 0 else "🔴"
-                    
-                    # Short format for list
-                    line = f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%)\n"
-                    
-                    # Check length limit (1024 chars)
-                    if len(desc) + len(line) > 1000:
-                        desc += "...(truncated)"
-                        break
-                    
-                    desc += line
-                
-                embed.add_field(name="📊 Top 20 Stocks", value=desc, inline=False)
-            
-            embed.set_footer(text=f"Last Update: {discord.utils.utcnow().strftime('%H:%M UTC')}")
-
+            # Rebuild V2 Dashboard
             try:
-                await message.edit(embed=embed, view=StockDashboardView(self))
+                # Update using the View which handles layout internally
+                # The view's __init__ triggers update_components()
+                view = StockDashboardView(self, event_name)
+                
+                # IMPORTANT: When editing to V2, we must clear embeds if we used them before,
+                # but discord.py V2 handles message structure. 
+                # If we send a V2 view, we shouldn't send an embed.
+                await message.edit(embed=None, view=view)
             except Exception as e:
                 log.error(f"Failed to update dashboard in {guild.name}: {e}")
 

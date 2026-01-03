@@ -109,43 +109,8 @@ class StockCommands:
         """Create a persistent Stock Market Dashboard."""
         channel = channel or ctx.channel
         
-        embed = discord.Embed(
-            title="🏙️ Unicornia Stock Exchange",
-            description="Welcome to the Market! Use the buttons below to trade.\nPrices update hourly.",
-            color=discord.Color.purple()
-        )
-        embed.set_image(url="https://media.discordapp.net/attachments/1000/market_banner.png") # Placeholder
-        
-        # Initial Population of Top 20
-        stocks = self.market_system.stocks_cache.values()
-        if stocks:
-            desc = ""
-            sorted_stocks = sorted(stocks, key=lambda s: s['total_shares'], reverse=True)[:20]
-            for s in sorted_stocks:
-                price = s['price']
-                prev = s['previous_price']
-                change = price - prev
-                change_pct = (change / prev * 100) if prev > 0 else 0
-                arrow = "🟢" if change >= 0 else "🔴"
-                
-                line = f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%)\n"
-                
-                if len(desc) + len(line) > 1000:
-                    desc += "...(truncated)"
-                    break
-                
-                desc += line
-            
-            embed.add_field(name="📊 Top 20 Stocks", value=desc, inline=False)
-        else:
-            embed.add_field(name="📊 Top 20 Stocks", value="Market is empty.", inline=False)
-
         view = StockDashboardView(self.market_system)
-        msg = await channel.send(embed=embed, view=view)
-        
-        # Save message ID if we want to update it
-        # self.market_system.market_channel_id = channel.id
-        # self.market_system.dashboard_message_id = msg.id
+        msg = await channel.send(view=view) # No embed, components only
         
         # Save to Config
         cog = ctx.cog # ctx.cog is Unicornia

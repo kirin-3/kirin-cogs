@@ -55,21 +55,83 @@ class StockTransactionModal(ui.Modal):
         else:
             await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
 
-class StockDashboardView(ui.View):
-    def __init__(self, market_system):
+class StockDashboardView(ui.LayoutView):
+    """Components V2 Dashboard for Unicornia Stock Exchange."""
+    
+    def __init__(self, market_system, event_name: str = None):
         super().__init__(timeout=None) # Persistent view
         self.market_system = market_system
+        self.event_name = event_name
+        self.update_components()
 
-    @ui.button(label="Buy Stock", style=discord.ButtonStyle.success, custom_id="market:buy")
-    async def buy_button(self, interaction: discord.Interaction, button: ui.Button):
+    def update_components(self):
+        self.clear_items()
+        
+        # Main Container
+        container = ui.Container(accent_color=discord.Color.purple())
+        
+        # Header
+        container.add_item(ui.TextDisplay(content="## 🏙️ Unicornia Stock Exchange\nWelcome to the Market! Use the buttons below to trade.\nPrices update hourly."))
+        container.add_item(ui.Separator())
+        
+        # Event News
+        if self.event_name:
+            container.add_item(ui.TextDisplay(content=f"### 📢 MARKET NEWS\n**{self.event_name}**"))
+            container.add_item(ui.Separator())
+            
+        # Top 15 Stocks
+        stocks = self.market_system.stocks_cache.values()
+        if stocks:
+            desc = ""
+            sorted_stocks = sorted(stocks, key=lambda s: s['total_shares'], reverse=True)[:15]
+            
+            for s in sorted_stocks:
+                price = s['price']
+                prev = s['previous_price']
+                change = price - prev
+                change_pct = (change / prev * 100) if prev > 0 else 0
+                arrow = "🟢" if change >= 0 else "🔴"
+                
+                line = f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%)\n"
+                desc += line
+                
+            container.add_item(ui.TextDisplay(content=f"### 📊 Top 15 Stocks\n{desc}"))
+        else:
+            container.add_item(ui.TextDisplay(content="### 📊 Top 15 Stocks\nMarket is empty."))
+            
+        # Footer-ish
+        container.add_item(ui.Separator())
+        last_update = discord.utils.utcnow().strftime('%H:%M UTC')
+        container.add_item(ui.TextDisplay(content=f"*Last Update: {last_update}*"))
+        
+        # Interactive Controls (Must be wrapped in ActionRow)
+        
+        # Row 1: Buy/Sell
+        buy_btn = ui.Button(label="Buy Stock", style=discord.ButtonStyle.success, custom_id="market:buy")
+        sell_btn = ui.Button(label="Sell Stock", style=discord.ButtonStyle.danger, custom_id="market:sell")
+        
+        buy_btn.callback = self.buy_button
+        sell_btn.callback = self.sell_button
+        
+        # Row 2: Portfolio/Show All
+        portfolio_btn = ui.Button(label="My Portfolio", style=discord.ButtonStyle.primary, custom_id="market:portfolio")
+        show_all_btn = ui.Button(label="Show All Stocks", style=discord.ButtonStyle.secondary, custom_id="market:show_all")
+        
+        portfolio_btn.callback = self.portfolio_button
+        show_all_btn.callback = self.refresh_button # Reusing the refresh logic which shows all
+        
+        container.add_item(ui.ActionRow(buy_btn, sell_btn))
+        container.add_item(ui.ActionRow(portfolio_btn, refresh_btn))
+        
+        self.add_item(container)
+
+    async def buy_button(self, interaction: discord.Interaction):
         await interaction.response.send_modal(StockTransactionModal(self.market_system, "buy"))
 
-    @ui.button(label="Sell Stock", style=discord.ButtonStyle.danger, custom_id="market:sell")
-    async def sell_button(self, interaction: discord.Interaction, button: ui.Button):
+    async def sell_button(self, interaction: discord.Interaction):
         await interaction.response.send_modal(StockTransactionModal(self.market_system, "sell"))
 
-    @ui.button(label="My Portfolio", style=discord.ButtonStyle.primary, custom_id="market:portfolio")
-    async def portfolio_button(self, interaction: discord.Interaction, button: ui.Button):
+    async def portfolio_button(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
         holdings = await self.market_system.db.stock.get_user_holdings(interaction.user.id)
@@ -77,6 +139,14 @@ class StockDashboardView(ui.View):
             await interaction.followup.send("You don't own any stocks.", ephemeral=True)
             return
             
+        # We can stick to standard Embed for ephemeral responses (V2 limitation: ephemeral responses are messages too)
+        # But if we want consistent V2 style, we could use a V2 View.
+        # However, for simple ephemeral info, standard Embed is often cleaner/easier unless we need complex layout.
+        # The guide says "When using V2 components... You CANNOT send embed".
+        # So if we reply with ephemeral message, if we include V2 components we can't use Embed.
+        # If we don't include components (just text/embed), it's a V1 message.
+        # Let's stick to standard Embed for portfolio to avoid complexity, as it has no components.
+        
         embed = discord.Embed(title="📈 My Portfolio", color=discord.Color.blue())
         
         total_value = 0
@@ -111,14 +181,8 @@ class StockDashboardView(ui.View):
         
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @ui.button(label="Refresh Board", style=discord.ButtonStyle.secondary, custom_id="market:refresh")
-    async def refresh_button(self, interaction: discord.Interaction, button: ui.Button):
+    async def refresh_button(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        # Trigger dashboard update manually? 
-        # Usually dashboard updates automatically on tick.
-        # Here we can just reply with ephemeral updated pricing?
-        # Or force update the main message if we can (rate limits).
-        # Let's just send ephemeral prices.
         
         stocks = self.market_system.stocks_cache.values()
         if not stocks:
@@ -128,7 +192,6 @@ class StockDashboardView(ui.View):
         embed = discord.Embed(title="📊 Live Prices (Snapshot)", color=discord.Color.gold())
         desc = ""
         for s in stocks:
-            # Replicate dashboard row format
             price = s['price']
             prev = s['previous_price']
             change = price - prev
