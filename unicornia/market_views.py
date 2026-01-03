@@ -6,33 +6,37 @@ import discord
 from discord import ui
 from redbot.core.utils.chat_formatting import humanize_number
 
-class StockTransactionModal(ui.Modal):
-    def __init__(self, market_system, transaction_type: str, ticker: str = None):
-        super().__init__(title=f"{transaction_type.title()} Stock")
+class StockBuyModal(ui.Modal):
+    def __init__(self, market_system, stock_options: list[discord.SelectOption]):
+        super().__init__(title="Buy Stock")
         self.market_system = market_system
-        self.transaction_type = transaction_type # "buy" or "sell"
         
-        self.ticker_input = ui.TextInput(
-            label="Stock Ticker (Symbol)",
-            placeholder="e.g. ROCKET",
-            default=ticker or "",
-            min_length=1,
-            max_length=10,
-            style=discord.TextStyle.short
+        self.select_menu = ui.Select(
+            placeholder="Select a stock to buy...",
+            options=stock_options,
+            min_values=1,
+            max_values=1,
+            row=0
         )
-        self.add_item(self.ticker_input)
+        self.add_item(self.select_menu)
         
         self.amount_input = ui.TextInput(
             label="Amount (Shares)",
             placeholder="Enter number of shares",
             min_length=1,
             max_length=10,
-            style=discord.TextStyle.short
+            style=discord.TextStyle.short,
+            row=1
         )
         self.add_item(self.amount_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        symbol = self.ticker_input.value.strip().upper()
+        # Access the selected value
+        if not self.select_menu.values:
+            await interaction.response.send_message("❌ Please select a stock.", ephemeral=True)
+            return
+            
+        symbol = self.select_menu.values[0]
         amount_str = self.amount_input.value.strip()
         
         if not amount_str.isdigit():
@@ -44,11 +48,63 @@ class StockTransactionModal(ui.Modal):
             await interaction.response.send_message("❌ Amount must be greater than 0.", ephemeral=True)
             return
 
-        # Perform Transaction
-        if self.transaction_type == "buy":
-            success, msg = await self.market_system.buy_stock(interaction.user, symbol, amount)
+        success, msg = await self.market_system.buy_stock(interaction.user, symbol, amount)
+            
+        if success:
+            await interaction.response.send_message(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
         else:
-            success, msg = await self.market_system.sell_stock(interaction.user, symbol, amount)
+            await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+
+class StockSellModal(ui.Modal):
+    def __init__(self, market_system, stock_options: list[discord.SelectOption]):
+        super().__init__(title="Sell Stock")
+        self.market_system = market_system
+        
+        self.select_menu = ui.Select(
+            placeholder="Select a stock to sell...",
+            options=stock_options,
+            min_values=1,
+            max_values=1,
+            row=0
+        )
+        self.add_item(self.select_menu)
+        
+        self.amount_input = ui.TextInput(
+            label="Amount (Shares)",
+            placeholder="Enter number of shares (or 'all')",
+            min_length=1,
+            max_length=10,
+            style=discord.TextStyle.short,
+            row=1
+        )
+        self.add_item(self.amount_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not self.select_menu.values:
+            await interaction.response.send_message("❌ Please select a stock.", ephemeral=True)
+            return
+            
+        symbol = self.select_menu.values[0]
+        amount_str = self.amount_input.value.strip().lower()
+        
+        # Handle 'all'
+        if amount_str == "all":
+            holding = await self.market_system.db.stock.get_holding(interaction.user.id, symbol)
+            if not holding:
+                await interaction.response.send_message("❌ Error finding holding.", ephemeral=True)
+                return
+            amount = holding['amount']
+        elif not amount_str.isdigit():
+             await interaction.response.send_message("❌ Amount must be a positive number.", ephemeral=True)
+             return
+        else:
+            amount = int(amount_str)
+            
+        if amount <= 0:
+            await interaction.response.send_message("❌ Amount must be greater than 0.", ephemeral=True)
+            return
+
+        success, msg = await self.market_system.sell_stock(interaction.user, symbol, amount)
             
         if success:
             await interaction.response.send_message(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
@@ -79,30 +135,55 @@ class StockDashboardView(ui.LayoutView):
             container.add_item(ui.TextDisplay(content=f"### 📢 MARKET NEWS\n**{self.event_name}**"))
             container.add_item(ui.Separator())
             
-        # Top 15 Stocks
-        stocks = self.market_system.stocks_cache.values()
-        if stocks:
-            desc = ""
-            sorted_stocks = sorted(stocks, key=lambda s: s['total_shares'], reverse=True)[:15]
-            
-            for s in sorted_stocks:
+        # Helper for generating list text
+        def generate_list_text(stocks_list, metric_func):
+            text = ""
+            for s in stocks_list:
                 price = s['price']
                 prev = s['previous_price']
                 change = price - prev
                 change_pct = (change / prev * 100) if prev > 0 else 0
                 arrow = "🟢" if change >= 0 else "🔴"
                 
-                line = f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%)\n"
-                desc += line
-                
-            container.add_item(ui.TextDisplay(content=f"### 📊 Top 15 Stocks\n{desc}"))
+                # Format: Emoji Symbol: Price Arrow (Change%) | Metric
+                extra_info = metric_func(s)
+                line = f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%) {extra_info}\n"
+                text += line
+            return text if text else "None"
+
+        # 1. Top 10 Most Expensive
+        if self.market_system.top_expensive:
+            expensive_text = generate_list_text(
+                self.market_system.top_expensive,
+                lambda s: ""
+            )
+            container.add_item(ui.TextDisplay(content=f"### 💎 Top 10 Most Expensive\n{expensive_text}"))
+            container.add_item(ui.Separator())
+
+        # 2. Top 10 Most Changed (Last Hour)
+        if self.market_system.top_changed:
+            changed_text = generate_list_text(
+                self.market_system.top_changed,
+                lambda s: ""
+            )
+            container.add_item(ui.TextDisplay(content=f"### ⚡ Top 10 Movers (1h)\n{changed_text}"))
+            container.add_item(ui.Separator())
+
+        # 3. Top 10 Most Held
+        if self.market_system.top_held:
+            held_text = generate_list_text(
+                self.market_system.top_held,
+                lambda s: f"| 👥 Owned: {s.get('held_shares', 0):,}"
+            )
+            container.add_item(ui.TextDisplay(content=f"### 🐋 Top 10 Most Held\n{held_text}"))
         else:
-            container.add_item(ui.TextDisplay(content="### 📊 Top 15 Stocks\nMarket is empty."))
+            container.add_item(ui.TextDisplay(content="### 📊 Market Status\nMarket is initializing or empty."))
             
         # Footer-ish
         container.add_item(ui.Separator())
-        last_update = discord.utils.utcnow().strftime('%H:%M UTC')
-        container.add_item(ui.TextDisplay(content=f"*Last Update: {last_update}*"))
+        # Use Discord Timestamp <t:TIMESTAMP:R> for relative time
+        ts = int(discord.utils.utcnow().timestamp())
+        container.add_item(ui.TextDisplay(content=f"*Last Update: <t:{ts}:R>*"))
         
         # Interactive Controls (Must be wrapped in ActionRow)
         
@@ -126,10 +207,42 @@ class StockDashboardView(ui.LayoutView):
         self.add_item(container)
 
     async def buy_button(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(StockTransactionModal(self.market_system, "buy"))
+        # Prepare stock options
+        stocks = sorted(self.market_system.stocks_cache.values(), key=lambda s: s['symbol'])
+        if not stocks:
+            await interaction.response.send_message("Market is empty.", ephemeral=True)
+            return
+            
+        # Create select options (Limit 25)
+        options = []
+        for s in stocks[:25]:
+            options.append(discord.SelectOption(
+                label=f"{s['symbol']} - {s['price']:,}",
+                value=s['symbol'],
+                emoji=s['emoji'],
+                description=s['name'][:100]
+            ))
+            
+        await interaction.response.send_modal(StockBuyModal(self.market_system, options))
 
     async def sell_button(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(StockTransactionModal(self.market_system, "sell"))
+        # Fetch holdings first
+        holdings = await self.market_system.db.stock.get_user_holdings(interaction.user.id)
+        if not holdings:
+            await interaction.response.send_message("You don't own any stocks to sell.", ephemeral=True)
+            return
+            
+        # Create select options (Limit 25)
+        options = []
+        for h in holdings[:25]:
+            options.append(discord.SelectOption(
+                label=f"{h['symbol']} (Owned: {h['amount']:,})",
+                value=h['symbol'],
+                emoji=h['emoji'],
+                description=f"Current Price: {h['current_price']:,}"
+            ))
+            
+        await interaction.response.send_modal(StockSellModal(self.market_system, options))
 
     async def portfolio_button(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -139,14 +252,6 @@ class StockDashboardView(ui.LayoutView):
             await interaction.followup.send("You don't own any stocks.", ephemeral=True)
             return
             
-        # We can stick to standard Embed for ephemeral responses (V2 limitation: ephemeral responses are messages too)
-        # But if we want consistent V2 style, we could use a V2 View.
-        # However, for simple ephemeral info, standard Embed is often cleaner/easier unless we need complex layout.
-        # The guide says "When using V2 components... You CANNOT send embed".
-        # So if we reply with ephemeral message, if we include V2 components we can't use Embed.
-        # If we don't include components (just text/embed), it's a V1 message.
-        # Let's stick to standard Embed for portfolio to avoid complexity, as it has no components.
-        
         embed = discord.Embed(title="📈 My Portfolio", color=discord.Color.blue())
         
         total_value = 0
@@ -189,7 +294,7 @@ class StockDashboardView(ui.LayoutView):
             await interaction.followup.send("Market is closed/empty.", ephemeral=True)
             return
 
-        embed = discord.Embed(title="📊 Live Prices (Snapshot)", color=discord.Color.gold())
+        embed = discord.Embed(title="📊 Live Prices (All Stocks)", color=discord.Color.gold())
         desc = ""
         for s in stocks:
             price = s['price']

@@ -34,6 +34,11 @@ class MarketSystem:
         self.market_channel_id: Optional[int] = None
         self.dashboard_message_id: Optional[int] = None
         self.lock = asyncio.Lock()
+        
+        # Dashboard Cache
+        self.top_expensive: List[dict] = []
+        self.top_changed: List[dict] = []
+        self.top_held: List[dict] = []
 
     async def initialize(self):
         """Load stocks into cache and prepare regex."""
@@ -41,6 +46,9 @@ class MarketSystem:
         self.stocks_cache = {s['symbol']: s for s in stocks}
         self.emoji_map = {s['emoji']: s['symbol'] for s in stocks}
         self._update_regex()
+        
+        # Initial Dashboard Stats calculation
+        await self._update_dashboard_stats()
         
         # Load config
         guild_id = None # Global for now, or per guild?
@@ -132,10 +140,45 @@ class MarketSystem:
             
             # Clear buffer
             self.emoji_buffer.clear()
+            
+            # Update Stats for Dashboard
+            await self._update_dashboard_stats()
         
         # Trigger UI update (outside lock to avoid holding it during slow API calls)
         await self.update_dashboard(event_name)
         log.info(f"Market Tick Completed. Updated {len(updates)} stocks.")
+
+    async def _update_dashboard_stats(self):
+        """Calculate and cache leaderboard stats."""
+        stocks = list(self.stocks_cache.values())
+        if not stocks:
+            return
+
+        # 1. Top 10 Most Expensive
+        self.top_expensive = sorted(stocks, key=lambda s: s['price'], reverse=True)[:10]
+        
+        # 2. Top 10 Most Changed (Absolute % change)
+        # Avoid division by zero
+        def get_change_pct(s):
+            prev = s['previous_price']
+            if prev <= 0: return 0.0
+            return abs((s['price'] - prev) / prev)
+            
+        self.top_changed = sorted(stocks, key=get_change_pct, reverse=True)[:10]
+        
+        # 3. Top 10 Most Held
+        # Requires DB query
+        held_counts = await self.db.stock.get_held_shares_counts() # returns {Symbol: TotalShares}
+        
+        # Map counts to stock objects (add 'held_shares' key temporarily or just create list)
+        top_held_list = []
+        for symbol, count in held_counts.items():
+            if symbol in self.stocks_cache:
+                s = self.stocks_cache[symbol].copy()
+                s['held_shares'] = count
+                top_held_list.append(s)
+        
+        self.top_held = sorted(top_held_list, key=lambda s: s['held_shares'], reverse=True)[:10]
 
     async def update_dashboard(self, event_name: str = None):
         """Update the dashboard message in all configured guilds."""

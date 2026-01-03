@@ -155,6 +155,17 @@ class StockRepository:
                 return {"amount": row[0], "average_cost": row[1]}
             return None
 
+    async def get_held_shares_counts(self) -> Dict[str, int]:
+        """Get total shares held by users for all stocks."""
+        async with self.db._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT Symbol, SUM(Amount)
+                FROM StockHoldings
+                GROUP BY Symbol
+            """)
+            rows = await cursor.fetchall()
+            return {row[0]: row[1] for row in rows}
+
     async def update_holding(self, user_id: int, symbol: str, amount_delta: int, cost_basis_update: float = None) -> bool:
         """Update user holding (Buy/Sell).
         amount_delta: + for buy, - for sell.
