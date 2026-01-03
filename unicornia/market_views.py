@@ -197,23 +197,31 @@ class StockSellSelectView(ui.View):
 # --- Step 3: Show All Stocks View (V2) ---
 
 class StockListView(ui.LayoutView):
-    """Ephemeral V2 View to show all stocks."""
+    """Ephemeral V2 View to show all stocks (Paginated)."""
     def __init__(self, market_system):
         super().__init__(timeout=180)
         self.market_system = market_system
+        # Sort by Price Descending
+        self.all_stocks = sorted(self.market_system.stocks_cache.values(), key=lambda s: s['price'], reverse=True)
+        self.current_page = 0
+        self.items_per_page = 30
         self.update_components()
 
     def update_components(self):
         self.clear_items()
         container = ui.Container(accent_color=discord.Color.gold())
-        container.add_item(ui.TextDisplay(content="## 📋 All Stocks (Live Prices)"))
+        
+        # Pagination Logic
+        total_pages = max(1, (len(self.all_stocks) - 1) // self.items_per_page + 1)
+        start = self.current_page * self.items_per_page
+        end = start + self.items_per_page
+        page_stocks = self.all_stocks[start:end]
+        
+        container.add_item(ui.TextDisplay(content=f"## 📋 All Stocks (Live Prices) - Page {self.current_page + 1}/{total_pages}"))
         container.add_item(ui.Separator())
 
-        # Sort by Price Descending
-        stocks = sorted(self.market_system.stocks_cache.values(), key=lambda s: s['price'], reverse=True)
-        
         current_text = ""
-        for s in stocks:
+        for s in page_stocks:
             price = s['price']
             prev = s['previous_price']
             change = price - prev
@@ -223,18 +231,35 @@ class StockListView(ui.LayoutView):
             
             # Format: Emoji Ticker: Price (Change) | Circ: Amount
             line = f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%) | Circ: {held:,}\n"
+            current_text += line
             
-            # Check length limit (4000 safe margin)
-            if len(current_text) + len(line) > 4000:
-                container.add_item(ui.TextDisplay(content=current_text))
-                current_text = line
-            else:
-                current_text += line
-                
-        if current_text:
-            container.add_item(ui.TextDisplay(content=current_text))
+        if not current_text:
+            current_text = "No stocks found."
+            
+        container.add_item(ui.TextDisplay(content=current_text))
+        
+        # Pagination Buttons
+        if total_pages > 1:
+            prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, disabled=(self.current_page == 0))
+            next_btn = ui.Button(label="▶️", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages - 1))
+            
+            prev_btn.callback = self.prev_page
+            next_btn.callback = self.next_page
+            
+            container.add_item(ui.ActionRow(prev_btn, next_btn))
             
         self.add_item(container)
+        
+    async def prev_page(self, interaction: discord.Interaction):
+        self.current_page = max(0, self.current_page - 1)
+        self.update_components()
+        await interaction.response.edit_message(view=self)
+
+    async def next_page(self, interaction: discord.Interaction):
+        total_pages = (len(self.all_stocks) - 1) // self.items_per_page + 1
+        self.current_page = min(total_pages - 1, self.current_page + 1)
+        self.update_components()
+        await interaction.response.edit_message(view=self)
 
 # --- Step 1: Main Dashboard ---
 
