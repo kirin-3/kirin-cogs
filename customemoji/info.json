@@ -1,0 +1,13 @@
+{
+    "name": "customemoji",
+    "short": "User-managed custom emojis",
+    "description": "Allows users with a specific role to create and manage their own custom emojis.",
+    "author": ["Kirin"],
+    "version": "1.0.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "license": "MIT",
+    "requirements": [],
+    "min_bot_version": "3.5.0"
+}
