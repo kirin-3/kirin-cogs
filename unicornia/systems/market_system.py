@@ -34,6 +34,7 @@ class MarketSystem:
         self.market_channel_id: Optional[int] = None
         self.dashboard_message_id: Optional[int] = None
         self.lock = asyncio.Lock()
+        self.currency_symbol = ""
         
         # Dashboard Cache
         self.top_expensive: List[dict] = []
@@ -42,6 +43,7 @@ class MarketSystem:
 
     async def initialize(self):
         """Load stocks into cache and prepare regex."""
+        self.currency_symbol = await self.config.currency_symbol()
         stocks = await self.db.stock.get_all_stocks(include_hidden=False)
         self.stocks_cache = {s['symbol']: s for s in stocks}
         self.emoji_map = {s['emoji']: s['symbol'] for s in stocks}
@@ -263,7 +265,7 @@ class MarketSystem:
             self.stocks_cache[symbol]['total_shares'] += amount
             self.stocks_cache[symbol]['price'] = max(1, int(current_price + impact))
             
-            return True, f"Bought {amount} {symbol} @ {current_price}."
+            return True, f"Bought {amount} {symbol} @ {current_price} {self.currency_symbol} (Total: {total_cost:,} {self.currency_symbol})."
 
     async def sell_stock(self, user: discord.Member, symbol: str, amount: int) -> Tuple[bool, str]:
         """Sell stocks."""
@@ -301,7 +303,47 @@ class MarketSystem:
             self.stocks_cache[symbol]['total_shares'] -= amount
             self.stocks_cache[symbol]['price'] = max(1, int(current_price - impact))
             
-            return True, f"Sold {amount} {symbol} @ {current_price}."
+            return True, f"Sold {amount} {symbol} @ {current_price} {self.currency_symbol} (Total: {total_value:,} {self.currency_symbol})."
+
+    async def get_portfolio_data(self, user_id: int):
+        """Fetch portfolio and transaction history for a user."""
+        holdings = await self.db.stock.get_user_holdings(user_id)
+        
+        # Fetch generic currency transactions
+        transactions = await self.economy.get_transaction_history(user_id, limit=200)
+        
+        # Parse and group by symbol
+        stock_txs = {}
+        # Regex to match "Bought 10 LOL" or "Bought 10 LOL @ 50..."
+        regex = re.compile(r"(Bought|Sold)\s+(\d+)\s+([A-Z0-9]+)", re.IGNORECASE)
+        
+        for t in transactions:
+            # t: (Type, Amount, Reason, DateAdded)
+            if len(t) < 4: continue
+            t_type, amount, reason, date = t
+            
+            if t_type in ["stock_buy", "stock_sell"]:
+                match = regex.search(reason)
+                if match:
+                    action, shares, symbol = match.groups()
+                    symbol = symbol.upper()
+                    
+                    if symbol not in stock_txs:
+                        stock_txs[symbol] = []
+                    
+                    # Extract price if available (from new format)
+                    price_match = re.search(r"@\s+([\d.]+)", reason)
+                    price = float(price_match.group(1)) if price_match else 0
+                    
+                    stock_txs[symbol].append({
+                        "action": action,
+                        "shares": int(shares),
+                        "price": price,
+                        "total": abs(amount), # Currency amount is negative for buy, positive for sell
+                        "date": date
+                    })
+        
+        return holdings, stock_txs
 
     async def register_stock(self, symbol: str, name: str, emoji: str, price: int) -> bool:
         """IPO a new stock."""

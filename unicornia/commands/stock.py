@@ -1,7 +1,7 @@
 import discord
 from redbot.core import commands, checks, app_commands
 from redbot.core.utils.chat_formatting import humanize_number, box
-from ..market_views import StockDashboardView, StockBuySelectView, StockSellSelectView
+from ..market_views import StockDashboardView, StockBuySelectView, StockSellSelectView, StockPortfolioView
 
 class StockCommands:
     """Stock Market Commands for Unicornia"""
@@ -43,7 +43,7 @@ class StockCommands:
             arrow = "🟢" if change >= 0 else "🔴"
             
             description += f"{s['emoji']} **{s['symbol']}**\n"
-            description += f"Price: {price:,} {arrow} ({change_pct:+.1f}%)\n"
+            description += f"Price: {price:,} {self.market_system.currency_symbol} {arrow} ({change_pct:+.1f}%)\n"
             description += f"Vol: {s['total_shares']:,} shares\n\n"
             
         embed.description = description
@@ -77,45 +77,17 @@ class StockCommands:
     async def stock_portfolio(self, ctx, user: discord.Member = None):
         """View your stock portfolio."""
         user = user or ctx.author
-        holdings = await self.market_system.db.stock.get_user_holdings(user.id)
+        
+        # Fetch data
+        holdings, transactions = await self.market_system.get_portfolio_data(user.id)
         
         if not holdings:
             await ctx.send(f"{user.display_name} has no stock holdings.")
             return
 
-        embed = discord.Embed(title=f"📈 Portfolio: {user.display_name}", color=discord.Color.blue())
-        
-        total_value = 0
-        total_cost_basis = 0
-        
-        description = ""
-        for h in holdings:
-            symbol = h['symbol']
-            amount = h['amount']
-            avg_cost = h['average_cost']
-            current_price = h['current_price']
-            emoji = h['emoji']
-            
-            value = amount * current_price
-            cost = amount * avg_cost
-            profit = value - cost
-            profit_pct = (profit / cost * 100) if cost > 0 else 0
-            
-            total_value += value
-            total_cost_basis += cost
-            
-            arrow = "🟢" if profit >= 0 else "🔴"
-            description += f"**{emoji} {symbol}**: {amount:,} shares\n"
-            description += f"Value: {value:,} (Avg: {avg_cost:.1f})\n"
-            description += f"{arrow} P/L: {profit:,.0f} ({profit_pct:+.1f}%)\n\n"
-            
-        total_profit = total_value - total_cost_basis
-        total_profit_pct = (total_profit / total_cost_basis * 100) if total_cost_basis > 0 else 0
-        
-        embed.description = description
-        embed.set_footer(text=f"Total Value: {total_value:,} | Total P/L: {total_profit:,.0f} ({total_profit_pct:+.1f}%)")
-        
-        await ctx.send(embed=embed)
+        # Send V2 View
+        view = StockPortfolioView(self.market_system, user.id, holdings, transactions)
+        await ctx.send(view=view)
 
     @stock_group.command(name="dashboard")
     @checks.admin_or_permissions(manage_guild=True)
@@ -143,7 +115,7 @@ class StockCommands:
 
         success = await self.market_system.register_stock(symbol, name, emoji, price)
         if success:
-            await ctx.send(f"🚀 IPO Successful! **{name} ({symbol})** is now trading at {price}!")
+            await ctx.send(f"🚀 IPO Successful! **{name} ({symbol})** is now trading at {price} {self.market_system.currency_symbol}!")
         else:
             await ctx.send("Failed to launch IPO. Symbol might already exist.")
 

@@ -80,7 +80,7 @@ class StockBuySelectView(ui.View):
         options = []
         for s in page_stocks:
             options.append(discord.SelectOption(
-                label=f"{s['symbol']} - {s['price']:,}",
+                label=f"{s['symbol']} - {s['price']:,} {self.market_system.currency_symbol}",
                 value=s['symbol'],
                 emoji=s['emoji'],
                 description=s['name'][:100]
@@ -152,7 +152,7 @@ class StockSellSelectView(ui.View):
                 label=f"{h['symbol']} (Owned: {h['amount']:,})",
                 value=h['symbol'],
                 emoji=h['emoji'],
-                description=f"Current Price: {h['current_price']:,}"
+                description=f"Current Price: {h['current_price']:,} {self.market_system.currency_symbol}"
             ))
             
         if not options:
@@ -194,15 +194,121 @@ class StockSellSelectView(ui.View):
         self.update_components()
         await interaction.response.edit_message(view=self)
 
+# --- Step 4: Portfolio View (V2) ---
+
+class StockPortfolioView(ui.LayoutView):
+    """V2 Paginated Portfolio View with Transaction History."""
+    def __init__(self, market_system, user_id: int, holdings: list, transactions: dict):
+        super().__init__(timeout=180)
+        self.market_system = market_system
+        self.user_id = user_id
+        # Sort by Value Descending
+        self.holdings = sorted(holdings, key=lambda h: h['amount'] * h['current_price'], reverse=True)
+        self.transactions = transactions
+        self.current_page = 0
+        self.items_per_page = 5
+        self.update_components()
+
+    def update_components(self):
+        self.clear_items()
+        container = ui.Container(accent_color=discord.Color.blue())
+        
+        if not self.holdings:
+            container.add_item(ui.TextDisplay(content="## 📉 My Portfolio\nYou don't own any stocks."))
+            self.add_item(container)
+            return
+
+        total_value = sum(h['amount'] * h['current_price'] for h in self.holdings)
+        total_cost = sum(h['amount'] * h['average_cost'] for h in self.holdings)
+        total_profit = total_value - total_cost
+        total_profit_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0
+        currency = self.market_system.currency_symbol
+        
+        # Header
+        header_text = f"## 📈 Portfolio Overview\n"
+        header_text += f"**Total Value**: {total_value:,.0f} {currency}\n"
+        header_text += f"**Total Profit**: {total_profit:,.0f} {currency} ({total_profit_pct:+.1f}%)"
+        container.add_item(ui.TextDisplay(content=header_text))
+        container.add_item(ui.Separator())
+        
+        # Pagination
+        total_pages = max(1, (len(self.holdings) - 1) // self.items_per_page + 1)
+        start = self.current_page * self.items_per_page
+        end = start + self.items_per_page
+        page_holdings = self.holdings[start:end]
+        
+        container.add_item(ui.TextDisplay(content=f"### Holdings (Page {self.current_page + 1}/{total_pages})"))
+        
+        for h in page_holdings:
+            symbol = h['symbol']
+            amount = h['amount']
+            avg_cost = h['average_cost']
+            current_price = h['current_price']
+            emoji = h['emoji']
+            
+            value = amount * current_price
+            cost = amount * avg_cost
+            profit = value - cost
+            profit_pct = (profit / cost * 100) if cost > 0 else 0
+            arrow = "🟢" if profit >= 0 else "🔴"
+            
+            stock_info = f"{emoji} **{symbol}**: {amount:,} shares\n"
+            stock_info += f"Value: {value:,.0f} {currency} | Avg: {avg_cost:,.1f} {currency} | {arrow} P/L: {profit:,.0f} {currency} ({profit_pct:+.1f}%)"
+            
+            # History
+            txs = self.transactions.get(symbol, [])
+            if txs:
+                stock_info += "\n*Last 5 Transactions:*\n"
+                recent_txs = txs[:5]
+                for t in recent_txs:
+                    action_emoji = "Buy" if "bought" in t['action'].lower() else "Sell"
+                    price_display = f"{t['price']:,}" if t['price'] > 0 else "?"
+                    stock_info += f"- {action_emoji} {t['shares']} @ {price_display} {currency}\n"
+            
+            container.add_item(ui.TextDisplay(content=stock_info))
+            container.add_item(ui.Separator())
+            
+        # Buttons
+        if total_pages > 1:
+            prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, disabled=(self.current_page == 0))
+            next_btn = ui.Button(label="▶️", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages - 1))
+            
+            prev_btn.callback = self.prev_page
+            next_btn.callback = self.next_page
+            
+            container.add_item(ui.ActionRow(prev_btn, next_btn))
+            
+        self.add_item(container)
+
+    async def prev_page(self, interaction: discord.Interaction):
+        self.current_page = max(0, self.current_page - 1)
+        self.update_components()
+        await interaction.response.edit_message(view=self)
+
+    async def next_page(self, interaction: discord.Interaction):
+        total_pages = (len(self.holdings) - 1) // self.items_per_page + 1
+        self.current_page = min(total_pages - 1, self.current_page + 1)
+        self.update_components()
+        await interaction.response.edit_message(view=self)
+
 # --- Step 3: Show All Stocks View (V2) ---
 
 class StockListView(ui.LayoutView):
     """Ephemeral V2 View to show all stocks (Paginated)."""
-    def __init__(self, market_system):
+    def __init__(self, market_system, held_counts: dict = None):
         super().__init__(timeout=180)
         self.market_system = market_system
+        self.held_counts = held_counts or {}
+        
+        # Prepare stocks list with held data
+        stocks_list = []
+        for s in self.market_system.stocks_cache.values():
+            s_copy = s.copy()
+            s_copy['held_shares'] = self.held_counts.get(s['symbol'], 0)
+            stocks_list.append(s_copy)
+            
         # Sort by Price Descending
-        self.all_stocks = sorted(self.market_system.stocks_cache.values(), key=lambda s: s['price'], reverse=True)
+        self.all_stocks = sorted(stocks_list, key=lambda s: s['price'], reverse=True)
         self.current_page = 0
         self.items_per_page = 30
         self.update_components()
@@ -230,7 +336,7 @@ class StockListView(ui.LayoutView):
             held = s.get('held_shares', 0)
             
             # Format: Emoji Ticker: Price (Change) | Circ: Amount
-            line = f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%) | Circ: {held:,}\n"
+            line = f"{s['emoji']} **{s['symbol']}**: {price:,} {self.market_system.currency_symbol} {arrow} ({change_pct:+.1f}%) | Circ: {held:,}\n"
             current_text += line
             
         if not current_text:
@@ -279,7 +385,7 @@ class StockDashboardView(ui.LayoutView):
         container = ui.Container(accent_color=discord.Color.purple())
         
         # Header
-        container.add_item(ui.TextDisplay(content="## 🏙️ Unicornia Stock Exchange\nWelcome to the Market! Use the buttons below to trade.\nPrices update hourly."))
+        container.add_item(ui.TextDisplay(content="## 🏙️ Unicornia Stock Exchange\nWelcome to the Market! Use the buttons below to trade.\nPrices update hourly. More info about the stock system can be found [here.](https://canary.discord.com/channels/684360255798509578/1456926874050625638/1456926874050625638)"))
         container.add_item(ui.Separator())
         
         # Event News
@@ -299,7 +405,7 @@ class StockDashboardView(ui.LayoutView):
                 
                 # Format: Emoji Symbol: Price Arrow (Change%) | Metric
                 extra_info = metric_func(s)
-                line = f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%) {extra_info}\n"
+                line = f"{s['emoji']} **{s['symbol']}**: {price:,} {self.market_system.currency_symbol} {arrow} ({change_pct:+.1f}%) {extra_info}\n"
                 text += line
             return text if text else "None"
 
@@ -389,44 +495,16 @@ class StockDashboardView(ui.LayoutView):
     async def portfolio_button(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
-        holdings = await self.market_system.db.stock.get_user_holdings(interaction.user.id)
+        # Fetch data using the new helper
+        holdings, transactions = await self.market_system.get_portfolio_data(interaction.user.id)
+        
         if not holdings:
             await interaction.followup.send("You don't own any stocks.", ephemeral=True)
             return
             
-        embed = discord.Embed(title="📈 My Portfolio", color=discord.Color.blue())
-        
-        total_value = 0
-        total_cost_basis = 0
-        
-        description = ""
-        for h in holdings:
-            symbol = h['symbol']
-            amount = h['amount']
-            avg_cost = h['average_cost']
-            current_price = h['current_price']
-            emoji = h['emoji']
-            
-            value = amount * current_price
-            cost = amount * avg_cost
-            profit = value - cost
-            profit_pct = (profit / cost * 100) if cost > 0 else 0
-            
-            total_value += value
-            total_cost_basis += cost
-            
-            arrow = "🟢" if profit >= 0 else "🔴"
-            description += f"**{emoji} {symbol}**: {amount:,} shares\n"
-            description += f"Value: {value:,} (Avg: {avg_cost:.1f})\n"
-            description += f"{arrow} P/L: {profit:,.0f} ({profit_pct:+.1f}%)\n\n"
-            
-        total_profit = total_value - total_cost_basis
-        total_profit_pct = (total_profit / total_cost_basis * 100) if total_cost_basis > 0 else 0
-        
-        embed.description = description
-        embed.set_footer(text=f"Total Value: {total_value:,} | Total P/L: {total_profit:,.0f} ({total_profit_pct:+.1f}%)")
-        
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        # Send V2 Portfolio View
+        view = StockPortfolioView(self.market_system, interaction.user.id, holdings, transactions)
+        await interaction.followup.send(view=view, ephemeral=True)
 
     async def refresh_button(self, interaction: discord.Interaction):
         # "Show All Stocks" button
@@ -434,6 +512,12 @@ class StockDashboardView(ui.LayoutView):
              await interaction.response.send_message("Market is empty.", ephemeral=True)
              return
              
+        # Defer to fetch data
+        await interaction.response.defer(ephemeral=True)
+        
+        # Fetch circulation data
+        held_counts = await self.market_system.db.stock.get_held_shares_counts()
+             
         # Send the V2 List View ephemerally
-        view = StockListView(self.market_system)
-        await interaction.response.send_message(view=view, ephemeral=True)
+        view = StockListView(self.market_system, held_counts)
+        await interaction.followup.send(view=view, ephemeral=True)
