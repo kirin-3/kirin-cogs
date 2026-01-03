@@ -121,7 +121,7 @@ class StockDashboardView(ui.LayoutView):
         show_all_btn.callback = self.refresh_button # Reusing the refresh logic which shows all
         
         container.add_item(ui.ActionRow(buy_btn, sell_btn))
-        container.add_item(ui.ActionRow(portfolio_btn, refresh_btn))
+        container.add_item(ui.ActionRow(portfolio_btn, show_all_btn))
         
         self.add_item(container)
 
