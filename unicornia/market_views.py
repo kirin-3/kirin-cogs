@@ -80,7 +80,7 @@ class StockBuySelectView(ui.View):
         options = []
         for s in page_stocks:
             options.append(discord.SelectOption(
-                label=f"{s['symbol']} - {s['price']:,} {self.market_system.currency_symbol}",
+                label=f"{s['symbol']} - {s['price']:,}",
                 value=s['symbol'],
                 emoji=s['emoji'],
                 description=s['name'][:100]
@@ -152,7 +152,7 @@ class StockSellSelectView(ui.View):
                 label=f"{h['symbol']} (Owned: {h['amount']:,})",
                 value=h['symbol'],
                 emoji=h['emoji'],
-                description=f"Current Price: {h['current_price']:,} {self.market_system.currency_symbol}"
+                description=f"Current Price: {h['current_price']:,}"
             ))
             
         if not options:

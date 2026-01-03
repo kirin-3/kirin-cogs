@@ -310,12 +310,14 @@ class MarketSystem:
         holdings = await self.db.stock.get_user_holdings(user_id)
         
         # Fetch generic currency transactions
-        transactions = await self.economy.get_transaction_history(user_id, limit=200)
+        # Increased limit to ensure we capture stock transactions even if user is active elsewhere
+        transactions = await self.economy.get_transaction_history(user_id, limit=1000)
         
         # Parse and group by symbol
         stock_txs = {}
-        # Regex to match "Bought 10 LOL" or "Bought 10 LOL @ 50..."
-        regex = re.compile(r"(Bought|Sold)\s+(\d+)\s+([A-Z0-9]+)", re.IGNORECASE)
+        # Robust Regex to match "Bought 10 LOL" or "Bought 10 LOL @ 50..."
+        # Matches: Action (Bought/Sold) | Space | Shares (digits) | Space | Symbol (non-whitespace until @ or end)
+        regex = re.compile(r"(Bought|Sold)\s+(\d+)\s+([^\s@]+)", re.IGNORECASE)
         
         for t in transactions:
             # t: (Type, Amount, Reason, DateAdded)
@@ -326,7 +328,7 @@ class MarketSystem:
                 match = regex.search(reason)
                 if match:
                     action, shares, symbol = match.groups()
-                    symbol = symbol.upper()
+                    symbol = symbol.upper().strip() # Clean up symbol
                     
                     if symbol not in stock_txs:
                         stock_txs[symbol] = []
