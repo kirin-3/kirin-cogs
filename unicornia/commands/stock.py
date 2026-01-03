@@ -169,3 +169,18 @@ class StockCommands:
         await self.market_system.db.stock.delete_stock(symbol)
         await self.market_system.initialize() # Refresh cache
         await ctx.send(f"🗑️ Delisted **{symbol}**.")
+
+    @stock_group.command(name="cleanup")
+    @checks.is_owner()
+    async def stock_cleanup(self, ctx):
+        """Clean up dead dashboard configurations."""
+        guild = ctx.guild
+        if not guild:
+            await ctx.send("This command must be run in a server.")
+            return
+            
+        cog = ctx.cog
+        await cog.config.guild(guild).market_channel.clear()
+        await cog.config.guild(guild).market_message.clear()
+        
+        await ctx.send("Dashboard configuration cleared for this server. The bot will stop trying to update it.")

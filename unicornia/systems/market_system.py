@@ -153,6 +153,10 @@ class MarketSystem:
             try:
                 message = await channel.fetch_message(message_id)
             except (discord.NotFound, discord.Forbidden):
+                # Auto-cleanup if message/channel is gone
+                await self.config.guild(guild).market_channel.clear()
+                await self.config.guild(guild).market_message.clear()
+                log.info(f"Dashboard message not found in {guild.name}, clearing config.")
                 continue
                 
             # Rebuild Embed (similar to command)
