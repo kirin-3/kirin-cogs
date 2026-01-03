@@ -1,7 +1,7 @@
 import discord
 from redbot.core import commands, checks, app_commands
 from redbot.core.utils.chat_formatting import humanize_number, box
-from ..market_views import StockDashboardView, StockBuySelectView, StockSellSelectView, StockPortfolioView
+from ..market_views import StockDashboardView, StockBuySelectView, StockSellSelectView, StockPortfolioView, StockListView
 
 class StockCommands:
     """Stock Market Commands for Unicornia"""
@@ -26,30 +26,16 @@ class StockCommands:
     @stock_group.command(name="list", aliases=["all", "prices"])
     async def stock_list(self, ctx):
         """View all active stocks and their prices."""
-        stocks = self.market_system.stocks_cache.values()
-        if not stocks:
+        if not self.market_system.stocks_cache:
             await ctx.send("The Stock Market is currently empty.")
             return
 
-        embed = discord.Embed(title="📈 Unicornia Stock Exchange", color=discord.Color.gold())
+        # Fetch circulation data
+        held_counts = await self.market_system.db.stock.get_held_shares_counts()
         
-        description = ""
-        for s in stocks:
-            price = s['price']
-            prev = s['previous_price']
-            change = price - prev
-            change_pct = (change / prev * 100) if prev > 0 else 0
-            
-            arrow = "🟢" if change >= 0 else "🔴"
-            
-            description += f"{s['emoji']} **{s['symbol']}**\n"
-            description += f"Price: {price:,} {self.market_system.currency_symbol} {arrow} ({change_pct:+.1f}%)\n"
-            description += f"Vol: {s['total_shares']:,} shares\n\n"
-            
-        embed.description = description
-        embed.set_footer(text="Use [p]stock buy <ticker> <amount> to invest!")
-        
-        await ctx.send(embed=embed)
+        # Send V2 Paginated View
+        view = StockListView(self.market_system, held_counts)
+        await ctx.send(view=view)
 
     @stock_group.command(name="buy")
     @app_commands.describe(ticker="Stock Symbol", amount="Number of shares")
