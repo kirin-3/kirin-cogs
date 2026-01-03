@@ -1,7 +1,7 @@
 import discord
 from redbot.core import commands, checks, app_commands
 from redbot.core.utils.chat_formatting import humanize_number, box
-from ..market_views import StockDashboardView, StockBuyModal, StockSellModal
+from ..market_views import StockDashboardView, StockBuySelectView, StockSellSelectView
 
 class StockCommands:
     """Stock Market Commands for Unicornia"""
