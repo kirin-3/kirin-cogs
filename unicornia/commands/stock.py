@@ -127,7 +127,14 @@ class StockCommands:
                 change = price - prev
                 change_pct = (change / prev * 100) if prev > 0 else 0
                 arrow = "🟢" if change >= 0 else "🔴"
-                desc += f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%)\n"
+                
+                line = f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%)\n"
+                
+                if len(desc) + len(line) > 1000:
+                    desc += "...(truncated)"
+                    break
+                
+                desc += line
             
             embed.add_field(name="📊 Top 20 Stocks", value=desc, inline=False)
         else:

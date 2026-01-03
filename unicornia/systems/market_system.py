@@ -185,7 +185,14 @@ class MarketSystem:
                     arrow = "🟢" if change >= 0 else "🔴"
                     
                     # Short format for list
-                    desc += f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%)\n"
+                    line = f"{s['emoji']} **{s['symbol']}**: {price:,} {arrow} ({change_pct:+.1f}%)\n"
+                    
+                    # Check length limit (1024 chars)
+                    if len(desc) + len(line) > 1000:
+                        desc += "...(truncated)"
+                        break
+                    
+                    desc += line
                 
                 embed.add_field(name="📊 Top 20 Stocks", value=desc, inline=False)
             
