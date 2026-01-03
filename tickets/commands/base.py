@@ -13,7 +13,7 @@ from ..abc import MixinMeta
 from ..common.utils import can_close, close_ticket, get_ticket_owner
 
 LOADING = "https://i.imgur.com/l3p6EMX.gif"
-log = logging.getLogger("red.vrt.tickets.base")
+log = logging.getLogger("red.kirin_cogs.tickets.base")
 
 
 class BaseCommands(MixinMeta):

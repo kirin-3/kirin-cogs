@@ -23,7 +23,7 @@ from .common.utils import (
 )
 from .common.views import CloseView, PanelView
 
-log = logging.getLogger("red.vrt.tickets")
+log = logging.getLogger("red.kirin_cogs.tickets")
 
 
 class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaClass):

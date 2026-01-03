@@ -176,7 +176,7 @@ class ShopCommands:
                     description=description,
                     color=discord.Color.green()
                 )
-                embed.set_footer(text=f"Remaining Balance: {remaining:,} {currency_symbol}")
+                embed.set_footer(text=f"Remaining Balance: {remaining:,}")
                 
                 await ctx.reply(embed=embed, mention_author=False)
             else:
@@ -549,12 +549,12 @@ class ShopCommands:
             
         except (OSError, IOError) as e:
             import logging
-            log = logging.getLogger("red.unicornia")
+            log = logging.getLogger("red.kirin_cogs.unicornia")
             log.error(f"Error loading XP backgrounds: {e}")
             await ctx.reply("<a:zz_NoTick:729318761655435355> Error loading backgrounds. Please check the configuration file.", mention_author=False)
         except Exception as e:
             import logging
-            log = logging.getLogger("red.unicornia")
+            log = logging.getLogger("red.kirin_cogs.unicornia")
             log.error(f"Unexpected error loading backgrounds: {e}", exc_info=True)
             await ctx.reply("<a:zz_NoTick:729318761655435355> An unexpected error occurred while loading backgrounds.", mention_author=False)
     

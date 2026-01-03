@@ -13,7 +13,7 @@ from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import pagify, text_to_file
 from redbot.core.utils.mod import is_admin_or_superior
 
-log = logging.getLogger("red.vrt.tickets.base")
+log = logging.getLogger("red.kirin_cogs.tickets.utils")
 
 
 async def can_close(

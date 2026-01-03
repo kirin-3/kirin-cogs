@@ -6,7 +6,7 @@ import logging
 
 from .models import QUESTIONS, ProfileData
 
-log = logging.getLogger("red.profile.views")
+log = logging.getLogger("red.kirin_cogs.profile.views")
 
 class SimpleAttachment:
     def __init__(self, url, filename):

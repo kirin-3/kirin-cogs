@@ -5,7 +5,7 @@ Database models and operations for Unicornia
 import logging
 from .db import CoreDB, ClubRepository, EconomyRepository, XPRepository, WaifuRepository, ShopRepository, LevelStats, StockRepository
 
-log = logging.getLogger("red.unicornia.database")
+log = logging.getLogger("red.kirin_cogs.unicornia.database")
 
 class DatabaseManager(CoreDB):
     """Handles all database operations for Unicornia"""

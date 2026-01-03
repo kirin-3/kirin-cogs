@@ -77,7 +77,7 @@ class LevelCommands:
                     
             except Exception as e:
                 import logging
-                log = logging.getLogger("red.unicornia")
+                log = logging.getLogger("red.kirin_cogs.unicornia")
                 log.error(f"Error generating XP card for {member.display_name}: {e}")
                 # Fall back to embed if card generation fails
             
@@ -101,7 +101,7 @@ class LevelCommands:
             
         except Exception as e:
             import logging
-            log = logging.getLogger("red.unicornia")
+            log = logging.getLogger("red.kirin_cogs.unicornia")
             log.error(f"Error in level check for {member.display_name}: {e}", exc_info=True)
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error retrieving level data: {e}", mention_author=False)
     
@@ -146,6 +146,6 @@ class LevelCommands:
             
         except Exception as e:
             import logging
-            log = logging.getLogger("red.unicornia")
+            log = logging.getLogger("red.kirin_cogs.unicornia")
             log.error(f"Error in xp leaderboard: {e}", exc_info=True)
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error retrieving leaderboard: {e}", mention_author=False)

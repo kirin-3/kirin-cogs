@@ -19,7 +19,7 @@ from .utils import (
     update_active_overview,
 )
 
-log = logging.getLogger("red.vrt.supportview")
+log = logging.getLogger("red.kirin_cogs.tickets.views")
 
 
 async def wait_reply(

@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 
 from ..types import LevelStats
 
-log = logging.getLogger("red.unicornia.database")
+log = logging.getLogger("red.kirin_cogs.unicornia.database")
 
 
 class CoreDB:

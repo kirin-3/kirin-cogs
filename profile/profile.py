@@ -11,7 +11,7 @@ from redbot.core.bot import Red
 from .models import PROFILE_CHANNEL_ID, UNIQUE_ID, QUESTIONS, ProfileData
 from .views import ProfileStickyView, ProfileBuilderView, ProfileDeleteConfirmView
 
-log = logging.getLogger("red.profile")
+log = logging.getLogger("red.kirin_cogs.profile")
 
 class Profile(commands.Cog):
     """Create and manage user profiles in a specific channel."""

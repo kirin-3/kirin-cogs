@@ -14,7 +14,7 @@ from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import pagify, box
 from redbot.core.utils.predicates import MessagePredicate
 
-log = logging.getLogger("red.unicorndocs")
+log = logging.getLogger("red.kirin_cogs.unicorn_docs")
 
 
 class UnicornDocsPrecomputed(commands.Cog):

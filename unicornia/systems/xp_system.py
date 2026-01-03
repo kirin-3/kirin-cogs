@@ -181,7 +181,7 @@ class XPSystem:
         except Exception as e:
             # If DB write fails, restore buffer to prevent data loss
             import logging
-            log = logging.getLogger("red.unicornia.xp")
+            log = logging.getLogger("red.kirin_cogs.unicornia.xp")
             log.error(f"Failed to flush XP buffer: {e}. Restoring {len(updates)} entries.")
             
             # Merge back into current buffer (which might have new entries)
@@ -347,7 +347,7 @@ class XPSystem:
                     
         except Exception as e:
             import logging
-            log = logging.getLogger("red.unicornia.xp")
+            log = logging.getLogger("red.kirin_cogs.unicornia.xp")
             log.error(f"Error handling role rewards for level {level}: {e}")
     
     async def _handle_level_up(self, message, old_level: int, new_level: int):

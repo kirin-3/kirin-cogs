@@ -9,7 +9,7 @@ from typing import Literal, Tuple, Optional
 from redbot.core import Config
 from redbot.core.utils.chat_formatting import humanize_number
 
-log = logging.getLogger("red.unicornia.nitro")
+log = logging.getLogger("red.kirin_cogs.unicornia.nitro")
 
 class NitroSystem:
     def __init__(self, config: Config, bot, economy_system):

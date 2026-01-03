@@ -9,7 +9,7 @@ from redbot.core.bot import Red
 
 from .views import StickyView
 
-log = logging.getLogger("red.confess")
+log = logging.getLogger("red.kirin_cogs.confess")
 
 CONFESSION_CHANNEL_ID = 898576602441605120
 

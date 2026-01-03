@@ -15,7 +15,7 @@ from ..database import DatabaseManager
 from .economy_system import EconomySystem
 from ..market_views import StockDashboardView
 
-log = logging.getLogger("red.unicornia.market")
+log = logging.getLogger("red.kirin_cogs.unicornia.market")
 
 class MarketSystem:
     """Core logic for the Stock Market."""

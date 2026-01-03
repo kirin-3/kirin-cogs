@@ -32,7 +32,7 @@ from .commands import (
     AdminCommands, CurrencyCommands, NitroCommands, StockCommands
 )
 
-log = logging.getLogger("red.unicornia")
+log = logging.getLogger("red.kirin_cogs.unicornia")
 
 
 # See: https://docs.discord-red.com/en/stable/framework_commands.html

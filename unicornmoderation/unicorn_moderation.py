@@ -9,7 +9,7 @@ from redbot.core.i18n import Translator, cog_i18n
 
 from .image_generator import generate_citation
 
-log = logging.getLogger("red.vrt.unicornmoderation")
+log = logging.getLogger("red.kirin_cogs.unicornmoderation")
 _ = Translator("UnicornModeration", __file__)
 
 

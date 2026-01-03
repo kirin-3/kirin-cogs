@@ -17,7 +17,7 @@ from typing import Dict, Any, Tuple
 from collections import OrderedDict
 import logging
 
-log = logging.getLogger("red.unicornia.xp_card")
+log = logging.getLogger("red.kirin_cogs.unicornia.xp_card")
 
 class XPCardGenerator:
     """Handles XP card generation with custom backgrounds and frames"""

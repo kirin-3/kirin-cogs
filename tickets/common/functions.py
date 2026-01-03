@@ -10,7 +10,7 @@ from redbot.core.utils.chat_formatting import pagify
 from ..abc import MixinMeta
 from ..common.utils import update_active_overview
 
-log = logging.getLogger("red.vrt.tickets.functions")
+log = logging.getLogger("red.kirin_cogs.tickets.functions")
 
 
 class Functions(MixinMeta):

@@ -9,7 +9,7 @@ from redbot.core.bot import Red
 
 from .views import StickyView
 
-log = logging.getLogger("red.suggest")
+log = logging.getLogger("red.kirin_cogs.suggest")
 
 SUGGEST_CHANNEL_ID = 998190508847403060
 UP_EMOJI_ID = 729330852747542568

@@ -379,7 +379,7 @@ class EconomyRepository:
                     VALUES (?, datetime('now', '-100 years'), 0)
                 """, (user_id,))
                 
-                # 2. Update if eligible and return new streak
+                # 2. Update if eligible
                 cursor = await db.execute("""
                     UPDATE TimelyCooldown
                     SET
@@ -393,10 +393,16 @@ class EconomyRepository:
                           datetime('now') >= datetime(LastClaim, '+' || ? || ' seconds')
                           OR LastClaim IS NULL
                       )
-                    RETURNING Streak
                 """, (user_id, cooldown_seconds))
                 
+                if cursor.rowcount == 0:
+                    await db.commit()
+                    return None
+
+                # 3. Retrieve new streak
+                cursor = await db.execute("SELECT Streak FROM TimelyCooldown WHERE UserId = ?", (user_id,))
                 row = await cursor.fetchone()
+
                 await db.commit()
                 
                 if row:

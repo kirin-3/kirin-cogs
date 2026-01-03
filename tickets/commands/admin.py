@@ -14,7 +14,7 @@ from ..common.menu import SMALL_CONTROLS, MenuButton, menu
 from ..common.utils import prune_invalid_tickets, update_active_overview
 from ..common.views import PanelView, TestButton, confirm, wait_reply
 
-log = logging.getLogger("red.vrt.admincommands")
+log = logging.getLogger("red.kirin_cogs.tickets.admin")
 
 
 class AdminCommands(MixinMeta):

@@ -6,7 +6,7 @@ import logging
 from typing import List, Tuple, Optional, Dict
 from .core import CoreDB
 
-log = logging.getLogger("red.unicornia.database")
+log = logging.getLogger("red.kirin_cogs.unicornia.database")
 
 class StockRepository:
     """Handles database operations for the Stock Market"""

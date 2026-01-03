@@ -375,7 +375,7 @@ class EconomyCommands:
             
         except Exception as e:
             import logging
-            log = logging.getLogger("red.unicornia")
+            log = logging.getLogger("red.kirin_cogs.unicornia")
             log.error(f"Error in economy leaderboard: {e}", exc_info=True)
             await ctx.send(f"<a:zz_NoTick:729318761655435355> Error retrieving leaderboard: {e}")
     
