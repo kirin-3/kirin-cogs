@@ -142,7 +142,7 @@ class DailyReddit(commands.Cog):
 
     @commands.group(name="dailyreddit", aliases=["dr"])
     @commands.guild_only()
-    @commands.admin_or_permissions(manage_channels=True)
+    @commands.is_owner()
     async def dailyreddit(self, ctx):
         """Manage DailyReddit subscriptions."""
         pass
