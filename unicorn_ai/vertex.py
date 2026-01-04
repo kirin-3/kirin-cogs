@@ -75,6 +75,7 @@ class VertexClient:
         self,
         model: str,
         location: str,
+        api_version: str,
         system_instruction: str,
         history: List[Dict[str, Any]],
         after_context: Optional[str] = None
@@ -88,15 +89,16 @@ class VertexClient:
 
         # Handle global vs regional endpoints
         if location == "ai-studio":
-            # Google AI Studio (Generative Language API)
-            # URL format: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            # Google AI Studio (Generative Language API) - uses v1beta by default usually, but we can respect api_version if valid
+            # AI Studio path: v1beta/models/{model}
+            version = api_version if api_version else "v1beta"
+            url = f"https://generativelanguage.googleapis.com/{version}/models/{model}:generateContent"
         
         elif location == "global":
-            # Vertex AI Express / Global (Note: Service Accounts usually require regions, but supporting as requested)
+            # Vertex AI Express / Global
             hostname = "aiplatform.googleapis.com"
             url = (
-                f"https://{hostname}/v1/"
+                f"https://{hostname}/{api_version}/"
                 f"projects/{self._project_id}/locations/{location}/"
                 f"publishers/google/models/{model}:generateContent"
             )
@@ -104,7 +106,7 @@ class VertexClient:
             # Vertex AI Regional
             hostname = f"{location}-aiplatform.googleapis.com"
             url = (
-                f"https://{hostname}/v1/"
+                f"https://{hostname}/{api_version}/"
                 f"projects/{self._project_id}/locations/{location}/"
                 f"publishers/google/models/{model}:generateContent"
             )

@@ -35,7 +35,8 @@ class UnicornAI(commands.Cog):
         default_global = {
             "history_limit": 50,
             "model": "gemini-3-pro-preview",
-            "location": "us-central1"
+            "location": "us-central1",
+            "api_version": "v1"
         }
         self.config.register_global(**default_global)
 
@@ -146,6 +147,7 @@ class UnicornAI(commands.Cog):
         response = await self.vertex.generate_response(
             model=global_settings["model"],
             location=global_settings["location"],
+            api_version=global_settings.get("api_version", "v1"),
             system_instruction=persona.system_prompt,
             history=formatted_history,
             after_context=persona.after_context
@@ -225,6 +227,15 @@ class UnicornAI(commands.Cog):
         """
         await self.config.location.set(location)
         await ctx.send(f"Location set to `{location}`.")
+
+    @ai_group.command(name="api_version")
+    async def ai_api_version(self, ctx, version: str):
+        """
+        Set the Vertex AI API version (e.g., 'v1' or 'v1beta1').
+        Default is 'v1'.
+        """
+        await self.config.api_version.set(version)
+        await ctx.send(f"API Version set to `{version}`.")
 
     @ai_group.group(name="persona")
     async def persona_group(self, ctx):
