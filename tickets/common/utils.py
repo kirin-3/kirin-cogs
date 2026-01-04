@@ -134,7 +134,7 @@ async def close_ticket(
         notif_embed = embed
         if status == "Verified":
             notif_embed = discord.Embed(
-                description="**You are now verified in Unicornia, and have the Verified role.** This allows you send images NSFW media channels however to be able to view these channels you still need to be level 5, [more info can be found here.](https://discord.com/channels/684360255798509578/1074701057415987222/1074701115385450517)",
+                description="**You are now verified in Unicornia, and have the Verified role.** This allows you send images in NSFW media channels however to be able to view these channels you still need to be level 5, [more info can be found here.](https://discord.com/channels/684360255798509578/1074701057415987222/1074701115385450517)",
                 color=discord.Color.green(),
             )
         elif status == "Not Verified":
