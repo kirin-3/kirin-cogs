@@ -2,7 +2,7 @@ import aiohttp
 import discord
 import logging
 import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from urllib.parse import urlparse
 
 from redbot.core import commands, Config
@@ -148,9 +148,9 @@ class DailyReddit(commands.Cog):
         pass
 
     @dailyreddit.command(name="add")
-    async def dailyreddit_add(self, ctx, subreddit: str, channel: discord.TextChannel = None):
+    async def dailyreddit_add(self, ctx, subreddit: str, channel: Union[discord.TextChannel, discord.Thread] = None):
         """
-        Add a subreddit subscription to a channel.
+        Add a subreddit subscription to a channel or thread.
         If no channel is specified, uses the current channel.
         """
         target_channel = channel or ctx.channel
@@ -177,9 +177,9 @@ class DailyReddit(commands.Cog):
         await ctx.send(f"✅ `r/{subreddit}` will now post daily top images to {target_channel.mention}.")
 
     @dailyreddit.command(name="remove")
-    async def dailyreddit_remove(self, ctx, channel: discord.TextChannel = None):
+    async def dailyreddit_remove(self, ctx, channel: Union[discord.TextChannel, discord.Thread] = None):
         """
-        Remove the subscription from a channel.
+        Remove the subscription from a channel or thread.
         """
         target_channel = channel or ctx.channel
         channel_id = str(target_channel.id)
@@ -219,7 +219,7 @@ class DailyReddit(commands.Cog):
         await ctx.send(msg)
 
     @dailyreddit.command(name="test")
-    async def dailyreddit_test(self, ctx, channel: discord.TextChannel = None):
+    async def dailyreddit_test(self, ctx, channel: Union[discord.TextChannel, discord.Thread] = None):
         """
         Force an immediate fetch and post for a specific channel (or current).
         """
