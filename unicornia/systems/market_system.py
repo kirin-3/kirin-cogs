@@ -114,7 +114,7 @@ class MarketSystem:
                 volatility = stock['volatility']
                 
                 # Decay factor to force price down if no usage
-                decay = 0.02 * volatility # 2% decay per tick
+                decay = 0.01 * volatility # 2% decay per tick
                 
                 # Growth factor
                 growth = (math.log1p(usage) * 0.05 * volatility)
