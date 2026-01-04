@@ -132,8 +132,7 @@ class VertexClient:
             },
             "generation_config": {
                 "temperature": 1.0,
-                "top_p": 0.96,
-                "top_k": 255, # Vertex API usually expects int
+                "top_p": 0.96,# Vertex API usually expects int
                 "max_output_tokens": 8192,
                 "response_mime_type": "text/plain"
             },
