@@ -12,6 +12,7 @@ class Persona:
     description: str
     system_prompt: str
     personality: str
+    avatar_url: Optional[str] = None
     after_context: Optional[str] = None
     first_message: Optional[str] = None
     examples: List[Dict[str, str]] = None
@@ -23,6 +24,7 @@ class Persona:
             description=data.get("description", ""),
             system_prompt=data.get("system_prompt", ""),
             personality=data.get("personality", ""),
+            avatar_url=data.get("avatar_url"),
             after_context=data.get("after_context"),
             first_message=data.get("first_message"),
             examples=data.get("examples", [])

@@ -159,11 +159,54 @@ class UnicornAI(commands.Cog):
 
         # 5. Send
         try:
-            await target_channel.send(response)
+            await self._send_response(target_channel, response, persona)
             # Update last_run only on success
             await self.config.channel(target_channel).last_run.set(time.time())
         except Exception as e:
             if ctx: await ctx.send(f"Failed to send message: {e}")
+
+    async def _send_response(self, channel, content: str, persona):
+        """
+        Sends the response via Webhook if possible (for persona impersonation),
+        otherwise falls back to standard message.
+        """
+        # Check if we can use webhooks (Guild channels only)
+        if not hasattr(channel, "guild"):
+             await channel.send(content)
+             return
+
+        perms = channel.permissions_for(channel.guild.me)
+        if not perms.manage_webhooks:
+            await channel.send(content)
+            return
+
+        try:
+            # Handle Threads
+            target_channel = channel
+            thread_obj = discord.utils.MISSING
+            
+            if isinstance(channel, discord.Thread):
+                target_channel = channel.parent
+                thread_obj = channel
+
+            # Fetch or create webhook
+            webhooks = await target_channel.webhooks()
+            webhook = next((w for w in webhooks if w.user.id == self.bot.user.id), None)
+            
+            if not webhook:
+                webhook = await target_channel.create_webhook(name="UnicornAI Webhook")
+            
+            # Send via webhook
+            await webhook.send(
+                content=content,
+                username=persona.name,
+                avatar_url=persona.avatar_url or self.bot.user.display_avatar.url,
+                thread=thread_obj
+            )
+        except Exception as e:
+            log.error(f"Webhook send failed: {e}")
+            # Fallback
+            await channel.send(content)
 
     # --- Commands ---
 
