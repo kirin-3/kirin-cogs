@@ -117,8 +117,7 @@ class VertexClient:
                 "top_p": 0.96,
                 "top_k": 0, # Vertex API usually expects int
                 "max_output_tokens": 8192,
-                "response_mime_type": "text/plain",
-                "reasoning_effort": "low"
+                "response_mime_type": "text/plain"
             },
             "safety_settings": [
                 {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
