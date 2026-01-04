@@ -74,6 +74,7 @@ class VertexClient:
     async def generate_response(
         self,
         model: str,
+        location: str,
         system_instruction: str,
         history: List[Dict[str, Any]],
         after_context: Optional[str] = None
@@ -85,10 +86,14 @@ class VertexClient:
         if not token or not self._project_id:
             return "Error: Authentication failed or missing Service Account."
 
-        # Hardcoded to us-central1 as requested for global preview access
-        location = "global"
+        # Handle global vs regional endpoints
+        if location == "global":
+            hostname = "aiplatform.googleapis.com"
+        else:
+            hostname = f"{location}-aiplatform.googleapis.com"
+
         url = (
-            f"https://{location}-aiplatform.googleapis.com/v1/"
+            f"https://{hostname}/v1/"
             f"projects/{self._project_id}/locations/{location}/"
             f"publishers/google/models/{model}:generateContent"
         )

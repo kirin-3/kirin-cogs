@@ -34,7 +34,8 @@ class UnicornAI(commands.Cog):
         # Global config for API/System settings
         default_global = {
             "history_limit": 50,
-            "model": "gemini-3-pro-preview"
+            "model": "gemini-3-pro-preview",
+            "location": "us-central1"
         }
         self.config.register_global(**default_global)
 
@@ -144,6 +145,7 @@ class UnicornAI(commands.Cog):
         
         response = await self.vertex.generate_response(
             model=global_settings["model"],
+            location=global_settings["location"],
             system_instruction=persona.system_prompt,
             history=formatted_history,
             after_context=persona.after_context
@@ -214,6 +216,15 @@ class UnicornAI(commands.Cog):
         """Set the global Gemini model version."""
         await self.config.model.set(name)
         await ctx.send(f"Model set to `{name}`.")
+
+    @ai_group.command(name="location")
+    async def ai_location(self, ctx, location: str):
+        """
+        Set the Google Cloud location (e.g., 'us-central1' or 'global').
+        Default is 'us-central1'.
+        """
+        await self.config.location.set(location)
+        await ctx.send(f"Location set to `{location}`.")
 
     @ai_group.group(name="persona")
     async def persona_group(self, ctx):
