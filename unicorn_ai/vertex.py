@@ -86,7 +86,7 @@ class VertexClient:
             return "Error: Authentication failed or missing Service Account."
 
         # Hardcoded to us-central1 as requested for global preview access
-        location = "us-central1"
+        location = "global"
         url = (
             f"https://{location}-aiplatform.googleapis.com/v1/"
             f"projects/{self._project_id}/locations/{location}/"
