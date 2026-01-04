@@ -87,16 +87,27 @@ class VertexClient:
             return "Error: Authentication failed or missing Service Account."
 
         # Handle global vs regional endpoints
-        if location == "global":
+        if location == "ai-studio":
+            # Google AI Studio (Generative Language API)
+            # URL format: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        
+        elif location == "global":
+            # Vertex AI Express / Global (Note: Service Accounts usually require regions, but supporting as requested)
             hostname = "aiplatform.googleapis.com"
+            url = (
+                f"https://{hostname}/v1/"
+                f"projects/{self._project_id}/locations/{location}/"
+                f"publishers/google/models/{model}:generateContent"
+            )
         else:
+            # Vertex AI Regional
             hostname = f"{location}-aiplatform.googleapis.com"
-
-        url = (
-            f"https://{hostname}/v1/"
-            f"projects/{self._project_id}/locations/{location}/"
-            f"publishers/google/models/{model}:generateContent"
-        )
+            url = (
+                f"https://{hostname}/v1/"
+                f"projects/{self._project_id}/locations/{location}/"
+                f"publishers/google/models/{model}:generateContent"
+            )
 
         # Append after_context if present
         if after_context:
