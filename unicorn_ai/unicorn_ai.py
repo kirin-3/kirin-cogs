@@ -114,7 +114,9 @@ class UnicornAI(commands.Cog):
 
         # 2. Fetch History
         try:
-            limit = global_settings["history_limit"]
+            # Use persona limit if set, otherwise global
+            limit = persona.history_limit if persona.history_limit is not None else global_settings["history_limit"]
+            
             # Ensure we are in a text channel or thread
             if not hasattr(target_channel, "history"):
                  if ctx: await ctx.send("Cannot fetch history from this channel type.")

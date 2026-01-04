@@ -14,11 +14,21 @@ class Persona:
     personality: str
     avatar_url: Optional[str] = None
     after_context: Optional[str] = None
+    history_limit: Optional[int] = None
     first_message: Optional[str] = None
     examples: List[Dict[str, str]] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
+        # Validate history_limit
+        history_limit = data.get("history_limit")
+        if history_limit is not None:
+            try:
+                history_limit = int(history_limit)
+            except (ValueError, TypeError):
+                log.warning(f"Invalid history_limit for persona {data.get('name')}: {history_limit}. Ignoring.")
+                history_limit = None
+
         return cls(
             name=data.get("name", "Unknown"),
             description=data.get("description", ""),
@@ -26,6 +36,7 @@ class Persona:
             personality=data.get("personality", ""),
             avatar_url=data.get("avatar_url"),
             after_context=data.get("after_context"),
+            history_limit=history_limit,
             first_message=data.get("first_message"),
             examples=data.get("examples", [])
         )
