@@ -236,8 +236,11 @@ class MarketSystem:
             current_price = stock['price']
 
             # Dynamic Costing (Slippage) & Tax
-            # Avg Price = (Start + End) / 2
-            impact = current_price * amount * 0.0005
+            # Market Cap-Based Impact
+            liquidity_pool = max(stock['total_shares'], 10000)
+            impact_ratio = amount / liquidity_pool
+            impact = current_price * impact_ratio * 1.0
+            
             end_price = current_price + impact
             avg_execution_price = (current_price + end_price) / 2
             
@@ -296,7 +299,11 @@ class MarketSystem:
                 return False, f"You don't have enough shares. Owned: {holding['amount'] if holding else 0}"
 
             # Dynamic Costing & Tax
-            impact = current_price * amount * 0.0005
+            # Market Cap-Based Impact
+            liquidity_pool = max(stock['total_shares'], 10000)
+            impact_ratio = amount / liquidity_pool
+            impact = current_price * impact_ratio * 1.0
+            
             end_price = current_price - impact
             avg_execution_price = (current_price + end_price) / 2
             
