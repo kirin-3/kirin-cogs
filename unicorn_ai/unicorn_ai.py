@@ -1,0 +1,240 @@
+import discord
+import logging
+import os
+import asyncio
+import time
+from redbot.core import commands, Config
+from redbot.core.utils.chat_formatting import box, pagify
+from discord.ext import tasks
+from typing import Optional
+
+from .vertex import VertexClient
+from .persona import PersonaManager
+
+log = logging.getLogger("red.unicorn_ai")
+
+class UnicornAI(commands.Cog):
+    """
+    Autonomous AI persona using Google Vertex AI.
+    """
+
+    def __init__(self, bot):
+        self.bot = bot
+        self.config = Config.get_conf(self, identifier=9988776655, force_registration=True)
+        
+        # Channel-specific config
+        default_channel = {
+            "enabled": False,
+            "interval": 300, # 5 minutes default
+            "active_persona": None,
+            "last_run": 0
+        }
+        self.config.register_channel(**default_channel)
+
+        # Global config for API/System settings
+        default_global = {
+            "history_limit": 50,
+            "model": "gemini-3-pro-preview"
+        }
+        self.config.register_global(**default_global)
+
+        self.cog_path = os.path.dirname(__file__)
+        self.data_path = os.path.join(self.cog_path, "data", "personas")
+        
+        self.vertex = VertexClient(self.cog_path)
+        self.personas = PersonaManager(self.data_path)
+        
+        # Start loop
+        self.auto_message_loop.start()
+
+    def cog_unload(self):
+        self.auto_message_loop.cancel()
+
+    @tasks.loop(seconds=60)
+    async def auto_message_loop(self):
+        """
+        Background loop to trigger AI messages.
+        Runs every minute and checks all channels.
+        """
+        await self.bot.wait_until_ready()
+        
+        all_channels = await self.config.all_channels()
+        now = time.time()
+        
+        for channel_id, settings in all_channels.items():
+            if not settings["enabled"]:
+                continue
+            
+            # Check if it's time to run
+            last_run = settings["last_run"]
+            interval = settings["interval"]
+            
+            if (now - last_run) >= interval:
+                channel = self.bot.get_channel(channel_id)
+                if channel:
+                    await self._trigger_ai(channel=channel)
+
+    @auto_message_loop.before_loop
+    async def before_loop(self):
+        await self.bot.wait_until_ready()
+
+    async def _trigger_ai(self, channel: discord.TextChannel = None, ctx: commands.Context = None, persona_override: str = None):
+        """
+        Core logic to fetch history and generate response.
+        Can be triggered by loop (passed channel) or manual command (passed ctx).
+        """
+        # Resolve target channel
+        if ctx:
+            target_channel = ctx.channel
+        else:
+            target_channel = channel
+
+        if not target_channel:
+            return
+
+        # Fetch settings
+        settings = await self.config.channel(target_channel).all()
+        global_settings = await self.config.all()
+        
+        # If manual trigger, ignore 'enabled' check
+        if not ctx and not settings["enabled"]:
+            return
+
+        persona_name = persona_override or settings["active_persona"]
+        if not persona_name:
+            if ctx: await ctx.send("No active persona set (and no override provided).")
+            return
+
+        persona = await asyncio.to_thread(self.personas.load_persona, persona_name)
+        if not persona:
+            if ctx: await ctx.send(f"Failed to load persona '{persona_name}'.")
+            return
+
+        # 2. Fetch History
+        try:
+            limit = global_settings["history_limit"]
+            # Ensure we are in a text channel or thread
+            if not hasattr(target_channel, "history"):
+                 if ctx: await ctx.send("Cannot fetch history from this channel type.")
+                 return
+
+            messages = [m async for m in target_channel.history(limit=limit)]
+            messages.reverse() # Oldest first
+        except Exception as e:
+            log.error(f"Failed to fetch history: {e}")
+            if ctx: await ctx.send(f"Error fetching history: {e}")
+            return
+
+        # 3. Format History for Gemini
+        formatted_history = []
+        for msg in messages:
+            role = "model" if msg.author.id == self.bot.user.id else "user"
+            content = msg.clean_content
+            if not content:
+                continue # Skip empty messages
+            
+            formatted_history.append({
+                "role": role,
+                "parts": [{"text": f"{msg.author.display_name}: {content}"}]
+            })
+
+        # 4. Generate Response
+        if ctx:
+            await ctx.send("Generating response...")
+        
+        response = await self.vertex.generate_response(
+            model=global_settings["model"],
+            system_instruction=persona.system_prompt,
+            history=formatted_history,
+            after_context=persona.after_context
+        )
+
+        if not response:
+            if ctx: await ctx.send("Failed to generate response (empty or error).")
+            return
+
+        # 5. Send
+        try:
+            await target_channel.send(response)
+            # Update last_run only on success
+            await self.config.channel(target_channel).last_run.set(time.time())
+        except Exception as e:
+            if ctx: await ctx.send(f"Failed to send message: {e}")
+
+    # --- Commands ---
+
+    @commands.group(name="ai")
+    @commands.is_owner()
+    async def ai_group(self, ctx):
+        """Manage UnicornAI settings."""
+        pass
+
+    @ai_group.command(name="setup")
+    async def ai_setup(self, ctx):
+        """Reloads credentials from local JSON file."""
+        success = await self.vertex._load_credentials()
+        if success:
+            await ctx.send("Credentials loaded successfully.")
+        else:
+            await ctx.send("Failed to load credentials. Check logs and ensure `service_account.json` is in the cog folder.")
+
+    @ai_group.command(name="toggle")
+    async def ai_toggle(self, ctx):
+        """Toggle the auto-messaging loop for the current channel."""
+        current = await self.config.channel(ctx.channel).enabled()
+        new_state = not current
+        await self.config.channel(ctx.channel).enabled.set(new_state)
+        await ctx.send(f"UnicornAI is now {'**Enabled**' if new_state else '**Disabled**'} for {ctx.channel.mention}.")
+
+    @ai_group.command(name="trigger")
+    async def ai_trigger(self, ctx, persona_name: Optional[str] = None):
+        """
+        Manually trigger a generation cycle in this channel.
+        Optionally provide a persona name to test specifically.
+        """
+        await self._trigger_ai(ctx=ctx, persona_override=persona_name)
+
+    @ai_group.command(name="interval")
+    async def ai_interval(self, ctx, seconds: int):
+        """Set the loop interval for this channel (seconds)."""
+        if seconds < 60:
+            await ctx.send("Warning: Interval too short. Minimum recommended is 60 seconds.")
+        
+        await self.config.channel(ctx.channel).interval.set(seconds)
+        await ctx.send(f"Interval set to {seconds} seconds for {ctx.channel.mention}.")
+
+    @ai_group.command(name="history")
+    async def ai_history(self, ctx, limit: int):
+        """Set the global history limit (max messages to read)."""
+        await self.config.history_limit.set(limit)
+        await ctx.send(f"Global history limit set to {limit} messages.")
+
+    @ai_group.command(name="model")
+    async def ai_model(self, ctx, name: str):
+        """Set the global Gemini model version."""
+        await self.config.model.set(name)
+        await ctx.send(f"Model set to `{name}`.")
+
+    @ai_group.group(name="persona")
+    async def persona_group(self, ctx):
+        """Manage Personas."""
+        pass
+
+    @persona_group.command(name="list")
+    async def persona_list(self, ctx):
+        """List available personas."""
+        personas = await asyncio.to_thread(self.personas.list_personas)
+        if not personas:
+            await ctx.send("No personas found in `data/personas/`.")
+            return
+        await ctx.send(f"Available Personas: {', '.join(personas)}")
+
+    @persona_group.command(name="load")
+    async def persona_load(self, ctx, name: str):
+        """Load a persona for the current channel."""
+        persona = await asyncio.to_thread(self.personas.load_persona, name)
+        if persona:
+            await self.config.channel(ctx.channel).active_persona.set(name)
+            await ctx.send(f"Loaded persona **{persona.name}** for {ctx.channel.mention}.")
+        else:
+            await ctx.send(f"Could not find or load persona `{name}`.")
