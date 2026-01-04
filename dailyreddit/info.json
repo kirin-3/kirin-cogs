@@ -1,0 +1,10 @@
+{
+    "author": ["Kirin"],
+    "name": "DailyReddit",
+    "short": "Post daily top images from subreddits.",
+    "description": "A cog to fetch and post the daily top image from specified subreddits to assigned channels.",
+    "tags": ["reddit", "image", "daily", "automation"],
+    "requirements": [],
+    "min_bot_version": "3.5.0",
+    "end_user_data_statement": "This cog does not store any end user data."
+}
