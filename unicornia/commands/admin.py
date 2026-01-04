@@ -296,6 +296,52 @@ class AdminCommands:
                 channel_mentions.append(f"<#{channel_id}> (Deleted)")
         
         await ctx.send(f"**XP Whitelisted Channels:**\n{', '.join(channel_mentions)}")
+
+    @guild_xp_group.group(name="double")
+    @checks.is_owner()
+    async def xp_double_group(self, ctx):
+        """Manage Double XP channels"""
+        pass
+
+    @xp_double_group.command(name="add")
+    async def xp_double_add(self, ctx, channel: discord.abc.GuildChannel):
+        """Add a channel to the Double XP list"""
+        double_channels = await self.config.guild(ctx.guild).xp_double_channels()
+        if channel.id not in double_channels:
+            double_channels.append(channel.id)
+            await self.config.guild(ctx.guild).xp_double_channels.set(double_channels)
+            await ctx.send(f"✅ {channel.mention} added to Double XP list.")
+        else:
+            await ctx.send(f"❌ {channel.mention} is already in the Double XP list.")
+
+    @xp_double_group.command(name="remove")
+    async def xp_double_remove(self, ctx, channel: discord.abc.GuildChannel):
+        """Remove a channel from the Double XP list"""
+        double_channels = await self.config.guild(ctx.guild).xp_double_channels()
+        if channel.id in double_channels:
+            double_channels.remove(channel.id)
+            await self.config.guild(ctx.guild).xp_double_channels.set(double_channels)
+            await ctx.send(f"✅ {channel.mention} removed from Double XP list.")
+        else:
+            await ctx.send(f"❌ {channel.mention} is not in the Double XP list.")
+
+    @xp_double_group.command(name="list")
+    async def xp_double_list(self, ctx):
+        """List all channels in the Double XP list"""
+        double_channels = await self.config.guild(ctx.guild).xp_double_channels()
+        if not double_channels:
+            await ctx.send("No channels are configured for Double XP.")
+            return
+
+        channel_mentions = []
+        for channel_id in double_channels:
+            channel = ctx.guild.get_channel(channel_id)
+            if channel:
+                channel_mentions.append(channel.mention)
+            else:
+                channel_mentions.append(f"<#{channel_id}> (Deleted)")
+        
+        await ctx.send(f"**Double XP Channels:**\n{', '.join(channel_mentions)}")
     
     @guild_config.command(name="rolereward")
     async def guild_role_reward(self, ctx, level: int, role: discord.Role, remove: bool = False):

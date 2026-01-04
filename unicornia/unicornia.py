@@ -84,6 +84,7 @@ class Unicornia(
         default_guild = {
             "excluded_roles": [],
             "xp_included_channels": [],
+            "xp_double_channels": [],
             "command_whitelist": {}, # {command_name: [channel_ids]}
             "system_whitelist": {},  # {system_name: [channel_ids]}
             "market_channel": None,  # Channel ID for Stock Dashboard

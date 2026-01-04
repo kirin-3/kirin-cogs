@@ -95,6 +95,7 @@ class XPSystem:
                 for guild in self.bot.guilds:
                     # Get whitelist and exclusions (Config)
                     included_channels = set(await self.config.guild(guild).xp_included_channels())
+                    double_xp_channels = set(await self.config.guild(guild).xp_double_channels())
                     excluded_roles = set(await self.config.guild(guild).excluded_roles())
                     
                     for channel in guild.voice_channels:
@@ -102,6 +103,11 @@ class XPSystem:
                         if channel.id not in included_channels:
                             continue
                         
+                        # Calculate XP amount for this channel
+                        current_xp_amount = xp_amount
+                        if channel.id in double_xp_channels:
+                            current_xp_amount *= 2
+
                         # Process members
                         for member in channel.members:
                             if member.bot:
@@ -116,7 +122,7 @@ class XPSystem:
                                 continue
                             
                             # Add to batch
-                            pending_updates.append((member.id, guild.id, xp_amount))
+                            pending_updates.append((member.id, guild.id, current_xp_amount))
                 
                 # Process bulk update
                 if pending_updates:
@@ -258,6 +264,20 @@ class XPSystem:
         # --- XP CALCULATION (LRU Cache) ---
         
         xp_amount = self._config_cache.get("xp_per_message", 1)
+
+        # Check for Double XP Channel
+        double_xp_channels = await self.config.guild(message.guild).xp_double_channels()
+        
+        # Check channel ID directly
+        is_double = channel_id in double_xp_channels
+        
+        # If not included, check if it's a thread and if parent is included
+        if not is_double and isinstance(message.channel, discord.Thread):
+            if message.channel.parent_id in double_xp_channels:
+                is_double = True
+        
+        if is_double:
+            xp_amount *= 2
         
         # Check cache
         cache_data = self._get_user_cache_data(user_id, guild_id)
