@@ -34,24 +34,79 @@ class DailyReddit(commands.Cog):
         self.config.register_guild(**default_guild)
         
         self.session = aiohttp.ClientSession()
+        
+        # OAuth Cache
+        self.access_token = None
+        self.token_expires = 0
+        
         self.daily_post_loop.start()
 
     def cog_unload(self):
         self.daily_post_loop.cancel()
         self.bot.loop.create_task(self.session.close())
 
+    async def get_access_token(self) -> Optional[str]:
+        """
+        Retrieves a valid Reddit OAuth access token.
+        Uses cached token if valid, otherwise requests a new one.
+        """
+        now = datetime.datetime.now().timestamp()
+        if self.access_token and now < self.token_expires:
+            return self.access_token
+            
+        tokens = await self.bot.get_shared_api_tokens("reddit")
+        client_id = tokens.get("client_id")
+        client_secret = tokens.get("client_secret")
+        
+        if not client_id or not client_secret:
+            return None
+            
+        auth = aiohttp.BasicAuth(client_id, client_secret)
+        data = {'grant_type': 'client_credentials'}
+        headers = {'User-Agent': 'Red-DiscordBot:DailyReddit:v1.0 (by /u/Kirin)'}
+        
+        try:
+            async with self.session.post("https://www.reddit.com/api/v1/access_token", auth=auth, data=data, headers=headers) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self.access_token = data.get("access_token")
+                    expires_in = data.get("expires_in", 3600)
+                    self.token_expires = now + expires_in - 60 # 60s Buffer
+                    return self.access_token
+                else:
+                    log.error(f"Failed to get Reddit access token: {resp.status}")
+        except Exception as e:
+            log.error(f"Error getting Reddit token: {e}")
+            
+        return None
+
     async def fetch_top_image(self, subreddit: str) -> Optional[str]:
         """
         Fetches the top image from the subreddit's 'top of day'.
         Returns URL if found, None otherwise.
         """
-        url = f"https://www.reddit.com/r/{subreddit}/top.json?sort=top&t=day&limit=10"
+        token = await self.get_access_token()
         headers = {'User-Agent': 'Red-DiscordBot:DailyReddit:v1.0 (by /u/Kirin)'}
+        
+        if token:
+            headers['Authorization'] = f"bearer {token}"
+            base_url = "https://oauth.reddit.com"
+        else:
+            base_url = "https://www.reddit.com"
+            
+        url = f"{base_url}/r/{subreddit}/top.json?sort=top&t=day&limit=10"
         
         try:
             async with self.session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
                 if response.status != 200:
-                    log.warning(f"Failed to fetch subreddit {subreddit}: Status {response.status}")
+                    if response.status == 403:
+                        log.warning(f"403 Forbidden for r/{subreddit}. Ensure you have set Reddit API keys: [p]set api reddit client_id ... client_secret ...")
+                    elif response.status == 401:
+                         # Token might be invalid, reset it
+                         self.access_token = None
+                         log.warning(f"401 Unauthorized. Resetting token.")
+                    else:
+                        log.warning(f"Failed to fetch subreddit {subreddit}: Status {response.status}")
                     return None
                 
                 data = await response.json()
@@ -161,14 +216,17 @@ class DailyReddit(commands.Cog):
         # Verify subreddit exists/is valid by doing a quick test fetch
         test_url = await self.fetch_top_image(subreddit)
         if test_url is None:
-            # We don't block adding it, but we warn the user
-            await ctx.send(f"⚠️ Warning: Could not fetch a valid image from `r/{subreddit}` right now. "
-                           "It might be private, text-only, or invalid. I've added it anyway.")
+            # Check if we have tokens set
+            tokens = await self.bot.get_shared_api_tokens("reddit")
+            has_tokens = tokens.get("client_id") and tokens.get("client_secret")
+            
+            msg = f"⚠️ Warning: Could not fetch a valid image from `r/{subreddit}` right now. "
+            if not has_tokens:
+                msg += "\n💡 **Note**: accessing NSFW subreddits often requires Reddit API keys. Use `[p]set api reddit client_id ... client_secret ...`."
+            
+            await ctx.send(msg + "\nI've added it anyway.")
         
         async with self.config.guild(ctx.guild).channels() as channels:
-            # We use setdefault or simple assignment, but to avoid overwriting existing
-            # keys if we add more in future, we could check. But here we *want* to overwrite
-            # the subscription for this channel if it exists.
             channels[str(target_channel.id)] = {
                 "subreddit": subreddit,
                 "last_post_timestamp": 0 # Force post on next loop
