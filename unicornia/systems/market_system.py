@@ -114,7 +114,9 @@ class MarketSystem:
                 volatility = stock['volatility']
                 
                 # Decay factor to force price down if no usage
-                decay = 0.01 * volatility # 2% decay per tick
+                decay = 0.0
+                if current_price > 100:
+                    decay = 0.001 * volatility # 0.1% decay only if above 100
                 
                 # Growth factor
                 growth = (math.log1p(usage) * 0.05 * volatility)
@@ -219,6 +221,8 @@ class MarketSystem:
 
     async def buy_stock(self, user: discord.Member, symbol: str, amount: int) -> Tuple[bool, str]:
         """Buy stocks."""
+        if amount <= 0:
+            return False, "Amount must be positive."
         if amount > 100000:
             return False, "Transaction limit exceeded (Max 100,000 shares)."
             
@@ -230,7 +234,16 @@ class MarketSystem:
             
             stock = self.stocks_cache[symbol]
             current_price = stock['price']
-            total_cost = current_price * amount
+
+            # Dynamic Costing (Slippage) & Tax
+            # Avg Price = (Start + End) / 2
+            impact = current_price * amount * 0.0005
+            end_price = current_price + impact
+            avg_execution_price = (current_price + end_price) / 2
+            
+            subtotal = avg_execution_price * amount
+            tax = subtotal * 0.01
+            total_cost = int(subtotal + tax)
             
             # Check Balance
             wallet, bank = await self.economy.get_balance(user.id)
@@ -239,13 +252,10 @@ class MarketSystem:
                 
             # Execute Transaction
             # 1. Deduct Money
-            if not await self.economy.remove_currency(user.id, total_cost, "stock_buy", f"Bought {amount} {symbol}"):
+            if not await self.economy.remove_currency(user.id, total_cost, "stock_buy", f"Bought {amount} {symbol} (Tax: {int(tax)})"):
                 return False, "Transaction failed."
                 
             # 2. Add Shares & Update Average Cost
-            # Simple Avg Cost: (OldTotalVal + NewBuyVal) / TotalShares
-            # But we do this in DB logic usually, or here.
-            # Let's fetch current holding first
             holding = await self.db.stock.get_holding(user.id, symbol)
             current_holding_amt = holding['amount'] if holding else 0
             current_avg = holding['average_cost'] if holding else 0.0
@@ -255,20 +265,19 @@ class MarketSystem:
             
             await self.db.stock.update_holding(user.id, symbol, amount, new_avg_cost)
             
-            # 3. Slippage / Price Impact
-            # Impact = Price * Amount * 0.0005
-            impact = current_price * amount * 0.0005
-            # Update DB and Cache
+            # 3. Update DB and Cache with Impact
             await self.db.stock.update_shares_and_price(symbol, amount, impact)
             
             # Update Cache locally
             self.stocks_cache[symbol]['total_shares'] += amount
-            self.stocks_cache[symbol]['price'] = max(1, int(current_price + impact))
+            self.stocks_cache[symbol]['price'] = max(1, int(end_price))
             
-            return True, f"Bought {amount} {symbol} @ {current_price} {self.currency_symbol} (Total: {total_cost:,} {self.currency_symbol})."
+            return True, f"Bought {amount} {symbol} @ ~{int(avg_execution_price)} {self.currency_symbol} (Total: {total_cost:,} {self.currency_symbol} incl. 1% tax)."
 
     async def sell_stock(self, user: discord.Member, symbol: str, amount: int) -> Tuple[bool, str]:
         """Sell stocks."""
+        if amount <= 0:
+            return False, "Amount must be positive."
         if amount > 100000:
             return False, "Transaction limit exceeded (Max 100,000 shares)."
 
@@ -285,25 +294,31 @@ class MarketSystem:
             holding = await self.db.stock.get_holding(user.id, symbol)
             if not holding or holding['amount'] < amount:
                 return False, f"You don't have enough shares. Owned: {holding['amount'] if holding else 0}"
-                
-            total_value = current_price * amount
+
+            # Dynamic Costing & Tax
+            impact = current_price * amount * 0.0005
+            end_price = current_price - impact
+            avg_execution_price = (current_price + end_price) / 2
             
+            subtotal = avg_execution_price * amount
+            tax = subtotal * 0.01
+            total_payout = int(subtotal - tax)
+                
             # Execute Transaction
             # 1. Update Holding
             await self.db.stock.update_holding(user.id, symbol, -amount, cost_basis_update=None) # Cost basis doesn't change on sell
             
             # 2. Add Money
-            await self.economy.add_currency(user.id, total_value, "stock_sell", f"Sold {amount} {symbol}")
+            await self.economy.add_currency(user.id, total_payout, "stock_sell", f"Sold {amount} {symbol} (Tax: {int(tax)})")
             
-            # 3. Slippage
-            impact = current_price * amount * 0.0005
+            # 3. Slippage (Negative impact)
             await self.db.stock.update_shares_and_price(symbol, -amount, -impact)
             
             # Update Cache
             self.stocks_cache[symbol]['total_shares'] -= amount
-            self.stocks_cache[symbol]['price'] = max(1, int(current_price - impact))
+            self.stocks_cache[symbol]['price'] = max(1, int(end_price))
             
-            return True, f"Sold {amount} {symbol} @ {current_price} {self.currency_symbol} (Total: {total_value:,} {self.currency_symbol})."
+            return True, f"Sold {amount} {symbol} @ ~{int(avg_execution_price)} {self.currency_symbol} (Total: {total_payout:,} {self.currency_symbol} after 1% tax)."
 
     async def get_portfolio_data(self, user_id: int):
         """Fetch portfolio and transaction history for a user."""

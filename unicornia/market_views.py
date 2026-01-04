@@ -54,6 +54,52 @@ class StockAmountModal(ui.Modal):
         else:
             await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
 
+class StockQuickBuyModal(ui.Modal):
+    """Modal for quickly buying a stock by symbol."""
+    def __init__(self, market_system):
+        super().__init__(title="Quick Buy Stock")
+        self.market_system = market_system
+        
+        self.symbol_input = ui.TextInput(
+            label="Stock Symbol",
+            placeholder="e.g. UNICORN",
+            min_length=1,
+            max_length=10,
+            style=discord.TextStyle.short
+        )
+        self.amount_input = ui.TextInput(
+            label="Amount (Shares)",
+            placeholder="Enter number of shares",
+            min_length=1,
+            max_length=10,
+            style=discord.TextStyle.short
+        )
+        self.add_item(self.symbol_input)
+        self.add_item(self.amount_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        symbol = self.symbol_input.value.strip().upper()
+        amount_str = self.amount_input.value.strip()
+        
+        if symbol not in self.market_system.stocks_cache:
+             await interaction.response.send_message(f"❌ Stock symbol `{symbol}` not found.", ephemeral=True)
+             return
+
+        if not amount_str.isdigit():
+             await interaction.response.send_message("❌ Amount must be a positive number.", ephemeral=True)
+             return
+             
+        amount = int(amount_str)
+        if amount <= 0:
+            await interaction.response.send_message("❌ Amount must be greater than 0.", ephemeral=True)
+            return
+
+        success, msg = await self.market_system.buy_stock(interaction.user, symbol, amount)
+        if success:
+            await interaction.response.send_message(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+
 # --- Step 2: Selection Views (Ephemeral) with Pagination ---
 
 class StockBuySelectView(ui.View):
@@ -445,36 +491,41 @@ class StockDashboardView(ui.LayoutView):
         
         # Interactive Controls (Must be wrapped in ActionRow)
         
-        # Row 1: Buy/Sell
-        buy_btn = ui.Button(label="Buy Stock", style=discord.ButtonStyle.success, custom_id="market:buy")
-        sell_btn = ui.Button(label="Sell Stock", style=discord.ButtonStyle.danger, custom_id="market:sell")
+        # Row 1: Quick Buy | Browse | Sell
+        quick_buy_btn = ui.Button(label="Quick Buy", style=discord.ButtonStyle.success, custom_id="market:quick_buy", row=0)
+        browse_btn = ui.Button(label="Browse Market", style=discord.ButtonStyle.primary, custom_id="market:browse", row=0)
+        sell_btn = ui.Button(label="Sell Stock", style=discord.ButtonStyle.danger, custom_id="market:sell", row=0)
         
-        buy_btn.callback = self.buy_button
+        quick_buy_btn.callback = self.quick_buy_button
+        browse_btn.callback = self.browse_button
         sell_btn.callback = self.sell_button
-        
-        # Row 2: Portfolio/Show All
-        portfolio_btn = ui.Button(label="My Portfolio", style=discord.ButtonStyle.primary, custom_id="market:portfolio")
-        show_all_btn = ui.Button(label="Show All Stocks", style=discord.ButtonStyle.secondary, custom_id="market:show_all")
+
+        # Row 2: Portfolio | Show All
+        portfolio_btn = ui.Button(label="My Portfolio", style=discord.ButtonStyle.secondary, custom_id="market:portfolio", row=1)
+        show_all_btn = ui.Button(label="Show All Stocks", style=discord.ButtonStyle.secondary, custom_id="market:show_all", row=1)
         
         portfolio_btn.callback = self.portfolio_button
-        show_all_btn.callback = self.refresh_button # Reusing the refresh logic which shows all
+        show_all_btn.callback = self.refresh_button
         
-        container.add_item(ui.ActionRow(buy_btn, sell_btn))
+        container.add_item(ui.ActionRow(quick_buy_btn, browse_btn, sell_btn))
         container.add_item(ui.ActionRow(portfolio_btn, show_all_btn))
         
         self.add_item(container)
 
-    async def buy_button(self, interaction: discord.Interaction):
-        # Prepare stock options (Sorted by Price ASC)
-        stocks = sorted(self.market_system.stocks_cache.values(), key=lambda s: s['price'])
+    async def quick_buy_button(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(StockQuickBuyModal(self.market_system))
+
+    async def browse_button(self, interaction: discord.Interaction):
+        # Prepare stock options (Sorted Alphabetically by Symbol)
+        stocks = sorted(self.market_system.stocks_cache.values(), key=lambda s: s['symbol'])
         if not stocks:
             await interaction.response.send_message("Market is empty.", ephemeral=True)
             return
             
         # Send Ephemeral View for Selection
         await interaction.response.send_message(
-            "Select a stock to buy:", 
-            view=StockBuySelectView(self.market_system, stocks), 
+            "Browse stocks to buy:",
+            view=StockBuySelectView(self.market_system, stocks),
             ephemeral=True
         )
 
