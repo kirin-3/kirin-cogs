@@ -78,9 +78,9 @@ class CurrencyGeneration:
         
         # Generate currency
         amount = random.randint(self.gen_min, self.gen_max)
-        
-        # Fake generation check (1% of the time a generation happens)
-        is_fake = random.random() < 0.01
+
+        # Fake generation check (2% of the time a generation happens)
+        is_fake = random.random() < 0.02
         password = "FAKE" if is_fake else ""
         
         # Store the plant for pickup
