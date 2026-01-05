@@ -40,6 +40,12 @@ class UnicornAI(commands.Cog):
         }
         self.config.register_global(**default_global)
 
+        # User config for opt-out
+        default_user = {
+            "opt_out": False
+        }
+        self.config.register_user(**default_user)
+
         self.cog_path = os.path.dirname(__file__)
         self.data_path = os.path.join(self.cog_path, "data", "personas")
         
@@ -129,9 +135,14 @@ class UnicornAI(commands.Cog):
             if ctx: await ctx.send(f"Error fetching history: {e}")
             return
 
-        # 3. Format History for Gemini
+        # 3. Format History for Gemini (With Opt-Out Check)
         formatted_history = []
         for msg in messages:
+            # Check opt-out status for user messages
+            if msg.author.id != self.bot.user.id:
+                if await self.config.user(msg.author).opt_out():
+                    continue
+
             role = "model" if msg.author.id == self.bot.user.id else "user"
             content = msg.clean_content
             if not content:
@@ -200,8 +211,8 @@ class UnicornAI(commands.Cog):
             
             # Send via webhook
             await webhook.send(
-                content=content,
-                username=persona.name,
+                content=content, 
+                username=persona.name, 
                 avatar_url=persona.avatar_url or self.bot.user.display_avatar.url,
                 thread=thread_obj
             )
@@ -213,12 +224,27 @@ class UnicornAI(commands.Cog):
     # --- Commands ---
 
     @commands.group(name="ai")
-    @commands.is_owner()
     async def ai_group(self, ctx):
         """Manage UnicornAI settings."""
         pass
 
+    @ai_group.command(name="optout")
+    async def ai_optout(self, ctx):
+        """Toggle your opt-out status.
+        
+        If opted out, your messages will be ignored by the AI context window.
+        """
+        current = await self.config.user(ctx.author).opt_out()
+        new_state = not current
+        await self.config.user(ctx.author).opt_out.set(new_state)
+        
+        if new_state:
+            await ctx.send("You have opted out. Your messages will no longer be included in the AI context.")
+        else:
+            await ctx.send("You have opted in. The AI can now see your messages.")
+
     @ai_group.command(name="setup")
+    @commands.is_owner()
     async def ai_setup(self, ctx):
         """Reloads credentials from local JSON file."""
         success = await self.vertex._load_credentials()
@@ -228,6 +254,7 @@ class UnicornAI(commands.Cog):
             await ctx.send("Failed to load credentials. Check logs and ensure `service_account.json` is in the cog folder.")
 
     @ai_group.command(name="toggle")
+    @commands.is_owner()
     async def ai_toggle(self, ctx):
         """Toggle the auto-messaging loop for the current channel."""
         current = await self.config.channel(ctx.channel).enabled()
@@ -236,6 +263,7 @@ class UnicornAI(commands.Cog):
         await ctx.send(f"UnicornAI is now {'**Enabled**' if new_state else '**Disabled**'} for {ctx.channel.mention}.")
 
     @ai_group.command(name="trigger")
+    @commands.is_owner()
     async def ai_trigger(self, ctx, persona_name: Optional[str] = None):
         """
         Manually trigger a generation cycle in this channel.
@@ -244,6 +272,7 @@ class UnicornAI(commands.Cog):
         await self._trigger_ai(ctx=ctx, persona_override=persona_name)
 
     @ai_group.command(name="interval")
+    @commands.is_owner()
     async def ai_interval(self, ctx, seconds: int):
         """Set the loop interval for this channel (seconds)."""
         if seconds < 60:
@@ -253,18 +282,21 @@ class UnicornAI(commands.Cog):
         await ctx.send(f"Interval set to {seconds} seconds for {ctx.channel.mention}.")
 
     @ai_group.command(name="history")
+    @commands.is_owner()
     async def ai_history(self, ctx, limit: int):
         """Set the global history limit (max messages to read)."""
         await self.config.history_limit.set(limit)
         await ctx.send(f"Global history limit set to {limit} messages.")
 
     @ai_group.command(name="model")
+    @commands.is_owner()
     async def ai_model(self, ctx, name: str):
         """Set the global Gemini model version."""
         await self.config.model.set(name)
         await ctx.send(f"Model set to `{name}`.")
 
     @ai_group.command(name="location")
+    @commands.is_owner()
     async def ai_location(self, ctx, location: str):
         """
         Set the Google Cloud location (e.g., 'us-central1' or 'global').
@@ -274,6 +306,7 @@ class UnicornAI(commands.Cog):
         await ctx.send(f"Location set to `{location}`.")
 
     @ai_group.command(name="api_version")
+    @commands.is_owner()
     async def ai_api_version(self, ctx, version: str):
         """
         Set the Vertex AI API version (e.g., 'v1' or 'v1beta1').
@@ -283,6 +316,7 @@ class UnicornAI(commands.Cog):
         await ctx.send(f"API Version set to `{version}`.")
 
     @ai_group.group(name="persona")
+    @commands.is_owner()
     async def persona_group(self, ctx):
         """Manage Personas."""
         pass
