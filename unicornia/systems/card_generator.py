@@ -647,18 +647,20 @@ class XPCardGenerator:
                         frames.append(frame)
                         
                     output = io.BytesIO()
-                    # Save as GIF
+                    # Save as WebP (Lossless for quality)
                     frames[0].save(
-                        output, 
-                        format='GIF', 
-                        save_all=True, 
-                        append_images=frames[1:], 
-                        loop=0, 
+                        output,
+                        format='WEBP',
+                        save_all=True,
+                        append_images=frames[1:],
+                        loop=0,
                         duration=duration,
-                        disposal=2  # Restore to background color. 
+                        lossless=True,
+                        quality=100,
+                        method=6
                     )
                     output.seek(0)
-                    return output, "gif"
+                    return output, "webp"
                     
                 else:
                     # Static Image
