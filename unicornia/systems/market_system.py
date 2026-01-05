@@ -116,7 +116,9 @@ class MarketSystem:
                 # Decay factor to force price down if no usage
                 decay = 0.0
                 if current_price > 100:
-                    decay = 0.001 * volatility # 0.1% decay only if above 100
+                    decay = 0.001 * volatility # 0.1% decay
+                elif current_price < 100:
+                    decay = -0.001 * volatility # Drift back up to 100
                 
                 # Growth factor
                 growth = (math.log1p(usage) * 0.05 * volatility)
