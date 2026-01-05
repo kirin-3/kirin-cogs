@@ -656,8 +656,8 @@ class XPCardGenerator:
                         append_images=frames[1:],
                         loop=0,
                         duration=duration,
-                        lossless=True,
-                        quality=100,
+                        lossless=False,
+                        quality=90,
                         method=3
                     )
                     output.seek(0)
