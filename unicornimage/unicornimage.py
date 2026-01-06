@@ -1,11 +1,10 @@
 import discord
-from discord import app_commands
 import io
 import asyncio
 import aiohttp
 from typing import Optional, List, Literal, Dict, Any
 
-from redbot.core import commands, Config
+from redbot.core import commands, Config, app_commands
 from redbot.core.bot import Red
 
 from .utils.horde import HordeClient
