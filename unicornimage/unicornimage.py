@@ -86,15 +86,15 @@ class UnicornImage(commands.Cog):
             
         return role in ctx.author.roles
 
-    def _build_full_prompt(self, prompt: str, style: Optional[str], backend_prompt: str, lora_config: Optional[Dict[str, Any]]) -> str:
+    def _build_full_prompt(self, prompt: str, backend_prompt: str, lora_configs: List[Dict[str, Any]]) -> str:
         prompt_parts = []
         
         # 1. LoRA Triggers & Prompt
-        if lora_config:
-            if "trigger_words" in lora_config:
-                prompt_parts.extend(lora_config["trigger_words"])
-            if "prompt" in lora_config:
-                prompt_parts.append(lora_config["prompt"])
+        for config in lora_configs:
+            if "trigger_words" in config:
+                prompt_parts.extend(config["trigger_words"])
+            if "prompt" in config:
+                prompt_parts.append(config["prompt"])
         
         # 2. User Prompt
         prompt_parts.append(prompt)
@@ -104,6 +104,28 @@ class UnicornImage(commands.Cog):
             prompt_parts.append(backend_prompt)
 
         return ", ".join(prompt_parts)
+
+    def _parse_styles(self, style_str: Optional[str], max_count: int, required_base: str) -> tuple[List[Dict[str, Any]], Optional[str]]:
+        if not style_str:
+            return [], None
+            
+        style_keys = [s.strip() for s in style_str.split(",") if s.strip()]
+        
+        if len(style_keys) > max_count:
+            return [], f"❌ You can only use up to {max_count} styles."
+            
+        lora_configs = []
+        for key in style_keys:
+            if key not in LORAS:
+                return [], f"❌ Style `{key}` not found."
+            
+            config = LORAS[key]
+            if config.get("base") != required_base:
+                return [], f"❌ Style `{key}` (Base: {config.get('base')}) is incompatible with required base {required_base}."
+            
+            lora_configs.append(config)
+            
+        return lora_configs, None
 
     async def _gen_free_cooldown(ctx: commands.Context):
         if await ctx.bot.is_owner(ctx.author):
@@ -123,27 +145,27 @@ class UnicornImage(commands.Cog):
         """
         await ctx.defer()
         
-        # Validate style
-        if style and style not in LORAS:
-             return await ctx.send(f"❌ Style `{style}` not found. Use `/loras` to see available styles.")
+        # Parse and Validate styles
+        lora_configs, error = self._parse_styles(style, max_count=3, required_base="Pony")
+        if error:
+            return await ctx.send(error)
 
         try:
             client = await self.get_horde_client()
             
-            lora_config = LORAS[style] if style else None
-            full_prompt = self._build_full_prompt(prompt, style, HORDE_POSITIVE_PROMPT, lora_config)
+            full_prompt = self._build_full_prompt(prompt, HORDE_POSITIVE_PROMPT, lora_configs)
             
-            horde_loras = None
-            if lora_config:
-                model_id = lora_config["model_id"]
+            horde_loras = []
+            for config in lora_configs:
+                model_id = config["model_id"]
                 if model_id.startswith("civitai:"):
                     civit_id = model_id.split(":")[1]
-                    horde_loras = [{
+                    horde_loras.append({
                         "name": civit_id,
                         "is_version": True,
-                        "model": lora_config.get("strength", 1.0),
+                        "model": config.get("strength", 1.0),
                         "clip": 1.0,
-                    }]
+                    })
 
             # Use API key from config directly in case it changed
             api_key = await self.config.horde_api_key()
@@ -201,28 +223,23 @@ class UnicornImage(commands.Cog):
         
         model_config = MODELS[model_alias]
 
-        # Validate style
-        if style:
-            if style not in LORAS:
-                 return await ctx.send(f"❌ Style `{style}` not found. Use `/loras` to see available styles.")
-            
-            lora_config = LORAS[style]
-            if lora_config.get("base") != model_config["base"]:
-                 return await ctx.send(f"❌ Style `{style}` (Base: {lora_config.get('base')}) is incompatible with model `{model_config['name']}` (Base: {model_config['base']}).")
+        # Parse and Validate styles
+        lora_configs, error = self._parse_styles(style, max_count=5, required_base=model_config["base"])
+        if error:
+            return await ctx.send(error)
         
         try:
             client = await self.get_modal_client()
             modal_prompt = await self.config.modal_prompt()
             
-            lora_config = LORAS[style] if style else None
-            full_prompt = self._build_full_prompt(prompt, style, modal_prompt, lora_config)
+            full_prompt = self._build_full_prompt(prompt, modal_prompt, lora_configs)
             
             modal_loras = []
-            if lora_config:
-                 modal_loras = [{
-                     "model_id": lora_config["model_id"],
-                     "weight": lora_config.get("strength", 1.0)
-                 }]
+            for config in lora_configs:
+                 modal_loras.append({
+                     "model_id": config["model_id"],
+                     "weight": config.get("strength", 1.0)
+                 })
             
             images = await client.generate(
                 prompt=full_prompt,
