@@ -479,59 +479,23 @@ class Inference:
         return self.loaded_models[model_key]
         
     def _clean_peft_adapters(self, pipeline):
-        logger.info("Starting deep PEFT adapter cleanup")
+        """
+        Clean PEFT/LoRA adapters using standard methods.
+        """
+        logger.info("Cleaning PEFT adapters")
         try:
             if hasattr(pipeline, "unload_lora_weights"):
                 pipeline.unload_lora_weights()
                 logger.info("Called unload_lora_weights")
-                
-            if hasattr(pipeline, "unet"):
-                for name, module in pipeline.unet.named_modules():
-                    if hasattr(module, "peft_config"):
-                        delattr(module, "peft_config")
-                        
-            if hasattr(pipeline, "unet") and hasattr(pipeline.unet, "disable_adapter"):
-                logger.info("Disabling UNet adapter")
-                pipeline.unet.disable_adapter()
-                
-            if hasattr(pipeline, "unet"):
-                from diffusers.models.lora import LoRACompatibleLinear
-                from peft.tuners.lora import LoraLayer
-                
-                for module in pipeline.unet.modules():
-                    if isinstance(module, LoRACompatibleLinear) and hasattr(module, "lora_layer"):
-                        module.lora_layer = None
-                    elif hasattr(module, "_lora_layer"):
-                        module._lora_layer = None
-                    elif isinstance(module, LoraLayer):
-                        if hasattr(module, "lora_A"):
-                            module.lora_A.data.zero_()
-                        if hasattr(module, "lora_B"):
-                            module.lora_B.data.zero_()
-                
-            for encoder in [pipeline.text_encoder, pipeline.text_encoder_2]:
-                if encoder is not None:
-                    for module in encoder.modules():
-                        if isinstance(module, LoRACompatibleLinear) and hasattr(module, "lora_layer"):
-                            module.lora_layer = None
-                        elif hasattr(module, "_lora_layer"):
-                            module._lora_layer = None
-                        elif isinstance(module, LoraLayer):
-                            if hasattr(module, "lora_A"):
-                                module.lora_A.data.zero_()
-                            if hasattr(module, "lora_B"):
-                                module.lora_B.data.zero_()
-                
+            
+            # Clear active adapters list if exists
             if hasattr(pipeline, "active_adapters"):
                 pipeline.active_adapters = None
-                logger.info("Reset active_adapters")
                 
-            logger.info("Completed PEFT adapter cleanup")
-            
+            # Clear GPU cache
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
-                
         except Exception as e:
             logger.warning(f"Warning during adapter cleanup: {e}")
             

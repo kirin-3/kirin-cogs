@@ -297,38 +297,18 @@ class UnicornImage(commands.Cog):
         await ctx.send(embeds=embeds)
 
     @gen_free.autocomplete('style')
+    @gen_free.autocomplete('style2')
+    @gen_free.autocomplete('style3')
     @gen_premium.autocomplete('style')
+    @gen_premium.autocomplete('style2')
+    @gen_premium.autocomplete('style3')
+    @gen_premium.autocomplete('style4')
+    @gen_premium.autocomplete('style5')
     async def style_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-        # Handle comma-separated multiple selections
-        if "," in current:
-            parts = current.rsplit(",", 1)
-            prefix = parts[0] + ", "
-            search = parts[1].strip()
-        else:
-            prefix = ""
-            search = current.strip()
-            
         choices = []
         for key, data in LORAS.items():
-            # Check matches
-            if search.lower() in key.lower() or search.lower() in data.get("name", "").lower():
-                # Avoid suggesting already selected styles (simple check)
-                if key in prefix:
-                    continue
-                    
-                full_name = f"{prefix}{data.get('name', key)}"
-                full_value = f"{prefix}{key}"
-                
-                # Discord limit is 100 chars for name/value. Truncate name if needed.
-                if len(full_name) > 100:
-                    full_name = full_name[:97] + "..."
-                if len(full_value) > 100:
-                    # Value too long to be a valid choice, skip or truncate?
-                    # If truncated, it breaks logic. Better to skip.
-                    continue
-                    
-                choices.append(app_commands.Choice(name=full_name, value=full_value))
-                
+            if current.lower() in key.lower() or current.lower() in data.get("name", "").lower():
+                choices.append(app_commands.Choice(name=data.get("name", key), value=key))
         return choices[:25]
 
     @gen_premium.autocomplete('model')
