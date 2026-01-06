@@ -156,7 +156,7 @@ class UnicornImage(commands.Cog):
     @commands.cooldown(1, 30, commands.BucketType.user)
     async def gen_premium(self, ctx: commands.Context, prompt: str, style: Optional[str] = None):
         """
-        Premium SFW generation using Modal.
+        Premium generation using Modal.
         """
         if not await self.is_premium(ctx):
              msg = "🔒 This command is a Premium feature."
@@ -165,26 +165,9 @@ class UnicornImage(commands.Cog):
              return await ctx.send(msg)
         
         await ctx.defer()
-        await self._run_modal_gen(ctx, prompt, style, nsfw=False)
+        await self._run_modal_gen(ctx, prompt, style)
 
-    @commands.hybrid_command(name="gennsfw", description="[PREMIUM] Generate NSFW image using Modal")
-    @app_commands.describe(prompt="Image description", style="Optional style (LoRA)")
-    @commands.is_nsfw()
-    @commands.cooldown(1, 30, commands.BucketType.user)
-    async def gen_nsfw(self, ctx: commands.Context, prompt: str, style: Optional[str] = None):
-        """
-        Premium NSFW generation using Modal.
-        """
-        if not await self.is_premium(ctx):
-             msg = "🔒 This command is a Premium feature."
-             if ctx.interaction:
-                 return await ctx.send(msg, ephemeral=True)
-             return await ctx.send(msg)
-
-        await ctx.defer()
-        await self._run_modal_gen(ctx, prompt, style, nsfw=True)
-
-    async def _run_modal_gen(self, ctx: commands.Context, prompt: str, style: Optional[str], nsfw: bool):
+    async def _run_modal_gen(self, ctx: commands.Context, prompt: str, style: Optional[str]):
         # Validate style
         if style and style not in LORAS:
              return await ctx.send(f"❌ Style `{style}` not found. Use `/loras` to see available styles.")
@@ -205,7 +188,6 @@ class UnicornImage(commands.Cog):
             
             images = await client.generate(
                 prompt=full_prompt,
-                nsfw=nsfw,
                 loras=modal_loras
             )
             
@@ -214,8 +196,6 @@ class UnicornImage(commands.Cog):
 
             with io.BytesIO(images[0]) as fp:
                 content = f"🎨 **Prompt:** {prompt}" + (f" | **Style:** {style}" if style else "")
-                if nsfw:
-                    content += " | 🔞 [NSFW]"
                 await ctx.send(content=content, file=discord.File(fp, filename="generation.png"))
 
         except Exception as e:
@@ -255,7 +235,6 @@ class UnicornImage(commands.Cog):
 
     @gen_free.autocomplete('style')
     @gen_premium.autocomplete('style')
-    @gen_nsfw.autocomplete('style')
     async def style_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         return [
             app_commands.Choice(name=data.get("name", key), value=key)

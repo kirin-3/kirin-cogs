@@ -8,7 +8,7 @@ UnicornImage is a dual-backend text-to-image generation cog for Red Discord Bot.
 - **Premium Generation**: Uses [Modal](https://modal.com/) (private serverless GPUs) for fast, high-quality generation. Restricted to users with a specific role.
 - **Dual Backends**: Seamlessly switches between backends based on the command used.
 - **LoRA Support**: Easily apply style presets (LoRAs) to generations.
-- **SFW Enforcement**: Free generations are strictly SFW. Premium generations support NSFW in NSFW channels.
+- **SFW Enforcement**: Free generations are strictly SFW. Premium generations are unfiltered (Modal backend).
 
 ## Requirements
 
@@ -65,8 +65,7 @@ Load the cog:
 
 ### User Commands
 - `[p]genfree <prompt> [style]`: Generate an image using Stable Horde (Free).
-- `[p]gen <prompt> [style]`: Generate an image using Modal (Premium SFW).
-- `[p]gennsfw <prompt> [style]`: Generate an NSFW image using Modal (Premium, NSFW Channel only).
+- `[p]gen <prompt> [style]`: Generate an image using Modal (Premium).
 - `[p]loras`: List available style presets.
 
 ### Styles
