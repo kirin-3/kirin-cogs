@@ -20,7 +20,7 @@ class CustomCommand(commands.Cog):
         }
         self.config.register_guild(**default_guild)
         self.role_id = 700121551483437128
-        self._cooldown = commands.CooldownMapping.from_cooldown(1, 10, commands.BucketType.user)
+        self.trigger_cooldowns = {}  # (guild_id, trigger): CooldownMapping
         self.command_cache = {}  # guild_id: {trigger: response}
 
     async def cog_load(self):
@@ -32,12 +32,18 @@ class CustomCommand(commands.Cog):
     def cog_unload(self):
         """Clear cache on cog unload."""
         self.command_cache.clear()
+        self.trigger_cooldowns.clear()
 
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild):
         """Clear cache on guild remove."""
         if guild.id in self.command_cache:
             del self.command_cache[guild.id]
+        
+        # Clear cooldowns for this guild
+        keys_to_remove = [k for k in self.trigger_cooldowns if k[0] == guild.id]
+        for k in keys_to_remove:
+            del self.trigger_cooldowns[k]
 
     async def log_action(self, ctx, action: str, trigger: str, response: str = None):
         """Log custom command actions to the hardcoded channel."""
@@ -237,6 +243,10 @@ class CustomCommand(commands.Cog):
                 if guild.id in self.command_cache and trigger in self.command_cache[guild.id]:
                     del self.command_cache[guild.id][trigger]
 
+                # Cleanup cooldown
+                if (guild.id, trigger) in self.trigger_cooldowns:
+                    del self.trigger_cooldowns[(guild.id, trigger)]
+
                 if owner_found:
                     triggers = command_owners[owner_found]
                     if isinstance(triggers, str): triggers = [triggers]
@@ -284,6 +294,10 @@ class CustomCommand(commands.Cog):
                 del commands[trigger]
         if guild.id in self.command_cache and trigger in self.command_cache[guild.id]:
             del self.command_cache[guild.id][trigger]
+
+        # Cleanup cooldown
+        if (guild.id, trigger) in self.trigger_cooldowns:
+            del self.trigger_cooldowns[(guild.id, trigger)]
         
         user_commands.remove(trigger)
         if not user_commands:
@@ -306,7 +320,11 @@ class CustomCommand(commands.Cog):
         trigger = message.content.strip().lower()
 
         if trigger in guild_commands:
-            bucket = self._cooldown.get_bucket(message)
+            cooldown_key = (message.guild.id, trigger)
+            if cooldown_key not in self.trigger_cooldowns:
+                self.trigger_cooldowns[cooldown_key] = commands.CooldownMapping.from_cooldown(1, 60, commands.BucketType.channel)
+            
+            bucket = self.trigger_cooldowns[cooldown_key].get_bucket(message)
             retry_after = bucket.update_rate_limit()
             if retry_after:
                 return
