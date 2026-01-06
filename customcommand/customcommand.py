@@ -129,7 +129,7 @@ class CustomCommand(commands.Cog):
         """
         Create a custom command.
 
-        The trigger must be a single word and not conflict with existing commands.
+        The trigger must be alphanumeric (spaces allowed) and not conflict with existing commands.
         To use multi-word triggers or responses, wrap them in quotes.
         You can also attach an image to this command.
         Example: `[p]cc create "hello world" "Hello there!"`
@@ -173,8 +173,8 @@ class CustomCommand(commands.Cog):
             await ctx.send(f"You have reached your limit of {limit} custom command(s).")
             return
 
-        if not trigger.isalnum():
-            await ctx.send("Trigger must be alphanumeric.")
+        if not trigger.replace(" ", "").isalnum():
+            await ctx.send("Trigger must be alphanumeric (spaces are allowed).")
             return
 
         if self.bot.get_command(trigger.lower()):
