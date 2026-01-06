@@ -9,7 +9,7 @@ LORAS = {
         "description": "Niji Midjourney aesthetic of goth style from MoriiMee",
         "model_id": "civitai:1122823",  # Placeholder
         "trigger_words": ["morimee_style", "cute face"],
-        "prompt": "nun,latex,bdsm outfit",
+        "prompt": "latex,bdsm outfit",
         "strength": 0.8,
         "base": "Pony",
         "image_url": "https://example.com/anime_preview.png"
