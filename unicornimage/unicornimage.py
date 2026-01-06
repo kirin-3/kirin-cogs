@@ -105,17 +105,15 @@ class UnicornImage(commands.Cog):
 
         return ", ".join(prompt_parts)
 
-    def _parse_styles(self, style_str: Optional[str], max_count: int, required_base: str) -> tuple[List[Dict[str, Any]], Optional[str]]:
-        if not style_str:
+    def _parse_styles(self, styles: List[str], max_count: int, required_base: str) -> tuple[List[Dict[str, Any]], Optional[str]]:
+        if not styles:
             return [], None
             
-        style_keys = [s.strip() for s in style_str.split(",") if s.strip()]
-        
-        if len(style_keys) > max_count:
+        if len(styles) > max_count:
             return [], f"❌ You can only use up to {max_count} styles."
             
         lora_configs = []
-        for key in style_keys:
+        for key in styles:
             if key not in LORAS:
                 return [], f"❌ Style `{key}` not found."
             
@@ -137,16 +135,19 @@ class UnicornImage(commands.Cog):
     @app_commands.describe(
         prompt="Image description",
         style="Optional style (LoRA)",
+        style2="Optional style (LoRA)",
+        style3="Optional style (LoRA)",
         negative_prompt="Things to exclude from the image"
     )
-    async def gen_free(self, ctx: commands.Context, prompt: str, style: Optional[str] = None, negative_prompt: Optional[str] = None):
+    async def gen_free(self, ctx: commands.Context, prompt: str, style: Optional[str] = None, style2: Optional[str] = None, style3: Optional[str] = None, negative_prompt: Optional[str] = None):
         """
         Free generation command using HordeAI.
         """
         await ctx.defer()
         
         # Parse and Validate styles
-        lora_configs, error = self._parse_styles(style, max_count=3, required_base="Pony")
+        raw_styles = [s for s in [style, style2, style3] if s]
+        lora_configs, error = self._parse_styles(raw_styles, max_count=3, required_base="Pony")
         if error:
             return await ctx.send(error)
 
@@ -201,9 +202,13 @@ class UnicornImage(commands.Cog):
         prompt="Image description",
         model="Base model to use",
         style="Optional style (LoRA)",
+        style2="Optional style (LoRA)",
+        style3="Optional style (LoRA)",
+        style4="Optional style (LoRA)",
+        style5="Optional style (LoRA)",
         negative_prompt="Things to exclude from the image"
     )
-    async def gen_premium(self, ctx: commands.Context, prompt: str, model: str = DEFAULT_MODEL, style: Optional[str] = None, negative_prompt: Optional[str] = None):
+    async def gen_premium(self, ctx: commands.Context, prompt: str, model: str = DEFAULT_MODEL, style: Optional[str] = None, style2: Optional[str] = None, style3: Optional[str] = None, style4: Optional[str] = None, style5: Optional[str] = None, negative_prompt: Optional[str] = None):
         """
         Premium generation using Modal.
         """
@@ -214,9 +219,10 @@ class UnicornImage(commands.Cog):
              return await ctx.send(msg)
         
         await ctx.defer()
-        await self._run_modal_gen(ctx, prompt, model, style, negative_prompt)
+        raw_styles = [s for s in [style, style2, style3, style4, style5] if s]
+        await self._run_modal_gen(ctx, prompt, model, raw_styles, negative_prompt)
 
-    async def _run_modal_gen(self, ctx: commands.Context, prompt: str, model_alias: str, style: Optional[str], negative_prompt: Optional[str]):
+    async def _run_modal_gen(self, ctx: commands.Context, prompt: str, model_alias: str, raw_styles: List[str], negative_prompt: Optional[str]):
         # Validate Model
         if model_alias not in MODELS:
              return await ctx.send(f"❌ Model `{model_alias}` not found. Available: {', '.join(MODELS.keys())}")
@@ -224,7 +230,7 @@ class UnicornImage(commands.Cog):
         model_config = MODELS[model_alias]
 
         # Parse and Validate styles
-        lora_configs, error = self._parse_styles(style, max_count=5, required_base=model_config["base"])
+        lora_configs, error = self._parse_styles(raw_styles, max_count=5, required_base=model_config["base"])
         if error:
             return await ctx.send(error)
         

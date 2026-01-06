@@ -50,7 +50,7 @@ class ModalClient:
         inference_obj = self.inference_cls()
         
         try:
-            log.info(f"Sending request to Modal - Prompt: '{prompt}'")
+            log.info("Sending request to Modal")
             
             # Note: The remote run method does not accept 'nsfw' argument
             images = await inference_obj.run.remote.aio(
