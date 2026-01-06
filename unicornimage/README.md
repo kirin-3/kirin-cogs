@@ -7,7 +7,8 @@ UnicornImage is a dual-backend text-to-image generation cog for Red Discord Bot.
 - **Free Generation**: Uses [Stable Horde](https://stablehorde.net/) (crowdsourced GPUs) to generate images. Slower but free for everyone.
 - **Premium Generation**: Uses [Modal](https://modal.com/) (private serverless GPUs) for fast, high-quality generation. Restricted to users with a specific role.
 - **Dual Backends**: Seamlessly switches between backends based on the command used.
-- **LoRA Support**: Easily apply style presets (LoRAs) to generations.
+- **Model Selection**: Choose between different base models (e.g., SDXL, Pony) for premium generations.
+- **LoRA Support**: Easily apply style presets (LoRAs) compatible with the selected model.
 - **SFW Enforcement**: Free generations are strictly SFW. Premium generations are unfiltered (Modal backend).
 
 ## Requirements
@@ -64,12 +65,14 @@ Load the cog:
 ## Usage
 
 ### User Commands
-- `[p]genfree <prompt> [style]`: Generate an image using Stable Horde (Free).
-- `[p]gen <prompt> [style]`: Generate an image using Modal (Premium).
+- `[p]genfree <prompt> [style] [negative_prompt]`: Generate an image using Stable Horde (Free).
+- `[p]gen <prompt> [model] [style] [negative_prompt]`: Generate an image using Modal (Premium).
+  - **Note**: When using text commands, use quotes for the prompt: `[p]gen "a cat" standard anime`
 - `[p]loras`: List available style presets.
 
-### Styles
-You can use the `style` parameter to apply LoRAs (e.g., anime, fantasy). Use `[p]loras` to see the list.
+### Models & Styles
+- **Models**: You can choose between models like `standard` (SDXL) or `pony` (Pony V6).
+- **Styles**: Apply LoRAs using the `style` parameter. Ensure the style is compatible with the selected model (e.g., Pony styles for Pony model).
 
 ## Troubleshooting
 - **Modal Error**: If `[p]gen` fails with an authentication error, ensure the bot's host machine has run `modal setup` or has `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` environment variables set.
