@@ -127,8 +127,8 @@ class UnicornImage(commands.Cog):
             
         return lora_configs, None
 
-    async def _gen_free_cooldown(ctx: commands.Context):
-        if await ctx.bot.is_owner(ctx.author):
+    def _gen_free_cooldown(ctx: commands.Context):
+        if ctx.author.id in ctx.bot.owner_ids:
             return None
         return commands.Cooldown(1, 3600)
 
@@ -190,8 +190,8 @@ class UnicornImage(commands.Cog):
         except Exception as e:
             await ctx.send(f"An error occurred: {str(e)}")
 
-    async def _gen_premium_cooldown(ctx: commands.Context):
-        if await ctx.bot.is_owner(ctx.author):
+    def _gen_premium_cooldown(ctx: commands.Context):
+        if ctx.author.id in ctx.bot.owner_ids:
             return None
         return commands.Cooldown(1, 21600)
 
@@ -293,11 +293,37 @@ class UnicornImage(commands.Cog):
     @gen_free.autocomplete('style')
     @gen_premium.autocomplete('style')
     async def style_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-        return [
-            app_commands.Choice(name=data.get("name", key), value=key)
-            for key, data in LORAS.items()
-            if current.lower() in key.lower() or current.lower() in data.get("name", "").lower()
-        ][:25]
+        # Handle comma-separated multiple selections
+        if "," in current:
+            parts = current.rsplit(",", 1)
+            prefix = parts[0] + ", "
+            search = parts[1].strip()
+        else:
+            prefix = ""
+            search = current.strip()
+            
+        choices = []
+        for key, data in LORAS.items():
+            # Check matches
+            if search.lower() in key.lower() or search.lower() in data.get("name", "").lower():
+                # Avoid suggesting already selected styles (simple check)
+                if key in prefix:
+                    continue
+                    
+                full_name = f"{prefix}{data.get('name', key)}"
+                full_value = f"{prefix}{key}"
+                
+                # Discord limit is 100 chars for name/value. Truncate name if needed.
+                if len(full_name) > 100:
+                    full_name = full_name[:97] + "..."
+                if len(full_value) > 100:
+                    # Value too long to be a valid choice, skip or truncate?
+                    # If truncated, it breaks logic. Better to skip.
+                    continue
+                    
+                choices.append(app_commands.Choice(name=full_name, value=full_value))
+                
+        return choices[:25]
 
     @gen_premium.autocomplete('model')
     async def model_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
