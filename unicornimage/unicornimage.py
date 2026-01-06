@@ -133,12 +133,12 @@ class UnicornImage(commands.Cog):
         return commands.Cooldown(1, 3600)
 
     @commands.hybrid_command(name="genfree", description="Generate image using HordeAI (Free)")
+    @commands.dynamic_cooldown(_gen_free_cooldown, commands.BucketType.user)
     @app_commands.describe(
         prompt="Image description",
         style="Optional style (LoRA)",
         negative_prompt="Things to exclude from the image"
     )
-    @commands.dynamic_cooldown(_gen_free_cooldown, commands.BucketType.user)
     async def gen_free(self, ctx: commands.Context, prompt: str, style: Optional[str] = None, negative_prompt: Optional[str] = None):
         """
         Free generation command using HordeAI.
@@ -196,13 +196,13 @@ class UnicornImage(commands.Cog):
         return commands.Cooldown(1, 21600)
 
     @commands.hybrid_command(name="gen", description="[PREMIUM] Generate image using Modal")
+    @commands.dynamic_cooldown(_gen_premium_cooldown, commands.BucketType.user)
     @app_commands.describe(
         prompt="Image description",
         model="Base model to use",
         style="Optional style (LoRA)",
         negative_prompt="Things to exclude from the image"
     )
-    @commands.dynamic_cooldown(_gen_premium_cooldown, commands.BucketType.user)
     async def gen_premium(self, ctx: commands.Context, prompt: str, model: str = DEFAULT_MODEL, style: Optional[str] = None, negative_prompt: Optional[str] = None):
         """
         Premium generation using Modal.
