@@ -1,6 +1,7 @@
 import discord
 import io
 import asyncio
+import aiohttp
 from typing import Optional, List, Literal, Dict, Any
 
 from redbot.core import commands, Config, app_commands
@@ -35,11 +36,24 @@ class UnicornImage(commands.Cog):
 
         self._horde_client: Optional[HordeClient] = None
         self._modal_client: Optional[ModalClient] = None
+        self._session: Optional[aiohttp.ClientSession] = None
+
+    def cog_unload(self):
+        if self._session:
+            asyncio.create_task(self._session.close())
 
     async def get_horde_client(self) -> HordeClient:
         if self._horde_client is None:
             api_key = await self.config.horde_api_key()
-            self._horde_client = HordeClient(self.bot.session, api_key)
+            
+            # Try to retrieve bot session, fallback to creating one
+            session = getattr(self.bot, "session", None) or getattr(self.bot, "_session", None)
+            if session is None:
+                import aiohttp
+                self._session = aiohttp.ClientSession()
+                session = self._session
+            
+            self._horde_client = HordeClient(session, api_key)
         return self._horde_client
 
     async def get_modal_client(self) -> ModalClient:
