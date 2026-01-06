@@ -647,7 +647,6 @@ class XPCardGenerator:
                         frames.append(frame)
                         
                     output = io.BytesIO()
-                    log.info(f"Encoding animated WebP with {len(frames)} frames...")
                     # Save as WebP (Lossless for quality, method=3 for speed balance)
                     frames[0].save(
                         output,

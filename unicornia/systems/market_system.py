@@ -118,7 +118,7 @@ class MarketSystem:
                 if current_price > 100:
                     decay = 0.001 * volatility # 0.1% decay
                 elif current_price < 100:
-                    decay = -0.001 * volatility # Drift back up to 100
+                    decay = -0.01 * volatility # Drift back up to 100
                 
                 # Growth factor
                 growth = (math.log1p(usage) * 0.05 * volatility)
