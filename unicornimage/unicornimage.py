@@ -183,8 +183,9 @@ class UnicornImage(commands.Cog):
                  return await ctx.send("Failed to generate image.")
 
             with io.BytesIO(images[0]) as fp:
+                raw_styles_str = ", ".join([s for s in [style, style2, style3] if s])
                 await ctx.send(
-                    content=f"🎨 **Prompt:** {prompt}" + (f" | **Style:** {style}" if style else ""),
+                    content=f"🎨 **Prompt:** {prompt}" + (f" | **Styles:** {raw_styles_str}" if raw_styles_str else ""),
                     file=discord.File(fp, filename="generation.png")
                 )
 
@@ -264,7 +265,8 @@ class UnicornImage(commands.Cog):
                  return await ctx.send("Failed to generate image.")
 
             with io.BytesIO(images[0]) as fp:
-                content = f"🎨 **Prompt:** {prompt}" + (f" | **Style:** {style}" if style else "")
+                styles_str = ", ".join(raw_styles)
+                content = f"🎨 **Prompt:** {prompt}" + (f" | **Styles:** {styles_str}" if styles_str else "")
                 await ctx.send(content=content, file=discord.File(fp, filename="generation.png"))
 
         except Exception as e:
