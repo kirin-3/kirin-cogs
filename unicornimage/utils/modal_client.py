@@ -39,14 +39,8 @@ class ModalClient:
         nsfw: bool = False,
     ) -> List[bytes]:
         
-        if not nsfw:
-            pattern = re.compile(r'\b(' + '|'.join(map(re.escape, NSFW_TERMS)) + r')\b', re.IGNORECASE)
-            prompt = pattern.sub("", prompt)
-
-            if negative_prompt:
-                 negative_prompt = f"{negative_prompt}, {SFW_NEGATIVE_PROMPT}"
-            else:
-                 negative_prompt = SFW_NEGATIVE_PROMPT
+        # SFW filtering removed for Modal as per configuration.
+        # User is responsible for content or model handles it.
 
         if not self.inference_cls:
             self.reload_app()
@@ -58,6 +52,7 @@ class ModalClient:
         try:
             log.info(f"Sending request to Modal - Prompt: '{prompt}'")
             
+            # Note: The remote run method does not accept 'nsfw' argument
             images = await inference_obj.run.remote.aio(
                 prompt=prompt,
                 batch_size=batch_size,

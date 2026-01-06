@@ -145,7 +145,10 @@ class UnicornImage(commands.Cog):
         Premium SFW generation using Modal.
         """
         if not await self.is_premium(ctx):
-             return await ctx.send("🔒 This command is a Premium feature.", ephemeral=True)
+             msg = "🔒 This command is a Premium feature."
+             if ctx.interaction:
+                 return await ctx.send(msg, ephemeral=True)
+             return await ctx.send(msg)
         
         await ctx.defer()
         await self._run_modal_gen(ctx, prompt, style, nsfw=False)
@@ -159,7 +162,10 @@ class UnicornImage(commands.Cog):
         Premium NSFW generation using Modal.
         """
         if not await self.is_premium(ctx):
-             return await ctx.send("🔒 This command is a Premium feature.", ephemeral=True)
+             msg = "🔒 This command is a Premium feature."
+             if ctx.interaction:
+                 return await ctx.send(msg, ephemeral=True)
+             return await ctx.send(msg)
 
         await ctx.defer()
         await self._run_modal_gen(ctx, prompt, style, nsfw=True)
