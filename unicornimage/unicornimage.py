@@ -1,10 +1,11 @@
 import discord
+from discord import app_commands
 import io
 import asyncio
 import aiohttp
 from typing import Optional, List, Literal, Dict, Any
 
-from redbot.core import commands, Config, app_commands
+from redbot.core import commands, Config
 from redbot.core.bot import Red
 
 from .utils.horde import HordeClient
@@ -208,7 +209,7 @@ class UnicornImage(commands.Cog):
         Premium generation using Modal.
         """
         if not await self.is_premium(ctx):
-             msg = "🔒 This command is a Premium feature."
+             msg = "🔒 This command is a for Supporters only."
              if ctx.interaction:
                  return await ctx.send(msg, ephemeral=True)
              return await ctx.send(msg)
