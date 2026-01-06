@@ -245,7 +245,13 @@ class UnicornImage(commands.Cog):
                 prompt=full_prompt,
                 negative_prompt=negative_prompt or "",
                 model_id=model_config["id"],
-                loras=modal_loras
+                loras=modal_loras,
+                width=model_config.get("width", 1024),
+                height=model_config.get("height", 1024),
+                steps=model_config.get("steps", 30),
+                guidance_scale=model_config.get("cfg", 7.5),
+                clip_skip=model_config.get("clip_skip"),
+                scheduler=model_config.get("sampler")
             )
             
             if not images:
