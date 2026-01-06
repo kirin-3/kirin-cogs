@@ -78,7 +78,6 @@ class HordeClient:
             "r2": True,
         }
         
-        log.debug(f"Horde API Payload: {payload}")
         async with self.session.post(f"{self.base_url}/generate/async", json=payload, headers=headers) as resp:
             if resp.status != 202:
                 try:
