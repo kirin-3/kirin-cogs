@@ -139,19 +139,5 @@ HELP_CONTENT = {
             "`[p]stock sell <ticker> <amount>` - Sell shares.",
             "`[p]stock portfolio` - View your holdings."
         ]
-    },
-    "admin": {
-        "title": "⚙️ Admin Configuration",
-        "emoji": "⚙️",
-        "description": (
-            "Configure the Unicornia system settings. (Admins only)"
-        ),
-        "commands": [
-            "`[p]unicornia config` - View or edit settings.",
-            "`[p]unicornia guild xp include/exclude` - Manage XP channels.",
-            "`[p]unicornia whitelist` - Manage command restrictions.",
-            "`[p]unicornia gen channel` - Set currency generation channels.",
-            "`[p]unicornia migration` - Tools for migrating from Nadeko."
-        ]
     }
 }
