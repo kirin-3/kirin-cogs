@@ -74,4 +74,65 @@ LORAS = {
         "base": "Pony",
         "image_url": ""
     },
+    "Abstract Painting": {
+        "name": "Abstract Painting",
+        "description": "Abstract Painting Style",
+        "model_id": "civitai:1558543",
+        "trigger_words": ["abstractionism"],
+        "prompt": "brush stroke, traditional media,",
+        "strength": 0.8,
+        "base": "Pony",
+        "image_url": ""
+    },
+    "Bondage Suspension": {
+        "hidden": True,
+        "name": "Bondage Suspension",
+        "description": "Suspension",
+        "model_id": "civitai:1558543",
+        "trigger_words": ["bound", "shibari"],
+        "prompt": "arms behind back, knee down, knee up, spread legs,",
+        "strength": 0.8,
+        "base": "Pony",
+        "image_url": ""
+    },
+    "Stabilizer": {
+        "name": "Stabilizer",
+        "description": "Better prompt comprehension. Trained with precise and logical natural language captions from Gemini, rather than tags in random order with high FPR.",
+        "model_id": "civitai:1340810",
+        "trigger_words": ["score_9"],
+        "prompt": "",
+        "strength": 0.9,
+        "base": "SDXL",
+        "image_url": ""
+    },
+    "Realistic Skin Texture": {
+        "name": "Realistic Skin Texture Style",
+        "description": "Realistic Skin Texture style (Detailed Skin)",
+        "model_id": "civitai:707763",
+        "trigger_words": ["detailed skin"],
+        "prompt": "skin texture style, realistic skin, skin texture style",
+        "strength": 0.8,
+        "base": "SDXL",
+        "image_url": ""
+    },
+    "Detailed Perfection": {
+        "name": "Detailed Perfection Style",
+        "description": "Hands + Feet + Face + Body + All in one",
+        "model_id": "civitai:458257",
+        "trigger_words": ["perfection style"],
+        "prompt": "perfect, perfection",
+        "strength": 0.8,
+        "base": "SDXL",
+        "image_url": ""
+    },
+    "Ink Style": {
+        "name": "Ink Style",
+        "description": "zyd232's Ink Style",
+        "model_id": "civitai:649294",
+        "trigger_words": ["zydink"],
+        "prompt": "ink sketch",
+        "strength": 1.0,
+        "base": "SDXL",
+        "image_url": ""
+    }
 }

@@ -12,6 +12,7 @@ from .utils.modal_client import ModalClient
 from .loras import LORAS
 from .models import MODELS, DEFAULT_MODEL
 from .constants import DEFAULT_MODAL_PROMPT, HORDE_POSITIVE_PROMPT
+from .views import LoraListView
 
 class UnicornImage(commands.Cog):
     """
@@ -105,7 +106,7 @@ class UnicornImage(commands.Cog):
 
         return ", ".join(prompt_parts)
 
-    def _parse_styles(self, styles: List[str], max_count: int, required_base: str) -> tuple[List[Dict[str, Any]], Optional[str]]:
+    def _parse_styles(self, styles: List[str], max_count: int, required_base: str, allow_hidden: bool = True) -> tuple[List[Dict[str, Any]], Optional[str]]:
         if not styles:
             return [], None
             
@@ -121,6 +122,9 @@ class UnicornImage(commands.Cog):
             if config.get("base") != required_base:
                 return [], f"❌ Style `{key}` (Base: {config.get('base')}) is incompatible with required base {required_base}."
             
+            if not allow_hidden and config.get("hidden", False):
+                return [], f"❌ Style `{key}` is not available for this command."
+
             lora_configs.append(config)
             
         return lora_configs, None
@@ -147,7 +151,7 @@ class UnicornImage(commands.Cog):
         
         # Parse and Validate styles
         raw_styles = [s for s in [style, style2, style3] if s]
-        lora_configs, error = self._parse_styles(raw_styles, max_count=3, required_base="Pony")
+        lora_configs, error = self._parse_styles(raw_styles, max_count=3, required_base="Pony", allow_hidden=False)
         if error:
             return await ctx.send(error)
 
@@ -202,6 +206,7 @@ class UnicornImage(commands.Cog):
     @app_commands.describe(
         prompt="Image description",
         model="Base model to use",
+        batch_size="Number of images (1-4)",
         style="Optional style (LoRA)",
         style2="Optional style (LoRA)",
         style3="Optional style (LoRA)",
@@ -209,7 +214,7 @@ class UnicornImage(commands.Cog):
         style5="Optional style (LoRA)",
         negative_prompt="Things to exclude from the image"
     )
-    async def gen_premium(self, ctx: commands.Context, prompt: str, model: str = DEFAULT_MODEL, style: Optional[str] = None, style2: Optional[str] = None, style3: Optional[str] = None, style4: Optional[str] = None, style5: Optional[str] = None, negative_prompt: Optional[str] = None):
+    async def gen_premium(self, ctx: commands.Context, prompt: str, model: str = DEFAULT_MODEL, batch_size: commands.Range[int, 1, 4] = 1, style: Optional[str] = None, style2: Optional[str] = None, style3: Optional[str] = None, style4: Optional[str] = None, style5: Optional[str] = None, negative_prompt: Optional[str] = None):
         """
         Premium generation using Modal.
         """
@@ -221,9 +226,9 @@ class UnicornImage(commands.Cog):
         
         await ctx.defer()
         raw_styles = [s for s in [style, style2, style3, style4, style5] if s]
-        await self._run_modal_gen(ctx, prompt, model, raw_styles, negative_prompt)
+        await self._run_modal_gen(ctx, prompt, model, raw_styles, negative_prompt, batch_size)
 
-    async def _run_modal_gen(self, ctx: commands.Context, prompt: str, model_alias: str, raw_styles: List[str], negative_prompt: Optional[str]):
+    async def _run_modal_gen(self, ctx: commands.Context, prompt: str, model_alias: str, raw_styles: List[str], negative_prompt: Optional[str], batch_size: int = 1):
         # Validate Model
         if model_alias not in MODELS:
              return await ctx.send(f"❌ Model `{model_alias}` not found. Available: {', '.join(MODELS.keys())}")
@@ -253,6 +258,7 @@ class UnicornImage(commands.Cog):
                 negative_prompt=negative_prompt or "",
                 model_id=model_config["id"],
                 loras=modal_loras,
+                batch_size=batch_size,
                 width=model_config.get("width", 1024),
                 height=model_config.get("height", 1024),
                 steps=model_config.get("steps", 30),
@@ -264,10 +270,13 @@ class UnicornImage(commands.Cog):
             if not images:
                  return await ctx.send("Failed to generate image.")
 
-            with io.BytesIO(images[0]) as fp:
-                styles_str = ", ".join(raw_styles)
-                content = f"🎨 **Prompt:** {prompt}" + (f" | **Styles:** {styles_str}" if styles_str else "")
-                await ctx.send(content=content, file=discord.File(fp, filename="generation.png"))
+            files = []
+            for i, img_bytes in enumerate(images):
+                files.append(discord.File(io.BytesIO(img_bytes), filename=f"generation_{i}.png"))
+
+            styles_str = ", ".join(raw_styles)
+            content = f"🎨 **Prompt:** {prompt}" + (f" | **Styles:** {styles_str}" if styles_str else "")
+            await ctx.send(content=content, files=files)
 
         except Exception as e:
             await ctx.send(f"An error occurred: {str(e)}")
@@ -275,34 +284,13 @@ class UnicornImage(commands.Cog):
     @commands.hybrid_command(name="loras", description="Preview available styles")
     async def list_loras(self, ctx: commands.Context):
         """
-        Lists all available LoRA styles.
+        Lists all available LoRA styles using V2 components.
         """
         if not LORAS:
             return await ctx.send("No styles are currently configured.")
             
-        embeds = []
-        intro_embed = discord.Embed(
-            title="Available Styles",
-            description="Use these styles with `/gen` commands.\nExample: `/gen prompt:cat style:anime`",
-            color=discord.Color.blue()
-        )
-        embeds.append(intro_embed)
-        
-        for style_key, data in list(LORAS.items())[:9]:
-            name = data.get("name", style_key)
-            desc = data.get("description", "No description")
-            img_url = data.get("image_url")
-            
-            embed = discord.Embed(
-                title=f"Style: {name} (`{style_key}`)",
-                description=desc,
-                color=discord.Color.green()
-            )
-            if img_url:
-                embed.set_image(url=img_url)
-            embeds.append(embed)
-            
-        await ctx.send(embeds=embeds)
+        view = LoraListView(LORAS)
+        await ctx.send("Browse available styles below:", view=view)
 
     @gen_free.autocomplete('style')
     @gen_free.autocomplete('style2')
@@ -314,7 +302,13 @@ class UnicornImage(commands.Cog):
     @gen_premium.autocomplete('style5')
     async def style_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         choices = []
+        is_free_command = interaction.command.name == "genfree"
+
         for key, data in LORAS.items():
+            # Hide hidden loras from genfree command
+            if is_free_command and data.get("hidden", False):
+                continue
+                
             if current.lower() in key.lower() or current.lower() in data.get("name", "").lower():
                 choices.append(app_commands.Choice(name=data.get("name", key), value=key))
         return choices[:25]
