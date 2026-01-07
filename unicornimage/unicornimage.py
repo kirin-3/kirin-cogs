@@ -322,11 +322,13 @@ class UnicornImage(commands.Cog):
 
     @gen_premium.autocomplete('model')
     async def model_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-        return [
-            app_commands.Choice(name=data["name"], value=key)
-            for key, data in MODELS.items()
-            if current.lower() in key.lower() or current.lower() in data["name"].lower()
-        ][:25]
+        if not MODELS:
+            return []
+        choices = []
+        for key, data in MODELS.items():
+            if current.lower() in key.lower() or current.lower() in data.get("name", "").lower():
+                choices.append(app_commands.Choice(name=data["name"], value=key))
+        return choices[:25]
 
     # --- Config Commands ---
     
