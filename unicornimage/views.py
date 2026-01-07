@@ -25,7 +25,8 @@ class LoraListView(ui.LayoutView):
             url = data.get("image_url")
             if url:
                 try:
-                    async with self.session.get(url) as resp:
+                    # Add User-Agent to avoid blocking
+                    async with self.session.get(url, headers={"User-Agent": "UnicornImage/1.0"}) as resp:
                         if resp.status == 200:
                             data_bytes = await resp.read()
                             # Determine extension from url or default to png
@@ -49,49 +50,52 @@ class LoraListView(ui.LayoutView):
     def build_layout(self, page_items, filenames_map, total_pages):
         self.clear_items()
         
-        # Main Container
-        container = ui.Container(accent_color=discord.Color.blue())
-        
-        # Header
-        container.add_item(ui.TextDisplay(content=f"## 🎨 Available Styles (Page {self.current_page + 1}/{total_pages})\nUse these styles with `/gen` command."))
-        container.add_item(ui.Separator())
+        # Header Container
+        header_container = ui.Container(accent_color=discord.Color.blue())
+        header_container.add_item(ui.TextDisplay(content=f"## 🎨 Available Styles (Page {self.current_page + 1}/{total_pages})\nUse these styles with `/gen` command."))
+        header_container.add_item(ui.Separator())
+        self.add_item(header_container)
         
         if not page_items:
-             container.add_item(ui.TextDisplay(content="No styles available."))
+             empty_container = ui.Container(accent_color=discord.Color.red())
+             empty_container.add_item(ui.TextDisplay(content="No styles available."))
+             self.add_item(empty_container)
         
         for key, data in page_items:
             name = data.get("name", key)
             desc = data.get("description", "No description")
             base = data.get("base", "Unknown")
-            strength = data.get("strength", "Default")
-            triggers = ", ".join(data.get("trigger_words", [])) or "None"
             
             # Format Info
             info = f"### {name} (`{key}`)\n"
             info += f"**Base Model:** {base}\n"
             info += f"**Description:** {desc}\n"
             
-            container.add_item(ui.TextDisplay(content=info))
+            # Item Container
+            item_container = ui.Container(accent_color=discord.Color.blue())
+            item_container.add_item(ui.TextDisplay(content=info))
+            self.add_item(item_container)
             
+            # Image Gallery (Top Level)
             filename = filenames_map.get(key)
             if filename:
                  gallery = ui.MediaGallery()
                  gallery.add_item(media=f"attachment://{filename}")
-                 container.add_item(gallery)
+                 self.add_item(gallery)
                  
-            container.add_item(ui.Separator())
+            self.add_item(ui.Separator())
             
         # Pagination Buttons
         if total_pages > 1:
+            nav_container = ui.Container(accent_color=discord.Color.blue())
             prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, disabled=(self.current_page == 0))
             next_btn = ui.Button(label="▶️", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages - 1))
             
             prev_btn.callback = self.prev_page
             next_btn.callback = self.next_page
             
-            container.add_item(ui.ActionRow(prev_btn, next_btn))
-            
-        self.add_item(container)
+            nav_container.add_item(ui.ActionRow(prev_btn, next_btn))
+            self.add_item(nav_container)
 
     async def send_initial(self, ctx):
         total_pages = max(1, (len(self.lora_list) - 1) // self.items_per_page + 1)
