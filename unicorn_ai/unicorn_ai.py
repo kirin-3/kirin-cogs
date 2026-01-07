@@ -3,7 +3,7 @@ import logging
 import os
 import asyncio
 import time
-from redbot.core import commands, Config
+from redbot.core import commands, app_commands, Config
 from redbot.core.utils.chat_formatting import box, pagify
 from discord.ext import tasks
 from typing import Optional
@@ -223,7 +223,66 @@ class UnicornAI(commands.Cog):
 
     # --- Commands ---
 
-    @commands.group(name="ai")
+    async def persona_autocomplete(self, interaction: discord.Interaction, current: str):
+        """
+        Autocomplete for summonable personas.
+        Filters by 'allow_summon' flag.
+        """
+        try:
+            # Run in thread to prevent blocking heartbeat during file I/O
+            summonable_names = await asyncio.to_thread(self.personas.get_summonable_personas)
+            
+            choices = []
+            for name in summonable_names:
+                if current.lower() in name.lower():
+                    choices.append(app_commands.Choice(name=name, value=name))
+                    
+                if len(choices) >= 25: # Discord limit
+                    break
+                    
+            return choices
+        except Exception:
+            # Silently fail autocomplete rather than spamming logs/console
+            return []
+
+    @commands.hybrid_command(name="summon", description="Summon a specific persona to chat.")
+    @app_commands.describe(persona="The name of the persona to summon")
+    @app_commands.autocomplete(persona=persona_autocomplete)
+    @commands.guild_only()
+    @commands.cooldown(1, 3200, commands.BucketType.user) # 1 hour
+    @commands.cooldown(1, 1800, commands.BucketType.channel) # 30 minutes
+    async def ai_summon(self, ctx: commands.Context, persona: str):
+        """
+        Summons a specific persona to the current channel.
+        Usage: [p]summon <persona_name>
+        """
+        # 1. Validation: Enabled Channel
+        if not await self.config.channel(ctx.channel).enabled():
+            return await ctx.send("AI is not enabled in this channel.", ephemeral=True)
+
+        # 2. Validation: Persona Exists and is Summonable
+        # We use asyncio.to_thread to avoid blocking event loop with I/O
+        p_data = await asyncio.to_thread(self.personas.load_persona, persona)
+        
+        if not p_data:
+            return await ctx.send(f"Persona `{persona}` not found.", ephemeral=True)
+            
+        if not p_data.allow_summon:
+            # Security fail-safe: Even if they guessed the name, deny it.
+            return await ctx.send(f"Persona `{persona}` cannot be summoned manually.", ephemeral=True)
+            
+        # 3. Trigger
+        # Defer because API calls can take time
+        await ctx.defer()
+        
+        try:
+            # We pass the persona_override to _trigger_ai
+            await self._trigger_ai(ctx.channel, ctx=ctx, persona_override=persona)
+        except Exception as e:
+            log.exception("Failed to summon persona")
+            await ctx.send(f"Failed to summon persona: {e}")
+
+    @commands.hybrid_group(name="ai")
     async def ai_group(self, ctx):
         """Manage UnicornAI settings."""
         pass
@@ -239,9 +298,9 @@ class UnicornAI(commands.Cog):
         await self.config.user(ctx.author).opt_out.set(new_state)
         
         if new_state:
-            await ctx.send("You have opted out. Your messages will no longer be included in the AI context.")
+            await ctx.send("You have opted out. Your messages will no longer be included in the AI context.", ephemeral=True)
         else:
-            await ctx.send("You have opted in. The AI can now see your messages.")
+            await ctx.send("You have opted in. The AI can now see your messages.", ephemeral=True)
 
     @ai_group.command(name="setup")
     @commands.is_owner()
