@@ -3,6 +3,7 @@ from discord import ui
 from typing import List, Dict, Any
 import aiohttp
 import io
+import os
 
 class LoraListView(ui.LayoutView):
     """
@@ -21,28 +22,56 @@ class LoraListView(ui.LayoutView):
         files = []
         filenames_map = {} # key -> filename
         
+        # Path to 'lorapreviews' inside the cog folder
+        base_path = os.path.join(os.path.dirname(__file__), "lorapreviews")
+        
         for key, data in page_items:
+            image_found = False
+            
+            # 1. Try Local Files
+            if os.path.exists(base_path):
+                # Check for common extensions
+                for ext in [".png", ".jpg", ".jpeg", ".webp"]:
+                    local_filename = f"{key}{ext}"
+                    file_path = os.path.join(base_path, local_filename)
+                    
+                    if os.path.exists(file_path):
+                        try:
+                            with open(file_path, "rb") as f:
+                                data_bytes = f.read()
+                                
+                            # Create attachment filename (cleaned)
+                            clean_key = "".join(c for c in key if c.isalnum() or c in (' ', '_', '-')).strip()
+                            attach_filename = f"{clean_key}_{self.current_page}{ext}"
+                            
+                            files.append(discord.File(io.BytesIO(data_bytes), filename=attach_filename))
+                            filenames_map[key] = attach_filename
+                            image_found = True
+                            break
+                        except Exception as e:
+                            print(f"Error loading local image {local_filename}: {e}")
+            
+            if image_found:
+                continue
+
+            # 2. Fallback to URL
             url = data.get("image_url")
             if url:
                 try:
-                    # Add User-Agent to avoid blocking
                     async with self.session.get(url, headers={"User-Agent": "UnicornImage/1.0"}) as resp:
                         if resp.status == 200:
                             data_bytes = await resp.read()
-                            # Determine extension from url or default to png
+                            # Determine extension
                             ext = "png"
                             if "jpeg" in url.lower() or "jpg" in url.lower(): ext = "jpg"
                             elif "webp" in url.lower(): ext = "webp"
-                            elif "gif" in url.lower(): ext = "gif"
                             
-                            # Clean key for filename
                             clean_key = "".join(c for c in key if c.isalnum() or c in (' ', '_', '-')).strip()
                             filename = f"{clean_key}_{self.current_page}.{ext}"
                             
                             files.append(discord.File(io.BytesIO(data_bytes), filename=filename))
                             filenames_map[key] = filename
                 except Exception as e:
-                    # Log error or ignore
                     print(f"Failed to load image for {key}: {e}")
                     pass
         return files, filenames_map
@@ -50,16 +79,15 @@ class LoraListView(ui.LayoutView):
     def build_layout(self, page_items, filenames_map, total_pages):
         self.clear_items()
         
-        # Header Container
-        header_container = ui.Container(accent_color=discord.Color.blue())
-        header_container.add_item(ui.TextDisplay(content=f"## 🎨 Available Styles (Page {self.current_page + 1}/{total_pages})\nUse these styles with `/gen` command."))
-        header_container.add_item(ui.Separator())
-        self.add_item(header_container)
+        # Main Container
+        container = ui.Container(accent_color=discord.Color.blue())
+        
+        # Header
+        container.add_item(ui.TextDisplay(content=f"## 🎨 Available Styles (Page {self.current_page + 1}/{total_pages})\nUse these styles with `/gen` command."))
+        container.add_item(ui.Separator())
         
         if not page_items:
-             empty_container = ui.Container(accent_color=discord.Color.red())
-             empty_container.add_item(ui.TextDisplay(content="No styles available."))
-             self.add_item(empty_container)
+             container.add_item(ui.TextDisplay(content="No styles available."))
         
         for key, data in page_items:
             name = data.get("name", key)
@@ -71,31 +99,30 @@ class LoraListView(ui.LayoutView):
             info += f"**Base Model:** {base}\n"
             info += f"**Description:** {desc}\n"
             
-            # Item Container
-            item_container = ui.Container(accent_color=discord.Color.blue())
-            item_container.add_item(ui.TextDisplay(content=info))
-            self.add_item(item_container)
+            container.add_item(ui.TextDisplay(content=info))
             
-            # Image Gallery (Top Level)
             filename = filenames_map.get(key)
             if filename:
-                 gallery = ui.MediaGallery()
-                 gallery.add_item(media=f"attachment://{filename}")
-                 self.add_item(gallery)
+                 try:
+                     gallery = ui.MediaGallery()
+                     gallery.add_item(media=f"attachment://{filename}")
+                     container.add_item(gallery)
+                 except Exception:
+                     pass
                  
-            self.add_item(ui.Separator())
+            container.add_item(ui.Separator())
             
         # Pagination Buttons
         if total_pages > 1:
-            nav_container = ui.Container(accent_color=discord.Color.blue())
             prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, disabled=(self.current_page == 0))
             next_btn = ui.Button(label="▶️", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages - 1))
             
             prev_btn.callback = self.prev_page
             next_btn.callback = self.next_page
             
-            nav_container.add_item(ui.ActionRow(prev_btn, next_btn))
-            self.add_item(nav_container)
+            container.add_item(ui.ActionRow(prev_btn, next_btn))
+            
+        self.add_item(container)
 
     async def send_initial(self, ctx):
         total_pages = max(1, (len(self.lora_list) - 1) // self.items_per_page + 1)
@@ -109,7 +136,6 @@ class LoraListView(ui.LayoutView):
         await ctx.send(view=self, files=files)
 
     async def update_page(self, interaction: discord.Interaction):
-        # Defer update
         await interaction.response.defer()
         
         total_pages = max(1, (len(self.lora_list) - 1) // self.items_per_page + 1)
@@ -120,7 +146,6 @@ class LoraListView(ui.LayoutView):
         files, filenames_map = await self.fetch_images(page_items)
         self.build_layout(page_items, filenames_map, total_pages)
         
-        # Use edit_original_response because we deferred
         await interaction.edit_original_response(view=self, attachments=files)
 
     async def prev_page(self, interaction: discord.Interaction):
