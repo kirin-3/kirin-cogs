@@ -290,7 +290,7 @@ class UnicornImage(commands.Cog):
             return await ctx.send("No styles are currently configured.")
             
         view = LoraListView(LORAS)
-        await ctx.send("Browse available styles below:", view=view)
+        await ctx.send(view=view)
 
     @gen_free.autocomplete('style')
     @gen_free.autocomplete('style2')
