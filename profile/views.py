@@ -58,15 +58,18 @@ class ProfileModal(Modal):
         )
         self.add_item(self.input)
         self.value = None
+        self.interaction = None
 
     async def on_submit(self, interaction: Interaction):
         self.value = self.input.value
+        self.interaction = interaction
         await interaction.response.defer()
         self.stop()
 
 class PictureUploadModal(Modal):
     def __init__(self):
         super().__init__(title="Profile Picture")
+        self.interaction = None
         self.image = FileUpload(
             custom_id="profile_picture_upload",
             required=True,
@@ -74,14 +77,6 @@ class PictureUploadModal(Modal):
             max_values=1,
         )
         # Wrap it in a Label (as seen in tickets reference)
-        # Note: discord.ui.Label might not exist in all d.py versions, 
-        # but the reference used it. Let's try to follow the reference closely.
-        # Actually, standard d.py 2.x doesn't have ui.Label for this purpose usually.
-        # Looking at tickets/common/views.py:375
-        # self.label = discord.ui.Label(...)
-        
-        # If discord.ui.Label doesn't exist, we might need a different approach.
-        # But I'll follow the reference.
         try:
             self.label = discord.ui.Label(
                 text="Upload your profile picture",
@@ -113,6 +108,7 @@ class PictureUploadModal(Modal):
         else:
             self.value = None
             
+        self.interaction = interaction
         await interaction.response.defer()
         self.stop()
 
@@ -183,7 +179,17 @@ class ProfileBuilderView(View):
                     self.data[field_id] = val
 
             self._setup_buttons()
-            await interaction.message.edit(view=self)
+            try:
+                await interaction.message.edit(view=self)
+            except discord.NotFound:
+                # Original message was deleted (likely dismissed by user)
+                # If we have a fresh interaction from the modal, send a new message
+                if hasattr(modal, 'interaction') and modal.interaction:
+                    await modal.interaction.followup.send(
+                        "Your profile builder session continues here:",
+                        view=self,
+                        ephemeral=True
+                    )
             
         return callback
 

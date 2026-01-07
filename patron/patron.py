@@ -102,13 +102,14 @@ class Patron(commands.Cog):
         processed_charges = await self.config.guild(guild).processed_charges()
         annual_tracking = await self.config.guild(guild).annual_tracking()
         
-        # Track changes to save config later
-        config_changed = False
-        
         # Track usernames found in sheet with "Active" status
         active_usernames_in_sheet = set()
 
-        for row in records:
+        for i, row in enumerate(records):
+            # Throttle to avoid rate limits
+            if i > 0 and i % 5 == 0:
+                await asyncio.sleep(2)
+            
             try:
                 username = str(row.get("Discord", "")).strip()
                 if not username:
@@ -182,14 +183,18 @@ class Patron(commands.Cog):
                     await self.award_currency(guild, member, reward_value, "New Charge Processed")
                     
                     processed_charges[username] = last_charge_date
-                    config_changed = True
                     
                     # Setup Annual Tracking
                     if is_annual:
                         annual_tracking[username] = {
                             "anchor_date": datetime.utcnow().isoformat(), # Use current time as anchor for bot distribution cycle
-                            "months_paid": 1
+                            "months_paid": 1,
+                            "last_award": datetime.utcnow().isoformat()
                         }
+                    
+                    # Save immediately to prevent double-awarding on crash
+                    await self.config.guild(guild).processed_charges.set(processed_charges)
+                    await self.config.guild(guild).annual_tracking.set(annual_tracking)
                 
                 else:
                     # SAME CHARGE - Check for Annual Recurring
@@ -197,6 +202,7 @@ class Patron(commands.Cog):
                         track_data = annual_tracking[username]
                         months_paid = track_data.get("months_paid", 0)
                         anchor_iso = track_data.get("anchor_date")
+                        last_award_iso = track_data.get("last_award")
                         
                         if months_paid < 12 and anchor_iso:
                             anchor_date = datetime.fromisoformat(anchor_iso)
@@ -204,17 +210,32 @@ class Patron(commands.Cog):
                             # Simple logic: Anchor + (30 days * months_paid)
                             next_due = anchor_date + timedelta(days=30 * months_paid)
                             
-                            if datetime.utcnow() >= next_due:
+                            # Safety Check: Ensure we haven't awarded recently (last 25 days)
+                            # This prevents double-processing if the loop restarts or logic glitches
+                            safe_to_award = True
+                            if last_award_iso:
+                                last_award = datetime.fromisoformat(last_award_iso)
+                                if (datetime.utcnow() - last_award) < timedelta(days=25):
+                                    safe_to_award = False
+
+                            if safe_to_award and datetime.utcnow() >= next_due:
                                 await self.award_currency(guild, member, reward_value, f"Annual Pledge Month {months_paid + 1}/12")
                                 track_data["months_paid"] += 1
-                                config_changed = True
+                                track_data["last_award"] = datetime.utcnow().isoformat()
+                                
+                                # Save immediately
+                                await self.config.guild(guild).annual_tracking.set(annual_tracking)
             except Exception as e:
                 log.error(f"Error processing row for {username}: {e}")
 
         # --- Reverse Sync (Cleanup) ---
         # If a user has the Active Role but is NOT in the "Active" list from the sheet, downgrade them.
         if role_active and role_former:
-            for member in role_active.members:
+            for i, member in enumerate(role_active.members):
+                # Throttle
+                if i > 0 and i % 5 == 0:
+                    await asyncio.sleep(2)
+                    
                 try:
                     # Warning: Matching by name is fragile, but it's the only link we have.
                     # If the user changed their name, they might be downgraded accidentally.
@@ -224,10 +245,6 @@ class Patron(commands.Cog):
                         await member.add_roles(role_former, reason="Patron Sync: Not in Active list")
                 except Exception as e:
                     log.error(f"Error in reverse sync for {member.name}: {e}")
-
-        if config_changed:
-            await self.config.guild(guild).processed_charges.set(processed_charges)
-            await self.config.guild(guild).annual_tracking.set(annual_tracking)
 
     def parse_amount(self, amount_str: str) -> float:
         """Strips currency symbols and returns float. Handles '1.000,00' and '1,000.00'."""
