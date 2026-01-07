@@ -246,13 +246,13 @@ class UnicornAI(commands.Cog):
             return []
 
     # Dynamic cooldowns to allow owner bypass
-    async def _summon_user_cd(ctx):
-        if await ctx.bot.is_owner(ctx.author):
+    def _summon_user_cd(ctx):
+        if ctx.author.id in ctx.bot.owner_ids:
             return None
         return commands.Cooldown(1, 21600)
 
-    async def _summon_channel_cd(ctx):
-        if await ctx.bot.is_owner(ctx.author):
+    def _summon_channel_cd(ctx):
+        if ctx.author.id in ctx.bot.owner_ids:
             return None
         return commands.Cooldown(1, 1800)
 
