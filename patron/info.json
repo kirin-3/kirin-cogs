@@ -1,13 +1,13 @@
 {
     "author": ["Kirin"],
-    "install_msg": "Thanks for installing the Patron cog! Use `[p]help patreonset` to see all available commands.",
+    "install_msg": "Thanks for installing the Patron cog! Use `[p]help patreonset` to see all available commands. Make sure to place your `service_account.json` in the cog folder.",
     "name": "Patron",
-    "short": "Send award messages for both new and recurring Patreon donations",
-    "description": "This cog connects to Patreon's API to fetch donation data and automatically sends award messages for both new patrons and monthly recurring donations. Uses format: `.award {amount} @discordusername` where amount is calculated as 3000 per 1 EUR donated with additional percentage bonuses for higher donation tiers.",
-    "tags": ["patreon", "donation", "patron", "donor", "api", "integration", "award", "monthly"],
-    "requirements": ["aiohttp"],
+    "short": "Syncs Discord roles and awards currency from a Google Sheet (Patreon/BMC)",
+    "description": "Connects to a Google Sheet to manage Patreon/BuyMeACoffee rewards. automatically manages roles and sends monthly currency rewards based on donation tiers. Requires 'Unicornia' cog for economy features.",
+    "tags": ["patreon", "donation", "sheet", "gspread", "award", "economy"],
+    "requirements": ["gspread", "google-auth"],
     "min_bot_version": "3.5.0",
     "hidden": false,
     "disabled": false,
     "type": "COG"
-} 
+}
