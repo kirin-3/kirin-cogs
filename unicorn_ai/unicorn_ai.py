@@ -245,12 +245,23 @@ class UnicornAI(commands.Cog):
             # Silently fail autocomplete rather than spamming logs/console
             return []
 
+    # Dynamic cooldowns to allow owner bypass
+    async def _summon_user_cd(ctx):
+        if await ctx.bot.is_owner(ctx.author):
+            return None
+        return commands.Cooldown(1, 21600)
+
+    async def _summon_channel_cd(ctx):
+        if await ctx.bot.is_owner(ctx.author):
+            return None
+        return commands.Cooldown(1, 1800)
+
     @commands.hybrid_command(name="summon", description="Summon a specific persona to chat.")
     @app_commands.describe(persona="The name of the persona to summon")
     @app_commands.autocomplete(persona=persona_autocomplete)
     @commands.guild_only()
-    @commands.cooldown(1, 21600, commands.BucketType.user) # 6 hours
-    @commands.cooldown(1, 1800, commands.BucketType.channel) # 30 minutes
+    @commands.dynamic_cooldown(_summon_user_cd, commands.BucketType.user)
+    @commands.dynamic_cooldown(_summon_channel_cd, commands.BucketType.channel)
     async def ai_summon(self, ctx: commands.Context, persona: str):
         """
         Summons a specific persona to the current channel.
