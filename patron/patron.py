@@ -304,30 +304,30 @@ class Patron(commands.Cog):
 
     @commands.group()
     @checks.is_owner()
-    async def patreonset(self, ctx):
+    async def patronset(self, ctx):
         """Settings for Patron cog."""
         pass
         
-    @patreonset.command(name="setup")
+    @patronset.command(name="setup")
     async def set_sheet_id(self, ctx, sheet_id: str):
         """Set the Google Sheet ID."""
         await self.config.guild(ctx.guild).sheet_id.set(sheet_id)
         await ctx.send(f"Sheet ID set to `{sheet_id}`.")
         
-    @patreonset.command(name="roles")
+    @patronset.command(name="roles")
     async def set_roles(self, ctx, active_role: discord.Role, former_role: discord.Role):
         """Set the Active and Former Patron roles."""
         await self.config.guild(ctx.guild).role_active.set(active_role.id)
         await self.config.guild(ctx.guild).role_former.set(former_role.id)
         await ctx.send(f"Roles set:\nActive: {active_role.name}\nFormer: {former_role.name}")
         
-    @patreonset.command(name="logchannel")
+    @patronset.command(name="logchannel")
     async def set_log_channel(self, ctx, channel: discord.TextChannel):
         """Set channel for reward logs."""
         await self.config.guild(ctx.guild).log_channel.set(channel.id)
         await ctx.send(f"Log channel set to {channel.mention}.")
         
-    @patreonset.command(name="sync")
+    @patronset.command(name="sync")
     async def manual_sync(self, ctx):
         """Manually trigger a sync."""
         if self.lock.locked():
@@ -342,7 +342,7 @@ class Patron(commands.Cog):
             await self.process_sheet(ctx.guild, sheet_id)
         await ctx.send("Sync complete.")
         
-    @patreonset.command(name="creds")
+    @patronset.command(name="creds")
     async def upload_creds(self, ctx):
         """Instructions to upload credentials."""
         msg = (

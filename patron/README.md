@@ -1,149 +1,83 @@
 # Patron Cog
 
-A Red Discord Bot cog that integrates with Patreon's API to automatically award users based on their donation amounts.
+Syncs Discord roles and awards currency from a Google Sheet (supporting Patreon, BuyMeACoffee, or manual entries).
 
 ## Features
 
-- Connect to Patreon's API to fetch donation data
-- Automatically send award messages for both new patrons and monthly recurring donations
-- Configurable message format (default: `.award {amount} @discordusername`)
-- Maps Patreon accounts to Discord users either automatically or manually
-- Token refresh mechanism for continuous API access
-- Periodic checking for new donations
+- **Google Sheets Integration**: Reads data directly from a "Master Sheet" of your donors.
+- **Unified Management**: Handle Patreon, BuyMeACoffee, and PayPal donors in one place.
+- **Smart Role Sync**: 
+  - Automatically grants **Active Role** to active patrons.
+  - Automatically moves expired/cancelled patrons to **Former Role**.
+  - Downgrades users who are removed from the sheet.
+- **Advanced Currency Rewards**:
+  - Automatically calculates rewards based on donation amount.
+  - Supports **Annual Pledges** by distributing the reward monthly over 12 months.
+  - Applies percentage bonuses for higher tiers (5%, 10%, 15%, 20%).
+- **European Currency Support**: Handles `€5,00` and `$5.00` formats correctly.
 
-## Setup
+## Setup Guide
 
-### Prerequisites
+### 1. Google Cloud Setup (One-time)
+1.  Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2.  Create a new project (e.g., "Discord Bot Sheets").
+3.  Enable the **Google Sheets API**.
+4.  Create a **Service Account** and download the **JSON Key**.
+5.  Rename the key file to `service_account.json`.
+6.  **Upload** this file to your bot's `patron/` folder (`patron/service_account.json`).
 
-1. You need to have a Patreon creator account
-2. Register a client application at https://www.patreon.com/portal/registration/register-clients
-3. Set up OAuth permissions for the campaign data
-4. Get your Client ID, Client Secret, Creator Access Token, and Creator Refresh Token
+### 2. Prepare Your Sheet
+Create a Google Sheet with the following headers (order doesn't matter, names must match):
 
-### Commands
+| Column Name | Description | Example |
+|-------------|-------------|---------|
+| `Discord` | The Discord username of the patron | `kirin_dev` |
+| `Patron Status` | Must be "Active patron" to get rewards | `Active patron` |
+| `Pledge Amount` | The donation amount (currency symbol optional) | `€10.00` or `10,00` |
+| `Charge Frequency`| "Monthly" or "Annual" | `Monthly` |
+| `Last Charge Date`| Date string (any format distinct per charge) | `2024-05-01` |
 
-All commands require bot owner permissions to use:
+**Share** this sheet (Editor access) with the **client email** found inside your `service_account.json` file.
 
-- `[p]patreonset clientid <client_id>` - Set your Patreon API Client ID (DM only)
-- `[p]patreonset clientsecret <client_secret>` - Set your Patreon API Client Secret (DM only)
-- `[p]patreonset accesstoken <access_token>` - Set your Patreon Creator Access Token (DM only)
-- `[p]patreonset refreshtoken <refresh_token>` - Set your Patreon Creator Refresh Token (DM only)
-- `[p]patreonset campaignid <campaign_id>` - Set your Patreon Campaign ID
-- `[p]patreonset awardchannel <channel>` - Set the channel where award messages will be sent
-- `[p]patreonset messageformat <format>` - Set the format for award messages
-- `[p]patreonset minamount <amount>` - Set the minimum donation amount that triggers an award
-- `[p]patreonset monthly <True/False>` - Enable/disable processing of monthly recurring donations
-- `[p]patreonset status` - Show current Patreon API configuration status
-- `[p]patreonset checkconnections` - Check Patreon-Discord connections in the system
-- `[p]patreonset manualconnect <patreon_id> <discord_user>` - Manually connect a Patreon user to a Discord user
-- `[p]patreonset checkpatrons` - Manually trigger a check for new patrons
-- `[p]patreonset refreshpatreontoken` - Manually refresh your Patreon access token
-- `[p]patreonset cleartransactions` - Clear all processed donation records to reprocess them
-- `[p]patreonset listpatrons` - List Discord usernames of current patrons without pinging them
-- `[p]patreonset resetapi` - Reset all Patreon API credentials (DM only)
-- `[p]patreonset tokenguide` - Provides a step-by-step guide for getting new Patreon API tokens
-
-## Message Format
-
-You can customize the award message format using the following placeholders:
-- `{amount}` - The calculated award amount (3000 per 1 EUR/USD donated)
-- `{discord_user}` - The Discord user mention
-- `{patron_name}` - The patron's full name from Patreon
-- `{recurring}` - Will be "new" for first-time donations or "monthly" for recurring donations
-
-Default format: `.award {amount} {discord_user}`
-
-### Amount Calculation
-
-The `{amount}` value is automatically calculated based on the donation amount:
-- For each 1 EUR/USD donated, the base amount will be 3000
-- Bonus percentages are applied based on donation tiers:
-  - 5-9.99 EUR: 5% bonus
-  - 10-19.99 EUR: 10% bonus
-  - 20-39.99 EUR: 15% bonus
-  - 40+ EUR: 20% bonus
-
-Examples:
-- A 2 EUR donation: 2 × 3000 = 6000 (no bonus)
-- A 5 EUR donation: 5 × 3000 × 1.05 = 15750
-- A 10 EUR donation: 10 × 3000 × 1.10 = 33000
-- A 20 EUR donation: 20 × 3000 × 1.15 = 69000
-- A 40 EUR donation: 40 × 3000 × 1.20 = 144000
-
-## How It Works
-
-1. The cog connects to the Patreon API using your creator credentials
-2. It fetches members (patrons) data from your campaign
-3. For each patron, it checks:
-   - If they are a new patron (first-time donation)
-   - If they have a recurring monthly donation that hasn't been processed
-   - If they have a yearly subscription (divides amount by 12 for monthly equivalent)
-4. If a Discord connection is found, it sends an award message to the configured channel
-5. The cog keeps track of processed donations by storing the last charge date for each patron
-
-## Monthly Processing
-
-By default, the cog will send award messages for both:
-- New patrons joining for the first time
-- Existing patrons when their monthly donation renews
-
-You can disable the monthly processing using the `[p]patreonset monthly False` command if you only want messages for new patrons.
-
-## Discord Connection Methods
-
-Discord users can be connected to Patreon accounts in two ways:
-1. **Automatic** - If the patron has connected their Discord account to Patreon
-2. **Manual** - Using the `[p]patreonset manualconnect` command
-
-## Installation
+### 3. Bot Configuration
+Load the cog and configure the settings:
 
 ```
-[p]repo add kirin-cogs https://github.com/your-username/kirin-cogs
-[p]cog install kirin-cogs patron
 [p]load patron
+[p]patronset setup <SHEET_ID_FROM_URL>
+[p]patronset roles @ActivePatron @FormerPatron
+[p]patronset logchannel #bot-logs
 ```
 
-## Notes
+## Usage
 
-- The cog checks for new patrons every hour
-- Only the bot owner can configure and use the cog commands
-- Sensitive API credentials can be set via DM for increased security
-- Make sure your Discord bot has permission to send messages in the award channel
-- Patron data is stored securely and only used for the award process
+### Automatic Sync
+The bot checks the sheet **every hour**. 
+- It adds roles to new patrons.
+- It removes roles from cancelled patrons.
+- It awards currency if a new charge is detected (or if it's the next month of an annual pledge).
+
+### Manual Sync
+You can force a sync immediately:
+```
+[p]patronset sync
+```
+
+## Reward Logic
+
+**Base Rate:** 3,000 currency per 1 unit (e.g., $1 = 3000).
+
+**Bonuses:**
+- ≥ 5: +5%
+- ≥ 10: +10%
+- ≥ 20: +15%
+- ≥ 40: +20%
+
+**Annual Pledges:**
+If `Charge Frequency` contains "Annual", the bot divides the amount by 12. It then awards this monthly equivalent **every 30 days** for 12 months (or until a new charge date appears).
 
 ## Troubleshooting
 
-### Token Expiration Issues
-
-If you see errors like `Error fetching patrons: Failed to refresh token: HTTP 401 - {"error":"invalid_grant"}`, your Patreon refresh token has expired or been revoked. Patreon tokens can expire after a period of inactivity or if permissions are changed.
-
-To fix this:
-1. Use `[p]patreonset resetapi confirm=True` to reset all credentials (DM only)
-2. Use `[p]patreonset tokenguide` to get detailed instructions for generating new tokens
-3. Follow the guide to obtain fresh tokens from Patreon's OAuth system
-4. Set the new tokens using the appropriate commands
-
-### Manual Token Refresh
-
-If token refresh fails automatically, you can try manually refreshing the token:
-1. Use `[p]patreonset refreshpatreontoken` to attempt a manual refresh
-2. If this fails, you'll need to get a new token from Patreon 
-
-## Donation Handling
-
-### Monthly and Yearly Subscriptions
-
-The cog handles both monthly and yearly subscription types:
-
-- **Monthly subscriptions**: Processed at their actual amount
-- **Yearly subscriptions**: Automatically divided by 12 to get a monthly equivalent
-
-For example, if someone donates €120/year, the cog will calculate this as €10/month for award purposes. This ensures that patrons are treated fairly regardless of their billing cycle preference.
-
-### First-time vs. Recurring
-
-You can control whether the cog sends award messages for:
-- First-time donations only
-- Both first-time and recurring monthly donations
-
-Use the `[p]patreonset monthly` command to toggle this behavior. 
+- **Bot not updating roles?** Check if the username in the `Discord` column matches exactly.
+- **"Service account not found"?** Ensure `service_account.json` is in the correct folder.
+- **Race conditions?** The bot uses a lock to prevent manual syncs from interfering with background syncs.
