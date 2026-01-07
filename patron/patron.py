@@ -13,6 +13,8 @@ from redbot.core.utils.chat_formatting import box, pagify
 
 log = logging.getLogger("red.kirin_cogs.patron")
 
+__red_end_user_data_statement__ = "This cog processes user IDs and usernames to sync roles and rewards. Data is stored in config only for tracking charge dates."
+
 class Patron(commands.Cog):
     """
     Syncs Discord roles and awards currency from a Google Sheet.
