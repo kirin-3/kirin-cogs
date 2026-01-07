@@ -48,11 +48,16 @@ class LoraListView(ui.LayoutView):
             info += f"**Description:** {desc}\n"
             info += f"**Triggers:** `{triggers}`\n"
             
-            if image_url:
-                # Markdown link for image - standard Discord markdown for links
-                info += f"[Preview Image]({image_url})\n"
-                
             container.add_item(ui.TextDisplay(content=info))
+            
+            if image_url:
+                try:
+                    gallery = ui.MediaGallery()
+                    gallery.add_item(media=image_url)
+                    container.add_item(gallery)
+                except Exception:
+                    pass
+
             container.add_item(ui.Separator())
             
         # Pagination Buttons
