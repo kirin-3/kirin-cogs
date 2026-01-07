@@ -6,12 +6,24 @@ class CurrencyCommands:
     # Currency generation commands
     @commands.group(name="currency")
     async def currency_group(self, ctx):
-        """Currency generation and management commands"""
+        """
+        Currency generation and management.
+
+        **Syntax**
+        `[p]currency <subcommand>`
+        """
         pass
     
     @commands.command(name="pick")
     async def pick_cmd(self, ctx):
-        """Pick up generated currency"""
+        """
+        Pick up generated currency.
+
+        When currency spawns in chat, use this to claim it.
+
+        **Syntax**
+        `[p]pick`
+        """
         if not await self.config.economy_enabled():
             await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
             return
@@ -54,5 +66,12 @@ class CurrencyCommands:
     # For now, let's redirect it to the new one if they provide a password (ignore it)
     @currency_group.command(name="pick")
     async def currency_pick(self, ctx, password: str = None):
-        """Pick up currency (alias for [p]pick)"""
+        """
+        Pick up currency.
+
+        Alias for `[p]pick`.
+
+        **Syntax**
+        `[p]currency pick`
+        """
         await self.pick_cmd(ctx)

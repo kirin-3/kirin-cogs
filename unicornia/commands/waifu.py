@@ -6,14 +6,27 @@ class WaifuCommands:
     # Waifu commands
     @commands.hybrid_group(name="waifu", aliases=["wf"])
     async def waifu_group(self, ctx):
-        """Waifu system - Claim and manage virtual waifus"""
+        """
+        Claim and collect users as waifus.
+
+        **Syntax**
+        `[p]waifu <subcommand>`
+        """
         pass
     
     @waifu_group.command(name="claim")
     async def waifu_claim(self, ctx, member: discord.Member, price: int = None):
-        """Claim a user as your waifu
-        
-        Usage: [p]waifu claim @user [price]
+        """
+        Claim a user as your waifu.
+
+        If already claimed, you must pay 120% of the current price to snipe them.
+
+        **Syntax**
+        `[p]waifu claim <user> [price]`
+
+        **Examples**
+        `[p]waifu claim @User`
+        `[p]waifu claim @User 100`
         """
         if not await self.config.economy_enabled():
             await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
@@ -135,9 +148,13 @@ class WaifuCommands:
     @waifu_group.command(name="transfer")
     @commands.cooldown(1, 86400, commands.BucketType.user)
     async def waifu_transfer(self, ctx, member: discord.Member, new_owner: discord.Member):
-        """Transfer a waifu to another user (1 day cooldown)
-        
-        Usage: [p]waifu transfer @waifu @new_owner
+        """
+        Transfer a waifu to another user.
+
+        Cooldown: 24 hours.
+
+        **Syntax**
+        `[p]waifu transfer <waifu> <new_owner>`
         """
             
         success, message = await self.waifu_system.transfer_waifu(ctx.author, member.id, new_owner)
@@ -149,9 +166,14 @@ class WaifuCommands:
     @waifu_group.command(name="reset")
     @checks.is_owner()
     async def waifu_reset(self, ctx, member: discord.Member):
-        """Reset a waifu (Owner only)
-        
-        This will make the waifu unclaimed and reset their price to 50.
+        """
+        Reset a waifu to initial state.
+
+        Clears owner and resets price.
+        **Owner only.**
+
+        **Syntax**
+        `[p]waifu reset <user>`
         """
             
         success, message = await self.waifu_system.reset_waifu(member.id)
@@ -162,9 +184,13 @@ class WaifuCommands:
 
     @waifu_group.command(name="divorce")
     async def waifu_divorce(self, ctx, member: discord.Member):
-        """Divorce your waifu
-        
-        Usage: [p]waifu divorce @user
+        """
+        Divorce a waifu.
+
+        Releases them to be claimed by others.
+
+        **Syntax**
+        `[p]waifu divorce <waifu>`
         """
         
         try:
@@ -185,9 +211,16 @@ class WaifuCommands:
     
     @waifu_group.command(name="gift")
     async def waifu_gift(self, ctx, gift_name: str, member: discord.Member):
-        """Gift an item to a waifu
-        
-        Usage: [p]waifu gift <item_name> @user
+        """
+        Give a gift to a waifu.
+
+        Gifts change the waifu's value.
+
+        **Syntax**
+        `[p]waifu gift <gift_name> <waifu>`
+
+        **Examples**
+        `[p]waifu gift flower @User`
         """
             
         success, message = await self.waifu_system.gift_waifu(ctx.author, member, gift_name)
@@ -198,15 +231,22 @@ class WaifuCommands:
 
     @waifu_group.command(name="gifts")
     async def waifu_gifts_list(self, ctx):
-        """List all available waifu gifts
-        
-        Usage: [p]waifu gifts
+        """
+        List available gifts.
+
+        **Syntax**
+        `[p]waifu gifts`
         """
         await self.gifts_list(ctx)
 
     @commands.command(name="gifts")
     async def gifts_list(self, ctx):
-        """List all available waifu gifts"""
+        """
+        List available waifu gifts.
+
+        **Syntax**
+        `[p]gifts`
+        """
             
         gifts = self.waifu_system.get_gifts()
         currency_symbol = await self.config.currency_symbol()
@@ -230,9 +270,13 @@ class WaifuCommands:
     @waifu_group.command(name="info")
     @app_commands.describe(member="The waifu to check")
     async def waifu_info(self, ctx, member: discord.Member = None):
-        """Get information about a waifu
-        
-        Usage: [p]waifu info [@user]
+        """
+        Get info about a waifu.
+
+        Shows price, owner, and affinity.
+
+        **Syntax**
+        `[p]waifu info [user]`
         """
         target = member or ctx.author
         
@@ -334,9 +378,11 @@ class WaifuCommands:
     
     @waifu_group.command(name="list", aliases=["my"])
     async def waifu_list(self, ctx, member: discord.Member = None):
-        """List your waifus or someone else's waifus
-        
-        Usage: [p]waifu list [@user]
+        """
+        List owned waifus.
+
+        **Syntax**
+        `[p]waifu list [user]`
         """
         
         target = member or ctx.author
@@ -376,9 +422,13 @@ class WaifuCommands:
     
     @waifu_group.command(name="leaderboard", aliases=["lb", "top"])
     async def waifu_leaderboard(self, ctx):
-        """View waifu leaderboard by price
-        
-        Usage: [p]waifu leaderboard
+        """
+        Show waifu leaderboard.
+
+        Ranked by price.
+
+        **Syntax**
+        `[p]waifu leaderboard`
         """
         
         try:
@@ -412,9 +462,13 @@ class WaifuCommands:
     
     @waifu_group.command(name="price")
     async def waifu_price(self, ctx, member: discord.Member, new_price: int):
-        """Set the price for your waifu (Owner only)
-        
-        Usage: [p]waifu price @user <new_price>
+        """
+        Set a waifu's price.
+
+        You must own the waifu to change their price.
+
+        **Syntax**
+        `[p]waifu price <waifu> <price>`
         """
         
         try:
@@ -433,11 +487,13 @@ class WaifuCommands:
     
     @waifu_group.command(name="affinity")
     async def waifu_affinity(self, ctx, affinity_user: discord.Member = None):
-        """Set your affinity to someone
-        
-        If someone has an affinity for you, you can claim them for 20% cheaper!
-        
-        Usage: [p]waifu affinity @user
+        """
+        Set your affinity to a user.
+
+        Affinity grants a 20% discount when they claim you.
+
+        **Syntax**
+        `[p]waifu affinity <user>`
         """
         
         try:

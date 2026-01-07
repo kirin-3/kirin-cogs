@@ -129,12 +129,26 @@ class ShopCommands:
     @commands.hybrid_group(name="shop", aliases=["store"])
     @commands.guild_only()
     async def shop_group(self, ctx):
-        """Shop commands - Buy roles and items with currency"""
+        """
+        Browse and buy items from the shop.
+
+        Items can include roles, effects, or other server-specific perks.
+
+        **Syntax**
+        `[p]shop <subcommand>`
+        """
         pass
     
     @shop_group.command(name="list", aliases=["items", "view"])
     async def shop_list(self, ctx):
-        """View all available shop items"""
+        """
+        Open the interactive shop browser.
+
+        Browse items by category and purchase them.
+
+        **Syntax**
+        `[p]shop list`
+        """
         if not await self.config.shop_enabled():
             await ctx.reply("<a:zz_NoTick:729318761655435355> Shop system is disabled.", mention_author=False)
             return
@@ -154,7 +168,18 @@ class ShopCommands:
     
     @shop_group.command(name="buy")
     async def shop_buy(self, ctx, index_or_id: int):
-        """Buy a shop item by Index (recommended) or ID"""
+        """
+        Purchase an item from the shop.
+
+        Use the item's Index number (shown in `[p]shop list`).
+
+        **Syntax**
+        `[p]shop buy <index>`
+
+        **Examples**
+        `[p]shop buy 1`
+        `[p]shop buy 5`
+        """
         if not await self.config.shop_enabled():
             await ctx.reply("<a:zz_NoTick:729318761655435355> Shop system is disabled.", mention_author=False)
             return
@@ -187,7 +212,12 @@ class ShopCommands:
     
     @shop_group.command(name="info")
     async def shop_info(self, ctx, index_or_id: int):
-        """Get detailed information about a shop item (by Index or ID)"""
+        """
+        View detailed info about a shop item.
+
+        **Syntax**
+        `[p]shop info <index>`
+        """
         if not await self.config.shop_enabled():
             await ctx.send("<a:zz_NoTick:729318761655435355> Shop system is disabled.")
             return
@@ -230,12 +260,20 @@ class ShopCommands:
     @shop_group.command(name="add")
     @commands.admin_or_permissions(manage_roles=True)
     async def shop_add(self, ctx, item_type: str, price: int, name: str, *, details: str = ""):
-        """Add a new shop item (Admin only)
-        
-        Types: role, item, effect, other
-        Usage:
-        - [p]shop add role 1000 "VIP Role" @VIPRole
-        - [p]shop add item 500 "Mystery Box"
+        """
+        Add a new item to the shop.
+
+        **Admin/Mod only.**
+
+        **Syntax**
+        `[p]shop add <type> <price> <name> [details]`
+
+        **Types**
+        `role`, `item`, `effect`, `other`
+
+        **Examples**
+        `[p]shop add role 1000 "VIP Role" @VIPRole`
+        `[p]shop add item 500 "Mystery Box"`
         """
         if not await self.config.shop_enabled():
             await ctx.send("<a:zz_NoTick:729318761655435355> Shop system is disabled.")
@@ -311,19 +349,20 @@ class ShopCommands:
     @shop_group.command(name="edit")
     @commands.admin_or_permissions(manage_roles=True)
     async def shop_edit(self, ctx, item_id: int, field: str, *, value: str):
-        """Edit a shop item (Admin only)
-        
-        Fields:
-        - name: Change item name
-        - price: Change item price
-        - type: Change type (role, item, effect, other)
-        - role: Change role (mention or name) - For Role items
-        - req: Change role requirement (mention, name, or 'none')
-        
-        Usage:
+        """
+        Edit an existing shop item.
+
+        **Admin/Mod only.**
+
+        **Syntax**
+        `[p]shop edit <index> <field> <value>`
+
+        **Fields**
+        `name`, `price`, `type`, `role`, `req` (Requirement)
+
+        **Examples**
         `[p]shop edit 1 price 5000`
         `[p]shop edit 1 name Super VIP`
-        `[p]shop edit 1 role @SuperVIP`
         """
         if not await self.config.shop_enabled():
             await ctx.send("<a:zz_NoTick:729318761655435355> Shop system is disabled.")
@@ -443,7 +482,14 @@ class ShopCommands:
     @shop_group.command(name="remove", aliases=["delete", "del"])
     @commands.admin_or_permissions(manage_roles=True)
     async def shop_remove(self, ctx, item_id: int):
-        """Remove a shop item (Admin only)"""
+        """
+        Remove an item from the shop.
+
+        **Admin/Mod only.**
+
+        **Syntax**
+        `[p]shop remove <index>`
+        """
         if not await self.config.shop_enabled():
             await ctx.send("<a:zz_NoTick:729318761655435355> Shop system is disabled.")
             return
@@ -467,7 +513,14 @@ class ShopCommands:
 
     @commands.command(name="inventory", aliases=["inv", "bag"])
     async def show_inventory(self, ctx):
-        """View your purchased items"""
+        """
+        View your inventory.
+
+        Shows items you have purchased from the shop.
+
+        **Syntax**
+        `[p]inventory`
+        """
         try:
             inventory = await self.shop_system.get_user_inventory(ctx.guild.id, ctx.author.id)
             
@@ -496,9 +549,14 @@ class ShopCommands:
     # XP Shop commands
     @commands.command(name="xpshopbuy")
     async def xpshopbuy_shortcut(self, ctx, item_type: str, item_key: str = None):
-        """Shortcut to buy XP shop items
-        
-        Usage: `[p]xpshopbuy bg <item_key>`
+        """
+        Shortcut to buy items from the XP Shop.
+
+        **Syntax**
+        `[p]xpshopbuy <type> <key>`
+
+        **Examples**
+        `[p]xpshopbuy bg default`
         """
         # If user provided "bg <key>"
         if item_key and item_type.lower() in ["bg", "background", "backgrounds"]:
@@ -518,12 +576,26 @@ class ShopCommands:
     @commands.hybrid_group(name="xpshop", aliases=["xps"])
     @commands.guild_only()
     async def xp_shop_group(self, ctx):
-        """XP Shop - Buy custom backgrounds with currency"""
+        """
+        Shop for XP Card customizations.
+
+        Buy backgrounds and other cosmetic items.
+
+        **Syntax**
+        `[p]xpshop <subcommand>`
+        """
         pass
     
     @xp_shop_group.command(name="backgrounds", aliases=["bg", "bgs"])
     async def shop_backgrounds(self, ctx):
-        """View available XP backgrounds"""
+        """
+        Browse available XP card backgrounds.
+
+        Use the interactive menu to preview and buy.
+
+        **Syntax**
+        `[p]xpshop backgrounds`
+        """
         
         try:
             backgrounds = self.xp_system.card_generator.get_available_backgrounds()
@@ -561,11 +633,14 @@ class ShopCommands:
     @xp_shop_group.command(name="buy")
     @app_commands.describe(item_key="Key of the background to buy")
     async def shop_buy_bg(self, ctx, item_key: str):
-        """Buy an XP background
-        
-        Usage: 
-        - `[p]xpshop buy default` - Buy default background
-        - `[p]xpshop buy shadow` - Buy shadow background
+        """
+        Buy a specific background.
+
+        **Syntax**
+        `[p]xpshop buy <key>`
+
+        **Examples**
+        `[p]xpshop buy neon_city`
         """
         
         try:
@@ -625,11 +700,14 @@ class ShopCommands:
     
     @xp_shop_group.command(name="use")
     async def shop_use(self, ctx, item_key: str):
-        """Set an XP background as active
-        
-        Usage: 
-        - `[p]xpshop use default` - Use default background
-        - `[p]xpshop use shadow` - Use shadow background (must own it first)
+        """
+        Equip a background you own.
+
+        **Syntax**
+        `[p]xpshop use <key>`
+
+        **Examples**
+        `[p]xpshop use default`
         """
         
         try:
@@ -653,7 +731,12 @@ class ShopCommands:
     
     @xp_shop_group.command(name="owned", aliases=["inventory", "inv"])
     async def shop_owned(self, ctx):
-        """View your owned XP backgrounds"""
+        """
+        View your owned backgrounds.
+
+        **Syntax**
+        `[p]xpshop owned`
+        """
         
         try:
             owned_items = await self.db.xp.get_user_xp_items(ctx.author.id, 1)  # 1 = Background
@@ -684,7 +767,14 @@ class ShopCommands:
     @xp_shop_group.command(name="reload")
     @commands.is_owner()
     async def shop_reload_config(self, ctx):
-        """Reload XP shop configuration (Owner only)"""
+        """
+        Reload XP shop configuration.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]xpshop reload`
+        """
         try:
             await self.xp_system.card_generator._load_xp_config()
             await ctx.send("✅ XP shop configuration reloaded successfully!")
@@ -694,7 +784,14 @@ class ShopCommands:
     @xp_shop_group.command(name="give")
     @commands.is_owner()
     async def shop_give_bg(self, ctx, user: discord.Member, item_key: str):
-        """Give an XP background to a user (Owner only)"""
+        """
+        Give a background to a user.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]xpshop give <user> <key>`
+        """
         try:
             items = self.xp_system.card_generator.get_available_backgrounds()
             if item_key not in items:

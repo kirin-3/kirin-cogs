@@ -41,7 +41,17 @@ class Unicornia(
     LevelCommands, WaifuCommands, ShopCommands,
     AdminCommands, CurrencyCommands, NitroCommands, StockCommands, commands.Cog
 ):
-    """Full-featured leveling and economy cog with Nadeko-like functionality"""
+    """
+    Full-featured leveling and economy cog with Nadeko-like functionality.
+    
+    This system includes:
+    - Economy (Wallet/Bank)
+    - Leveling (XP/Roles)
+    - Gambling (Games)
+    - Shop (Items/Roles)
+    - Clubs (Groups)
+    - Waifus (Collection)
+    """
     
     def __init__(self, bot: Red):
         self.bot = bot

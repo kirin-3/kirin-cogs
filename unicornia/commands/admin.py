@@ -3,23 +3,53 @@ from redbot.core import commands, checks
 from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
 from redbot.core.utils.chat_formatting import box, humanize_number
 from typing import Optional
+from ..views import UnicorniaHelpView
 
 class AdminCommands:
     # Configuration commands
     @commands.group(name="unicornia", aliases=["uni"])
     async def unicornia_group(self, ctx):
-        """Unicornia - Full-featured leveling and economy system"""
+        """
+        Unicornia configuration and administration.
+
+        **Syntax**
+        `[p]unicornia <subcommand>`
+        """
         pass
+
+    @unicornia_group.command(name="guide", aliases=["help"])
+    async def unicornia_guide(self, ctx):
+        """
+        Open the interactive guide.
+
+        Learn how to use Unicornia's systems.
+
+        **Syntax**
+        `[p]unicornia guide`
+        """
+        view = UnicorniaHelpView(ctx)
+        view.message = await ctx.send(embed=view.get_embed(), view=view)
 
     @unicornia_group.group(name="migration")
     @checks.is_owner()
     async def migration_group(self, ctx):
-        """Manage Nadeko database migration"""
+        """
+        Manage Nadeko database migration.
+
+        **Owner only.**
+        """
         pass
 
     @migration_group.command(name="setpath")
     async def migration_setpath(self, ctx, path: str):
-        """Set the path to the Nadeko database file"""
+        """
+        Set path to Nadeko DB.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]unicornia migration setpath <path>`
+        """
         await self.config.nadeko_db_path.set(path)
         
         # Update current instance
@@ -30,10 +60,14 @@ class AdminCommands:
 
     @migration_group.command(name="run")
     async def migration_run(self, ctx):
-        """Run the migration from Nadeko database
-        
-        This will migrate users, economy, XP, and other data from the configured
-        Nadeko database file. This process may take some time.
+        """
+        Run migration from Nadeko.
+
+        This process may take some time.
+        **Owner only.**
+
+        **Syntax**
+        `[p]unicornia migration run`
         """
         nadeko_path = await self.config.nadeko_db_path()
         if not nadeko_path:
@@ -54,12 +88,24 @@ class AdminCommands:
     @unicornia_group.group(name="gen")
     @checks.is_owner()
     async def gen_group(self, ctx):
-        """Currency generation configuration"""
+        """
+        Configure currency generation.
+
+        **Owner only.**
+        """
         pass
 
     @gen_group.command(name="channel")
     async def gen_channel(self, ctx, operation: str, channel: discord.TextChannel):
-        """Add or remove a channel for currency generation (add/remove)"""
+        """
+        Manage generation channels.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]unicornia gen channel add <channel>`
+        `[p]unicornia gen channel remove <channel>`
+        """
         if operation.lower() not in ["add", "remove"]:
             await ctx.send("❌ Operation must be 'add' or 'remove'.")
             return
@@ -87,7 +133,14 @@ class AdminCommands:
 
     @gen_group.command(name="list")
     async def gen_list(self, ctx):
-        """List currency generation channels"""
+        """
+        List generation channels.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]unicornia gen list`
+        """
         channels = await self.config.generation_channels()
         if not channels:
             await ctx.send("No channels configured for currency generation.")
@@ -99,11 +152,16 @@ class AdminCommands:
     @unicornia_group.command(name="config")
     @checks.is_owner()
     async def config_cmd(self, ctx, setting: str = None, *, value: str = None):
-        """Configure Unicornia settings
-        
-        Run without arguments to view all settings.
-        Run with setting name to view specific setting.
-        Run with setting name and value to update.
+        """
+        Configure global settings.
+
+        View or update configuration.
+        **Owner only.**
+
+        **Syntax**
+        `[p]unicornia config` (View all)
+        `[p]unicornia config <setting>` (View one)
+        `[p]unicornia config <setting> <value>` (Update)
         """
         valid_settings = [
             "currency_name", "currency_symbol", "xp_enabled", "economy_enabled",
@@ -219,7 +277,12 @@ class AdminCommands:
     
     @unicornia_group.command(name="status")
     async def status(self, ctx):
-        """Check Unicornia status and configuration"""
+        """
+        Check system status.
+
+        **Syntax**
+        `[p]unicornia status`
+        """
         embed = discord.Embed(
             title="🦄 Unicornia Status",
             color=discord.Color.green(),
@@ -249,17 +312,32 @@ class AdminCommands:
     @unicornia_group.group(name="guild")
     @checks.admin()
     async def guild_config(self, ctx):
-        """Guild-specific configuration"""
+        """
+        Guild-specific configuration.
+
+        **Admin only.**
+        """
         pass
     
     @guild_config.group(name="xp")
     async def guild_xp_group(self, ctx):
-        """Manage XP configuration"""
+        """
+        Manage XP settings.
+
+        **Admin only.**
+        """
         pass
 
     @guild_xp_group.command(name="include")
     async def xp_include_channel(self, ctx, channel: discord.abc.GuildChannel):
-        """Add a channel to the XP whitelist"""
+        """
+        Whitelist a channel for XP.
+
+        **Admin only.**
+
+        **Syntax**
+        `[p]unicornia guild xp include <channel>`
+        """
         included = await self.config.guild(ctx.guild).xp_included_channels()
         if channel.id not in included:
             included.append(channel.id)
@@ -270,7 +348,14 @@ class AdminCommands:
 
     @guild_xp_group.command(name="exclude")
     async def xp_exclude_channel(self, ctx, channel: discord.abc.GuildChannel):
-        """Remove a channel from the XP whitelist"""
+        """
+        Remove channel from XP whitelist.
+
+        **Admin only.**
+
+        **Syntax**
+        `[p]unicornia guild xp exclude <channel>`
+        """
         included = await self.config.guild(ctx.guild).xp_included_channels()
         if channel.id in included:
             included.remove(channel.id)
@@ -281,7 +366,14 @@ class AdminCommands:
 
     @guild_xp_group.command(name="listchannels")
     async def xp_list_channels(self, ctx):
-        """List all channels in the XP whitelist"""
+        """
+        List XP whitelisted channels.
+
+        **Admin only.**
+
+        **Syntax**
+        `[p]unicornia guild xp listchannels`
+        """
         included = await self.config.guild(ctx.guild).xp_included_channels()
         if not included:
             await ctx.send("No channels are whitelisted for XP gain.")
@@ -300,12 +392,23 @@ class AdminCommands:
     @guild_xp_group.group(name="double")
     @checks.is_owner()
     async def xp_double_group(self, ctx):
-        """Manage Double XP channels"""
+        """
+        Manage Double XP channels.
+
+        **Owner only.**
+        """
         pass
 
     @xp_double_group.command(name="add")
     async def xp_double_add(self, ctx, channel: discord.abc.GuildChannel):
-        """Add a channel to the Double XP list"""
+        """
+        Add channel to Double XP list.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]unicornia guild xp double add <channel>`
+        """
         double_channels = await self.config.guild(ctx.guild).xp_double_channels()
         if channel.id not in double_channels:
             double_channels.append(channel.id)
@@ -316,7 +419,14 @@ class AdminCommands:
 
     @xp_double_group.command(name="remove")
     async def xp_double_remove(self, ctx, channel: discord.abc.GuildChannel):
-        """Remove a channel from the Double XP list"""
+        """
+        Remove channel from Double XP list.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]unicornia guild xp double remove <channel>`
+        """
         double_channels = await self.config.guild(ctx.guild).xp_double_channels()
         if channel.id in double_channels:
             double_channels.remove(channel.id)
@@ -327,7 +437,14 @@ class AdminCommands:
 
     @xp_double_group.command(name="list")
     async def xp_double_list(self, ctx):
-        """List all channels in the Double XP list"""
+        """
+        List Double XP channels.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]unicornia guild xp double list`
+        """
         double_channels = await self.config.guild(ctx.guild).xp_double_channels()
         if not double_channels:
             await ctx.send("No channels are configured for Double XP.")
@@ -345,7 +462,14 @@ class AdminCommands:
     
     @guild_config.command(name="rolereward")
     async def guild_role_reward(self, ctx, level: int, role: discord.Role, remove: bool = False):
-        """Set a role reward for reaching a level (remove=True to remove role from user)"""
+        """
+        Add a level-up role reward.
+
+        **Admin only.**
+
+        **Syntax**
+        `[p]unicornia guild rolereward <level> <role> [remove_on_loss]`
+        """
         if level < 1:
             await ctx.send("❌ Level must be at least 1.")
             return
@@ -356,13 +480,28 @@ class AdminCommands:
 
     @guild_config.command(name="removerolereward")
     async def guild_remove_role_reward(self, ctx, level: int, role: discord.Role):
-        """Remove a configured role reward"""
+        """
+        Remove a role reward config.
+
+        **Admin only.**
+
+        **Syntax**
+        `[p]unicornia guild removerolereward <level> <role>`
+        """
         await self.db.xp.remove_xp_role_reward(ctx.guild.id, level, role.id)
         await ctx.send(f"✅ Removed role reward {role.mention} at level {level}.")
     
     @guild_config.command(name="currencyreward")
     async def guild_currency_reward(self, ctx, level: int, amount: int):
-        """Set a currency reward for reaching a level (0 to remove)"""
+        """
+        Set currency reward for a level.
+
+        Set amount to 0 to remove.
+        **Admin only.**
+
+        **Syntax**
+        `[p]unicornia guild currencyreward <level> <amount>`
+        """
         if level < 1:
             await ctx.send("❌ Level must be at least 1.")
             return
@@ -381,7 +520,14 @@ class AdminCommands:
 
     @guild_config.command(name="listcurrencyrewards")
     async def guild_list_currency_rewards(self, ctx):
-        """List currency rewards (paginated)"""
+        """
+        List configured currency rewards.
+
+        **Admin only.**
+
+        **Syntax**
+        `[p]unicornia guild listcurrencyrewards`
+        """
         currency_rewards = await self.db.xp.get_xp_currency_rewards(ctx.guild.id)
         
         if not currency_rewards:
@@ -418,18 +564,32 @@ class AdminCommands:
     @unicornia_group.group(name="whitelist", aliases=["wl"])
     @checks.admin_or_permissions(manage_guild=True)
     async def whitelist_group(self, ctx):
-        """Manage command and system usage restrictions"""
+        """
+        Manage channel restrictions.
+
+        Whitelist commands or entire systems to specific channels.
+        **Admin/Manage Guild only.**
+        """
         pass
 
     # --- Command Whitelist ---
     @whitelist_group.group(name="command", aliases=["cmd"])
     async def wl_command_group(self, ctx):
-        """Manage command whitelists"""
+        """
+        Whitelist specific commands.
+        """
         pass
 
     @wl_command_group.command(name="add")
     async def wl_command_add(self, ctx, command_name: str, channel: discord.TextChannel = None):
-        """Restrict a command to a channel (or current channel if none specified)"""
+        """
+        Restrict a command to a channel.
+
+        If a command is whitelisted, it can ONLY be used in whitelisted channels.
+
+        **Syntax**
+        `[p]unicornia whitelist command add <command> [channel]`
+        """
         channel = channel or ctx.channel
         
         # Verify command exists and belongs to Unicornia
@@ -455,7 +615,12 @@ class AdminCommands:
 
     @wl_command_group.command(name="remove", aliases=["rm", "del"])
     async def wl_command_remove(self, ctx, command_name: str, channel: discord.TextChannel = None):
-        """Remove a channel from command's whitelist"""
+        """
+        Remove channel from command whitelist.
+
+        **Syntax**
+        `[p]unicornia whitelist command remove <command> [channel]`
+        """
         channel = channel or ctx.channel
         
         # Verify command exists (optional)
@@ -476,7 +641,12 @@ class AdminCommands:
 
     @wl_command_group.command(name="list")
     async def wl_command_list(self, ctx):
-        """List whitelisted commands"""
+        """
+        List command whitelists.
+
+        **Syntax**
+        `[p]unicornia whitelist command list`
+        """
         whitelist = await self.config.guild(ctx.guild).command_whitelist()
         if not whitelist:
             await ctx.send("No commands are restricted (whitelisted).")
@@ -507,12 +677,21 @@ class AdminCommands:
     # --- System Whitelist ---
     @whitelist_group.group(name="system", aliases=["sys"])
     async def wl_system_group(self, ctx):
-        """Manage system whitelists"""
+        """
+        Whitelist entire systems.
+        """
         pass
     
     @wl_system_group.command(name="add")
     async def wl_system_add(self, ctx, system: str, channel: discord.TextChannel = None):
-        """Restrict an entire system to a channel"""
+        """
+        Restrict a system to a channel.
+
+        Systems: `economy`, `gambling`, `level`, `shop`, `club`, `waifu`.
+
+        **Syntax**
+        `[p]unicornia whitelist system add <system> [channel]`
+        """
         channel = channel or ctx.channel
         system = system.lower()
         
@@ -534,7 +713,12 @@ class AdminCommands:
 
     @wl_system_group.command(name="remove", aliases=["rm", "del"])
     async def wl_system_remove(self, ctx, system: str, channel: discord.TextChannel = None):
-        """Remove a channel from system's whitelist"""
+        """
+        Remove channel from system whitelist.
+
+        **Syntax**
+        `[p]unicornia whitelist system remove <system> [channel]`
+        """
         channel = channel or ctx.channel
         system = system.lower()
         
@@ -552,7 +736,12 @@ class AdminCommands:
 
     @wl_system_group.command(name="list")
     async def wl_system_list(self, ctx):
-        """List whitelisted systems"""
+        """
+        List system whitelists.
+
+        **Syntax**
+        `[p]unicornia whitelist system list`
+        """
         whitelist = await self.config.guild(ctx.guild).system_whitelist()
         if not whitelist:
             await ctx.send("No systems are restricted (whitelisted).")
@@ -582,7 +771,14 @@ class AdminCommands:
 
     @guild_config.command(name="listrolerewards")
     async def guild_list_role_rewards(self, ctx):
-        """List role rewards (paginated)"""
+        """
+        List configured role rewards.
+
+        **Admin only.**
+
+        **Syntax**
+        `[p]unicornia guild listrolerewards`
+        """
         role_rewards = await self.db.xp.get_all_xp_role_rewards(ctx.guild.id)
         
         if not role_rewards:

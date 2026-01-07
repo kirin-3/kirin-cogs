@@ -9,30 +9,73 @@ class EconomyCommands:
     # Economy commands
     @commands.hybrid_command(name="baltop", aliases=["ballb"])
     async def baltop_shortcut(self, ctx):
-        """Show the Slut points leaderboard"""
+        """
+        Show the currency leaderboard.
+        
+        Shortcut for `[p]economy leaderboard`.
+
+        **Syntax**
+        `[p]baltop`
+        """
         await self.economy_leaderboard(ctx)
 
     @commands.hybrid_group(name="economy", aliases=["econ", "money"])
     async def economy_group(self, ctx):
-        """Economy and currency commands"""
+        """
+        Manage your economy and currency.
+
+        Commands for checking balance, transferring money, and viewing history.
+
+        **Syntax**
+        `[p]economy <subcommand>`
+        """
         pass
     
     @economy_group.command(name="balance", aliases=["bal", "wallet"])
     @app_commands.describe(member="The user to check balance for")
     async def economy_balance(self, ctx, member: discord.Member = None):
-        """Check your or another user's Slut points balance"""
+        """
+        Check your or another user's balance.
+
+        Shows both wallet and bank balance.
+
+        **Syntax**
+        `[p]economy balance [member]`
+
+        **Examples**
+        `[p]economy balance`
+        `[p]economy balance @User`
+        """
         await self._balance_logic(ctx, member)
 
     @commands.hybrid_command(name="balance", aliases=["bal", "$", "€", "£"])
     @app_commands.describe(member="The user to check balance for")
     async def global_balance(self, ctx, member: discord.Member = None):
-        """Check your or another user's balance"""
+        """
+        Check your or another user's balance.
+
+        Shows both wallet and bank balance.
+
+        **Syntax**
+        `[p]balance [member]`
+
+        **Examples**
+        `[p]balance`
+        `[p]balance @User`
+        """
         await self._balance_logic(ctx, member)
 
     @commands.hybrid_command(name="wallet")
     @app_commands.describe(member="The user to check wallet for")
     async def wallet_command(self, ctx, member: discord.Member = None):
-        """Check your or another user's wallet (Alias for balance)"""
+        """
+        Check your or another user's wallet.
+
+        Alias for `[p]balance`.
+
+        **Syntax**
+        `[p]wallet [member]`
+        """
         await self._balance_logic(ctx, member)
 
     async def _balance_logic(self, ctx, member: discord.Member = None):
@@ -70,7 +113,18 @@ class EconomyCommands:
     
     @economy_group.command(name="give")
     async def economy_give(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
-        """Give Slut points to another user"""
+        """
+        Transfer currency to another user.
+
+        Money is taken from your wallet.
+
+        **Syntax**
+        `[p]economy give <amount> <member> [note]`
+
+        **Examples**
+        `[p]economy give 100 @User`
+        `[p]economy give 500 @User For pizza`
+        """
         if not await self.config.economy_enabled():
             await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
             return
@@ -110,12 +164,27 @@ class EconomyCommands:
     
     @economy_group.command(name="timely", aliases=["daily"])
     async def economy_timely(self, ctx):
-        """Claim your daily Slut points reward"""
+        """
+        Claim your daily reward.
+
+        You can claim this once every 24 hours (configurable).
+        Streaks may apply for consecutive claims.
+
+        **Syntax**
+        `[p]economy timely`
+        """
         await self._timely_logic(ctx)
 
     @commands.hybrid_command(name="timely", aliases=["daily"])
     async def global_timely(self, ctx):
-        """Claim your daily reward"""
+        """
+        Claim your daily reward.
+
+        Shortcut for `[p]economy timely`.
+
+        **Syntax**
+        `[p]timely`
+        """
         await self._timely_logic(ctx)
 
     async def _timely_logic(self, ctx):
@@ -169,7 +238,18 @@ class EconomyCommands:
 
     @economy_group.command(name="history", aliases=["transactions", "tx"])
     async def economy_history(self, ctx, member: discord.Member = None):
-        """View transaction history"""
+        """
+        View recent transactions.
+
+        Shows the last 10 transactions for you or another user.
+
+        **Syntax**
+        `[p]economy history [member]`
+
+        **Examples**
+        `[p]economy history`
+        `[p]economy history @User`
+        """
         target = member or ctx.author
         
         try:
@@ -201,7 +281,18 @@ class EconomyCommands:
     @economy_group.command(name="stats", aliases=["gambling"])
     @app_commands.describe(member="The user to check stats for")
     async def gambling_stats(self, ctx, member: discord.Member = None):
-        """View gambling statistics"""
+        """
+        View gambling statistics.
+
+        Shows wins, losses, and net profit for each game.
+
+        **Syntax**
+        `[p]economy stats [member]`
+
+        **Examples**
+        `[p]economy stats`
+        `[p]economy stats @User`
+        """
         target = member or ctx.author
         
         try:
@@ -244,7 +335,14 @@ class EconomyCommands:
     
     @economy_group.command(name="rakeback", aliases=["rb"])
     async def rakeback_command(self, ctx):
-        """Check and claim rakeback balance"""
+        """
+        Claim your rakeback.
+
+        Rakeback is a percentage of your gambling losses returned to you.
+
+        **Syntax**
+        `[p]economy rakeback`
+        """
         try:
             balance = await self.economy_system.get_rakeback_info(ctx.author.id)
             
@@ -272,7 +370,12 @@ class EconomyCommands:
     
     @economy_group.command(name="bank")
     async def bank_info(self, ctx, member: discord.Member = None):
-        """View bank information"""
+        """
+        View bank account details.
+
+        **Syntax**
+        `[p]economy bank [member]`
+        """
         target = member or ctx.author
         
         try:
@@ -293,7 +396,15 @@ class EconomyCommands:
     @economy_group.command(name="award")
     @checks.is_owner()
     async def economy_award(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
-        """Award Slut points to a user (owner only)"""
+        """
+        Award currency to a user.
+
+        This generates new currency (inflationary).
+        **Owner only.**
+
+        **Syntax**
+        `[p]economy award <amount> <member> [note]`
+        """
         if not await self.config.economy_enabled():
             await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
             return
@@ -318,7 +429,15 @@ class EconomyCommands:
     @economy_group.command(name="take")
     @checks.is_owner()
     async def economy_take(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
-        """Take Slut points from a user (owner only)"""
+        """
+        Take currency from a user.
+
+        This destroys currency (deflationary).
+        **Owner only.**
+
+        **Syntax**
+        `[p]economy take <amount> <member> [note]`
+        """
         if not await self.config.economy_enabled():
             await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
             return
@@ -347,7 +466,14 @@ class EconomyCommands:
     @economy_group.command(name="leaderboard", aliases=["lb", "top"])
     @commands.guild_only()
     async def economy_leaderboard(self, ctx):
-        """Show the Slut points leaderboard"""
+        """
+        Show the currency leaderboard.
+
+        Displays the richest users in the server.
+
+        **Syntax**
+        `[p]economy leaderboard`
+        """
         if not await self.config.economy_enabled():
             await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
             return
@@ -382,12 +508,27 @@ class EconomyCommands:
     # Bank commands
     @commands.hybrid_group(name="bank")
     async def bank_group(self, ctx):
-        """Bank commands for storing currency"""
+        """
+        Manage your bank account.
+
+        Deposit and withdraw funds for safekeeping.
+        Funds in the bank cannot be used for gambling or shop purchases.
+        """
         pass
     
     @bank_group.command(name="deposit", aliases=["dep", "d"])
     async def bank_deposit(self, ctx, amount: str):
-        """Deposit Slut points into your bank account"""
+        """
+        Deposit currency into your bank.
+
+        **Syntax**
+        `[p]bank deposit <amount>`
+        `[p]bank deposit all`
+
+        **Examples**
+        `[p]bank deposit 1000`
+        `[p]bank deposit all`
+        """
         try:
             if not await self.config.economy_enabled():
                 await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
@@ -423,7 +564,17 @@ class EconomyCommands:
     
     @bank_group.command(name="withdraw", aliases=["with", "w"])
     async def bank_withdraw(self, ctx, amount: str):
-        """Withdraw Slut points from your bank account"""
+        """
+        Withdraw currency from your bank.
+
+        **Syntax**
+        `[p]bank withdraw <amount>`
+        `[p]bank withdraw all`
+
+        **Examples**
+        `[p]bank withdraw 500`
+        `[p]bank withdraw all`
+        """
         try:
             if not await self.config.economy_enabled():
                 await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
@@ -459,7 +610,12 @@ class EconomyCommands:
     
     @bank_group.command(name="balance", aliases=["bal"])
     async def bank_balance(self, ctx):
-        """Check your bank balance"""
+        """
+        Check your bank balance.
+
+        **Syntax**
+        `[p]bank balance`
+        """
         if not await self.config.economy_enabled():
             await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return

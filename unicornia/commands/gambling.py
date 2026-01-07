@@ -29,14 +29,30 @@ class GamblingCommands:
     # Gambling commands
     @commands.hybrid_group(name="gambling", aliases=["gamble"])
     async def gambling_group(self, ctx):
-        """Gambling commands"""
+        """
+        Play gambling games to win currency.
+
+        **Syntax**
+        `[p]gambling <game> <amount>`
+        """
         pass
     
     @gambling_group.command(name="betroll", aliases=["roll"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
     async def gambling_betroll(self, ctx, amount: str):
-        """Bet on a dice roll (1-100)"""
+        """
+        Roll a 100-sided die.
+        
+        Roll 66 or higher to win.
+        Payout scales with the roll.
+
+        **Syntax**
+        `[p]gambling betroll <amount>`
+
+        **Examples**
+        `[p]gambling betroll 100`
+        """
         if not await self.config.gambling_enabled():
             await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
             return
@@ -72,7 +88,17 @@ class GamblingCommands:
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(choice="rock, paper, or scissors", amount="Amount to bet")
     async def gambling_rps(self, ctx, choice: Optional[str] = None, amount: str = "0"):
-        """Play rock paper scissors"""
+        """
+        Play Rock, Paper, Scissors against the bot.
+
+        **Syntax**
+        `[p]gambling rps [choice] [amount]`
+        `[p]gambling rps <amount>` (Interactive)
+
+        **Examples**
+        `[p]gambling rps rock 100`
+        `[p]gambling rps 100`
+        """
         if not await self.config.gambling_enabled():
             await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
             return
@@ -136,7 +162,17 @@ class GamblingCommands:
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
     async def gambling_slots(self, ctx, amount: str):
-        """Play slots"""
+        """
+        Play the slot machine.
+        
+        Match symbols to win big multipliers.
+
+        **Syntax**
+        `[p]gambling slots <amount>`
+
+        **Examples**
+        `[p]gambling slots 500`
+        """
         if not await self.config.gambling_enabled():
             await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
             return
@@ -174,7 +210,12 @@ class GamblingCommands:
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
     async def gambling_blackjack(self, ctx, amount: str):
-        """Play blackjack"""
+        """
+        Play a game of Blackjack (21).
+
+        **Syntax**
+        `[p]gambling blackjack <amount>`
+        """
         if not await self.config.gambling_enabled():
             await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
             return
@@ -196,10 +237,17 @@ class GamblingCommands:
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet", guess="heads or tails")
     async def gambling_betflip(self, ctx, amount: str, guess: Optional[str] = None):
-        """Bet on a coin flip (Heads or Tails)
-        
-        Usage: [p]gambling betflip 100 heads
-        Or: [p]gambling betflip 100 (interactive)
+        """
+        Bet on a coin flip.
+
+        Guess Heads or Tails to double your bet.
+
+        **Syntax**
+        `[p]gambling betflip <amount> [guess]`
+
+        **Examples**
+        `[p]gambling betflip 100 heads`
+        `[p]gambling betflip 100` (Interactive)
         """
         if not await self.config.gambling_enabled():
             await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
@@ -264,7 +312,14 @@ class GamblingCommands:
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
     async def gambling_lucky_ladder(self, ctx, amount: str):
-        """Play lucky ladder"""
+        """
+        Climb the lucky ladder.
+        
+        The higher you climb, the higher the multiplier.
+
+        **Syntax**
+        `[p]gambling luckyladder <amount>`
+        """
         if not await self.config.gambling_enabled():
             await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
             return
@@ -300,7 +355,18 @@ class GamblingCommands:
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet", mines="Number of mines (1-19)")
     async def gambling_mines(self, ctx, amount: Optional[str] = None, mines: int = 3):
-        """Play Mines"""
+        """
+        Play Minesweeper for currency.
+
+        Reveal safe squares to increase multiplier. Cash out anytime.
+
+        **Syntax**
+        `[p]gambling mines <amount> [mines]`
+        `[p]gambling mines` (Tutorial)
+
+        **Examples**
+        `[p]gambling mines 100 3`
+        """
         if amount is None:
             embed = discord.Embed(
                 title="💣 Mines - How to Play",
@@ -349,46 +415,95 @@ class GamblingCommands:
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
     async def top_betroll(self, ctx, amount: str):
-        """Bet on a dice roll (1-100)"""
+        """
+        Roll a 100-sided die.
+
+        Alias for `[p]gambling betroll`.
+
+        **Syntax**
+        `[p]betroll <amount>`
+        """
         await self.gambling_betroll(ctx, amount)
 
     @commands.hybrid_command(name="rps", aliases=["rockpaperscissors"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(choice="rock, paper, or scissors", amount="Amount to bet")
     async def top_rps(self, ctx, choice: Optional[str] = None, amount: str = "0"):
-        """Play rock paper scissors"""
+        """
+        Play Rock, Paper, Scissors.
+
+        Alias for `[p]gambling rps`.
+
+        **Syntax**
+        `[p]rps [choice] [amount]`
+        """
         await self.gambling_rps(ctx, choice, amount)
 
     @commands.hybrid_command(name="slots")
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
     async def top_slots(self, ctx, amount: str):
-        """Play slots"""
+        """
+        Play the slot machine.
+
+        Alias for `[p]gambling slots`.
+
+        **Syntax**
+        `[p]slots <amount>`
+        """
         await self.gambling_slots(ctx, amount)
 
     @commands.command(name="blackjack", aliases=["21"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     async def top_blackjack(self, ctx, amount: str):
-        """Play blackjack"""
+        """
+        Play Blackjack.
+
+        Alias for `[p]gambling blackjack`.
+
+        **Syntax**
+        `[p]blackjack <amount>`
+        """
         await self.gambling_blackjack(ctx, amount)
 
     @commands.hybrid_command(name="betflip", aliases=["bf"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet", guess="heads or tails")
     async def top_betflip(self, ctx, amount: str, guess: Optional[str] = None):
-        """Bet on a coin flip (Heads or Tails)"""
+        """
+        Bet on a coin flip.
+
+        Alias for `[p]gambling betflip`.
+
+        **Syntax**
+        `[p]betflip <amount> [guess]`
+        """
         await self.gambling_betflip(ctx, amount, guess)
 
     @commands.hybrid_command(name="luckyladder", aliases=["ladder"])
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
     async def top_luckyladder(self, ctx, amount: str):
-        """Play lucky ladder"""
+        """
+        Climb the lucky ladder.
+
+        Alias for `[p]gambling luckyladder`.
+
+        **Syntax**
+        `[p]luckyladder <amount>`
+        """
         await self.gambling_lucky_ladder(ctx, amount)
 
     @commands.hybrid_command(name="mines")
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet", mines="Number of mines (1-19)")
     async def top_mines(self, ctx, amount: Optional[str] = None, mines: int = 3):
-        """Play Mines"""
+        """
+        Play Mines.
+
+        Alias for `[p]gambling mines`.
+
+        **Syntax**
+        `[p]mines <amount> [mines]`
+        """
         await self.gambling_mines(ctx, amount, mines)

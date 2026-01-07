@@ -20,12 +20,26 @@ class StockCommands:
 
     @commands.hybrid_group(name="stock", aliases=["market", "stocks"])
     async def stock_group(self, ctx):
-        """Stock Market commands"""
+        """
+        Invest in the Stock Market.
+
+        Buy and sell stocks to grow your wealth.
+
+        **Syntax**
+        `[p]stock <subcommand>`
+        """
         pass
 
     @stock_group.command(name="list", aliases=["all", "prices"])
     async def stock_list(self, ctx):
-        """View all active stocks and their prices."""
+        """
+        View active stocks.
+
+        Shows current price and price changes.
+
+        **Syntax**
+        `[p]stock list`
+        """
         if not self.market_system.stocks_cache:
             await ctx.send("The Stock Market is currently empty.")
             return
@@ -41,7 +55,15 @@ class StockCommands:
     @app_commands.describe(ticker="Stock Symbol", amount="Number of shares")
     @app_commands.autocomplete(ticker=ticker_autocomplete)
     async def stock_buy(self, ctx, ticker: str, amount: int):
-        """Buy stocks."""
+        """
+        Buy shares of a stock.
+
+        **Syntax**
+        `[p]stock buy <ticker> <amount>`
+
+        **Examples**
+        `[p]stock buy UNI 10`
+        """
         success, msg = await self.market_system.buy_stock(ctx.author, ticker, amount)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {msg}")
@@ -52,7 +74,15 @@ class StockCommands:
     @app_commands.describe(ticker="Stock Symbol", amount="Number of shares")
     @app_commands.autocomplete(ticker=ticker_autocomplete)
     async def stock_sell(self, ctx, ticker: str, amount: int):
-        """Sell stocks."""
+        """
+        Sell shares of a stock.
+
+        **Syntax**
+        `[p]stock sell <ticker> <amount>`
+
+        **Examples**
+        `[p]stock sell UNI 5`
+        """
         success, msg = await self.market_system.sell_stock(ctx.author, ticker, amount)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {msg}")
@@ -61,7 +91,14 @@ class StockCommands:
 
     @stock_group.command(name="portfolio", aliases=["holdings"])
     async def stock_portfolio(self, ctx, user: discord.Member = None):
-        """View your stock portfolio."""
+        """
+        View your portfolio.
+
+        Shows your current holdings and profit/loss.
+
+        **Syntax**
+        `[p]stock portfolio [user]`
+        """
         user = user or ctx.author
         
         # Fetch data
@@ -78,7 +115,14 @@ class StockCommands:
     @stock_group.command(name="dashboard")
     @checks.admin_or_permissions(manage_guild=True)
     async def stock_dashboard(self, ctx, channel: discord.TextChannel = None):
-        """Create a persistent Stock Market Dashboard."""
+        """
+        Create a live stock dashboard.
+
+        **Admin/Manage Guild only.**
+
+        **Syntax**
+        `[p]stock dashboard [channel]`
+        """
         channel = channel or ctx.channel
         
         view = StockDashboardView(self.market_system)
@@ -94,7 +138,14 @@ class StockCommands:
     @stock_group.command(name="ipo")
     @checks.is_owner()
     async def stock_ipo(self, ctx, symbol: str, price: int, emoji: str, *, name: str):
-        """Launch a new stock (IPO)."""
+        """
+        Launch a new stock (IPO).
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]stock ipo <symbol> <price> <emoji> <name>`
+        """
         if price <= 0:
             await ctx.send("Price must be positive.")
             return
@@ -108,7 +159,14 @@ class StockCommands:
     @stock_group.command(name="delist")
     @checks.is_owner()
     async def stock_delist(self, ctx, symbol: str):
-        """Delist a stock (Delete it)."""
+        """
+        Delist a stock.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]stock delist <symbol>`
+        """
         # Confirmation?
         await self.market_system.db.stock.delete_stock(symbol)
         await self.market_system.initialize() # Refresh cache
@@ -117,7 +175,14 @@ class StockCommands:
     @stock_group.command(name="cleanup")
     @checks.is_owner()
     async def stock_cleanup(self, ctx):
-        """Clean up dead dashboard configurations."""
+        """
+        Cleanup dashboard config.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]stock cleanup`
+        """
         guild = ctx.guild
         if not guild:
             await ctx.send("This command must be run in a server.")

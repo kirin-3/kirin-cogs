@@ -8,12 +8,30 @@ class LevelCommands:
     # Level commands
     @commands.hybrid_command(name="xplb")
     async def xplb_shortcut(self, ctx):
-        """Show the XP leaderboard for this server"""
+        """
+        Show the XP leaderboard.
+
+        Shortcut for `[p]level leaderboard`.
+
+        **Syntax**
+        `[p]xplb`
+        """
         await self.level_leaderboard(ctx)
 
     @commands.hybrid_group(name="level", aliases=["lvl"], invoke_without_command=True)
     async def level_group(self, ctx, member: Optional[discord.Member] = None):
-        """Level and XP commands"""
+        """
+        View your level and rank.
+
+        Gain XP by chatting and engaging in the server.
+
+        **Syntax**
+        `[p]level [member]`
+
+        **Examples**
+        `[p]level`
+        `[p]level @User`
+        """
         # If no subcommand is invoked, behave like the check command
         if ctx.invoked_subcommand is None:
             await self._level_check_logic(ctx, member)
@@ -21,13 +39,25 @@ class LevelCommands:
     @commands.hybrid_command(name="xp")
     @app_commands.describe(member="The user to check XP for")
     async def xp_command(self, ctx, member: Optional[discord.Member] = None):
-        """Check your or another user's level and XP"""
+        """
+        Check your rank card.
+
+        Alias for `[p]level`.
+
+        **Syntax**
+        `[p]xp [member]`
+        """
         await self._level_check_logic(ctx, member)
     
     @level_group.command(name="check", aliases=["me"])
     @app_commands.describe(member="The user to check XP for")
     async def level_check(self, ctx, member: discord.Member = None):
-        """Check your or another user's level and XP"""
+        """
+        Check your rank card.
+
+        **Syntax**
+        `[p]level check [member]`
+        """
         await self._level_check_logic(ctx, member)
 
     async def _level_check_logic(self, ctx, member: discord.Member = None):
@@ -108,7 +138,14 @@ class LevelCommands:
     @level_group.command(name="leaderboard", aliases=["lb", "top"])
     @app_commands.describe(limit="Number of users to show")
     async def level_leaderboard(self, ctx, limit: int = 10):
-        """Show the XP leaderboard for this server"""
+        """
+        Show the XP leaderboard.
+
+        Displays the highest leveled users in the server.
+
+        **Syntax**
+        `[p]level leaderboard`
+        """
         if not await self.config.xp_enabled():
             await ctx.reply("<a:zz_NoTick:729318761655435355> XP system is disabled.", mention_author=False)
             return

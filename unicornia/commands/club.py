@@ -96,13 +96,28 @@ class ClubCommands:
     @commands.hybrid_group(name="club")
     @commands.guild_only()
     async def club_group(self, ctx):
-        """Club system commands"""
+        """
+        Create and manage clubs.
+
+        Clubs allow users to group together, share a bank, and chat.
+
+        **Syntax**
+        `[p]club <subcommand>`
+        """
         pass
 
     @club_group.command(name="create")
     @commands.cooldown(1, 86400, commands.BucketType.user)
     async def club_create(self, ctx, club_name: str):
-        """Create a new club"""
+        """
+        Create a new club.
+
+        Cost: Free (for now).
+        Cooldown: 24 hours.
+
+        **Syntax**
+        `[p]club create <name>`
+        """
             
         if not validate_club_name(club_name):
             await ctx.send("<a:zz_NoTick:729318761655435355> Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols.")
@@ -117,7 +132,18 @@ class ClubCommands:
     @club_group.command(name="info", aliases=["profile"])
     @app_commands.describe(club_name="Name of the club to view (optional)")
     async def club_info(self, ctx, club_name: Optional[str] = None):
-        """Get club information"""
+        """
+        View club details.
+
+        Shows members, XP, and description.
+
+        **Syntax**
+        `[p]club info [name]`
+
+        **Examples**
+        `[p]club info` (Your club)
+        `[p]club info CoolClub`
+        """
             
         data, message = await self.club_system.get_club_info(club_name, ctx.author if not club_name else None)
         if not data:
@@ -161,7 +187,12 @@ class ClubCommands:
 
     @club_group.command(name="leave")
     async def club_leave(self, ctx):
-        """Leave your current club"""
+        """
+        Leave your current club.
+
+        **Syntax**
+        `[p]club leave`
+        """
             
         success, message = await self.club_system.leave_club(ctx.author)
         if success:
@@ -171,7 +202,14 @@ class ClubCommands:
 
     @club_group.command(name="apply")
     async def club_apply(self, ctx, club_name: str):
-        """Apply to join a club"""
+        """
+        Apply to join a club.
+
+        The owner must accept your application.
+
+        **Syntax**
+        `[p]club apply <name>`
+        """
             
         success, message = await self.club_system.apply_to_club(ctx.author, club_name)
         if success:
@@ -181,7 +219,14 @@ class ClubCommands:
 
     @club_group.command(name="accept")
     async def club_accept(self, ctx, user: discord.Member):
-        """Accept a user's application (Owner only)"""
+        """
+        Accept a user's application.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]club accept <user>`
+        """
             
         success, message = await self.club_system.accept_application(ctx.author, user.name)
         if success:
@@ -191,7 +236,14 @@ class ClubCommands:
 
     @club_group.command(name="reject", aliases=["deny"])
     async def club_reject(self, ctx, user: discord.Member):
-        """Reject a user's application (Owner only)"""
+        """
+        Reject a user's application.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]club reject <user>`
+        """
             
         success, message = await self.club_system.reject_application(ctx.author, user.name)
         if success:
@@ -201,7 +253,14 @@ class ClubCommands:
 
     @club_group.command(name="kick")
     async def club_kick(self, ctx, user: discord.Member):
-        """Kick a user from the club (Owner/Server Mod)"""
+        """
+        Kick a user from the club.
+
+        **Owner/Mod only.**
+
+        **Syntax**
+        `[p]club kick <user>`
+        """
             
         success, message = await self.club_system.kick_member(ctx.author, user.name)
         if success:
@@ -211,7 +270,15 @@ class ClubCommands:
 
     @club_group.command(name="ban")
     async def club_ban(self, ctx, user: discord.Member):
-        """Ban a user from the club (Owner/Server Mod)"""
+        """
+        Ban a user from the club.
+
+        Prevents them from applying again.
+        **Owner/Mod only.**
+
+        **Syntax**
+        `[p]club ban <user>`
+        """
             
         success, message = await self.club_system.ban_member(ctx.author, user.name)
         if success:
@@ -221,7 +288,14 @@ class ClubCommands:
 
     @club_group.command(name="unban")
     async def club_unban(self, ctx, user: discord.Member):
-        """Unban a user from the club (Owner/Server Mod)"""
+        """
+        Unban a user from the club.
+
+        **Owner/Mod only.**
+
+        **Syntax**
+        `[p]club unban <user>`
+        """
             
         success, message = await self.club_system.unban_member(ctx.author, user.name)
         if success:
@@ -231,7 +305,14 @@ class ClubCommands:
 
     @club_group.command(name="transfer")
     async def club_transfer(self, ctx, new_owner: discord.Member):
-        """Transfer club ownership (Owner only)"""
+        """
+        Transfer club ownership.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]club transfer <user>`
+        """
             
         success, message = await self.club_system.transfer_club(ctx.author, new_owner)
         if success:
@@ -241,7 +322,12 @@ class ClubCommands:
 
     @club_group.command(name="invite")
     async def club_invite(self, ctx, user: discord.Member):
-        """Invite a user to your club"""
+        """
+        Invite a user to your club.
+
+        **Syntax**
+        `[p]club invite <user>`
+        """
         success, message = await self.club_system.invite_member(ctx.author, user)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
@@ -250,7 +336,12 @@ class ClubCommands:
 
     @club_group.group(name="invitations", aliases=["invites"], invoke_without_command=True)
     async def club_invitations(self, ctx):
-        """Manage club invitations"""
+        """
+        Manage club invitations.
+
+        **Syntax**
+        `[p]club invitations`
+        """
         invites = await self.club_system.get_my_invitations(ctx.author)
         
         if not invites:
@@ -275,7 +366,12 @@ class ClubCommands:
 
     @club_invitations.command(name="accept")
     async def club_invitations_accept(self, ctx, *, club_name: str):
-        """Accept a club invitation"""
+        """
+        Accept a club invitation.
+
+        **Syntax**
+        `[p]club invitations accept <club_name>`
+        """
         success, message = await self.club_system.accept_invitation(ctx.author, club_name)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
@@ -284,7 +380,12 @@ class ClubCommands:
 
     @club_invitations.command(name="reject", aliases=["decline"])
     async def club_invitations_reject(self, ctx, *, club_name: str):
-        """Reject a club invitation"""
+        """
+        Reject a club invitation.
+
+        **Syntax**
+        `[p]club invitations reject <club_name>`
+        """
         success, message = await self.club_system.reject_invitation(ctx.author, club_name)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
@@ -293,7 +394,14 @@ class ClubCommands:
 
     @club_group.command(name="applicants", aliases=["apps"])
     async def club_applicants(self, ctx):
-        """View pending club applications (Owner only)"""
+        """
+        View pending applications.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]club applicants`
+        """
             
         applicants, message = await self.club_system.get_applicants(ctx.author)
         
@@ -316,7 +424,14 @@ class ClubCommands:
 
     @club_group.command(name="bans")
     async def club_bans(self, ctx):
-        """View banned members (Owner only)"""
+        """
+        View banned members.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]club bans`
+        """
             
         bans, message = await self.club_system.get_banned_members(ctx.author)
         
@@ -346,7 +461,15 @@ class ClubCommands:
     @commands.cooldown(1, 86400, commands.BucketType.user)
     @commands.admin_or_permissions(manage_guild=True)
     async def club_rename(self, ctx, *, new_name: str):
-        """Rename the club (Owner/Server Mod)"""
+        """
+        Rename the club.
+
+        Cooldown: 24 hours.
+        **Owner/Mod only.**
+
+        **Syntax**
+        `[p]club rename <new_name>`
+        """
         # Immediate length check to prevent DoS from massive input strings
         if len(new_name) > 20:
             await ctx.send("<a:zz_NoTick:729318761655435355> Club name is too long (max 20 chars).")
@@ -367,7 +490,14 @@ class ClubCommands:
     @club_group.command(name="icon")
     @commands.admin_or_permissions(manage_guild=True)
     async def club_icon(self, ctx, url: str):
-        """Set club icon URL (Owner/Server Mod)"""
+        """
+        Set club icon.
+
+        **Owner/Mod only.**
+
+        **Syntax**
+        `[p]club icon <url>`
+        """
             
         if not validate_url(url):
             await ctx.send("<a:zz_NoTick:729318761655435355> Invalid URL. Please provide a valid HTTP/HTTPS image URL.")
@@ -382,7 +512,14 @@ class ClubCommands:
     @club_group.command(name="banner")
     @commands.admin_or_permissions(manage_guild=True)
     async def club_banner(self, ctx, url: str):
-        """Set club banner URL (Owner/Server Mod)"""
+        """
+        Set club banner.
+
+        **Owner/Mod only.**
+
+        **Syntax**
+        `[p]club banner <url>`
+        """
             
         if not validate_url(url):
             await ctx.send("❌ Invalid URL. Please provide a valid HTTP/HTTPS image URL.")
@@ -397,7 +534,14 @@ class ClubCommands:
     @club_group.command(name="desc")
     @commands.admin_or_permissions(manage_guild=True)
     async def club_desc(self, ctx, *, description: str):
-        """Set club description (Owner/Server Mod)"""
+        """
+        Set club description.
+
+        **Owner/Mod only.**
+
+        **Syntax**
+        `[p]club desc <description>`
+        """
         # Immediate length check to prevent DoS from massive input strings
         if len(description) > 150:
             await ctx.send("❌ Description is too long (max 150 chars).")
@@ -417,7 +561,15 @@ class ClubCommands:
     @commands.cooldown(1, 86400, commands.BucketType.user)
     @commands.admin_or_permissions(manage_guild=True)
     async def club_disband(self, ctx):
-        """Disband the club (Owner/Server Mod)"""
+        """
+        Disband the club.
+
+        This action is irreversible.
+        **Owner/Mod only.**
+
+        **Syntax**
+        `[p]club disband`
+        """
             
         view = ConfirmView(ctx.author)
         msg = await ctx.send("⚠️ Are you sure you want to disband your club? This cannot be undone.", view=view)
@@ -436,7 +588,14 @@ class ClubCommands:
     @club_group.command(name="leaderboard", aliases=["lb"])
     @app_commands.describe(page="Page number")
     async def club_leaderboard(self, ctx, page: int = 1):
-        """Show club leaderboard"""
+        """
+        Show club leaderboard.
+
+        Ranked by total XP.
+
+        **Syntax**
+        `[p]club leaderboard [page]`
+        """
             
         clubs = await self.club_system.get_leaderboard(page)
         if not clubs:

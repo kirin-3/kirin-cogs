@@ -2,6 +2,102 @@ import discord
 from discord import ui
 from redbot.core.utils.chat_formatting import humanize_number
 from redbot.core.utils.views import ConfirmView
+from .help_content import HELP_CONTENT
+
+class UnicorniaHelpView(ui.View):
+    def __init__(self, ctx):
+        super().__init__(timeout=180)
+        self.ctx = ctx
+        self.current_category = "intro"
+        self.message = None
+        
+        self.update_components()
+        
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.ctx.author.id:
+            await interaction.response.send_message("This menu is not for you.", ephemeral=True)
+            return False
+        return True
+
+    async def on_timeout(self):
+        if self.message:
+            for child in self.children:
+                child.disabled = True
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+        self.stop()
+        
+    def get_embed(self):
+        data = HELP_CONTENT.get(self.current_category, HELP_CONTENT["intro"])
+        
+        embed = discord.Embed(
+            title=f"{data['emoji']} {data['title']}",
+            description=data['description'],
+            color=discord.Color.purple()
+        )
+        
+        if data['commands']:
+            embed.add_field(
+                name="Key Commands",
+                value="\n".join(data['commands']),
+                inline=False
+            )
+            
+        embed.set_footer(text="Unicornia Help System • Select a category below")
+        return embed
+
+    def update_components(self):
+        self.clear_items()
+        
+        # Select Menu
+        options = []
+        for key, data in HELP_CONTENT.items():
+            options.append(discord.SelectOption(
+                label=data['title'].replace(data['emoji'], "").strip(),
+                value=key,
+                emoji=data['emoji'],
+                default=(key == self.current_category)
+            ))
+            
+        select = ui.Select(
+            placeholder="Select a system...",
+            options=options,
+            min_values=1,
+            max_values=1
+        )
+        
+        async def select_callback(interaction: discord.Interaction):
+            self.current_category = select.values[0]
+            self.update_components()
+            embed = self.get_embed()
+            await interaction.response.edit_message(embed=embed, view=self)
+            
+        select.callback = select_callback
+        self.add_item(select)
+        
+        # Home Button
+        home_btn = ui.Button(label="Home", style=discord.ButtonStyle.secondary, emoji="🏠", disabled=(self.current_category == "intro"))
+        
+        async def home_callback(interaction: discord.Interaction):
+            self.current_category = "intro"
+            self.update_components()
+            embed = self.get_embed()
+            await interaction.response.edit_message(embed=embed, view=self)
+            
+        home_btn.callback = home_callback
+        self.add_item(home_btn)
+        
+        # Quit Button
+        quit_btn = ui.Button(label="Quit", style=discord.ButtonStyle.danger, emoji="✖️")
+        
+        async def quit_callback(interaction: discord.Interaction):
+            await interaction.message.delete()
+            self.stop()
+            
+        quit_btn.callback = quit_callback
+        self.add_item(quit_btn)
 
 class RockPaperScissorsView(ui.View):
     def __init__(self, user: discord.abc.User, timeout: float = 30):

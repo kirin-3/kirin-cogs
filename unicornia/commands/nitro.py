@@ -14,7 +14,14 @@ class NitroCommands:
     @commands.hybrid_command(name="nitroshop")
     @commands.guild_only()
     async def nitroshop(self, ctx):
-        """Open the Nitro Shop to purchase Discord Nitro subscriptions."""
+        """
+        Open the Nitro Shop.
+
+        Exchange currency for Discord Nitro.
+
+        **Syntax**
+        `[p]nitroshop`
+        """
         if not self.nitro_system:
             return await ctx.reply("The Nitro Shop system is currently unavailable.", mention_author=False)
             
@@ -29,10 +36,15 @@ class NitroCommands:
     @commands.is_owner()
     async def nitrostock(self, ctx, type: str, amount: int):
         """
-        Set the stock for Nitro items.
-        
-        <type>: "boost" or "basic"
-        <amount>: The exact amount of stock available
+        Set Nitro stock.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]nitrostock <type> <amount>`
+
+        **Types**
+        `boost`, `basic`
         """
         type = type.lower()
         if type not in ["boost", "basic"]:
@@ -49,10 +61,12 @@ class NitroCommands:
     @commands.is_owner()
     async def nitroprice(self, ctx, type: str, price: int):
         """
-        Set the price for Nitro items.
-        
-        <type>: "boost" or "basic"
-        <price>: New price in Slut points
+        Set Nitro price.
+
+        **Owner only.**
+
+        **Syntax**
+        `[p]nitroprice <type> <price>`
         """
         type = type.lower()
         if type not in ["boost", "basic"]:
