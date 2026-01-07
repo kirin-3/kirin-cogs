@@ -249,7 +249,7 @@ class UnicornAI(commands.Cog):
     @app_commands.describe(persona="The name of the persona to summon")
     @app_commands.autocomplete(persona=persona_autocomplete)
     @commands.guild_only()
-    @commands.cooldown(1, 3200, commands.BucketType.user) # 1 hour
+    @commands.cooldown(1, 21600, commands.BucketType.user) # 6 hours
     @commands.cooldown(1, 1800, commands.BucketType.channel) # 30 minutes
     async def ai_summon(self, ctx: commands.Context, persona: str):
         """
@@ -282,15 +282,10 @@ class UnicornAI(commands.Cog):
             log.exception("Failed to summon persona")
             await ctx.send(f"Failed to summon persona: {e}")
 
-    @commands.hybrid_group(name="ai")
-    async def ai_group(self, ctx):
-        """Manage UnicornAI settings."""
-        pass
-
-    @ai_group.command(name="optout")
-    async def ai_optout(self, ctx):
-        """Toggle your opt-out status.
-        
+    @commands.hybrid_command(name="aioptout", description="Toggle your opt-out status for the AI.")
+    async def ai_optout(self, ctx: commands.Context):
+        """
+        Toggle your opt-out status.
         If opted out, your messages will be ignored by the AI context window.
         """
         current = await self.config.user(ctx.author).opt_out()
@@ -301,6 +296,11 @@ class UnicornAI(commands.Cog):
             await ctx.send("You have opted out. Your messages will no longer be included in the AI context.", ephemeral=True)
         else:
             await ctx.send("You have opted in. The AI can now see your messages.", ephemeral=True)
+
+    @commands.group(name="ai")
+    async def ai_group(self, ctx):
+        """Manage UnicornAI settings."""
+        pass
 
     @ai_group.command(name="setup")
     @commands.is_owner()
