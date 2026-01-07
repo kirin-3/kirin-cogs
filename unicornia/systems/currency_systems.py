@@ -140,70 +140,85 @@ class CurrencyGeneration:
             """, (message_id, plant_id))
             await db.commit()
     
-    async def pick_plant(self, user_id: int, channel_id: int) -> Optional[tuple[int, Optional[int], bool]]:
-        """Pick up the last currency plant in the channel. Returns (amount, message_id, is_fake)."""
+    async def pick_plant(self, user_id: int, channel_id: int) -> Optional[tuple[int, List[int], bool]]:
+        """Pick up all currency plants in the channel. Returns (net_amount_abs, message_ids, is_net_loss)."""
         async with self.db._get_connection() as db:
             await self.db._setup_wal_mode(db)
             
             try:
-                # Find the last plant in this channel
+                # Find all plants in this channel
                 cursor = await db.execute("""
                     SELECT Id, Amount, MessageId, Password FROM PlantedCurrency
                     WHERE ChannelId = ?
-                    ORDER BY Id DESC LIMIT 1
                 """, (channel_id,))
                 
-                plant = await cursor.fetchone()
-                if not plant:
+                plants = await cursor.fetchall()
+                if not plants:
                     return None
                 
-                plant_id, amount, message_id, password = plant
-                is_fake = (password == "FAKE")
+                net_amount = 0
+                picked_message_ids = []
+                picked_count = 0
                 
-                # Remove the plant (Atomic check using rowcount)
-                cursor = await db.execute("DELETE FROM PlantedCurrency WHERE Id = ?", (plant_id,))
-                
-                if cursor.rowcount == 0:
-                    # Already picked by someone else in the split second between SELECT and DELETE
+                for plant in plants:
+                    plant_id, amount, message_id, password = plant
+                    
+                    # Remove the plant (Atomic check using rowcount)
+                    cursor = await db.execute("DELETE FROM PlantedCurrency WHERE Id = ?", (plant_id,))
+                    
+                    if cursor.rowcount > 0:
+                        is_fake = (password == "FAKE")
+                        if is_fake:
+                            net_amount -= amount
+                        else:
+                            net_amount += amount
+                        
+                        if message_id:
+                            picked_message_ids.append(message_id)
+                        picked_count += 1
+
+                if picked_count == 0:
+                    # Attempted to pick but all were gone
                     await db.commit()
                     return None
-                
-                if is_fake:
-                    # Fake currency! Take it away.
-                    # We inline the remove_currency logic (clamped at 0)
-                    
-                    # Update user currency (deduct, max 0)
+
+                # Update user currency
+                if net_amount < 0:
+                    # Net loss
+                    loss = abs(net_amount)
                     await db.execute("""
                         UPDATE DiscordUser
                         SET CurrencyAmount = MAX(0, CurrencyAmount - ?)
                         WHERE UserId = ?
-                    """, (amount, user_id))
+                    """, (loss, user_id))
                     
-                    # Log transaction
                     await db.execute("""
                         INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, Reason, DateAdded)
                         VALUES (?, ?, ?, ?, ?, datetime('now'))
-                    """, (user_id, -amount, "fake_pick_loss", str(plant_id), f"Picked fake plant {plant_id}"))
+                    """, (user_id, -loss, "fake_pick_loss", "bulk_pick", f"Picked {picked_count} plants (Net Loss)"))
                     
-                # Give currency to user (if real)
-                elif amount > 0:
-                    # We inline the add_currency logic here to avoid a deadlock
-                    # because self.db.economy.add_currency tries to acquire the same lock we already hold
-                    
-                    # Update user currency
+                elif net_amount > 0:
+                    # Net gain
                     await db.execute("""
                         INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
                         ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount + ?
-                    """, (user_id, amount, amount))
+                    """, (user_id, net_amount, net_amount))
                     
-                    # Log transaction
                     await db.execute("""
                         INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, Reason, DateAdded)
                         VALUES (?, ?, ?, ?, ?, datetime('now'))
-                    """, (user_id, amount, "plant_pick", str(plant_id), f"Picked plant {plant_id}"))
+                    """, (user_id, net_amount, "plant_pick", "bulk_pick", f"Picked {picked_count} plants"))
+
+                elif picked_count > 0 and net_amount == 0:
+                     await db.execute("""
+                        INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, Reason, DateAdded)
+                        VALUES (?, ?, ?, ?, ?, datetime('now'))
+                    """, (user_id, 0, "plant_pick", "bulk_pick", f"Picked {picked_count} plants (Net Zero)"))
                 
                 await db.commit()
-                return amount, message_id, is_fake
+                
+                is_net_loss = net_amount < 0
+                return abs(net_amount), picked_message_ids, is_net_loss
                 
             except Exception:
                 await db.execute("ROLLBACK")

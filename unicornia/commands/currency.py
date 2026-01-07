@@ -19,10 +19,10 @@ class CurrencyCommands:
         try:
             result = await self.currency_generation.pick_plant(ctx.author.id, ctx.channel.id)
             if result:
-                amount, message_id, is_fake = result
+                amount, message_ids, is_net_loss = result
                 currency_symbol = await self.config.currency_symbol()
                 
-                if is_fake:
+                if is_net_loss:
                     await ctx.reply(f"Wait... it was a fake! You lost {amount}{currency_symbol}!", mention_author=False, delete_after=30)
                 else:
                     # Auto-delete confirmation after 30 seconds
@@ -34,15 +34,16 @@ class CurrencyCommands:
                 except Exception:
                     pass
 
-                # Delete original message if ID exists
-                if message_id:
-                    try:
-                        msg = await ctx.channel.fetch_message(message_id)
-                        await msg.delete()
-                    except (discord.NotFound, discord.Forbidden):
-                        pass # Already deleted or no permissions
-                    except Exception:
-                        pass # Ignore other errors
+                # Delete original messages if IDs exist
+                if message_ids:
+                    for mid in message_ids:
+                        try:
+                            msg = await ctx.channel.fetch_message(mid)
+                            await msg.delete()
+                        except (discord.NotFound, discord.Forbidden):
+                            pass # Already deleted or no permissions
+                        except Exception:
+                            pass # Ignore other errors
             else:
                 await ctx.send("<a:zz_NoTick:729318761655435355> No currency to pick up here.", delete_after=15)
                 

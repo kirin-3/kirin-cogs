@@ -173,9 +173,11 @@ def encode_prompt_chunked(
 
             chunk_combined_pos_embeds = torch.cat([pos_chunk_embeds_1, pos_chunk_embeds_2], dim=-1)
 
-            # --- NEW: Store first chunk's pooled embeddings ---
-            if i == 0:
+            # --- NEW: Accumulate pooled embeddings for averaging ---
+            if first_chunk_pooled_prompt_embeds is None:
                 first_chunk_pooled_prompt_embeds = pos_pooled_embeds_2
+            else:
+                first_chunk_pooled_prompt_embeds += pos_pooled_embeds_2
 
             # --- NEW: Concatenate embeddings ---
             if final_prompt_embeds is None:  # First chunk
@@ -247,9 +249,11 @@ def encode_prompt_chunked(
 
             chunk_combined_neg_embeds = torch.cat([neg_chunk_embeds_1, neg_chunk_embeds_2], dim=-1)
 
-            # --- NEW: Store first chunk's pooled negative embeddings ---
-            if i == 0:
+            # --- NEW: Accumulate pooled negative embeddings ---
+            if first_chunk_negative_pooled_prompt_embeds is None:
                 first_chunk_negative_pooled_prompt_embeds = neg_pooled_embeds_2
+            else:
+                first_chunk_negative_pooled_prompt_embeds += neg_pooled_embeds_2
 
             # --- NEW: Concatenate negative embeddings ---
             if final_negative_prompt_embeds is None:  # First chunk
@@ -261,9 +265,9 @@ def encode_prompt_chunked(
         prompt_embeds = final_prompt_embeds
         negative_prompt_embeds = final_negative_prompt_embeds
         
-        # --- MODIFIED: Use first chunk's pooled embeddings ---
-        pooled_prompt_embeds = first_chunk_pooled_prompt_embeds
-        negative_pooled_prompt_embeds = first_chunk_negative_pooled_prompt_embeds
+        # --- MODIFIED: Use averaged pooled embeddings ---
+        pooled_prompt_embeds = first_chunk_pooled_prompt_embeds / num_chunks
+        negative_pooled_prompt_embeds = first_chunk_negative_pooled_prompt_embeds / num_chunks
         
         # Handle case where negative prompt might be empty initially
         if negative_prompt == "" and first_chunk_negative_pooled_prompt_embeds is None:

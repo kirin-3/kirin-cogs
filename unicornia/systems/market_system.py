@@ -118,7 +118,7 @@ class MarketSystem:
                 if current_price > 100:
                     decay = 0.001 * volatility # 0.1% decay
                 elif current_price < 100:
-                    decay = -0.01 * volatility # Drift back up to 100
+                    decay = -0.02 * volatility # Strong upward drift to fight noise
                 
                 # Growth factor
                 growth = (math.log1p(usage) * 0.05 * volatility)
@@ -126,7 +126,7 @@ class MarketSystem:
                 change_percent = growth - decay
                 
                 # Add random noise (-2% to +2%)
-                noise = random.uniform(-0.02, 0.02)
+                noise = random.uniform(-0.02, 0.02) * volatility
                 
                 change_percent += noise
                 
