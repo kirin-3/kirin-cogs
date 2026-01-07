@@ -230,7 +230,29 @@ class UnicornImage(commands.Cog):
         raw_styles = [s for s in [style, style2, style3, style4, style5] if s]
         await self._run_modal_gen(ctx, prompt, model, raw_styles, negative_prompt, batch_size)
 
-    async def _run_modal_gen(self, ctx: commands.Context, prompt: str, model_alias: str, raw_styles: List[str], negative_prompt: Optional[str], batch_size: int = 1):
+    @commands.hybrid_command(name="gentest", description="[OWNER] Test generation with seed")
+    @commands.is_owner()
+    @app_commands.describe(
+        prompt="Image description",
+        model="Base model to use",
+        batch_size="Number of images (1-4)",
+        seed="Random seed (Optional)",
+        style="Optional style (LoRA)",
+        style2="Optional style (LoRA)",
+        style3="Optional style (LoRA)",
+        style4="Optional style (LoRA)",
+        style5="Optional style (LoRA)",
+        negative_prompt="Things to exclude from the image"
+    )
+    async def gen_test(self, ctx: commands.Context, prompt: str, model: str = DEFAULT_MODEL, batch_size: commands.Range[int, 1, 4] = 1, seed: Optional[int] = None, style: Optional[str] = None, style2: Optional[str] = None, style3: Optional[str] = None, style4: Optional[str] = None, style5: Optional[str] = None, negative_prompt: Optional[str] = None):
+        """
+        Owner test generation using Modal with seed support.
+        """
+        await ctx.defer()
+        raw_styles = [s for s in [style, style2, style3, style4, style5] if s]
+        await self._run_modal_gen(ctx, prompt, model, raw_styles, negative_prompt, batch_size, seed=seed)
+
+    async def _run_modal_gen(self, ctx: commands.Context, prompt: str, model_alias: str, raw_styles: List[str], negative_prompt: Optional[str], batch_size: int = 1, seed: Optional[int] = None):
         # Validate Model
         if model_alias not in MODELS:
              return await ctx.send(f"❌ Model `{model_alias}` not found. Available: {', '.join(MODELS.keys())}")
@@ -261,6 +283,7 @@ class UnicornImage(commands.Cog):
                 model_id=model_config["id"],
                 loras=modal_loras,
                 batch_size=batch_size,
+                seed=seed,
                 width=model_config.get("width", 1024),
                 height=model_config.get("height", 1024),
                 steps=model_config.get("steps", 30),
@@ -303,6 +326,11 @@ class UnicornImage(commands.Cog):
     @gen_premium.autocomplete('style3')
     @gen_premium.autocomplete('style4')
     @gen_premium.autocomplete('style5')
+    @gen_test.autocomplete('style')
+    @gen_test.autocomplete('style2')
+    @gen_test.autocomplete('style3')
+    @gen_test.autocomplete('style4')
+    @gen_test.autocomplete('style5')
     async def style_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         choices = []
         is_free_command = interaction.command.name == "genfree"
@@ -321,6 +349,7 @@ class UnicornImage(commands.Cog):
         return choices[:25]
 
     @gen_premium.autocomplete('model')
+    @gen_test.autocomplete('model')
     async def model_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         if not MODELS:
             return []
