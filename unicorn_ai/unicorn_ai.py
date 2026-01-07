@@ -267,11 +267,7 @@ class UnicornAI(commands.Cog):
         Summons a specific persona to the current channel.
         Usage: [p]summon <persona_name>
         """
-        # 1. Validation: Enabled Channel
-        if not await self.config.channel(ctx.channel).enabled():
-            return await ctx.send("AI is not enabled in this channel.", ephemeral=True)
-
-        # 2. Validation: Persona Exists and is Summonable
+        # 1. Validation: Persona Exists and is Summonable
         # We use asyncio.to_thread to avoid blocking event loop with I/O
         p_data = await asyncio.to_thread(self.personas.load_persona, persona)
         
