@@ -12,7 +12,7 @@ LORAS = {
         "prompt": "latex,bdsm outfit",
         "strength": 0.8,
         "base": "Pony",
-        "image_url": "https://example.com/anime_preview.png"
+        "image_url": "https://cdn.discordapp.com/attachments/686096388018405408/1458488554677080075/Gothic_Style_Pony.png"
     },
     "Fantasy Styles": {
         "name": "Mythic Fantasy Styles",
@@ -62,7 +62,7 @@ LORAS = {
         "prompt": "Art8st",
         "strength": 0.6,
         "base": "Pony",
-        "image_url": ""
+        "image_url": "https://cdn.discordapp.com/attachments/686096388018405408/1458488555394306254/Anime_Artistic.png"
     },
     "Colored Pencil": {
         "name": "Hyperdetailed Colored Pencil",
@@ -72,7 +72,7 @@ LORAS = {
         "prompt": "ArsMJStyle, Colored pencil hyperdetailed realism",
         "strength": 0.6,
         "base": "Pony",
-        "image_url": ""
+        "image_url": "https://cdn.discordapp.com/attachments/686096388018405408/1458488555750953082/Colored_Pencil.png"
     },
     "Abstract Painting": {
         "name": "Abstract Painting",
@@ -82,7 +82,7 @@ LORAS = {
         "prompt": "brush stroke, traditional media,",
         "strength": 0.8,
         "base": "Pony",
-        "image_url": ""
+        "image_url": "https://cdn.discordapp.com/attachments/686096388018405408/1458488556132765916/Abstract_Painting.png"
     },
     "Bondage Suspension": {
         "hidden": True,
@@ -103,7 +103,7 @@ LORAS = {
         "prompt": "",
         "strength": 0.9,
         "base": "SDXL",
-        "image_url": ""
+        "image_url": "https://cdn.discordapp.com/attachments/686096388018405408/1458488556736479295/Stabilizer.png"
     },
     "Realistic Skin Texture": {
         "name": "Realistic Skin Texture Style",
@@ -113,7 +113,7 @@ LORAS = {
         "prompt": "skin texture style, realistic skin, skin texture style",
         "strength": 0.8,
         "base": "SDXL",
-        "image_url": ""
+        "image_url": "https://cdn.discordapp.com/attachments/686096388018405408/1458488557084868618/Realistic_Skin_Texture.png"
     },
     "Detailed Perfection": {
         "name": "Detailed Perfection Style",
@@ -123,7 +123,7 @@ LORAS = {
         "prompt": "perfect, perfection",
         "strength": 0.8,
         "base": "SDXL",
-        "image_url": ""
+        "image_url": "https://cdn.discordapp.com/attachments/686096388018405408/1458488557625675951/Detailed_Perfection.png"
     },
     "Ink Style": {
         "name": "Ink Style",
@@ -133,6 +133,6 @@ LORAS = {
         "prompt": "ink sketch",
         "strength": 1.0,
         "base": "SDXL",
-        "image_url": ""
+        "image_url": "https://cdn.discordapp.com/attachments/686096388018405408/1458488558716457073/Ink_Style.png"
     }
 }

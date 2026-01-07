@@ -216,7 +216,7 @@ class UnicornImage(commands.Cog):
         style5="Optional style (LoRA)",
         negative_prompt="Things to exclude from the image"
     )
-    async def gen_premium(self, ctx: commands.Context, prompt: str, model: str = DEFAULT_MODEL, batch_size: commands.Range[int, 1, 4] = 1, style: Optional[str] = None, style2: Optional[str] = None, style3: Optional[str] = None, style4: Optional[str] = None, style5: Optional[str] = None, negative_prompt: Optional[str] = None):
+    async def gen_premium(self, ctx: commands.Context, prompt: str, model: str, batch_size: commands.Range[int, 1, 4] = 1, style: Optional[str] = None, style2: Optional[str] = None, style3: Optional[str] = None, style4: Optional[str] = None, style5: Optional[str] = None, negative_prompt: Optional[str] = None):
         """
         Premium generation using Modal.
         """
@@ -244,7 +244,7 @@ class UnicornImage(commands.Cog):
         style5="Optional style (LoRA)",
         negative_prompt="Things to exclude from the image"
     )
-    async def gen_test(self, ctx: commands.Context, prompt: str, model: str = DEFAULT_MODEL, batch_size: commands.Range[int, 1, 4] = 1, seed: Optional[int] = None, style: Optional[str] = None, style2: Optional[str] = None, style3: Optional[str] = None, style4: Optional[str] = None, style5: Optional[str] = None, negative_prompt: Optional[str] = None):
+    async def gen_test(self, ctx: commands.Context, prompt: str, model: str, batch_size: commands.Range[int, 1, 4] = 1, seed: Optional[int] = None, style: Optional[str] = None, style2: Optional[str] = None, style3: Optional[str] = None, style4: Optional[str] = None, style5: Optional[str] = None, negative_prompt: Optional[str] = None):
         """
         Owner test generation using Modal with seed support.
         """
