@@ -121,7 +121,7 @@ class MarketSystem:
                     decay = -0.02 * volatility # Strong upward drift to fight noise
                 
                 # Growth factor
-                growth = (math.log1p(usage) * 0.05 * volatility)
+                growth = (math.log1p(usage) * 0.04 * volatility)
                 
                 change_percent = growth - decay
                 
