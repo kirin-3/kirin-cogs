@@ -309,8 +309,12 @@ class UnicornImage(commands.Cog):
 
         for key, data in LORAS.items():
             # Hide hidden loras from genfree command
-            if is_free_command and data.get("hidden", False):
-                continue
+            if is_free_command:
+                if data.get("hidden", False):
+                    continue
+                # Genfree only supports Pony base
+                if data.get("base") != "Pony":
+                    continue
                 
             if current.lower() in key.lower() or current.lower() in data.get("name", "").lower():
                 choices.append(app_commands.Choice(name=data.get("name", key), value=key))

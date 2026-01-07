@@ -68,9 +68,8 @@ class LoraListView(ui.LayoutView):
             
             # Format Info
             info = f"### {name} (`{key}`)\n"
-            info += f"**Base Model:** {base} | **Strength:** {strength}\n"
+            info += f"**Base Model:** {base}\n"
             info += f"**Description:** {desc}\n"
-            info += f"**Triggers:** `{triggers}`\n"
             
             container.add_item(ui.TextDisplay(content=info))
             
