@@ -45,20 +45,22 @@ class UnicornImage(commands.Cog):
         if self._session:
             asyncio.create_task(self._session.close())
 
+    def _get_session(self) -> aiohttp.ClientSession:
+        # Try to retrieve bot session, fallback to creating one
+        session = getattr(self.bot, "session", None) or getattr(self.bot, "_session", None)
+        if session is None:
+            # Check if we already created one in a race
+            if self._session is None:
+                import aiohttp
+                self._session = aiohttp.ClientSession()
+            session = self._session
+        return session
+
     async def get_horde_client(self) -> HordeClient:
         async with self._init_lock:
             if self._horde_client is None:
                 api_key = await self.config.horde_api_key()
-                
-                # Try to retrieve bot session, fallback to creating one
-                session = getattr(self.bot, "session", None) or getattr(self.bot, "_session", None)
-                if session is None:
-                    # Check if we already created one in a race
-                    if self._session is None:
-                        import aiohttp
-                        self._session = aiohttp.ClientSession()
-                    session = self._session
-                
+                session = self._get_session()
                 self._horde_client = HordeClient(session, api_key)
             return self._horde_client
 
@@ -289,8 +291,9 @@ class UnicornImage(commands.Cog):
         if not LORAS:
             return await ctx.send("No styles are currently configured.")
             
-        view = LoraListView(LORAS)
-        await ctx.send(view=view)
+        session = self._get_session()
+        view = LoraListView(LORAS, session)
+        await view.send_initial(ctx)
 
     @gen_free.autocomplete('style')
     @gen_free.autocomplete('style2')

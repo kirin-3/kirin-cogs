@@ -1,28 +1,53 @@
 import discord
 from discord import ui
 from typing import List, Dict, Any
+import aiohttp
+import io
 
 class LoraListView(ui.LayoutView):
     """
-    V2 Component View for listing LoRAs with pagination.
+    V2 Component View for listing LoRAs with pagination and image attachments.
     """
-    def __init__(self, loras: Dict[str, Any]):
+    def __init__(self, loras: Dict[str, Any], session: aiohttp.ClientSession):
         super().__init__(timeout=180)
         self.loras = loras
-        # Convert dict to list of (key, data) tuples for pagination
         self.lora_list = list(loras.items())
+        self.session = session
         self.current_page = 0
         self.items_per_page = 2
-        self.update_components()
+        # Initial components will be set by send_initial
 
-    def update_components(self):
-        self.clear_items()
+    async def fetch_images(self, page_items):
+        files = []
+        filenames_map = {} # key -> filename
         
-        # Pagination calculations
-        total_pages = max(1, (len(self.lora_list) - 1) // self.items_per_page + 1)
-        start = self.current_page * self.items_per_page
-        end = start + self.items_per_page
-        page_items = self.lora_list[start:end]
+        for key, data in page_items:
+            url = data.get("image_url")
+            if url:
+                try:
+                    async with self.session.get(url) as resp:
+                        if resp.status == 200:
+                            data_bytes = await resp.read()
+                            # Determine extension from url or default to png
+                            ext = "png"
+                            if "jpeg" in url.lower() or "jpg" in url.lower(): ext = "jpg"
+                            elif "webp" in url.lower(): ext = "webp"
+                            elif "gif" in url.lower(): ext = "gif"
+                            
+                            # Clean key for filename
+                            clean_key = "".join(c for c in key if c.isalnum() or c in (' ', '_', '-')).strip()
+                            filename = f"{clean_key}_{self.current_page}.{ext}"
+                            
+                            files.append(discord.File(io.BytesIO(data_bytes), filename=filename))
+                            filenames_map[key] = filename
+                except Exception as e:
+                    # Log error or ignore
+                    print(f"Failed to load image for {key}: {e}")
+                    pass
+        return files, filenames_map
+
+    def build_layout(self, page_items, filenames_map, total_pages):
+        self.clear_items()
         
         # Main Container
         container = ui.Container(accent_color=discord.Color.blue())
@@ -40,7 +65,6 @@ class LoraListView(ui.LayoutView):
             base = data.get("base", "Unknown")
             strength = data.get("strength", "Default")
             triggers = ", ".join(data.get("trigger_words", [])) or "None"
-            image_url = data.get("image_url")
             
             # Format Info
             info = f"### {name} (`{key}`)\n"
@@ -50,14 +74,12 @@ class LoraListView(ui.LayoutView):
             
             container.add_item(ui.TextDisplay(content=info))
             
-            if image_url:
-                try:
-                    gallery = ui.MediaGallery()
-                    gallery.add_item(media=image_url)
-                    container.add_item(gallery)
-                except Exception:
-                    pass
-
+            filename = filenames_map.get(key)
+            if filename:
+                 gallery = ui.MediaGallery()
+                 gallery.add_item(media=f"attachment://{filename}")
+                 container.add_item(gallery)
+                 
             container.add_item(ui.Separator())
             
         # Pagination Buttons
@@ -72,13 +94,43 @@ class LoraListView(ui.LayoutView):
             
         self.add_item(container)
 
+    async def send_initial(self, ctx):
+        total_pages = max(1, (len(self.lora_list) - 1) // self.items_per_page + 1)
+        start = self.current_page * self.items_per_page
+        end = start + self.items_per_page
+        page_items = self.lora_list[start:end]
+        
+        files, filenames_map = await self.fetch_images(page_items)
+        self.build_layout(page_items, filenames_map, total_pages)
+        
+        await ctx.send(view=self, files=files)
+
+    async def update_page(self, interaction: discord.Interaction):
+        # Defer update
+        await interaction.response.defer()
+        
+        total_pages = max(1, (len(self.lora_list) - 1) // self.items_per_page + 1)
+        start = self.current_page * self.items_per_page
+        end = start + self.items_per_page
+        page_items = self.lora_list[start:end]
+        
+        files, filenames_map = await self.fetch_images(page_items)
+        self.build_layout(page_items, filenames_map, total_pages)
+        
+        # Use edit_original_response because we deferred
+        await interaction.edit_original_response(view=self, attachments=files)
+
     async def prev_page(self, interaction: discord.Interaction):
-        self.current_page = max(0, self.current_page - 1)
-        self.update_components()
-        await interaction.response.edit_message(view=self)
+        if self.current_page > 0:
+            self.current_page -= 1
+            await self.update_page(interaction)
+        else:
+             await interaction.response.defer()
 
     async def next_page(self, interaction: discord.Interaction):
         total_pages = (len(self.lora_list) - 1) // self.items_per_page + 1
-        self.current_page = min(total_pages - 1, self.current_page + 1)
-        self.update_components()
-        await interaction.response.edit_message(view=self)
+        if self.current_page < total_pages - 1:
+            self.current_page += 1
+            await self.update_page(interaction)
+        else:
+             await interaction.response.defer()
