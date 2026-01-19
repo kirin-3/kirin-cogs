@@ -63,8 +63,9 @@
 
 1.  **Set API Key**
     ```
-    [p]set api openai your_api_key_here
+    [p]ai openai_key your_api_key_here
     ```
+    *Note: This command is provided as an alternative to `[p]set api openai` which may have issues in some Redbot versions.*
 
 2.  **Switch Provider**
     ```
