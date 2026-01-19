@@ -412,7 +412,7 @@ class UnicornAI(commands.Cog):
     @commands.is_owner()
     async def ai_openai_key(self, ctx, api_key: str):
         """Set the OpenAI API key directly (alternative to [p]set api)."""
-        await self.bot.set_shared_api_tokens("openai", {"api_key": api_key})
+        await self.bot.set_shared_api_tokens("openai", api_key=api_key)
         await ctx.send("OpenAI API key set successfully.")
 
     @ai_group.group(name="persona")
