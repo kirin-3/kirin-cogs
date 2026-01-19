@@ -1,10 +1,10 @@
 {
     "author": ["Kirin"],
     "name": "UnicornAI",
-    "short": "Autonomous AI persona using Google Vertex AI (Gemini).",
-    "description": "An advanced AI cog that integrates with Vertex AI to provide autonomous messaging and persona-based interactions using Gemini models.",
-    "tags": ["ai", "gemini", "vertex", "persona", "automation"],
+    "short": "Autonomous AI persona using Vertex AI or OpenAI-compatible endpoints.",
+    "description": "An advanced AI cog that integrates with Vertex AI and OpenAI-compatible endpoints (NanoGPT, OpenRouter, etc.) to provide autonomous messaging and persona-based interactions.",
+    "tags": ["ai", "gemini", "vertex", "openai", "persona", "automation"],
     "requirements": ["google-auth", "aiohttp"],
     "min_bot_version": "3.5.0",
-    "end_user_data_statement": "This cog does not store end user data persistently, but sends channel history to Google Vertex AI for processing."
+    "end_user_data_statement": "This cog does not store end user data persistently, but sends channel history to the configured AI provider for processing."
 }

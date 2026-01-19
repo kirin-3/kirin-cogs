@@ -9,13 +9,14 @@ from discord.ext import tasks
 from typing import Optional
 
 from .vertex import VertexClient
+from .openai import OpenAIClient
 from .persona import PersonaManager
 
 log = logging.getLogger("red.unicorn_ai")
 
 class UnicornAI(commands.Cog):
     """
-    Autonomous AI persona using Google Vertex AI.
+    Autonomous AI persona using Vertex AI or OpenAI-compatible endpoints.
     """
 
     def __init__(self, bot):
@@ -35,8 +36,9 @@ class UnicornAI(commands.Cog):
         default_global = {
             "history_limit": 50,
             "model": "gemini-3-pro-preview",
-            "location": "us-central1",
-            "api_version": "v1"
+            "provider": "vertex",
+            "openai_endpoint": "https://nano-gpt.com/api/v1/chat/completions",
+            "openai_model": "zai-org/glm-4.7:thinking"
         }
         self.config.register_global(**default_global)
 
@@ -50,6 +52,7 @@ class UnicornAI(commands.Cog):
         self.data_path = os.path.join(self.cog_path, "data", "personas")
         
         self.vertex = VertexClient(self.cog_path)
+        self.openai = OpenAIClient(self.bot)
         self.personas = PersonaManager(self.data_path)
         
         # Start loop
@@ -156,15 +159,35 @@ class UnicornAI(commands.Cog):
         # 4. Generate Response
         if ctx:
             await ctx.send("Generating response...")
-        
-        response = await self.vertex.generate_response(
-            model=global_settings["model"],
-            location=global_settings["location"],
-            api_version=global_settings.get("api_version", "v1"),
-            system_instruction=persona.system_prompt,
-            history=formatted_history,
-            after_context=persona.after_context
-        )
+
+        provider = global_settings.get("provider", "vertex")
+
+        if provider == "openai":
+            # Get API key from Red's shared tokens
+            api_key = await self.bot.get_shared_api_tokens("openai")
+            if not api_key.get("api_key"):
+                error_msg = "OpenAI API key not set. Use `[p]set api openai <api_key>` to configure."
+                if ctx:
+                    await ctx.send(error_msg)
+                return
+            
+            response = await self.openai.generate_response(
+                endpoint=global_settings.get("openai_endpoint", "https://nano-gpt.com/api/v1/chat/completions"),
+                api_key=api_key["api_key"],
+                model=global_settings.get("openai_model", "zai-org/glm-4.7:thinking"),
+                system_instruction=persona.system_prompt,
+                history=formatted_history,
+                after_context=persona.after_context
+            )
+        else:  # vertex (default)
+            response = await self.vertex.generate_response(
+                model=global_settings["model"],
+                location="global",
+                api_version="v1beta1",
+                system_instruction=persona.system_prompt,
+                history=formatted_history,
+                after_context=persona.after_context
+            )
 
         if not response:
             if ctx: await ctx.send("Failed to generate response (empty or error).")
@@ -357,29 +380,33 @@ class UnicornAI(commands.Cog):
     @ai_group.command(name="model")
     @commands.is_owner()
     async def ai_model(self, ctx, name: str):
-        """Set the global Gemini model version."""
+        """Set the AI model name (Vertex AI only)."""
         await self.config.model.set(name)
         await ctx.send(f"Model set to `{name}`.")
 
-    @ai_group.command(name="location")
+    @ai_group.command(name="provider")
     @commands.is_owner()
-    async def ai_location(self, ctx, location: str):
-        """
-        Set the Google Cloud location (e.g., 'us-central1' or 'global').
-        Default is 'us-central1'.
-        """
-        await self.config.location.set(location)
-        await ctx.send(f"Location set to `{location}`.")
+    async def ai_provider(self, ctx, provider: str):
+        """Set the AI provider (vertex or openai)."""
+        valid_providers = ["vertex", "openai"]
+        if provider.lower() not in valid_providers:
+            await ctx.send(f"Invalid provider. Valid options: {', '.join(valid_providers)}")
+            return
+        
+        provider = provider.lower()
+        await self.config.provider.set(provider)
+        
+        if provider == "openai":
+            await ctx.send("Provider set to **OpenAI-compatible**. Make sure to set the API key with `[p]set api openai <api_key>`")
+        else:
+            await ctx.send("Provider set to **Vertex AI**.")
 
-    @ai_group.command(name="api_version")
+    @ai_group.command(name="openai_model")
     @commands.is_owner()
-    async def ai_api_version(self, ctx, version: str):
-        """
-        Set the Vertex AI API version (e.g., 'v1' or 'v1beta1').
-        Default is 'v1'.
-        """
-        await self.config.api_version.set(version)
-        await ctx.send(f"API Version set to `{version}`.")
+    async def ai_openai_model(self, ctx, name: str):
+        """Set the OpenAI-compatible model name."""
+        await self.config.openai_model.set(name)
+        await ctx.send(f"OpenAI model set to `{name}`.")
 
     @ai_group.group(name="persona")
     @commands.is_owner()
