@@ -14,7 +14,7 @@ class OpenAIClient:
         api_key: str,
         model: str,
         system_instruction: str,
-        history: List[Dict[str, Any]]
+        history: List[Dict[str, Any]],
         after_context: Optional[str] = None
     ) -> Optional[str]:
         """
