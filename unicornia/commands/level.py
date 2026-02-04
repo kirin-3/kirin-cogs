@@ -186,3 +186,43 @@ class LevelCommands:
             log = logging.getLogger("red.kirin_cogs.unicornia")
             log.error(f"Error in xp leaderboard: {e}", exc_info=True)
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error retrieving leaderboard: {e}", mention_author=False)
+    
+    @level_group.command(name="award")
+    @checks.is_owner()
+    @app_commands.describe(amount="The amount of XP to award", member="The user to award XP to")
+    async def level_award(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
+        """
+        Award XP to a user.
+
+        This generates new XP for the user.
+        **Owner only.**
+
+        **Syntax**
+        `[p]level award <amount> <member> [note]`
+
+        **Examples**
+        `[p]level award 100 @User`
+        `[p]level award 500 @User For being helpful`
+        """
+        if not await self.config.xp_enabled():
+            await ctx.send("<a:zz_NoTick:729318761655435355> XP system is disabled.")
+            return
+        
+        if amount <= 0:
+            await ctx.send("<a:zz_NoTick:729318761655435355> Amount must be positive.")
+            return
+        
+        # Immediate length check to prevent DoS from massive input strings
+        if len(note) > 200:
+            await ctx.send("<a:zz_NoTick:729318761655435355> Note is too long (max 200 chars).")
+            return
+
+        try:
+            success = await self.xp_system.award_xp(member.id, ctx.guild.id, amount, note)
+            if success:
+                await ctx.send(f"<a:zz_YesTick:729318762356015124> Awarded {amount:,} XP to {member.display_name}!")
+            else:
+                await ctx.send(f"<a:zz_NoTick:729318761655435355> Failed to award XP.")
+            
+        except Exception as e:
+            await ctx.send(f"<a:zz_NoTick:729318761655435355> Error awarding XP: {e}")

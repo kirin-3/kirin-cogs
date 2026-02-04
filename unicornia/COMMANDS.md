@@ -102,13 +102,14 @@ Games of chance to win (or lose) currency. All gambling commands have top-level 
 ## Leveling
 Track your activity and earn rewards.
 
-| Command | Description |
-| :--- | :--- |
-| `[p]level` | Base command for leveling. Aliases: `lvl`, `xp`. |
-| `[p]level check [user]` | Check your (or another user's) level, rank, and view XP card. Alias: `me`. |
-| `[p]xp [user]` | Global shortcut to check XP card. |
-| `[p]level leaderboard` | View the server XP leaderboard. Aliases: `lb`, `top`. |
-| `[p]xplb` | Global shortcut for XP leaderboard. |
+| Command | Description | Permission |
+| :--- | :--- | :--- |
+| `[p]level` | Base command for leveling. Aliases: `lvl`, `xp`. | |
+| `[p]level check [user]` | Check your (or another user's) level, rank, and view XP card. Alias: `me`. | |
+| `[p]xp [user]` | Global shortcut to check XP card. | |
+| `[p]level leaderboard` | View the server XP leaderboard. Aliases: `lb`, `top`. | |
+| `[p]xplb` | Global shortcut for XP leaderboard. | |
+| `[p]level award <amount> <user>` | Award XP to a user (generated out of thin air). | Bot Owner |
 
 ## Nitro Shop
 Buy Discord Nitro with currency.

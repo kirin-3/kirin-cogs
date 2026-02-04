@@ -488,3 +488,24 @@ class XPSystem:
         filled_length = int(length * current_xp / required_xp)
         bar = "█" * filled_length + "░" * (length - filled_length)
         return bar
+    
+    async def award_xp(self, user_id: int, guild_id: int, amount: int, note: str = "") -> bool:
+        """Award XP to a user (admin only).
+        
+        Args:
+            user_id: User ID.
+            guild_id: Guild ID.
+            amount: Amount of XP to award.
+            note: Optional note for the award.
+            
+        Returns:
+            Success boolean.
+        """
+        if amount <= 0:
+            return False
+        
+        try:
+            await self.db.xp.add_xp(user_id, guild_id, amount)
+            return True
+        except Exception:
+            return False
