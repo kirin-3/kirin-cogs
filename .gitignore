@@ -43,6 +43,7 @@ node_modules/
 *.sw?
 .cursor/
 .roo/
+.agent/
 .kilocode/
 *.sublime-project
 *.sublime-workspace
@@ -77,3 +78,5 @@ coverage/
 .tmp/
 .idea
 .vscode
+
+/cotm

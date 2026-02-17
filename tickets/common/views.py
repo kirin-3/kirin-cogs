@@ -301,7 +301,7 @@ class CloseView(View):
             ephemeral=True,
         )
 
-    @discord.ui.button(label="Remind Instructions", style=ButtonStyle.danger)
+    @discord.ui.button(label="Remind Instructions", style=ButtonStyle.danger, custom_id="remind_instructions")
     async def remind_instructions(self, interaction: Interaction, button: Button):
         embed = discord.Embed(
             description=(
