@@ -21,7 +21,8 @@ import discord
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import nltk
 
-from redbot.core import commands, Config, tasks
+from discord.ext import tasks
+from redbot.core import commands, Config
 from redbot.core.bot import Red
 
 log = logging.getLogger("red.kirin_cogs.unimod")
