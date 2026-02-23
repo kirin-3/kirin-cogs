@@ -440,29 +440,53 @@ Analyze this conversation against the server rules, paying close attention to ch
 
     async def _send_alert(self, guild: discord.Guild, channel: discord.TextChannel, messages: List[BufferedMessage], result: AIAnalysisResult):
         """Send alert to configured channel or DM owner."""
+        log.info(f"_send_alert called for guild {guild.name}, channel #{channel.name}")
+        
         embed = self._build_alert_embed(guild, channel, messages, result)
+        log.debug(f"Alert embed built successfully")
         
         alert_channel_id = await self.config.guild(guild).alert_channel_id()
+        log.info(f"Alert channel ID from config: {alert_channel_id}")
         
         if alert_channel_id:
             # Send to configured channel
             alert_channel = guild.get_channel(alert_channel_id)
+            log.info(f"Resolved alert channel: {alert_channel}")
             if alert_channel:
                 try:
                     await alert_channel.send(embed=embed)
-                    log.info(f"Sent violation alert to #{alert_channel.name}")
+                    log.info(f"✅ Sent violation alert to #{alert_channel.name}")
                     return
                 except discord.Forbidden:
                     log.warning(f"No permission to send to alert channel {alert_channel_id}")
+            else:
+                log.warning(f"Could not find alert channel with ID {alert_channel_id}")
         
         # Fallback: DM bot owner
+        log.info(f"Falling back to DM owner. Bot owner ID: {self.bot.owner_id}")
         owner = self.bot.get_user(self.bot.owner_id)
+        log.info(f"Owner object: {owner}")
+        
+        if not owner:
+            log.error(f"Could not get owner user object! owner_id={self.bot.owner_id}")
+            # Try alternate method
+            try:
+                owner = await self.bot.fetch_user(self.bot.owner_id)
+                log.info(f"fetch_user succeeded: {owner}")
+            except Exception as e:
+                log.error(f"fetch_user also failed: {e}")
+                return
+        
         if owner:
             try:
                 await owner.send(embed=embed)
-                log.info(f"Sent violation alert to owner via DM")
+                log.info(f"✅ Sent violation alert to owner via DM (user: {owner})")
             except discord.Forbidden:
-                log.warning("Could not DM bot owner")
+                log.warning("Could not DM bot owner (Forbidden - DMs disabled?)")
+            except Exception as e:
+                log.error(f"Failed to send DM to owner: {type(e).__name__}: {e}")
+        else:
+            log.error("Owner is still None after all attempts!")
 
     def _build_alert_embed(self, guild: discord.Guild, channel: discord.TextChannel, messages: List[BufferedMessage], result: AIAnalysisResult) -> discord.Embed:
         """Build the alert embed for a violation."""
