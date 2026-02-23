@@ -462,31 +462,38 @@ Analyze this conversation against the server rules, paying close attention to ch
             else:
                 log.warning(f"Could not find alert channel with ID {alert_channel_id}")
         
-        # Fallback: DM bot owner
-        log.info(f"Falling back to DM owner. Bot owner ID: {self.bot.owner_id}")
-        owner = self.bot.get_user(self.bot.owner_id)
-        log.info(f"Owner object: {owner}")
+        # Fallback: DM bot owner(s)
+        # Red 3.5+ supports multiple owners via owner_ids
+        owner_ids = getattr(self.bot, 'owner_ids', None) or set()
+        if not owner_ids and self.bot.owner_id:
+            owner_ids = {self.bot.owner_id}
         
-        if not owner:
-            log.error(f"Could not get owner user object! owner_id={self.bot.owner_id}")
-            # Try alternate method
-            try:
-                owner = await self.bot.fetch_user(self.bot.owner_id)
-                log.info(f"fetch_user succeeded: {owner}")
-            except Exception as e:
-                log.error(f"fetch_user also failed: {e}")
-                return
+        log.info(f"Falling back to DM owner(s). Owner IDs: {owner_ids}")
         
-        if owner:
+        if not owner_ids:
+            log.error("No owner IDs configured! Cannot send alert.")
+            return
+        
+        # Try to DM all owners
+        success = False
+        for owner_id in owner_ids:
             try:
-                await owner.send(embed=embed)
-                log.info(f"✅ Sent violation alert to owner via DM (user: {owner})")
+                owner = self.bot.get_user(owner_id)
+                if not owner:
+                    owner = await self.bot.fetch_user(owner_id)
+                    log.info(f"fetch_user succeeded for owner_id {owner_id}")
+                
+                if owner:
+                    await owner.send(embed=embed)
+                    log.info(f"✅ Sent violation alert to owner via DM (user: {owner})")
+                    success = True
             except discord.Forbidden:
-                log.warning("Could not DM bot owner (Forbidden - DMs disabled?)")
+                log.warning(f"Could not DM owner {owner_id} (Forbidden - DMs disabled?)")
             except Exception as e:
-                log.error(f"Failed to send DM to owner: {type(e).__name__}: {e}")
-        else:
-            log.error("Owner is still None after all attempts!")
+                log.error(f"Failed to send DM to owner {owner_id}: {type(e).__name__}: {e}")
+        
+        if not success:
+            log.error("Failed to send alert to any owner!")
 
     def _build_alert_embed(self, guild: discord.Guild, channel: discord.TextChannel, messages: List[BufferedMessage], result: AIAnalysisResult) -> discord.Embed:
         """Build the alert embed for a violation."""
