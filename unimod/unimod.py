@@ -330,7 +330,7 @@ Analyze this conversation against the server rules, paying close attention to ch
                         "max_tokens": 1000,
                         "temperature": 0.3
                     },
-                    timeout=aiohttp.ClientTimeout(total=120)  # Increased for thinking model
+                    timeout=aiohttp.ClientTimeout(total=240)  # Increased for thinking model
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
