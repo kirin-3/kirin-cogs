@@ -38,7 +38,7 @@ class UnicornAI(commands.Cog):
             "model": "gemini-3-pro-preview",
             "provider": "vertex",
             "openai_endpoint": "https://nano-gpt.com/api/v1/chat/completions",
-            "openai_model": "zai-org/glm-4.7:thinking"
+            "openai_model": "zai-org/glm-5:thinking"
         }
         self.config.register_global(**default_global)
 
@@ -174,7 +174,7 @@ class UnicornAI(commands.Cog):
             response = await self.openai.generate_response(
                 endpoint=global_settings.get("openai_endpoint", "https://nano-gpt.com/api/v1/chat/completions"),
                 api_key=api_key["api_key"],
-                model=global_settings.get("openai_model", "zai-org/glm-4.7:thinking"),
+                model=global_settings.get("openai_model", "zai-org/glm-5:thinking"),
                 system_instruction=persona.system_prompt,
                 history=formatted_history,
                 after_context=persona.after_context
@@ -272,12 +272,12 @@ class UnicornAI(commands.Cog):
     def _summon_user_cd(ctx):
         if ctx.author.id in ctx.bot.owner_ids:
             return None
-        return commands.Cooldown(1, 21600)
+        return commands.Cooldown(1, 3600)
 
     def _summon_channel_cd(ctx):
         if ctx.author.id in ctx.bot.owner_ids:
             return None
-        return commands.Cooldown(1, 1800)
+        return commands.Cooldown(1, 600)
 
     @commands.hybrid_command(name="summon", description="Summon a specific persona to chat.")
     @app_commands.describe(persona="The name of the persona to summon")
