@@ -241,15 +241,39 @@ Analyze this conversation against the server rules, paying close attention to ch
         - Invisible whitespace before/after markdown
         - Conversational filler text
         - Markdown code blocks with varying formats
+        - Thinking model output (<think>...</think> tags)
         """
+        # Log the raw response for debugging
+        log.debug(f"Raw AI response length: {len(raw_content)}")
+        log.debug(f"Raw AI response preview: {raw_content[:500]}...")
+        
+        # Handle thinking model output - remove <think>...</think> blocks
+        cleaned_content = re.sub(r'<think>.*?</think>', '', raw_content, flags=re.DOTALL)
+        
+        # Also try removing markdown code blocks if present
+        cleaned_content = re.sub(r'```json\s*', '', cleaned_content)
+        cleaned_content = re.sub(r'```\s*', '', cleaned_content)
+        
         # re.DOTALL allows the dot to match newlines
-        match = re.search(r'\{.*\}', raw_content, re.DOTALL)
+        # Use non-greedy match to find the first complete JSON object
+        match = re.search(r'\{[^{}]*\}', cleaned_content, re.DOTALL)
         
         if not match:
+            # Try a more aggressive search for nested JSON
+            match = re.search(r'\{.*\}', cleaned_content, re.DOTALL)
+        
+        if not match:
+            log.error(f"Could not find JSON in response. Full response: {raw_content}")
             raise ValueError("No JSON object found in AI response.")
         
         json_str = match.group(0)
-        data = json.loads(json_str)
+        log.debug(f"Extracted JSON: {json_str}")
+        
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            log.error(f"JSON decode error: {e}. Extracted string: {json_str}")
+            raise
         
         # Safe type-casting for primary_message_id (may be string, int, or null)
         primary_msg_id = data.get("primary_message_id")
