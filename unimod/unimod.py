@@ -142,6 +142,10 @@ Analyze this conversation against the server rules, paying close attention to ch
             "violations_found": 0,
         }
         
+        # Last AI response for debugging
+        self._last_ai_response: Optional[str] = None
+        self._last_ai_error: Optional[str] = None
+        
         log.info(f"UniMod initialized. Rules loaded: {len(self.rules)} characters")
 
     def _load_rules(self) -> str:
@@ -307,54 +311,95 @@ Analyze this conversation against the server rules, paying close attention to ch
         if not api_key:
             raise ValueError("OpenAI API key not configured. Use `[p]set api openai <api_key>` to set it.")
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                self.NANOGPT_ENDPOINT,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": self.NANOGPT_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    "max_tokens": 1000,
-                    "temperature": 0.3
-                },
-                timeout=aiohttp.ClientTimeout(total=60)
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise aiohttp.ClientResponseError(
-                        request_info=None,
-                        history=None,
-                        status=response.status,
-                        message=f"NanoGPT API Error {response.status}: {error_text}"
-                    )
-                result = await response.json()
-                
-        raw_content = result['choices'][0]['message']['content']
-        log.debug(f"AI raw response: {raw_content[:200]}...")
-        return self.parse_ai_response(raw_content)
+        log.info("Starting AI analysis request to NanoGPT...")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.NANOGPT_ENDPOINT,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": self.NANOGPT_MODEL,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        "max_tokens": 1000,
+                        "temperature": 0.3
+                    },
+                    timeout=aiohttp.ClientTimeout(total=120)  # Increased for thinking model
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        self._last_ai_error = f"API Error {response.status}: {error_text}"
+                        log.error(self._last_ai_error)
+                        raise aiohttp.ClientResponseError(
+                            request_info=None,
+                            history=None,
+                            status=response.status,
+                            message=f"NanoGPT API Error {response.status}: {error_text}"
+                        )
+                    result = await response.json()
+                    
+            raw_content = result['choices'][0]['message']['content']
+            
+            # Save response for debugging
+            self._last_ai_response = raw_content
+            self._last_ai_error = None
+            self._save_last_response(raw_content)
+            
+            log.info(f"AI response received. Length: {len(raw_content)} characters")
+            log.debug(f"AI raw response preview: {raw_content[:200]}...")
+            return self.parse_ai_response(raw_content)
+            
+        except asyncio.TimeoutError:
+            error_msg = "AI request timed out after 120 seconds"
+            self._last_ai_error = error_msg
+            log.error(error_msg)
+            raise
+        except Exception as e:
+            self._last_ai_error = str(e)
+            log.error(f"AI request failed: {e}")
+            raise
+    
+    def _save_last_response(self, content: str):
+        """Save the last AI response to a file for debugging."""
+        try:
+            log_path = Path(__file__).parent / "last.log"
+            with open(log_path, 'w', encoding='utf-8') as f:
+                f.write(f"=== UniMod Last AI Response ===\n")
+                f.write(f"Timestamp: {datetime.now(timezone.utc).isoformat()}\n")
+                f.write(f"Model: {self.NANOGPT_MODEL}\n")
+                f.write(f"Length: {len(content)} characters\n")
+                f.write(f"\n{'='*50}\n\n")
+                f.write(content)
+            log.debug(f"Saved last response to {log_path}")
+        except Exception as e:
+            log.warning(f"Could not save last response: {e}")
 
     async def _process_buffer(self, guild: discord.Guild, channel: discord.TextChannel, messages: List[BufferedMessage], threshold: float = -0.5):
         """Process buffer contents - runs in background task."""
         if not messages:
+            log.debug("Empty buffer, skipping processing")
             return
             
         self.stats["ai_reviews"] += 1
-        log.info(f"Processing buffer for #{channel.name} with {len(messages)} messages")
+        log.info(f"Processing buffer for #{channel.name} with {len(messages)} messages (threshold: {threshold})")
         
         try:
             # Full VADER check on all messages (pass the threshold)
             should_review, lowest_score, _ = self.check_vader_scores(messages, threshold)
+            log.info(f"VADER check result: should_review={should_review}, lowest_score={lowest_score}")
+            
             if not should_review:
-                log.debug(f"VADER passed: lowest score was {lowest_score}")
+                log.info(f"VADER passed: lowest score was {lowest_score}, skipping AI review")
                 return
             
             self.stats["vader_triggers"] += 1
+            log.info(f"VADER triggered (score {lowest_score} < threshold {threshold}), sending to AI...")
             
             # Build system prompt with rules
             system_prompt = self._build_system_prompt()
@@ -367,22 +412,31 @@ Analyze this conversation against the server rules, paying close attention to ch
                 conversation_json=conversation_json
             )
             
+            log.info(f"Sending {len(messages)} messages to AI for analysis...")
+            
             # Call AI
             result = await self._analyze_with_ai(system_prompt, user_prompt)
+            
+            log.info(f"AI analysis complete: is_violation={result.is_violation}, confidence={result.confidence:.2f}")
             
             # Handle result
             if result.is_violation:
                 self.stats["violations_found"] += 1
+                log.warning(f"VIOLATION DETECTED! Severity: {result.severity}, Rules: {result.violated_rules}")
                 await self._send_alert(guild, channel, messages, result)
             else:
-                log.debug(f"AI determined no violation (confidence: {result.confidence:.2f})")
+                log.info(f"AI determined no violation (confidence: {result.confidence:.2f})")
                 
         except aiohttp.ClientError as e:
             log.error(f"API error during AI analysis: {e}")
         except json.JSONDecodeError as e:
             log.error(f"Failed to parse AI response: {e}")
+        except ValueError as e:
+            log.error(f"Value error in AI analysis: {e}")
         except Exception as e:
-            log.error(f"Unexpected error in _process_buffer: {e}")
+            log.error(f"Unexpected error in _process_buffer: {type(e).__name__}: {e}")
+            import traceback
+            log.error(traceback.format_exc())
 
     async def _send_alert(self, guild: discord.Guild, channel: discord.TextChannel, messages: List[BufferedMessage], result: AIAnalysisResult):
         """Send alert to configured channel or DM owner."""
@@ -758,3 +812,47 @@ Analyze this conversation against the server rules, paying close attention to ch
         """Reload rules from the rules.md file."""
         self.rules = self._load_rules()
         await ctx.send(f"✅ Rules reloaded. {len(self.rules)} characters loaded.")
+
+    @unimod_group.command(name="last")
+    async def view_last_response(self, ctx: commands.Context):
+        """
+        View the last AI response for debugging.
+        
+        This command can ONLY be used in DMs with the bot.
+        """
+        # DM-only check
+        if ctx.guild is not None:
+            await ctx.send("❌ This command can only be used in DMs with the bot for privacy.")
+            return
+        
+        # Check if we have a response
+        if self._last_ai_error:
+            await ctx.send(f"❌ Last AI request failed:\n```\n{self._last_ai_error}\n```")
+            return
+        
+        if not self._last_ai_response:
+            await ctx.send("❌ No AI response has been recorded yet.")
+            return
+        
+        # Try to read from file first (more complete)
+        log_path = Path(__file__).parent / "last.log"
+        content = None
+        
+        if log_path.exists():
+            try:
+                with open(log_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except Exception as e:
+                log.warning(f"Could not read last.log: {e}")
+        
+        if not content:
+            content = f"=== Last AI Response ===\nLength: {len(self._last_ai_response)} characters\n\n{self._last_ai_response}"
+        
+        # Send in chunks if too long
+        if len(content) <= 1900:
+            await ctx.send(f"```\n{content}\n```")
+        else:
+            # Split into multiple messages
+            chunks = [content[i:i+1900] for i in range(0, len(content), 1900)]
+            for i, chunk in enumerate(chunks):
+                await ctx.send(f"```\n{chunk}\n```\n*Part {i+1}/{len(chunks)}*")
