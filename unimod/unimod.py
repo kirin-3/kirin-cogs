@@ -81,6 +81,7 @@ class UniMod(commands.Cog):
 3. CHANNEL AWARENESS: The user will tell you which channel this conversation is in. Cross-reference with channel-specific rules. If a topic is allowed in the server but posted in the WRONG channel, it is a rule violation.
 4. IMAGE RULES: You cannot see images, but if users are discussing posting forbidden images, flag the text discussing it.
 5. FALSE POSITIVES: If the behavior is borderline, consensual banter, or you are unsure, lean towards NOT flagging ("is_violation": false).
+6. Horny-Jail and Comfy-Chat are the server's general chat channels.
 
 ## RESPONSE FORMAT
 You MUST respond with valid JSON only. Do not include markdown formatting, code blocks (like ```json), or conversational text.
