@@ -1,0 +1,9 @@
+{
+    "author": ["kirin"],
+    "name": "AntiNuke",
+    "short": "Server protection against rogue administrators.",
+    "description": "AntiNuke monitors server events and automatically quarantines users who perform potentially destructive actions beyond configured thresholds. Features include channel/role monitoring, ban/kick detection, webhook monitoring, dangerous permission detection, vanity URL protection, guild prune detection, and bot addition detection with auto-kick option.",
+    "requirements": [],
+    "tags": ["moderation", "security", "protection", "antinuke", "antiraid"],
+    "min_bot_version": "3.5.0"
+}

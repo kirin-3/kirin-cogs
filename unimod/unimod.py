@@ -10,6 +10,7 @@ import re
 import json
 import asyncio
 import logging
+import time
 from collections import deque
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
@@ -312,7 +313,16 @@ Analyze this conversation against the server rules, paying close attention to ch
         if not api_key:
             raise ValueError("OpenAI API key not configured. Use `[p]set api openai <api_key>` to set it.")
         
-        log.info("Starting AI analysis request to NanoGPT...")
+        # Diagnostic logging: prompt sizes
+        system_len = len(system_prompt)
+        user_len = len(user_prompt)
+        total_len = system_len + user_len
+        estimated_tokens = total_len // 4  # Rough estimate: ~4 chars per token
+        log.info(f"Starting AI analysis request to NanoGPT...")
+        log.info(f"Prompt sizes - System: {system_len} chars, User: {user_len} chars, Total: {total_len} chars (~{estimated_tokens} tokens)")
+        
+        request_start = time.monotonic()
+        timeout_seconds = 360  # 6 minutes for thinking model
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -331,7 +341,7 @@ Analyze this conversation against the server rules, paying close attention to ch
                         "max_tokens": 1000,
                         "temperature": 0.3
                     },
-                    timeout=aiohttp.ClientTimeout(total=240)  # Increased for thinking model
+                    timeout=aiohttp.ClientTimeout(total=timeout_seconds)
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
@@ -346,24 +356,28 @@ Analyze this conversation against the server rules, paying close attention to ch
                     result = await response.json()
                     
             raw_content = result['choices'][0]['message']['content']
+            request_duration = time.monotonic() - request_start
             
             # Save response for debugging
             self._last_ai_response = raw_content
             self._last_ai_error = None
             self._save_last_response(raw_content)
             
-            log.info(f"AI response received. Length: {len(raw_content)} characters")
+            log.info(f"AI response received in {request_duration:.1f}s. Length: {len(raw_content)} characters")
             log.debug(f"AI raw response preview: {raw_content[:200]}...")
             return self.parse_ai_response(raw_content)
             
         except asyncio.TimeoutError:
-            error_msg = "AI request timed out after 120 seconds"
+            request_duration = time.monotonic() - request_start
+            error_msg = f"AI request timed out after {request_duration:.1f}s (limit: {timeout_seconds}s)"
             self._last_ai_error = error_msg
             log.error(error_msg)
+            log.error(f"Prompt was ~{estimated_tokens} tokens, model: {self.NANOGPT_MODEL}")
             raise
         except Exception as e:
+            request_duration = time.monotonic() - request_start
             self._last_ai_error = str(e)
-            log.error(f"AI request failed: {e}")
+            log.error(f"AI request failed after {request_duration:.1f}s: {e}")
             raise
     
     def _save_last_response(self, content: str):
