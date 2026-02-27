@@ -74,27 +74,22 @@ class ContestDashboardView(ui.LayoutView):
         await interaction.response.edit_message(view=self)
         
     async def standings_button(self, interaction: discord.Interaction):
-        # Ephemeral check standings logic
-        await interaction.response.defer(ephemeral=True)
+        # Send an ephemeral loading message first, so we don't edit the dashboard
+        await interaction.response.send_message("Tallying votes, please wait...", ephemeral=True)
         
         # Find the entries channel
         import cotm.const as const
         entries_channel = interaction.guild.get_channel(const.ENTRIES_CHANNEL_ID)
              
         if not entries_channel:
-             await interaction.followup.send("❌ Error: Could not find the entries channel to tally votes.", ephemeral=True)
+             await interaction.edit_original_response(content="❌ Error: Could not find the entries channel to tally votes.", view=None)
              return
              
         # Tally the votes
-        await interaction.followup.send("Tallying votes, please wait...", ephemeral=True)
         entries = await self.cog._get_contest_results(entries_channel)
         
         # Format the leaderboard via Container
         container = self.cog._build_standings_container(entries, title="📊 Current Standings")
-        
-        # Edit the followup to show the actual container instead of the "please wait" text
-        # Since edit doesn't take 'view' alone if we want to replace text with a Component V2 layout directly,
-        # we can just send a new followup or edit the existing one. For V2, passing `view=LayoutView()` flags the message.
         
         class StandingsView(ui.LayoutView):
              def __init__(self, container):
