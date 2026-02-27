@@ -45,6 +45,7 @@ node_modules/
 .roo/
 .agent/
 .kilocode/
+.serena/
 *.sublime-project
 *.sublime-workspace
 .project
@@ -78,5 +79,4 @@ coverage/
 .tmp/
 .idea
 .vscode
-
-/cotm
+openspec/
