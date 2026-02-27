@@ -78,8 +78,7 @@ class ContestDashboardView(ui.LayoutView):
         await interaction.response.send_message("Tallying votes, please wait...", ephemeral=True)
         
         # Find the entries channel
-        import cotm.const as const
-        entries_channel = interaction.guild.get_channel(const.ENTRIES_CHANNEL_ID)
+        entries_channel = interaction.client.get_channel(782019562795302934)
              
         if not entries_channel:
              await interaction.edit_original_response(content="❌ Error: Could not find the entries channel to tally votes.", view=None)
