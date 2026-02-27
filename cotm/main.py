@@ -86,28 +86,6 @@ class ContestCog(commands.Cog):
 
         return embed
 
-    def _get_channel(self, ctx: commands.Context) -> discord.TextChannel:
-        """Retrieves the contest information channel for the given context.
-
-        Args:
-            ctx (commands.Context): The context from which to retrieve the channel.
-
-        Returns:
-            discord.TextChannel: The contest information channel if found, otherwise None.
-        """
-        channel_id = const.CONTEST_CHANNEL_IDS[ctx.guild.id]["info"]
-        if channel_id is None:
-            self.logger.error(
-                f"Unable to find contest channel id for Guild ID:{ctx.guild.id}"
-            )
-            return None
-
-        channel = ctx.guild.get_channel(channel_id)
-        if not channel:
-            self.logger.error(f"Channel with ID {const.CONTEST_CHANNEL_ID} not found.")
-            return
-
-        return channel
 
     def _format_text(self, ctx: commands.Context, text: str) -> str:
         """
@@ -140,9 +118,7 @@ class ContestCog(commands.Cog):
             ctx (commands.Context): The context in which the command was invoked.
             contest_number (int, optional): The contest number to be posted. Defaults to None.
         """
-        channel = self._get_channel(ctx)
-        if channel is None:
-            return await ctx.send(f"Unable to find contest channel on this server!")
+        channel = ctx.channel
 
         # this updates property as an integer, and gets it a a string with ordinal suffix
         # ex: "52nd", "53rd", etc
