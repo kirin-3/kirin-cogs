@@ -87,8 +87,8 @@ class ContestDashboardView(ui.LayoutView):
         # Tally the votes
         entries = await self.cog._get_contest_results(entries_channel)
         
-        # Format the leaderboard via Container
-        container = self.cog._build_standings_container(entries, title="📊 Current Standings")
+        # Format the leaderboard via Container (hide invalid votes)
+        container = self.cog._build_standings_container(entries, title="📊 Current Standings", show_invalid=False)
         
         class StandingsView(ui.LayoutView):
              def __init__(self, container):

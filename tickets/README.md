@@ -15,6 +15,14 @@ A robust, single-panel support ticket system for Red Discord Bot.
 - `[p]add <user>`: Add a user to your ticket.
 - `[p]renameticket <new_name>`: Rename your ticket channel.
 - `[p]close [reason]`: Close your ticket.
+  - Supports delayed close with time prefix (e.g., `[p]close 1h`, `[p]close 30m thanks for helping!`).
+  - **Delayed closes are cancelled if anyone sends a message in the channel during the delay period.**
+  - **Note:** This command bypasses the verification workflow; use the Close button for verification status selection.
+
+### Close Button Workflow
+When using the **Close** button in a ticket, a verification dialog appears:
+- **Verified** ✅: Closes ticket, assigns Verified role, and DMs the user confirming verification.
+- **Not Verified** ❌: Prompts for a reason, then closes ticket and DMs the user that they were not verified.
 
 ### Admin Commands (`[p]tickets`)
 Base support ticket settings. Alias: `[p]tset`
@@ -60,6 +68,9 @@ Base support ticket settings. Alias: `[p]tset`
 - `[p]tickets overview`: Set a channel for a live-updating list of active tickets.
 - `[p]tickets overviewmention`: Toggle channel mentions in the overview.
 - `[p]tickets setuphelp`: View a step-by-step setup guide.
+
+#### Utilities
+- `[p]tickets updatemessage <source> <target>`: Update a message with another message (copies embeds from source to target).
 
 ### Mod Commands
 - `[p]openfor <user>`: Open a ticket on behalf of another user.

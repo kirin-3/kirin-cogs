@@ -150,21 +150,6 @@ class ContestCog(commands.Cog):
         """
         return await self._post_contest_info(ctx, contest_number)
 
-    @commands.guild_only()
-    @commands.admin_or_permissions(administrator=True)
-    @commands.command()
-    async def contestcount(
-        self,
-        ctx: commands.Context,
-        channel: discord.TextChannel,
-        emote: str = const.COTM_VOTE_EMOJI,
-        show_invalid: bool = True,
-        voter_server_age: commands.TimedeltaConverter = None,
-        *other_emotes,
-    ):
-        """
-        Counts reactions in a channel and displays a leaderboard.
-        """
     async def _get_contest_results(
         self,
         channel: discord.TextChannel,
@@ -238,7 +223,7 @@ class ContestCog(commands.Cog):
         ctx: commands.Context,
         channel: discord.TextChannel,
         emote: str = const.COTM_VOTE_EMOJI,
-        show_invalid: bool = True,
+        show_invalid: bool = False,
         voter_server_age: commands.TimedeltaConverter = None,
         *other_emotes,
     ):
