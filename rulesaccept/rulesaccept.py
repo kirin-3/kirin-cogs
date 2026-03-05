@@ -2,7 +2,7 @@ from redbot.core import commands, Config
 import discord
 from datetime import datetime
 
-class rulesaccept(commands.Cog):
+class RulesAccept(commands.Cog):
     """Cog for rule acceptance with button and modal."""
 
     def __init__(self, bot):
@@ -14,10 +14,8 @@ class rulesaccept(commands.Cog):
             "member_role_id": 686098839651876908
         }
         self.config.register_guild(**default_guild)
-        self.bot.loop.create_task(self.initialize())
     
-    async def initialize(self):
-        await self.bot.wait_until_ready()
+    async def cog_load(self):
         self.bot.add_view(rulesacceptView(self))
 
     @commands.command()
@@ -129,4 +127,4 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
             )
 
 async def setup(bot):
-    await bot.add_cog(rulesaccept(bot))
+    await bot.add_cog(RulesAccept(bot))
