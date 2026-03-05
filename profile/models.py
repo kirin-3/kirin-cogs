@@ -1,4 +1,4 @@
-from typing import Dict, Optional, TypedDict
+from typing import Optional, TypedDict
 
 class ProfileData(TypedDict, total=False):
     name: str
