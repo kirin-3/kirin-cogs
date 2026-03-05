@@ -43,9 +43,9 @@ class XPCardGenerator:
 
     async def _ensure_bundled_fonts(self):
         """Ensure bundled fonts are present, downloading if necessary"""
-        if not os.path.exists(self.bundled_fonts_dir):
+        if not await asyncio.to_thread(os.path.exists, self.bundled_fonts_dir):
             try:
-                os.makedirs(self.bundled_fonts_dir)
+                await asyncio.to_thread(os.makedirs, self.bundled_fonts_dir)
             except Exception as e:
                 log.error(f"Failed to create font directory: {e}")
                 return
@@ -58,14 +58,16 @@ class XPCardGenerator:
         async with aiohttp.ClientSession() as session:
             for font_name, url in fonts_to_download.items():
                 font_path = os.path.join(self.bundled_fonts_dir, font_name)
-                if not os.path.exists(font_path):
+                if not await asyncio.to_thread(os.path.exists, font_path):
                     log.info(f"Downloading bundled font: {font_name}")
                     try:
                         async with session.get(url) as resp:
                             if resp.status == 200:
                                 data = await resp.read()
-                                with open(font_path, "wb") as f:
-                                    f.write(data)
+                                def _write_font():
+                                    with open(font_path, "wb") as f:
+                                        f.write(data)
+                                await asyncio.to_thread(_write_font)
                                 log.info(f"Successfully downloaded {font_name}")
                             else:
                                 log.error(f"Failed to download {font_name}: Status {resp.status}")
@@ -78,9 +80,16 @@ class XPCardGenerator:
             # Look for local xp_config.yml in cog directory
             local_config_path = os.path.join(self.cog_dir, "xp_config.yml")
             
-            if os.path.exists(local_config_path):
-                with open(local_config_path, 'r', encoding='utf-8') as f:
-                    self.xp_config = yaml.safe_load(f)
+            def _load_sync():
+                if os.path.exists(local_config_path):
+                    with open(local_config_path, 'r', encoding='utf-8') as f:
+                        return yaml.safe_load(f), True
+                return None, False
+
+            config, exists = await asyncio.to_thread(_load_sync)
+
+            if exists:
+                self.xp_config = config
                 log.info(f"Loaded XP configuration from {local_config_path}")
             else:
                 log.info("Creating default XP configuration file")
@@ -95,8 +104,12 @@ class XPCardGenerator:
         """Save default configuration to local file"""
         try:
             config_path = os.path.join(self.cog_dir, "xp_config.yml")
-            with open(config_path, 'w', encoding='utf-8') as f:
-                yaml.dump(self.xp_config, f, default_flow_style=False, allow_unicode=True)
+
+            def _save_sync():
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    yaml.dump(self.xp_config, f, default_flow_style=False, allow_unicode=True)
+
+            await asyncio.to_thread(_save_sync)
             log.info(f"Created default XP configuration at {config_path}")
         except Exception as e:
             log.error(f"Error saving default config: {e}")
@@ -146,7 +159,7 @@ class XPCardGenerator:
         font = None
         for font_path in font_paths:
             try:
-                font = ImageFont.truetype(font_path, size)
+                font = await asyncio.to_thread(ImageFont.truetype, font_path, size)
                 break
             except (OSError, IOError):
                 continue
@@ -155,7 +168,7 @@ class XPCardGenerator:
             # Fallback to default, though default doesn't support size on older Pillow versions
             # But let's assume standard environment
             try:
-                font = ImageFont.truetype("arial.ttf", size)
+                font = await asyncio.to_thread(ImageFont.truetype, "arial.ttf", size)
             except IOError:
                 font = ImageFont.load_default()
             
@@ -193,7 +206,7 @@ class XPCardGenerator:
         for path in fallback_paths:
             try:
                 # Try to load
-                font = ImageFont.truetype(path, size)
+                font = await asyncio.to_thread(ImageFont.truetype, path, size)
                 loaded_fonts.append(font)
             except (OSError, IOError):
                 continue
@@ -366,28 +379,33 @@ class XPCardGenerator:
         local_images_dir = os.path.join(self.cog_dir, "data", "xpimages")
         
         # Helper to try loading local file
-        def load_local_file(path):
-            try:
-                if os.path.exists(path) and os.path.isfile(path):
-                    with open(path, "rb") as f:
-                        data = f.read()
-                        self.images_cache[url] = data
-                        self.images_cache.move_to_end(url)
-                        return data
-            except Exception as e:
-                log.error(f"Error reading local file {path}: {e}")
+        async def load_local_file(path):
+            def _read_sync():
+                try:
+                    if os.path.exists(path) and os.path.isfile(path):
+                        with open(path, "rb") as f:
+                            return f.read()
+                except Exception as e:
+                    log.error(f"Error reading local file {path}: {e}")
+                return None
+
+            data = await asyncio.to_thread(_read_sync)
+            if data is not None:
+                self.images_cache[url] = data
+                self.images_cache.move_to_end(url)
+                return data
             return None
 
         # Check direct filename match in xpimages
         filename = os.path.basename(url)
         local_path = os.path.join(local_images_dir, filename)
-        local_data = load_local_file(local_path)
+        local_data = await load_local_file(local_path)
         if local_data:
             return local_data
             
         # Check if the URL string itself is a path relative to cog_dir
         relative_path = os.path.join(self.cog_dir, url)
-        local_data = load_local_file(relative_path)
+        local_data = await load_local_file(relative_path)
         if local_data:
             return local_data
 
@@ -422,14 +440,20 @@ class XPCardGenerator:
                         
                         if cache_to_disk:
                             try:
-                                if not os.path.exists(local_images_dir):
-                                    os.makedirs(local_images_dir)
+                                def _cache_sync():
+                                    if not os.path.exists(local_images_dir):
+                                        os.makedirs(local_images_dir)
+
+                                    filename = os.path.basename(url)
+                                    if filename:
+                                        save_path = os.path.join(local_images_dir, filename)
+                                        with open(save_path, "wb") as f:
+                                            f.write(image_data)
+                                        return save_path
+                                    return None
                                 
-                                filename = os.path.basename(url)
-                                if filename:
-                                    save_path = os.path.join(local_images_dir, filename)
-                                    with open(save_path, "wb") as f:
-                                        f.write(image_data)
+                                save_path = await asyncio.to_thread(_cache_sync)
+                                if save_path:
                                     log.info(f"Cached image to {save_path}")
                             except Exception as e:
                                 log.error(f"Failed to cache image locally: {e}")
@@ -443,32 +467,36 @@ class XPCardGenerator:
     async def _get_user_avatar(self, user_avatar_url: str) -> Image.Image:
         """Get user avatar, with fallback to default"""
         avatar_bytes = await self._download_image(user_avatar_url)
-        if avatar_bytes:
-            try:
-                avatar = Image.open(io.BytesIO(avatar_bytes))
-                avatar = avatar.convert("RGBA")
-                
-                # Resize and make circular
-                avatar = avatar.resize((38, 38), Image.Resampling.LANCZOS)
-                
-                # Create circular mask
-                mask = Image.new('L', (38, 38), 0)
-                draw = ImageDraw.Draw(mask)
-                draw.ellipse((0, 0, 38, 38), fill=255)
-                
-                # Apply mask
-                avatar.putalpha(mask)
-                return avatar
-            except Exception as e:
-                log.error(f"Error processing avatar image: {e}")
-        
-        # Create default avatar
-        default_avatar = Image.new('RGBA', (38, 38), (128, 128, 128, 255))
-        mask = Image.new('L', (38, 38), 0)
-        draw = ImageDraw.Draw(mask)
-        draw.ellipse((0, 0, 38, 38), fill=255)
-        default_avatar.putalpha(mask)
-        return default_avatar
+
+        def _process_avatar(data=None):
+            if data:
+                try:
+                    avatar = Image.open(io.BytesIO(data))
+                    avatar = avatar.convert("RGBA")
+
+                    # Resize and make circular
+                    avatar = avatar.resize((38, 38), Image.Resampling.LANCZOS)
+
+                    # Create circular mask
+                    mask = Image.new('L', (38, 38), 0)
+                    draw = ImageDraw.Draw(mask)
+                    draw.ellipse((0, 0, 38, 38), fill=255)
+
+                    # Apply mask
+                    avatar.putalpha(mask)
+                    return avatar
+                except Exception as e:
+                    log.error(f"Error processing avatar image: {e}")
+
+            # Create default avatar
+            default_avatar = Image.new('RGBA', (38, 38), (128, 128, 128, 255))
+            mask = Image.new('L', (38, 38), 0)
+            draw = ImageDraw.Draw(mask)
+            draw.ellipse((0, 0, 38, 38), fill=255)
+            default_avatar.putalpha(mask)
+            return default_avatar
+
+        return await asyncio.to_thread(_process_avatar, avatar_bytes)
     
     def _draw_skewed_bar(self, draw: ImageDraw.Draw, x: int, y: int, width: int, height: int, progress: float):
         """Draws a skewed XP bar directly onto the card"""
