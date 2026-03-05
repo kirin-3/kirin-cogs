@@ -1,4 +1,4 @@
-from .rulesaccept import rulesaccept
+from .rulesaccept import RulesAccept
 
 async def setup(bot):
-    await bot.add_cog(rulesaccept(bot))
+    await bot.add_cog(RulesAccept(bot))

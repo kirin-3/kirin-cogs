@@ -12,10 +12,8 @@ class TabooAccess(commands.Cog):
             "taboo_role_id": 1319776542099767316
         }
         self.config.register_guild(**default_guild)
-        self.bot.loop.create_task(self.initialize())
     
-    async def initialize(self):
-        await self.bot.wait_until_ready()
+    async def cog_load(self):
         self.bot.add_view(TabooAccessView(self))
 
     @commands.command()
