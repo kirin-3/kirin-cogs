@@ -1,6 +1,5 @@
 from redbot.core import commands, Config, checks
 import discord
-import aiohttp
 from typing import Optional, Union, Dict, List
 
 class CustomEmoji(commands.Cog):
