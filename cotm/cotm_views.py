@@ -1,6 +1,5 @@
 import discord
 from discord import ui
-from redbot.core.utils.chat_formatting import humanize_number
 
 class ContestDashboardView(ui.LayoutView):
     """V2 Components Dashboard for the Cutie of the Month Contest."""
