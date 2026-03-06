@@ -4,7 +4,7 @@ import os
 import asyncio
 import time
 from redbot.core import commands, app_commands, Config
-from redbot.core.utils.chat_formatting import box, pagify
+from redbot.core.utils.chat_formatting import pagify
 from discord.ext import tasks
 from typing import Optional
 
