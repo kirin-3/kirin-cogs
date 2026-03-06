@@ -3,7 +3,7 @@
 import asyncio
 import datetime
 import logging
-from typing import Optional, List
+from typing import List
 
 import discord
 from redbot.core import Config
