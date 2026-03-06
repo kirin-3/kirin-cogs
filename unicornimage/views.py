@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 import aiohttp
 import io
 import os
+import asyncio
 
 class LoraListView(ui.LayoutView):
     """
@@ -37,8 +38,11 @@ class LoraListView(ui.LayoutView):
                     
                     if os.path.exists(file_path):
                         try:
-                            with open(file_path, "rb") as f:
-                                data_bytes = f.read()
+                            def _read_file_bytes(path):
+                                with open(path, "rb") as f:
+                                    return f.read()
+
+                            data_bytes = await asyncio.to_thread(_read_file_bytes, file_path)
                                 
                             # Create attachment filename (cleaned)
                             clean_key = "".join(c for c in key if c.isalnum() or c in (' ', '_', '-')).strip()
