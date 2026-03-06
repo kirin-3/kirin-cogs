@@ -1,11 +1,28 @@
 {
-  "author" : ["Jintaku", "Kirin"],
-  "name": "Confess",
-  "min_bot_version": "3.5.0",
-  "requirements": [],
-  "install_msg" : "Let your users confess their terrible terrible crimes in secrecy!",
-  "short" : "Confess secretly with a sticky button.",
-  "description" : "Confess in a confession room to repent your crimes using a sticky message and modal.",
-  "tags" : ["confession", "crime", "secret", "sticky"],
-  "hidden" : false
+    "name": "Confess",
+    "author": [
+        "Jintaku",
+        "Kirin"
+    ],
+    "short": "Confess secretly with a sticky button.",
+    "description": "Confess in a confession room to repent your crimes using a sticky message and modal.",
+    "install_msg": "Let your users confess their terrible terrible crimes in secrecy!",
+    "end_user_data_statement": "This cog does not persistently store data or metadata about users.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "required_cogs": {},
+    "requirements": [],
+    "tags": [
+        "confession",
+        "crime",
+        "secret",
+        "sticky"
+    ]
 }

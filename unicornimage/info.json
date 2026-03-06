@@ -1,10 +1,31 @@
 {
-    "author": ["Kirin"],
     "name": "UnicornImage",
+    "author": [
+        "Kirin"
+    ],
     "short": "Text-to-image generation using HordeAI (Free) and Modal (Premium).",
     "description": "A dual-backend image generation cog. Uses Stable Horde for free generation and Modal for fast, premium generation.",
-    "tags": ["image", "ai", "horde", "modal", "stable-diffusion"],
-    "requirements": ["modal", "aiohttp"],
+    "install_msg": "Thanks for installing the unicornimage cog!",
+    "end_user_data_statement": "This cog does not store persistent user data except for configuration settings.",
     "min_bot_version": "3.5.0",
-    "end_user_data_statement": "This cog does not store persistent user data except for configuration settings."
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "required_cogs": {},
+    "requirements": [
+        "modal",
+        "aiohttp"
+    ],
+    "tags": [
+        "image",
+        "ai",
+        "horde",
+        "modal",
+        "stable-diffusion"
+    ]
 }

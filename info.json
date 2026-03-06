@@ -1,8 +1,8 @@
 {
-	"author": [
-		"kirin"
-	],
-	"description": "Personal cogs for discord.gg/unicornia.",
-    "install_msg": "Thanks for installing, good luck.",
-	"short": "uwu"
+    "author": [
+        "kirin"
+    ],
+    "short": "uwu",
+    "description": "Personal cogs for discord.gg/unicornia.",
+    "install_msg": "Thanks for installing, good luck."
 }

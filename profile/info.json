@@ -1,9 +1,26 @@
 {
-    "author": ["Kilo Code"],
     "name": "Profile",
+    "author": [
+        "Kilo Code"
+    ],
     "short": "Create and manage user profiles with sticky messages.",
     "description": "Asks user a series of questions to create a profile embed in a specified channel. Uses sticky messages to keep the creation button accessible.",
+    "install_msg": "Thanks for installing the profile cog!",
+    "end_user_data_statement": "This cog does not persistently store data or metadata about users.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "required_cogs": {},
     "requirements": [],
-    "tags": ["profile", "social", "sticky"],
-    "min_bot_version": "3.5.0"
+    "tags": [
+        "profile",
+        "social",
+        "sticky"
+    ]
 }

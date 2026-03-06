@@ -1,16 +1,34 @@
 {
     "name": "Unicornia",
-    "author": ["Kirin"],
+    "author": [
+        "Kirin"
+    ],
     "short": "Drop-in Nadeko migration cog for leveling and economy features",
     "description": "A Red bot cog that serves as a direct drop-in replacement for Nadeko Bot's Economy and XP systems. It is fully compatible with Nadeko's SQLite database schema (v3+), allowing you to use your existing `nadeko.db` file without data loss. Features include Currency, Banking, Gambling (Slots, Blackjack, etc.), Waifus, Shops, Clubs, and XP/Leveling.",
     "install_msg": "Unicornia cog loaded! To use your existing data, place your `nadeko.db` file in the cog's data folder or configure the path.",
-    "tags": ["leveling", "economy", "migration", "nadeko", "waifu", "gambling"],
+    "end_user_data_statement": "This cog reads from an existing Nadeko SQLite database and stores user data in Nadeko-compatible tables.",
     "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
     "hidden": false,
     "disabled": false,
     "type": "COG",
-    "permissions": [],
-    "min_python_version": [3, 8, 0],
-    "requirements": ["aiosqlite", "Pillow", "PyYAML"],
-    "end_user_data_statement": "This cog reads from an existing Nadeko SQLite database and stores user data in Nadeko-compatible tables."
+    "required_cogs": {},
+    "requirements": [
+        "aiosqlite",
+        "Pillow",
+        "PyYAML"
+    ],
+    "tags": [
+        "leveling",
+        "economy",
+        "migration",
+        "nadeko",
+        "waifu",
+        "gambling"
+    ],
+    "permissions": []
 }

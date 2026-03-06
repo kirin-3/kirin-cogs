@@ -1,15 +1,30 @@
 {
-    "author": ["kirin"],
-    "install_msg": "UniMod loaded! Use `[p]set api openai YOUR_API_KEY` to set your API key, then `[p]unimod whitelist` to add channels to monitor.",
     "name": "unimod",
+    "author": [
+        "kirin"
+    ],
     "short": "AI-Powered Auto Moderation",
     "description": "Intelligent auto-moderation using VADER sentiment analysis and GLM5 AI for accurate rule violation detection. Monitors whitelisted channels and alerts moderators to potential violations.",
-    "tags": ["moderation", "ai", "automod", "vader", "sentiment"],
-    "requirements": ["nltk>=3.8.0"],
+    "install_msg": "UniMod loaded! Use `[p]set api openai YOUR_API_KEY` to set your API key, then `[p]unimod whitelist` to add channels to monitor.",
+    "end_user_data_statement": "This cog stores message content temporarily for AI analysis. No personal user data is permanently stored.",
     "min_bot_version": "3.5.0",
-    "min_python_version": [3, 10, 0],
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
     "hidden": false,
     "disabled": false,
     "type": "COG",
-    "end_user_data_statement": "This cog stores message content temporarily for AI analysis. No personal user data is permanently stored."
+    "required_cogs": {},
+    "requirements": [
+        "nltk>=3.8.0"
+    ],
+    "tags": [
+        "moderation",
+        "ai",
+        "automod",
+        "vader",
+        "sentiment"
+    ]
 }
