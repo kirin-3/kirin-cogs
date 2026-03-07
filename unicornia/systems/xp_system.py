@@ -6,6 +6,8 @@ import asyncio
 import os
 import time
 from collections import OrderedDict
+from collections.abc import Coroutine
+from typing import Any
 
 import discord
 
@@ -33,6 +35,7 @@ class XPSystem:
 
         self._voice_xp_task = None
         self._message_xp_task = None
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
         # Initialize XP card generator
         # Pass the cog root directory (parent of 'systems')
@@ -43,7 +46,12 @@ class XPSystem:
         self.start_loops()
 
         # Initialize Config Cache
-        asyncio.create_task(self._init_config_cache())
+        self._create_task(self._init_config_cache())
+
+    def _create_task(self, coro: Coroutine[Any, Any, Any]) -> None:
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def _init_config_cache(self):
         """Initialize configuration cache"""
@@ -69,7 +77,7 @@ class XPSystem:
 
         # Flush remaining buffer
         if self.xp_buffer:
-            asyncio.create_task(self._flush_buffer())
+            self._create_task(self._flush_buffer())
 
     async def _voice_xp_loop(self):
         """Background task to award XP to users in voice channels"""
@@ -228,9 +236,8 @@ class XPSystem:
         current_time = time.time()
         cooldown = self._config_cache.get("xp_cooldown", 60)
 
-        if user_id in self.xp_cooldowns:
-            if current_time - self.xp_cooldowns[user_id] < cooldown:
-                return
+        if user_id in self.xp_cooldowns and current_time - self.xp_cooldowns[user_id] < cooldown:
+            return
 
         guild_id = message.guild.id
 
@@ -244,9 +251,12 @@ class XPSystem:
         is_included = channel_id in included_channels
 
         # If not included, check if it's a thread and if parent is included
-        if not is_included and isinstance(message.channel, discord.Thread):
-            if message.channel.parent_id in included_channels:
-                is_included = True
+        if (
+            not is_included
+            and isinstance(message.channel, discord.Thread)
+            and message.channel.parent_id in included_channels
+        ):
+            is_included = True
 
         if not is_included:
             return
@@ -269,9 +279,12 @@ class XPSystem:
         is_double = channel_id in double_xp_channels
 
         # If not included, check if it's a thread and if parent is included
-        if not is_double and isinstance(message.channel, discord.Thread):
-            if message.channel.parent_id in double_xp_channels:
-                is_double = True
+        if (
+            not is_double
+            and isinstance(message.channel, discord.Thread)
+            and message.channel.parent_id in double_xp_channels
+        ):
+            is_double = True
 
         if is_double:
             xp_amount *= 2

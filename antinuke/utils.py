@@ -155,7 +155,7 @@ def get_permission_diff(before: discord.Permissions, after: discord.Permissions)
         List of permission names that were added.
     """
     added = []
-    for perm_name, perm_value in discord.Permissions.VALID_FLAGS.items():
+    for perm_name, _perm_value in discord.Permissions.VALID_FLAGS.items():
         if not getattr(before, perm_name) and getattr(after, perm_name):
             added.append(perm_name)
     return added

@@ -396,18 +396,10 @@ class CustomRoleColor(commands.Cog):
             for name, hex_code in PALETTE_COLORS:
                 desc_lines.append(f"`{hex_code}` **{name}**")
 
-            description = "Here are some common colors. You can copy the code from the list below.\n\n" + " | ".join(
-                desc_lines
-            )
-
             # If description is too long (over 4096), we might need to truncate or split.
             # 32 colors * ~25 chars = ~800 chars. It fits easily.
             # Using " | " separator might be dense. Let's use newlines or grouped.
             # Newlines are easier to scan.
-            description = "Here are some common colors. You can copy the code from the list below.\n\n" + "\n".join(
-                desc_lines
-            )
-
             # To save vertical space, maybe 2 columns? Embeds don't support columns in description.
             # Fields can work.
 

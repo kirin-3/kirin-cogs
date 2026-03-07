@@ -1,3 +1,5 @@
+import contextlib
+
 import discord
 from discord import ui
 from redbot.core.utils.chat_formatting import humanize_number
@@ -25,10 +27,8 @@ class UnicorniaHelpView(ui.View):
         if self.message:
             for child in self.children:
                 child.disabled = True  # type: ignore[attr-defined]
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await self.message.edit(view=self)
-            except discord.HTTPException:
-                pass
         self.stop()
 
     def get_embed(self):
@@ -113,10 +113,8 @@ class RockPaperScissorsView(ui.View):
         if self.message:
             for child in self.children:
                 child.disabled = True  # type: ignore[attr-defined]
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await self.message.edit(view=self)
-            except discord.HTTPException:
-                pass
         self.stop()
 
     @ui.button(emoji="🪨", style=discord.ButtonStyle.primary)
@@ -155,10 +153,8 @@ class CoinFlipView(ui.View):
         if self.message:
             for child in self.children:
                 child.disabled = True  # type: ignore[attr-defined]
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await self.message.edit(view=self)
-            except discord.HTTPException:
-                pass
         self.stop()
 
     @ui.button(label="Heads", emoji="🪙", style=discord.ButtonStyle.success)
@@ -195,10 +191,8 @@ class ApplicantProcessView(ui.View):
         if self.message:
             for child in self.children:
                 child.disabled = True  # type: ignore[attr-defined]
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await self.message.edit(view=self)
-            except discord.HTTPException:
-                pass
         self.stop()
 
     def update_components(self):
@@ -327,10 +321,8 @@ class ShopBrowserView(ui.LayoutView):
         if self.message:
             for child in self.children:
                 child.disabled = True  # type: ignore[attr-defined]
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await self.message.edit(view=self)
-            except discord.HTTPException:
-                pass
         self.stop()
 
     def filter_items(self):
@@ -523,10 +515,8 @@ class LeaderboardView(ui.View):
         if self.message:
             for child in self.children:
                 child.disabled = True  # type: ignore[attr-defined]
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await self.message.edit(view=self)
-            except discord.HTTPException:
-                pass
         self.stop()
 
     def get_current_page_entries(self):
@@ -642,10 +632,8 @@ class NitroShopView(ui.View):
         if self.message:
             for child in self.children:
                 child.disabled = True  # type: ignore[attr-defined]
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await self.message.edit(view=self)
-            except discord.HTTPException:
-                pass
         self.stop()
 
     async def update_components(self):
@@ -703,11 +691,9 @@ class NitroShopView(ui.View):
             if success:
                 # Update buttons on the main view
                 await self.update_components()
-                try:
-                    if self.message:
+                if self.message:
+                    with contextlib.suppress(discord.HTTPException):
                         await self.message.edit(view=self)
-                except:
-                    pass
 
                 await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
             else:
@@ -948,11 +934,8 @@ class MinesView(ui.View):
         cashout_btn = ui.Button(style=discord.ButtonStyle.success, label="Cash Out", row=4, custom_id="cashout")
 
         # Try to parse currency symbol as emoji
-        try:
+        with contextlib.suppress(Exception):
             cashout_btn.emoji = discord.PartialEmoji.from_str(self.currency_symbol)
-        except:
-            # Fallback if not a valid emoji string
-            pass
 
         cashout_btn.callback = self.cashout_callback
         self.add_item(cashout_btn)
@@ -979,10 +962,8 @@ class MinesView(ui.View):
             for child in self.children:
                 child.disabled = True  # type: ignore[attr-defined]
             if self.message:
-                try:
+                with contextlib.suppress(BaseException):
                     await self.message.edit(view=self)
-                except:
-                    pass
         self.stop()
 
     async def handle_click(self, interaction: discord.Interaction, index: int):
@@ -1048,7 +1029,7 @@ class MinesView(ui.View):
 
         # Update Cashout Button
         payout = int(self.amount * self.current_multiplier)
-        cashout_btn = [x for x in self.children if x.custom_id == "cashout"][0]  # type: ignore[attr-defined]
+        cashout_btn = next(x for x in self.children if x.custom_id == "cashout")  # type: ignore[attr-defined]
         # Only show amount in label, emoji is separate
         cashout_btn.label = f"Cash Out {humanize_number(payout)}"  # type: ignore[attr-defined]
         cashout_btn.disabled = False  # type: ignore[attr-defined]
@@ -1116,10 +1097,8 @@ class ClubInviteView(ui.View):
         if self.message:
             for child in self.children:
                 child.disabled = True  # type: ignore[attr-defined]
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await self.message.edit(view=self)
-            except discord.HTTPException:
-                pass
         self.stop()
 
     @ui.button(label="Accept Invite", style=discord.ButtonStyle.success)
@@ -1132,11 +1111,9 @@ class ClubInviteView(ui.View):
             await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
             for item in self.children:
                 item.disabled = True  # type: ignore[attr-defined]
-            try:
-                if interaction.message:
+            if interaction.message:
+                with contextlib.suppress(discord.HTTPException):
                     await interaction.message.edit(view=self)
-            except:
-                pass
             self.stop()
         else:
             await interaction.followup.send(f"❌ {msg}", ephemeral=True)
@@ -1151,11 +1128,9 @@ class ClubInviteView(ui.View):
             await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
             for item in self.children:
                 item.disabled = True  # type: ignore[attr-defined]
-            try:
-                if interaction.message:
+            if interaction.message:
+                with contextlib.suppress(discord.HTTPException):
                     await interaction.message.edit(view=self)
-            except:
-                pass
             self.stop()
         else:
             await interaction.followup.send(f"❌ {msg}", ephemeral=True)

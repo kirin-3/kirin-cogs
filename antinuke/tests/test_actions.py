@@ -213,7 +213,7 @@ async def test_restore_user_success(actions: QuarantineActions, config_mock: Mag
 
     assert result is True
     user.edit.assert_called_once()
-    args, kwargs = user.edit.call_args
+    _args, kwargs = user.edit.call_args
     assert "roles" in kwargs
     assert len(kwargs["roles"]) == 2
     assert role1 in kwargs["roles"]

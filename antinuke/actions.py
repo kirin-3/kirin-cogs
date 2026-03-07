@@ -3,6 +3,8 @@
 import asyncio
 import datetime
 import logging
+from collections.abc import Coroutine
+from typing import Any
 
 import discord
 from redbot.core import Config
@@ -21,6 +23,12 @@ class QuarantineActions:
     def __init__(self, bot: Red, config: Config) -> None:
         self.bot = bot
         self.config = config
+        self._background_tasks: set[asyncio.Task[Any]] = set()
+
+    def _create_task(self, coro: Coroutine[Any, Any, Any]) -> None:
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def execute_quarantine(
         self,
@@ -99,7 +107,7 @@ class QuarantineActions:
                 action_cache.clear_user(guild.id, user.id)
 
             # Log the action (non-blocking)
-            asyncio.create_task(self.log_quarantine(guild, user, trigger_action))
+            self._create_task(self.log_quarantine(guild, user, trigger_action))
 
             return True
 
@@ -161,9 +169,8 @@ class QuarantineActions:
 
             # Add back any roles the user should have (excluding quarantine)
             for role in user.roles:
-                if role != guild.default_role and role != quarantine_role:
-                    if role not in final_roles:
-                        final_roles.append(role)
+                if role != guild.default_role and role != quarantine_role and role not in final_roles:
+                    final_roles.append(role)
 
             # Restore roles
             await user.edit(
@@ -177,7 +184,7 @@ class QuarantineActions:
                     del q_users[str(user.id)]
 
             # Log restoration
-            asyncio.create_task(self.log_restoration(guild, user, restored_by, missing_roles))
+            self._create_task(self.log_restoration(guild, user, restored_by, missing_roles))
 
             return True
 

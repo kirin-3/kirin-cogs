@@ -5,3 +5,14 @@ from .shop import ShopRepository
 from .stock import StockRepository
 from .waifu import WaifuRepository
 from .xp import XPRepository
+
+__all__ = [
+    "ClubRepository",
+    "CoreDB",
+    "EconomyRepository",
+    "LevelStats",
+    "ShopRepository",
+    "StockRepository",
+    "WaifuRepository",
+    "XPRepository",
+]

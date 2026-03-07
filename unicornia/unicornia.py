@@ -6,6 +6,7 @@ Includes XP gain, currency transactions, gambling, banking, shop, and more.
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 from typing import Literal
@@ -179,17 +180,13 @@ class Unicornia(
         try:
             if self.wal_task:
                 self.wal_task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await self.wal_task
-                except asyncio.CancelledError:
-                    pass
 
             if self.market_task:
                 self.market_task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await self.market_task
-                except asyncio.CancelledError:
-                    pass
 
             if self.currency_decay:
                 await self.currency_decay.stop_decay_loop()
@@ -349,10 +346,7 @@ class Unicornia(
         while to_check:
             if to_check.qualified_name in command_whitelist:
                 # Rule exists for this command
-                if ctx.channel.id in command_whitelist[to_check.qualified_name]:
-                    return True  # Allowed by specific rule
-                else:
-                    return False  # Blocked (Whitelisted for other channels)
+                return ctx.channel.id in command_whitelist[to_check.qualified_name]
             to_check = to_check.parent
 
         # 2. Check System Whitelist (General Rule)
@@ -372,10 +366,7 @@ class Unicornia(
 
         system_whitelist = await self.config.guild(ctx.guild).system_whitelist()
         if system_name in system_whitelist:
-            if ctx.channel.id in system_whitelist[system_name]:
-                return True
-            else:
-                return False  # Blocked (Whitelisted for other channels)
+            return ctx.channel.id in system_whitelist[system_name]
 
         # 3. Default Allow (No rules matched)
         return True

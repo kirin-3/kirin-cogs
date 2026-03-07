@@ -1,3 +1,5 @@
+import contextlib
+
 import discord
 from redbot.core import commands
 
@@ -47,10 +49,8 @@ class CurrencyCommands(UnicorniaMixinBase):
                     await ctx.reply(f"You picked up {amount}{currency_symbol}!", mention_author=False, delete_after=30)
 
                 # Delete user command message after 30 seconds
-                try:
+                with contextlib.suppress(Exception):
                     await ctx.message.delete(delay=30)
-                except Exception:
-                    pass
 
                 # Delete original messages if IDs exist
                 if message_ids:

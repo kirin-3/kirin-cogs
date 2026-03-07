@@ -1,3 +1,5 @@
+import contextlib
+
 import discord
 from redbot.core import Config, commands
 from redbot.core.utils.chat_formatting import box, pagify
@@ -61,10 +63,8 @@ class CustomCommand(commands.Cog):
                 response = response[:1021] + "..."
             embed.add_field(name="Response", value=response, inline=False)
 
-        try:
+        with contextlib.suppress(discord.HTTPException):
             await channel.send(embed=embed)
-        except discord.HTTPException:
-            pass  # Fail silently if permission error or other issue
 
     @commands.group(aliases=["cc"])
     @commands.guild_only()

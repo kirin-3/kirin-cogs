@@ -107,7 +107,7 @@ class StockRepository:
         async with self.db._get_connection() as db:
             await db.executemany(
                 """
-                UPDATE Stocks 
+                UPDATE Stocks
                 SET CurrentPrice = ?, PreviousPrice = ?
                 WHERE Symbol = ?
             """,

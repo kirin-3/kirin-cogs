@@ -147,7 +147,7 @@ class UnicornDocsPrecomputed(commands.Cog):
         query_words = [word.strip() for word in query_lower.split() if len(word.strip()) > 2]  # Filter short words
         results = []
 
-        for i, metadata in enumerate(self._metadata):
+        for _i, metadata in enumerate(self._metadata):
             text_lower = metadata.get("original_text", "").lower()
             source_lower = metadata.get("source_file", "").lower()
 

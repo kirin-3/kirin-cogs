@@ -48,7 +48,7 @@ class ImageFilter(commands.Cog):
                 async with session.head(url, allow_redirects=True, timeout=5) as response:
                     content_type = response.headers.get("content-type", "")
                     return content_type.startswith("image/")
-        except:
+        except Exception:
             return False  # If request fails, don't treat as image
 
     @commands.Cog.listener()

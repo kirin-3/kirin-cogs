@@ -117,7 +117,6 @@ class ContestCog(commands.Cog):
             ctx (commands.Context): The context in which the command was invoked.
             contest_number (int, optional): The contest number to be posted. Defaults to None.
         """
-        channel = ctx.channel
 
         # this updates property as an integer, and gets it a a string with ordinal suffix
         # ex: "52nd", "53rd", etc
@@ -159,13 +158,7 @@ class ContestCog(commands.Cog):
         timenow = datetime.now(UTC)
 
         def valid_user_vote(u):
-            if (
-                not hasattr(u, "joined_at")
-                or u.joined_at is None
-                or (voter_server_age is not None and u.joined_at >= timenow - voter_server_age)
-            ):
-                return False
-            return True
+            return not (not hasattr(u, "joined_at") or u.joined_at is None or (voter_server_age is not None and u.joined_at >= timenow - voter_server_age))
 
         entries = []
         async for message in channel.history(limit=None):
@@ -264,12 +257,10 @@ class ContestCog(commands.Cog):
             return
 
         async with ctx.typing():
-            timenow = datetime.now(UTC)
+            datetime.now(UTC)
 
             def valid_user_vote(u):
-                if not hasattr(u, "joined_at") or u.joined_at is None:
-                    return False
-                return True
+                return not (not hasattr(u, "joined_at") or u.joined_at is None)
 
             entries = []
             async for message in channel.history(limit=None):

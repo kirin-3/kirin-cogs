@@ -80,13 +80,12 @@ class Profile(commands.Cog):
             last_delete_dt = datetime.fromtimestamp(last_delete, UTC)
             now = datetime.now(UTC)
             diff = now - last_delete_dt
-            if diff.total_seconds() < 86400:  # 24 hours
-                if not await self.bot.is_owner(member):
-                    hours_remaining = int((86400 - diff.total_seconds()) / 3600)
-                    return await interaction.response.send_message(
-                        f"You must wait 24 hours after deleting your profile to create a new one. (~{hours_remaining} hours remaining)",
-                        ephemeral=True,
-                    )
+            if diff.total_seconds() < 86400 and not await self.bot.is_owner(member):  # 24 hours
+                hours_remaining = int((86400 - diff.total_seconds()) / 3600)
+                return await interaction.response.send_message(
+                    f"You must wait 24 hours after deleting your profile to create a new one. (~{hours_remaining} hours remaining)",
+                    ephemeral=True,
+                )
 
         user_data = user_conf["profile_data"]
         view = ProfileBuilderView(member, user_data)

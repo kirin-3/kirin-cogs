@@ -13,7 +13,7 @@ dpytest integration tests cover:
 
 import asyncio
 from collections.abc import AsyncGenerator
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -26,7 +26,6 @@ import pytest_asyncio
 from redbot.core import Config
 
 from patron.patron import Patron
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

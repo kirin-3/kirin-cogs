@@ -6,6 +6,8 @@ import asyncio
 import os
 import random
 import time
+from collections.abc import Coroutine
+from typing import Any
 
 import discord
 
@@ -31,9 +33,15 @@ class CurrencyGeneration:
         self.gen_min = 60
         self.gen_max = 140
         self.currency_symbol = ""
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
         # Initialize cache
-        asyncio.create_task(self.refresh_config_cache())
+        self._create_task(self.refresh_config_cache())
+
+    def _create_task(self, coro: Coroutine[Any, Any, Any]) -> None:
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def refresh_config_cache(self):
         """Refresh configuration cache"""
@@ -66,9 +74,11 @@ class CurrencyGeneration:
         user_id = message.author.id
         current_time = time.time()
 
-        if user_id in self.generation_cooldowns:
-            if current_time - self.generation_cooldowns[user_id] < self.gen_cooldown:
-                return
+        if (
+            user_id in self.generation_cooldowns
+            and current_time - self.generation_cooldowns[user_id] < self.gen_cooldown
+        ):
+            return
 
         # Check generation chance
         if random.random() > self.gen_chance:

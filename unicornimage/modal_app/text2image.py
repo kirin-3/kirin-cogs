@@ -126,7 +126,7 @@ def encode_prompt_chunked(
             pos_chunk_ids_2_slice = pos_input_ids_2_raw[start_idx:end_idx]
 
             # Add special tokens ([BOS]...[EOS]) and pad to max_length (77) for Encoder 1
-            pos_chunk_ids_1_padded = [tokenizer.bos_token_id] + pos_chunk_ids_1_slice + [tokenizer.eos_token_id]
+            pos_chunk_ids_1_padded = [tokenizer.bos_token_id, *pos_chunk_ids_1_slice, tokenizer.eos_token_id]
             pos_chunk_attention_mask_1 = [1] * len(pos_chunk_ids_1_padded)
             padding_length_1 = max_length - len(pos_chunk_ids_1_padded)
             if padding_length_1 > 0:
@@ -136,7 +136,7 @@ def encode_prompt_chunked(
             pos_chunk_attention_mask_1_tensor = torch.tensor([pos_chunk_attention_mask_1], device=device)
 
             # Add special tokens ([BOS]...[EOS]) and pad to max_length (77) for Encoder 2
-            pos_chunk_ids_2_padded = [tokenizer_2.bos_token_id] + pos_chunk_ids_2_slice + [tokenizer_2.eos_token_id]
+            pos_chunk_ids_2_padded = [tokenizer_2.bos_token_id, *pos_chunk_ids_2_slice, tokenizer_2.eos_token_id]
             pos_chunk_attention_mask_2 = [1] * len(pos_chunk_ids_2_padded)
             padding_length_2 = max_length - len(pos_chunk_ids_2_padded)
             if padding_length_2 > 0:
@@ -207,7 +207,7 @@ def encode_prompt_chunked(
             neg_chunk_ids_2_slice = neg_input_ids_2_raw[start_idx:end_idx]
 
             # Add special tokens ([BOS]...[EOS]) and pad to max_length (77) for Encoder 1
-            neg_chunk_ids_1_padded = [tokenizer.bos_token_id] + neg_chunk_ids_1_slice + [tokenizer.eos_token_id]
+            neg_chunk_ids_1_padded = [tokenizer.bos_token_id, *neg_chunk_ids_1_slice, tokenizer.eos_token_id]
             neg_chunk_attention_mask_1 = [1] * len(neg_chunk_ids_1_padded)
             padding_length_1_neg = max_length - len(neg_chunk_ids_1_padded)
             if padding_length_1_neg > 0:
@@ -217,7 +217,7 @@ def encode_prompt_chunked(
             neg_chunk_attention_mask_1_tensor = torch.tensor([neg_chunk_attention_mask_1], device=device)
 
             # Add special tokens ([BOS]...[EOS]) and pad to max_length (77) for Encoder 2
-            neg_chunk_ids_2_padded = [tokenizer_2.bos_token_id] + neg_chunk_ids_2_slice + [tokenizer_2.eos_token_id]
+            neg_chunk_ids_2_padded = [tokenizer_2.bos_token_id, *neg_chunk_ids_2_slice, tokenizer_2.eos_token_id]
             neg_chunk_attention_mask_2 = [1] * len(neg_chunk_ids_2_padded)
             padding_length_2_neg = max_length - len(neg_chunk_ids_2_padded)
             if padding_length_2_neg > 0:
@@ -297,13 +297,17 @@ def encode_prompt_chunked(
         negative_pooled_prompt_embeds = first_chunk_negative_pooled_prompt_embeds / num_chunks
 
         # Handle case where negative prompt might be empty initially
-        if negative_prompt == "" and first_chunk_negative_pooled_prompt_embeds is None:
+        if (
+            negative_prompt == ""
+            and first_chunk_negative_pooled_prompt_embeds is None
+            and pooled_prompt_embeds is not None
+            and negative_pooled_prompt_embeds is None
+        ):
             # Create zero pooled embeds if negative prompt was empty
-            if pooled_prompt_embeds is not None and negative_pooled_prompt_embeds is None:
-                _, _, _, empty_neg_pooled = pipe.encode_prompt(
-                    prompt="", negative_prompt="", device=device, num_images_per_prompt=1
-                )
-                negative_pooled_prompt_embeds = empty_neg_pooled.to(dtype=pooled_prompt_embeds.dtype, device=device)
+            _, _, _, empty_neg_pooled = pipe.encode_prompt(
+                prompt="", negative_prompt="", device=device, num_images_per_prompt=1
+            )
+            negative_pooled_prompt_embeds = empty_neg_pooled.to(dtype=pooled_prompt_embeds.dtype, device=device)
 
         # Check for NaN or Inf values before returning
         if torch.isnan(prompt_embeds).any() or torch.isinf(prompt_embeds).any():
@@ -592,7 +596,7 @@ class Inference:
                         file_path = hf_hub_download(repo_id=repo_id, filename=filename, cache_dir=CACHE_DIR)
                         logger.info(f"Downloaded {filename} from {repo_id}")
                         return file_path
-                    except:
+                    except Exception:
                         pass
 
                 from huggingface_hub import list_repo_files
@@ -665,7 +669,7 @@ class Inference:
             logger.info(f"Model not found in cache. Loading SDXL model: {model_id}")
             try:
                 base_model_key = None
-                for key in self.loaded_models.keys():
+                for key in self.loaded_models:
                     if key.startswith(model_id) and loras:
                         base_model_key = key
                         logger.info(f"Found base model already loaded: {base_model_key}")
@@ -729,7 +733,7 @@ class Inference:
                     try:
                         pipeline.enable_attention_slicing()
                         logger.info("Enabled attention slicing")
-                    except:
+                    except Exception:
                         pass
 
                 if loras:

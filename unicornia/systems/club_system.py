@@ -22,9 +22,7 @@ class ClubSystem:
         """Check if user has permission to manage the club"""
         if user.id == club_owner_id:
             return True
-        if admin_override and user.guild_permissions.manage_guild:
-            return True
-        return False
+        return bool(admin_override and user.guild_permissions.manage_guild)
 
     async def create_club(self, user: discord.Member, club_name: str) -> tuple[bool, str]:
         """Create a new club.
@@ -52,7 +50,7 @@ class ClubSystem:
 
         # Create club
         try:
-            club_id = await self.db.club.create_club(user.id, club_name)
+            await self.db.club.create_club(user.id, club_name)
             return True, f"Club **{club_name}** created successfully!"
         except Exception as e:
             return False, f"Error creating club: {e}"

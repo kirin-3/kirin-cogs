@@ -70,7 +70,7 @@ class NitroSystem:
 
         # 2. Check price and balance
         price = await self.get_price(item_type)
-        wallet, bank = await self.economy_system.get_balance(ctx.author.id)
+        wallet, _bank = await self.economy_system.get_balance(ctx.author.id)
 
         if wallet < price:
             return (

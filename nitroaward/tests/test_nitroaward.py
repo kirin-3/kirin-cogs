@@ -7,7 +7,7 @@ dispatched through a real bot event loop.
 
 import asyncio
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -18,7 +18,6 @@ import pytest_asyncio
 from redbot.core import Config
 
 from nitroaward.nitroaward import AWARD_AMOUNT, NitroAward
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -60,7 +59,7 @@ async def test_process_boost_reward_awards_currency_on_first_boost() -> None:
     cog.bot = bot
     cog.processing_users = set()
 
-    ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
     member = _make_member(premium_since=ts)
 
     config = _make_config_mock(last_boost_timestamp=None)
@@ -89,7 +88,7 @@ async def test_process_boost_reward_skips_duplicate_boost() -> None:
     cog.bot = bot
     cog.processing_users = set()
 
-    ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
     member = _make_member(premium_since=ts)
 
     # Stored timestamp matches current — already awarded
@@ -136,7 +135,7 @@ async def test_process_boost_reward_logs_warning_when_unicornia_missing() -> Non
     cog.bot = bot
     cog.processing_users = set()
 
-    ts = datetime(2024, 3, 1, tzinfo=timezone.utc)
+    ts = datetime(2024, 3, 1, tzinfo=UTC)
     member = _make_member(premium_since=ts)
     config = _make_config_mock(last_boost_timestamp=None)
     cog.config = config
@@ -155,7 +154,7 @@ async def test_process_boost_reward_handles_add_balance_failure() -> None:
     cog.bot = bot
     cog.processing_users = set()
 
-    ts = datetime(2024, 6, 1, tzinfo=timezone.utc)
+    ts = datetime(2024, 6, 1, tzinfo=UTC)
     member = _make_member(premium_since=ts)
     config = _make_config_mock(last_boost_timestamp=None)
     cog.config = config
@@ -177,7 +176,7 @@ async def test_process_boost_reward_handles_exception_from_unicornia() -> None:
     cog.bot = bot
     cog.processing_users = set()
 
-    ts = datetime(2024, 9, 1, tzinfo=timezone.utc)
+    ts = datetime(2024, 9, 1, tzinfo=UTC)
     member = _make_member(premium_since=ts)
     config = _make_config_mock(last_boost_timestamp=None)
     cog.config = config
@@ -205,7 +204,7 @@ async def test_on_member_update_ignores_non_boost_changes() -> None:
     cog.config = _make_config_mock()
     cog.process_boost_reward = AsyncMock()
 
-    ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
     before = _make_member(premium_since=ts)  # was already boosting
     after = _make_member(premium_since=ts)  # still boosting — no change
 
@@ -224,7 +223,7 @@ async def test_on_member_update_ignores_boost_end() -> None:
     cog.config = _make_config_mock()
     cog.process_boost_reward = AsyncMock()
 
-    ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
     before = _make_member(premium_since=ts)
     after = _make_member(premium_since=None)  # boost ended
 
@@ -243,7 +242,7 @@ async def test_on_member_update_triggers_reward_on_new_boost() -> None:
     cog.config = _make_config_mock()
     cog.process_boost_reward = AsyncMock()
 
-    ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
     before = _make_member(premium_since=None)
     after = _make_member(premium_since=ts)
 
@@ -262,7 +261,7 @@ async def test_on_member_update_prevents_concurrent_processing() -> None:
     cog.config = _make_config_mock()
     cog.process_boost_reward = AsyncMock()
 
-    ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
     before = _make_member(user_id=42, premium_since=None)
     after = _make_member(user_id=42, premium_since=ts)
 
@@ -313,7 +312,7 @@ async def test_dpytest_member_update_new_boost_calls_process_reward(
     before.premium_since = None
     before.id = member.id
 
-    ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
     after = MagicMock(spec=discord.Member)
     after.premium_since = ts
     after.id = member.id
@@ -340,7 +339,7 @@ async def test_dpytest_member_update_no_boost_does_not_call_process_reward(
     cog.process_boost_reward = AsyncMock()
     await bot.add_cog(cog)
 
-    ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
 
     before = MagicMock(spec=discord.Member)
     before.premium_since = ts

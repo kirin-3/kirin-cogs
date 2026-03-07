@@ -297,10 +297,9 @@ class WaifuCommands(UnicorniaMixinBase):
             price = 50
             claimer_id = None
             affinity_id = None
-            created_at = None
 
             if waifu_info:
-                waifu_id, claimer_id, price, affinity_id, created_at = waifu_info
+                _waifu_id, claimer_id, price, affinity_id, _created_at = waifu_info
 
             # Get owner info
             owner = ctx.guild.get_member(claimer_id) if claimer_id else None
@@ -350,7 +349,7 @@ class WaifuCommands(UnicorniaMixinBase):
             # Owned Waifus
             if owned_waifus:
                 waifu_names = []
-                for wid, wprice, _, _ in owned_waifus[:10]:
+                for wid, _wprice, _, _ in owned_waifus[:10]:
                     w = ctx.guild.get_member(wid)
                     if w:
                         waifu_names.append(w.display_name)
@@ -404,7 +403,7 @@ class WaifuCommands(UnicorniaMixinBase):
             currency_symbol = await self.config.currency_symbol()
             embed = discord.Embed(title=f"💕 {target.display_name}'s Waifus", color=discord.Color.pink())
 
-            for waifu_id, price, affinity_id, created_at in waifus[:10]:  # Limit to 10
+            for waifu_id, price, affinity_id, _created_at in waifus[:10]:  # Limit to 10
                 waifu_member = ctx.guild.get_member(waifu_id)
                 if waifu_member:
                     affinity = ctx.guild.get_member(affinity_id) if affinity_id else None

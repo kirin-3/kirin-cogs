@@ -364,7 +364,7 @@ class EconomyCommands(UnicorniaMixinBase):
                 color=discord.Color.green(),
             )
             embed.add_field(
-                name="ℹ️ About Rakeback",
+                name="About Rakeback",
                 value="You earn 5% rakeback on gambling losses. Claim it anytime!",
                 inline=False,
             )
@@ -644,7 +644,7 @@ class EconomyCommands(UnicorniaMixinBase):
             return
 
         try:
-            wallet_balance, bank_balance = await self.economy_system.get_balance(ctx.author.id)
+            _wallet_balance, bank_balance = await self.economy_system.get_balance(ctx.author.id)
             currency_symbol = await self.config.currency_symbol()
             await ctx.reply(f"🏦 Your bank balance: {currency_symbol}{bank_balance:,}", mention_author=False)
 

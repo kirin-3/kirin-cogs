@@ -424,7 +424,7 @@ class AntiNuke(
             return
 
         if user.id == guild.owner_id:
-            await ctx.send("ℹ️ The server owner is always trusted by default.")
+            await ctx.send("Info: The server owner is always trusted by default.")
             return
 
         async with self.config.guild(guild).trusted_users() as trusted:

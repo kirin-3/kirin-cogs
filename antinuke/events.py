@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+from collections.abc import Coroutine
+from typing import Any
 
 import discord
 from redbot.core import Config
@@ -31,6 +33,12 @@ class EventHandlers:
         self.action_cache = action_cache
         self.audit_helper = audit_helper
         self.quarantine_actions = quarantine_actions
+        self._background_tasks: set[asyncio.Task[Any]] = set()
+
+    def _create_task(self, coro: Coroutine[Any, Any, Any]) -> None:
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def is_enabled(self, guild: discord.Guild) -> bool:
         """Check if AntiNuke is enabled for the guild."""
@@ -50,10 +58,7 @@ class EventHandlers:
         # Check trusted roles
         trusted_roles = await self.config.guild(guild).trusted_roles()
         user_role_ids = [role.id for role in user.roles]
-        if any(role_id in trusted_roles for role_id in user_role_ids):
-            return True
-
-        return False
+        return bool(any(role_id in trusted_roles for role_id in user_role_ids))
 
     async def get_monitor_config(self, guild: discord.Guild, action_type: str) -> dict:
         """Get monitor configuration for an action type."""
@@ -80,7 +85,7 @@ class EventHandlers:
         # Check if threshold hit
         if count >= threshold:
             # Fetch audit logs to find culprits
-            asyncio.create_task(self._investigate_channel_deletion(guild, monitor_config))
+            self._create_task(self._investigate_channel_deletion(guild, monitor_config))
 
     async def _investigate_channel_deletion(self, guild: discord.Guild, config: dict) -> None:
         """Investigate channel deletion and quarantine culprits."""
@@ -89,11 +94,11 @@ class EventHandlers:
 
         culprits = await self.audit_helper.get_channel_delete_culprit(guild, timeframe, threshold)
 
-        for culprit, count in culprits:
+        for culprit, _count in culprits:
             if await self.is_trusted(guild, culprit):
                 continue
 
-            asyncio.create_task(
+            self._create_task(
                 self.quarantine_actions.execute_quarantine(guild, culprit, "channel_delete", self.action_cache)
             )
 
@@ -115,7 +120,7 @@ class EventHandlers:
         count = self.action_cache.record_action(guild.id, 0, "channel_create", timeframe)
 
         if count >= threshold:
-            asyncio.create_task(self._investigate_channel_creation(guild, monitor_config))
+            self._create_task(self._investigate_channel_creation(guild, monitor_config))
 
     async def _investigate_channel_creation(self, guild: discord.Guild, config: dict) -> None:
         """Investigate channel creation and quarantine culprits."""
@@ -124,11 +129,11 @@ class EventHandlers:
 
         culprits = await self.audit_helper.get_channel_create_culprit(guild, timeframe, threshold)
 
-        for culprit, count in culprits:
+        for culprit, _count in culprits:
             if await self.is_trusted(guild, culprit):
                 continue
 
-            asyncio.create_task(
+            self._create_task(
                 self.quarantine_actions.execute_quarantine(guild, culprit, "channel_create", self.action_cache)
             )
 
@@ -149,7 +154,7 @@ class EventHandlers:
         count = self.action_cache.record_action(guild.id, 0, "role_delete", timeframe)
 
         if count >= threshold:
-            asyncio.create_task(self._investigate_role_deletion(guild, monitor_config))
+            self._create_task(self._investigate_role_deletion(guild, monitor_config))
 
     async def _investigate_role_deletion(self, guild: discord.Guild, config: dict) -> None:
         """Investigate role deletion and quarantine culprits."""
@@ -158,11 +163,11 @@ class EventHandlers:
 
         culprits = await self.audit_helper.get_role_delete_culprit(guild, timeframe, threshold)
 
-        for culprit, count in culprits:
+        for culprit, _count in culprits:
             if await self.is_trusted(guild, culprit):
                 continue
 
-            asyncio.create_task(
+            self._create_task(
                 self.quarantine_actions.execute_quarantine(guild, culprit, "role_delete", self.action_cache)
             )
 
@@ -183,7 +188,7 @@ class EventHandlers:
         count = self.action_cache.record_action(guild.id, 0, "role_create", timeframe)
 
         if count >= threshold:
-            asyncio.create_task(self._investigate_role_creation(guild, monitor_config))
+            self._create_task(self._investigate_role_creation(guild, monitor_config))
 
     async def _investigate_role_creation(self, guild: discord.Guild, config: dict) -> None:
         """Investigate role creation and quarantine culprits."""
@@ -192,11 +197,11 @@ class EventHandlers:
 
         culprits = await self.audit_helper.get_role_create_culprit(guild, timeframe, threshold)
 
-        for culprit, count in culprits:
+        for culprit, _count in culprits:
             if await self.is_trusted(guild, culprit):
                 continue
 
-            asyncio.create_task(
+            self._create_task(
                 self.quarantine_actions.execute_quarantine(guild, culprit, "role_create", self.action_cache)
             )
 
@@ -219,7 +224,7 @@ class EventHandlers:
 
         if added_perm:
             # This is an instant action (threshold 1)
-            asyncio.create_task(self._investigate_role_permission_change(guild, after.id, monitor_config, added_perm))
+            self._create_task(self._investigate_role_permission_change(guild, after.id, monitor_config, added_perm))
 
     async def _investigate_role_permission_change(
         self, guild: discord.Guild, role_id: int, config: dict, perm_name: str
@@ -232,9 +237,9 @@ class EventHandlers:
         )
 
         if result:
-            culprit, added_perm = result
+            culprit, _added_perm = result
             if not await self.is_trusted(guild, culprit):
-                asyncio.create_task(
+                self._create_task(
                     self.quarantine_actions.execute_quarantine(
                         guild, culprit, "dangerous_permission_add", self.action_cache
                     )
@@ -255,7 +260,7 @@ class EventHandlers:
         count = self.action_cache.record_action(guild.id, 0, "ban", timeframe)
 
         if count >= threshold:
-            asyncio.create_task(self._investigate_bans(guild, monitor_config))
+            self._create_task(self._investigate_bans(guild, monitor_config))
 
     async def _investigate_bans(self, guild: discord.Guild, config: dict) -> None:
         """Investigate mass bans and quarantine culprits."""
@@ -264,11 +269,11 @@ class EventHandlers:
 
         culprits = await self.audit_helper.get_ban_culprit(guild, timeframe, threshold)
 
-        for culprit, count in culprits:
+        for culprit, _count in culprits:
             if await self.is_trusted(guild, culprit):
                 continue
 
-            asyncio.create_task(self.quarantine_actions.execute_quarantine(guild, culprit, "ban", self.action_cache))
+            self._create_task(self.quarantine_actions.execute_quarantine(guild, culprit, "ban", self.action_cache))
 
     async def on_member_remove(self, member: discord.Member) -> None:
         """Handle member remove events - detect kicks."""
@@ -287,7 +292,7 @@ class EventHandlers:
         count = self.action_cache.record_action(guild.id, 0, "kick", timeframe)
 
         if count >= threshold:
-            asyncio.create_task(self._investigate_kicks(guild, monitor_config))
+            self._create_task(self._investigate_kicks(guild, monitor_config))
 
     async def _investigate_kicks(self, guild: discord.Guild, config: dict) -> None:
         """Investigate mass kicks and quarantine culprits."""
@@ -296,11 +301,11 @@ class EventHandlers:
 
         culprits = await self.audit_helper.get_kick_culprit(guild, timeframe, threshold)
 
-        for culprit, count in culprits:
+        for culprit, _count in culprits:
             if await self.is_trusted(guild, culprit):
                 continue
 
-            asyncio.create_task(self.quarantine_actions.execute_quarantine(guild, culprit, "kick", self.action_cache))
+            self._create_task(self.quarantine_actions.execute_quarantine(guild, culprit, "kick", self.action_cache))
 
     async def on_webhooks_update(self, channel: discord.abc.GuildChannel) -> None:
         """Handle webhook update events."""
@@ -315,7 +320,7 @@ class EventHandlers:
 
         # We don't know if it was create or delete from this event alone
         # So we check audit logs to determine which
-        asyncio.create_task(self._investigate_webhook_change(guild, create_config, delete_config))
+        self._create_task(self._investigate_webhook_change(guild, create_config, delete_config))
 
     async def _investigate_webhook_change(self, guild: discord.Guild, create_config: dict, delete_config: dict) -> None:
         """Investigate webhook changes."""
@@ -326,9 +331,9 @@ class EventHandlers:
 
             culprits = await self.audit_helper.get_webhook_create_culprit(guild, timeframe, threshold)
 
-            for culprit, count in culprits:
+            for culprit, _count in culprits:
                 if not await self.is_trusted(guild, culprit):
-                    asyncio.create_task(
+                    self._create_task(
                         self.quarantine_actions.execute_quarantine(guild, culprit, "webhook_create", self.action_cache)
                     )
 
@@ -339,9 +344,9 @@ class EventHandlers:
 
             culprits = await self.audit_helper.get_webhook_delete_culprit(guild, timeframe, threshold)
 
-            for culprit, count in culprits:
+            for culprit, _count in culprits:
                 if not await self.is_trusted(guild, culprit):
-                    asyncio.create_task(
+                    self._create_task(
                         self.quarantine_actions.execute_quarantine(guild, culprit, "webhook_delete", self.action_cache)
                     )
 
@@ -354,7 +359,7 @@ class EventHandlers:
         if before.vanity_url_code != after.vanity_url_code:
             monitor_config = await self.get_monitor_config(after, "vanity_change")
             if monitor_config.get("enabled", True):
-                asyncio.create_task(self._investigate_vanity_change(after, monitor_config))
+                self._create_task(self._investigate_vanity_change(after, monitor_config))
 
     async def _investigate_vanity_change(self, guild: discord.Guild, config: dict) -> None:
         """Investigate vanity URL change and quarantine culprit."""
@@ -363,7 +368,7 @@ class EventHandlers:
         culprit = await self.audit_helper.get_vanity_change_culprit(guild, timeframe)
 
         if culprit and not await self.is_trusted(guild, culprit):
-            asyncio.create_task(
+            self._create_task(
                 self.quarantine_actions.execute_quarantine(guild, culprit, "vanity_change", self.action_cache)
             )
 
@@ -383,7 +388,7 @@ class EventHandlers:
             return
 
         # Bot additions are instant action (threshold 1)
-        asyncio.create_task(self._investigate_bot_add(guild, member, monitor_config))
+        self._create_task(self._investigate_bot_add(guild, member, monitor_config))
 
     async def _investigate_bot_add(self, guild: discord.Guild, bot_member: discord.Member, config: dict) -> None:
         """Investigate bot addition and quarantine culprit."""
@@ -410,11 +415,10 @@ class EventHandlers:
         # Check for guild prune
         if entry.action == discord.AuditLogAction.member_prune:
             monitor_config = await self.get_monitor_config(guild, "guild_prune")
-            if monitor_config.get("enabled", True):
+            if monitor_config.get("enabled", True) and entry.user and not entry.user.bot:
                 # Guild prune is instant action (threshold 0)
-                if entry.user and not entry.user.bot:
-                    culprit = guild.get_member(entry.user.id)
-                    if culprit and not await self.is_trusted(guild, culprit):
-                        asyncio.create_task(
-                            self.quarantine_actions.execute_quarantine(guild, culprit, "guild_prune", self.action_cache)
-                        )
+                culprit = guild.get_member(entry.user.id)
+                if culprit and not await self.is_trusted(guild, culprit):
+                    self._create_task(
+                        self.quarantine_actions.execute_quarantine(guild, culprit, "guild_prune", self.action_cache)
+                    )

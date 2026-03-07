@@ -4,6 +4,7 @@ Generates XP cards with custom backgrounds and frames like Nadeko
 """
 
 import asyncio
+import contextlib
 import functools
 import io
 import ipaddress
@@ -11,6 +12,7 @@ import logging
 import os
 import socket
 from collections import OrderedDict
+from collections.abc import Coroutine
 from typing import Any
 from urllib.parse import urlparse
 
@@ -31,6 +33,7 @@ class XPCardGenerator:
         self.images_cache = OrderedDict()
         self.default_font_size = 25
         self.fallback_fonts_cache: dict[Any, Any] = {}
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
         # Card dimensions (matching Nadeko's template)
         self.card_width = 500
@@ -40,8 +43,13 @@ class XPCardGenerator:
         self.bundled_fonts_dir = os.path.join(self.cog_dir, "data", "fonts")
 
         # Load XP configuration and ensure fonts
-        asyncio.create_task(self._load_xp_config())
-        asyncio.create_task(self._ensure_bundled_fonts())
+        self._create_task(self._load_xp_config())
+        self._create_task(self._ensure_bundled_fonts())
+
+    def _create_task(self, coro: Coroutine[Any, Any, Any]) -> None:
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def _ensure_bundled_fonts(self):
         """Ensure bundled fonts are present, downloading if necessary"""
@@ -52,7 +60,7 @@ class XPCardGenerator:
                 log.error(f"Failed to create font directory: {e}")
                 return
 
-        # Noto Sans Math covers Mathematical Alphanumeric Symbols (like 𝐉)
+        # Noto Sans Math covers Mathematical Alphanumeric Symbols (like bold J)
         fonts_to_download = {
             "NotoSansMath-Regular.ttf": "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSansMath/NotoSansMath-Regular.ttf"
         }
@@ -214,15 +222,6 @@ class XPCardGenerator:
 
     def _has_glyph(self, font: ImageFont.FreeTypeFont, char: str) -> bool:
         """Check if a font supports a specific character"""
-        if not hasattr(self, "_missing_glyph_mask"):
-            # Cache the mask of a definitely missing character (Private Use Area)
-            try:
-                # Use a dummy font for the baseline if possible, or just the current font
-                # We assume the missing glyph representation is consistent for the font instance
-                pass
-            except:
-                pass
-
         try:
             # Get mask of the character
             mask = font.getmask(char)
@@ -235,10 +234,7 @@ class XPCardGenerator:
             mask_missing = font.getmask("\U0010ffff")
 
             # If the masks are identical, it's likely using the fallback 'tofu' or empty glyph
-            if mask.size == mask_missing.size and mask.tobytes() == mask_missing.tobytes():
-                return False
-
-            return True
+            return not (mask.size == mask_missing.size and mask.tobytes() == mask_missing.tobytes())
         except Exception:
             return False
 
@@ -261,7 +257,6 @@ class XPCardGenerator:
         x, y = xy
 
         # Current drawing position
-        current_x = x
 
         # We need to handle anchors manually if we draw segment by segment
         # For simplicity, we'll calculate total width first if anchor is involved
@@ -303,7 +298,6 @@ class XPCardGenerator:
 
         # 2. Calculate offsets for anchors
         total_width = 0
-        max_height = 0
         segment_widths = []
 
         for seg_text, seg_font in segments:
@@ -322,7 +316,6 @@ class XPCardGenerator:
         # None/Default: Left, Top (or baseline depending on mode)
 
         start_x = x
-        start_y = y
 
         if anchor:
             if "m" in anchor[0]:  # Middle horizontal
@@ -413,7 +406,7 @@ class XPCardGenerator:
             loop = asyncio.get_running_loop()
             addr_info = await loop.run_in_executor(None, socket.getaddrinfo, parsed.hostname, None)
 
-            for family, _, _, _, sockaddr in addr_info:
+            for _family, _, _, _, sockaddr in addr_info:
                 ip = ipaddress.ip_address(sockaddr[0])
                 if ip.is_private or ip.is_loopback or ip.is_link_local:
                     log.warning(f"Blocked potential SSRF attempt to {url} ({ip})")
@@ -541,7 +534,7 @@ class XPCardGenerator:
         # Use passed fonts
         name_font = fonts["name"]
         level_big_font = fonts.get("level_big", fonts["level"])  # Fallback if missing
-        label_font = fonts.get("label", fonts["level"])
+        fonts.get("label", fonts["level"])
         rank_font = fonts["rank"]
         xp_font = fonts["xp"]
         club_font = fonts.get("club")
@@ -747,10 +740,8 @@ class XPCardGenerator:
         # Process club icon if bytes
         club_icon = None
         if club_icon_bytes:
-            try:
+            with contextlib.suppress(Exception):
                 club_icon = Image.open(io.BytesIO(club_icon_bytes)).convert("RGBA")
-            except Exception:
-                pass
 
         # Get fonts (likely cached, but keep async interface)
         fonts = {

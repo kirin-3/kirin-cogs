@@ -415,7 +415,7 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         if uid in opened:
             # Get the most recently opened ticket
             # (Sorting by ID is safer than max() on keys if keys are strings)
-            ticket_ids = sorted([int(x) for x in opened[uid].keys()], reverse=True)
+            ticket_ids = sorted([int(x) for x in opened[uid]], reverse=True)
             if ticket_ids:
                 latest_channel_id = ticket_ids[0]
                 channel_raw = self.guild.get_channel(latest_channel_id)
@@ -490,14 +490,13 @@ class SupportButton(Button):
                 )
                 return await interaction.response.send_message(embed=em, ephemeral=True)
 
-        if required_roles := conf.get("required_roles", []):
-            if not any(r.id in required_roles for r in user.roles):
-                roles = [r.mention for i in required_roles if (r := guild.get_role(i))]
-                em = discord.Embed(
-                    description="You must have one of the following roles to open this ticket: " + humanize_list(roles),
-                    color=discord.Color.red(),
-                )
-                return await interaction.response.send_message(embed=em, ephemeral=True)
+        if (required_roles := conf.get("required_roles", [])) and not any(r.id in required_roles for r in user.roles):
+            roles = [r.mention for i in required_roles if (r := guild.get_role(i))]
+            em = discord.Embed(
+                description="You must have one of the following roles to open this ticket: " + humanize_list(roles),
+                color=discord.Color.red(),
+            )
+            return await interaction.response.send_message(embed=em, ephemeral=True)
 
         max_tickets = conf["max_tickets"]
         opened = conf["opened"]

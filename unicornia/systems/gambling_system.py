@@ -2,6 +2,7 @@
 Gambling system for Unicornia
 """
 
+import contextlib
 import secrets
 from typing import Any, TypeAlias
 
@@ -90,17 +91,13 @@ class BlackjackView(ui.View):
             embed = self.get_embed(
                 f"Busted with {user_total}! You lost {self.currency_symbol}{self.amount:,}.", discord.Color.red()
             )
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await interaction.response.edit_message(embed=embed, view=self)
-            except discord.HTTPException:
-                pass
             self.stop()
         else:
             embed = self.get_embed()
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await interaction.response.edit_message(embed=embed, view=self)
-            except discord.HTTPException:
-                pass
 
     @ui.button(label="Stand", style=discord.ButtonStyle.secondary, row=0)
     async def stand_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -161,10 +158,8 @@ class BlackjackView(ui.View):
 
         embed = self.get_embed(result_text, color)
         if self.message:
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await self.message.edit(embed=embed, view=self)
-            except discord.HTTPException:
-                pass
         self.stop()
 
 

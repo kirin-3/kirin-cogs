@@ -1,6 +1,7 @@
 # Mock discord and other potential missing modules
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import antinuke.utils
 from antinuke.utils import (
     format_permission_name,
     has_dangerous_permission,
@@ -81,11 +82,6 @@ def test_has_dangerous_permission_missing_attr():
 
     # It should skip "not_a_real_perm" and find "administrator"
     assert has_dangerous_permission(before, after, dangerous_perms) == "administrator"
-
-
-from unittest.mock import patch
-
-import antinuke.utils
 
 
 def test_get_permission_diff():

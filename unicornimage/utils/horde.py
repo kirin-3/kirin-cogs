@@ -85,7 +85,7 @@ class HordeClient:
             if resp.status != 202:
                 try:
                     error_text = await resp.json()
-                except:
+                except Exception:
                     error_text = await resp.text()
                 log.error(f"Horde API Error ({resp.status}): {error_text}")
                 raise Exception(f"Horde API submission failed ({resp.status}): {error_text}")

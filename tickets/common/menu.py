@@ -108,7 +108,7 @@ async def menu(
         raise RuntimeError("Pages must be of type discord.Embed or str")
     if not all(isinstance(x, discord.Embed) for x in pages) and not all(isinstance(x, str) for x in pages):
         raise RuntimeError("All pages must be of the same type")
-    for key, value in controls.items():
+    for _key, value in controls.items():
         maybe_coro = value
         if isinstance(value, functools.partial):
             maybe_coro = value.func

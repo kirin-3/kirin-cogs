@@ -123,10 +123,9 @@ class WaifuSystem:
             return False, "You don't own this waifu."
 
         current_price = waifu[2]
-        affinity_id = waifu[3]
+        waifu[3]
 
         # Fee removed as per request
-        fee = 0
 
         # New price remains the same (no fee reduction)
         new_price = current_price

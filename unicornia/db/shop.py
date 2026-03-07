@@ -292,7 +292,7 @@ class ShopRepository:
                     await db.execute("ROLLBACK")
                     return False, "Shop item not found"
 
-                entry_id, index, price, name, author_id, entry_type, role_name, role_id, role_requirement, command = (
+                entry_id, _index, price, name, _author_id, entry_type, _role_name, _role_id, _role_requirement, _command = (
                     entry
                 )
 

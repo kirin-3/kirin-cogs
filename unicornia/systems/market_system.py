@@ -54,7 +54,6 @@ class MarketSystem:
         await self._update_dashboard_stats()
 
         # Load config
-        guild_id = None  # Global for now, or per guild?
         # Assuming single guild/global market for simplicity as per "server-wide"
         # Ideally we check config.
         pass
@@ -253,7 +252,7 @@ class MarketSystem:
             total_cost = int(subtotal + tax)
 
             # Check Balance
-            wallet, bank = await self.economy.get_balance(user.id)
+            wallet, _bank = await self.economy.get_balance(user.id)
             if wallet < total_cost:
                 return False, f"Insufficient funds. You need {total_cost} but have {wallet}."
 

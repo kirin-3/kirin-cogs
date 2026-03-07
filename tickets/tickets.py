@@ -176,17 +176,17 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
 
     @tasks.loop(minutes=20)
     async def auto_close(self):
-        conf = await self.config.all_guilds()
-        for gid, conf in conf.items():
-            if not conf:
+        all_guilds_conf = await self.config.all_guilds()
+        for gid, guild_conf in all_guilds_conf.items():
+            if not guild_conf:
                 continue
             guild = self.bot.get_guild(gid)
             if not guild:
                 continue
-            inactive = conf["inactive"]
+            inactive = guild_conf["inactive"]
             if not inactive:
                 continue
-            opened = conf["opened"]
+            opened = guild_conf["opened"]
             if not opened:
                 continue
             for uid, tickets in opened.items():
@@ -228,7 +228,7 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
                             member,
                             guild,
                             channel,
-                            conf,
+                            guild_conf,
                             "(Auto-Close) Opened ticket with no response for " + f"{inactive} {time}",
                             self.bot.user.name if self.bot.user else "AutoClose",
                             self.config,

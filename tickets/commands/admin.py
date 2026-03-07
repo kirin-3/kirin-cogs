@@ -333,7 +333,7 @@ class AdminCommands(MixinMeta):
         foot = "type 'cancel' to cancel at any time"
         color = ctx.author.color
 
-        modal = MODAL_SCHEMA.copy() if not existing_modal else existing_modal
+        modal = existing_modal if existing_modal else MODAL_SCHEMA.copy()
         if preview:
             await make_preview(modal, preview)
 
@@ -595,7 +595,7 @@ class AdminCommands(MixinMeta):
             return await instance.view.message.delete()
         instance.view.page += 1
         instance.view.page %= len(instance.view.pages)
-        for i, embed in enumerate(instance.view.pages):
+        for _i, _embed in enumerate(instance.view.pages):
             # No page number in footer in this simplified version, but logic tries to keep consistent
             pass
         return await menu(
@@ -1207,7 +1207,7 @@ class AdminCommands(MixinMeta):
                 )
                 await msg.edit(embed=em)
                 yes = await confirm(ctx, msg)
-                inline = True if yes else False
+                inline = bool(yes)
                 embed.add_field(name=name, value=value, inline=inline)
                 fields += 1
             else:

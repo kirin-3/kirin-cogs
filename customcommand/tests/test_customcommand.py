@@ -15,7 +15,6 @@ from redbot.core.bot import Red
 
 from customcommand.customcommand import CustomCommand
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -655,7 +654,7 @@ async def test_dpytest_trigger_fires_response(dpytest_bot: dpy_commands.Bot) -> 
     cog.config = config_mock
 
     guild = dpytest.get_config().guilds[0]
-    channel = dpytest.get_config().channels[0]
+    dpytest.get_config().channels[0]
     cog.command_cache[guild.id] = {"hi": "hello!"}
 
     await dpytest_bot.add_cog(cog)
@@ -695,7 +694,7 @@ async def test_dpytest_unknown_trigger_no_response(dpytest_bot: dpy_commands.Bot
     cog.config = config_mock
 
     guild = dpytest.get_config().guilds[0]
-    channel = dpytest.get_config().channels[0]
+    dpytest.get_config().channels[0]
     cog.command_cache[guild.id] = {"hi": "hello!"}
 
     await dpytest_bot.add_cog(cog)

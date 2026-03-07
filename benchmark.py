@@ -1,7 +1,9 @@
 import asyncio
+import contextlib
 import os
 import sys
 import time
+import types
 
 import aiohttp
 
@@ -121,8 +123,6 @@ class MockRedbot:
     core = MockRedbotCore
 
 
-import types
-
 sys.modules["redbot"] = types.ModuleType("redbot")
 sys.modules["redbot.core"] = types.ModuleType("redbot.core")
 sys.modules["redbot.core.commands"] = types.ModuleType("redbot.core.commands")
@@ -150,7 +150,7 @@ sys.modules["modal"] = types.ModuleType("modal")
 # Add the parent directory to the path so we can import unicornimage
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from unicornimage.views import LoraListView
+from unicornimage.views import LoraListView  # noqa: E402
 
 
 async def event_loop_monitor(interval=0.005):
@@ -229,10 +229,8 @@ async def run_benchmark():
 
     # Clean up dummy files
     for i in range(100):
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(test_dir, f"lora_{i}.png"))
-        except OSError:
-            pass
 
 
 if __name__ == "__main__":

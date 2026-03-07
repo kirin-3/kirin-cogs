@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import re
 from datetime import datetime
@@ -254,7 +255,7 @@ async def prune_invalid_tickets(
     elif count and not ctx:
         log.info(f"{count} {grammar} pruned from {guild.name}")
 
-    return True if count else False
+    return bool(count)
 
 
 def prep_overview_text(guild: discord.Guild, opened: dict, mention: bool = False) -> str:
@@ -343,10 +344,8 @@ async def update_active_overview(guild: discord.Guild, conf: dict) -> int | None
 
     message = None
     if msg_id := conf["overview_msg"]:
-        try:
+        with contextlib.suppress(discord.NotFound, discord.HTTPException):
             message = await channel.fetch_message(msg_id)
-        except (discord.NotFound, discord.HTTPException):
-            pass
 
     if message:
         try:

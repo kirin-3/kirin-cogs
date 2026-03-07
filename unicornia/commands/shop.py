@@ -1,3 +1,5 @@
+import contextlib
+
 import discord
 from redbot.core import app_commands, commands
 
@@ -434,10 +436,8 @@ class ShopCommands(UnicorniaMixinBase):
 
                 if not role:
                     # Try by ID
-                    try:
+                    with contextlib.suppress(ValueError):
                         role = ctx.guild.get_role(int(value))
-                    except ValueError:
-                        pass
 
                 if not role:
                     await ctx.send("<a:zz_NoTick:729318761655435355> Role not found.")
@@ -466,10 +466,8 @@ class ShopCommands(UnicorniaMixinBase):
 
                     if not role:
                         # Try by ID
-                        try:
+                        with contextlib.suppress(ValueError):
                             role = ctx.guild.get_role(int(value))
-                        except ValueError:
-                            pass
 
                     if not role:
                         await ctx.send("<a:zz_NoTick:729318761655435355> Role not found.")
@@ -579,11 +577,10 @@ class ShopCommands(UnicorniaMixinBase):
             return
 
         # If user provided just "<key>" (implicit bg) - support direct usage
-        if item_key is None:
+        if item_key is None and item_type.lower() not in ["bg", "background", "backgrounds"]:
             # Assume the first arg is the key if it's not a type keyword
-            if item_type.lower() not in ["bg", "background", "backgrounds"]:
-                await self.shop_buy_bg(ctx, item_key=item_type)
-                return
+            await self.shop_buy_bg(ctx, item_key=item_type)
+            return
 
         # If user provided "bg" but no key
         await ctx.send(f"Usage: `{ctx.prefix}xpshopbuy bg <item_key>`")

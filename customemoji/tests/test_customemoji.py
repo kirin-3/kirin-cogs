@@ -1,6 +1,5 @@
 """Unit, async, and dpytest integration tests for the CustomEmoji cog."""
 
-import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,10 +10,8 @@ import discord.ext.test as dpytest
 import pytest
 import pytest_asyncio
 from redbot.core import Config
-from redbot.core.bot import Red
 
 from customemoji.customemoji import CustomEmoji
-
 
 # ---------------------------------------------------------------------------
 # Helpers

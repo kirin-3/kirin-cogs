@@ -54,14 +54,13 @@ class Functions(MixinMeta):
         if btext := conf["button_text"]:
             buffer.write(f"- Tag: {btext}\n")
 
-        if modal := conf.get("modal"):
-            if questions := list(modal.values()):
-                buffer.write(q)
-                for idx, i in enumerate(questions):
-                    required = "(Required)" if i["required"] else "(Optional)"
-                    buffer.write(f"- Question {idx + 1} {required}: {i['label']}\n")
-                    if placeholder := i["placeholder"]:
-                        buffer.write(f" - Example: {placeholder}\n")
+        if (modal := conf.get("modal")) and (questions := list(modal.values())):
+            buffer.write(q)
+            for idx, i in enumerate(questions):
+                required = "(Required)" if i["required"] else "(Optional)"
+                buffer.write(f"- Question {idx + 1} {required}: {i['label']}\n")
+                if placeholder := i["placeholder"]:
+                    buffer.write(f" - Example: {placeholder}\n")
 
         return buffer.getvalue()
 
@@ -101,7 +100,7 @@ class Functions(MixinMeta):
             return "This user does not have the required roles to open this ticket."
 
         answers = {}
-        form_embed = discord.Embed()
+        discord.Embed()
 
         can_read_send = discord.PermissionOverwrite(
             read_messages=True,
@@ -277,7 +276,7 @@ class Functions(MixinMeta):
                 "pfp": str(user.display_avatar.url) if user.avatar else None,
                 "logmsg": log_message.id if log_message else None,
                 "answers": answers,
-                "has_response": True if answers else False,
+                "has_response": bool(answers),
                 "message_id": msg.id,
             }
 

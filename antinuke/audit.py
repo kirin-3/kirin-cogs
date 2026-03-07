@@ -162,9 +162,8 @@ class AuditLogHelper:
                 action=discord.AuditLogAction.member_prune,
                 limit=5,
             ):
-                if entry.created_at.timestamp() > cutoff:
-                    if entry.user and not entry.user.bot:
-                        return guild.get_member(entry.user.id)
+                if entry.created_at.timestamp() > cutoff and entry.user and not entry.user.bot:
+                    return guild.get_member(entry.user.id)
             return None
 
         except discord.Forbidden:
@@ -197,10 +196,8 @@ class AuditLogHelper:
                 action=discord.AuditLogAction.bot_add,
                 limit=10,
             ):
-                if entry.created_at.timestamp() > cutoff:
-                    if entry.target and entry.target.id == bot_id:
-                        if entry.user:
-                            return guild.get_member(entry.user.id)
+                if entry.created_at.timestamp() > cutoff and entry.target and entry.target.id == bot_id and entry.user:
+                    return guild.get_member(entry.user.id)
             return None
 
         except discord.Forbidden:
@@ -247,23 +244,22 @@ class AuditLogHelper:
                 if entry.created_at.timestamp() <= cutoff:
                     break
 
-                if entry.target and entry.target.id == role_id:
-                    # Check if dangerous permissions were added
-                    if hasattr(entry.after, "permissions"):
-                        old_perms = getattr(entry.before, "permissions", discord.Permissions())
-                        new_perms = getattr(entry.after, "permissions", discord.Permissions())
-                        if old_perms is not None and new_perms is not None:
-                            try:
-                                for perm_name in dangerous_perms:
-                                    if not getattr(old_perms, perm_name, False) and getattr(
-                                        new_perms, perm_name, False
-                                    ):
-                                        if entry.user:
-                                            member = guild.get_member(entry.user.id)
-                                            if member:
-                                                return (member, perm_name)
-                            except (TypeError, ValueError):
-                                pass
+                if entry.target and entry.target.id == role_id and hasattr(entry.after, "permissions"):
+                    old_perms = getattr(entry.before, "permissions", discord.Permissions())
+                    new_perms = getattr(entry.after, "permissions", discord.Permissions())
+                    if old_perms is not None and new_perms is not None:
+                        try:
+                            for perm_name in dangerous_perms:
+                                if (
+                                    not getattr(old_perms, perm_name, False)
+                                    and getattr(new_perms, perm_name, False)
+                                    and entry.user
+                                ):
+                                    member = guild.get_member(entry.user.id)
+                                    if member:
+                                        return (member, perm_name)
+                        except (TypeError, ValueError):
+                            pass
             return None
 
         except discord.Forbidden:
@@ -294,11 +290,8 @@ class AuditLogHelper:
                 action=discord.AuditLogAction.guild_update,
                 limit=10,
             ):
-                if entry.created_at.timestamp() > cutoff:
-                    # Check if vanity was changed
-                    if hasattr(entry.after, "vanity_url_code"):
-                        if entry.user:
-                            return guild.get_member(entry.user.id)
+                if entry.created_at.timestamp() > cutoff and hasattr(entry.after, "vanity_url_code") and entry.user:
+                    return guild.get_member(entry.user.id)
             return None
 
         except discord.Forbidden:

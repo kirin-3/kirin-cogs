@@ -58,9 +58,8 @@ class VertexClient:
         Refreshes and returns the OAuth2 access token.
         """
         async with self._token_lock:
-            if not self._creds:
-                if not await self._load_credentials():
-                    return None
+            if not self._creds and not await self._load_credentials():
+                return None
 
             if self._creds is None:
                 return None

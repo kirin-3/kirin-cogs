@@ -8,3 +8,16 @@ from .nitro import NitroCommands
 from .shop import ShopCommands
 from .stock import StockCommands
 from .waifu import WaifuCommands
+
+__all__ = [
+    "AdminCommands",
+    "ClubCommands",
+    "CurrencyCommands",
+    "EconomyCommands",
+    "GamblingCommands",
+    "LevelCommands",
+    "NitroCommands",
+    "ShopCommands",
+    "StockCommands",
+    "WaifuCommands",
+]

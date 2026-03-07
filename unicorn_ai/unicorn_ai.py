@@ -163,9 +163,8 @@ class UnicornAI(commands.Cog):
         formatted_history = []
         for msg in messages:
             # Check opt-out status for user messages
-            if msg.author.id != self.bot.user.id:
-                if await self.config.user(msg.author).opt_out():
-                    continue
+            if msg.author.id != self.bot.user.id and await self.config.user(msg.author).opt_out():
+                continue
 
             role = "model" if msg.author.id == self.bot.user.id else "user"
             content = msg.clean_content

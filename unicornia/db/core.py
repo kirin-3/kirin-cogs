@@ -6,7 +6,7 @@ import asyncio
 import logging
 import math
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 import aiosqlite
@@ -1180,15 +1180,11 @@ class CoreDB:
                     log.warning(f"Could not clean table {table} for user {user_id}: {e}")
 
             # Clean waifu tables with different column names
-            try:
+            with suppress(Exception):
                 await db.execute("DELETE FROM WaifuInfo WHERE ClaimerId = ?", (user_id,))
-            except Exception:
-                pass
 
-            try:
+            with suppress(Exception):
                 await db.execute("DELETE FROM WaifuUpdates WHERE OldId = ? OR NewId = ?", (user_id, user_id))
-            except Exception:
-                pass
 
             await db.commit()
             log.info(f"Deleted all data for user {user_id}")
