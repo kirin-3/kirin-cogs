@@ -15,7 +15,7 @@ class TabooAccess(commands.Cog):
     async def cog_load(self):
         self.bot.add_view(TabooAccessView(self))
 
-    @commands.command()
+    @commands.command()  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
     async def sendtaboo(self, ctx):
@@ -23,7 +23,7 @@ class TabooAccess(commands.Cog):
         view = TabooAccessView(self)
         await ctx.send("Click the button below when you understand the rules and ready.", view=view)
 
-    @commands.command()
+    @commands.command()  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
     async def settaboorole(self, ctx, role: discord.Role):
@@ -58,6 +58,8 @@ class LetMeOutButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         guild = interaction.guild
         member = interaction.user
+        if guild is None or not isinstance(member, discord.Member):
+            return
         role_id = await self.cog.config.guild(guild).taboo_role_id()
         role = guild.get_role(role_id)
 
@@ -86,6 +88,8 @@ class TabooAccessModal(discord.ui.Modal, title="Taboo Access Confirmation"):
         if self.answer.value.strip().lower() in ["yes", "i agree"]:
             guild = interaction.guild
             member = interaction.user
+            if guild is None or not isinstance(member, discord.Member):
+                return
             role_id = await self.cog.config.guild(guild).taboo_role_id()
             role = guild.get_role(role_id)
 

@@ -136,6 +136,9 @@ Analyze this conversation against the server rules, paying close attention to ch
         self.channel_buffers: dict[int, deque] = {}
         self.channel_locks: dict[int, asyncio.Lock] = {}
 
+        # Background task references (prevents GC)
+        self._background_tasks: set[asyncio.Task] = set()
+
         # Statistics
         self.stats = {
             "messages_processed": 0,
@@ -347,8 +350,8 @@ Analyze this conversation against the server rules, paying close attention to ch
                         self._last_ai_error = f"API Error {response.status}: {error_text}"
                         log.error(self._last_ai_error)
                         raise aiohttp.ClientResponseError(
-                            request_info=None,
-                            history=None,
+                            request_info=None,  # pyright: ignore[reportArgumentType]
+                            history=None,  # pyright: ignore[reportArgumentType]
                             status=response.status,
                             message=f"NanoGPT API Error {response.status}: {error_text}",
                         )
@@ -397,7 +400,7 @@ Analyze this conversation against the server rules, paying close attention to ch
     async def _process_buffer(
         self,
         guild: discord.Guild,
-        channel: discord.TextChannel,
+        channel: discord.TextChannel | discord.Thread,
         messages: list[BufferedMessage],
         threshold: float = -0.5,
     ):
@@ -461,7 +464,7 @@ Analyze this conversation against the server rules, paying close attention to ch
     async def _send_alert(
         self,
         guild: discord.Guild,
-        channel: discord.TextChannel,
+        channel: discord.TextChannel | discord.Thread,
         messages: list[BufferedMessage],
         result: AIAnalysisResult,
     ):
@@ -478,7 +481,7 @@ Analyze this conversation against the server rules, paying close attention to ch
             # Send to configured channel
             alert_channel = guild.get_channel(alert_channel_id)
             log.info(f"Resolved alert channel: {alert_channel}")
-            if alert_channel:
+            if alert_channel and isinstance(alert_channel, discord.TextChannel):
                 try:
                     await alert_channel.send(embed=embed)
                     log.info(f"✅ Sent violation alert to #{alert_channel.name}")
@@ -524,7 +527,7 @@ Analyze this conversation against the server rules, paying close attention to ch
     def _build_alert_embed(
         self,
         guild: discord.Guild,
-        channel: discord.TextChannel,
+        channel: discord.TextChannel | discord.Thread,
         messages: list[BufferedMessage],
         result: AIAnalysisResult,
     ) -> discord.Embed:
@@ -575,6 +578,12 @@ Analyze this conversation against the server rules, paying close attention to ch
         if message.channel.id not in whitelisted:
             return
 
+        # Only monitor text channels (not DMs, forums, etc.)
+        if not isinstance(message.channel, (discord.TextChannel, discord.Thread)):
+            return
+
+        channel = message.channel
+
         # 3. CRITICAL: Ignore bot commands
         ctx = await self.bot.get_context(message)
         if ctx.valid:
@@ -587,8 +596,8 @@ Analyze this conversation against the server rules, paying close attention to ch
         threshold = await self.config.guild(message.guild).vader_threshold()
 
         # 4. Get/create buffer for channel
-        buffer = self._get_buffer(message.channel.id, buffer_size)
-        lock = self._get_lock(message.channel.id)
+        buffer = self._get_buffer(channel.id, buffer_size)
+        lock = self._get_lock(channel.id)
 
         # 5. Add message to buffer and check VADER (inside lock)
         should_process = False
@@ -601,20 +610,20 @@ Analyze this conversation against the server rules, paying close attention to ch
                 author_name=message.author.display_name,
                 content=message.clean_content,
                 timestamp=message.created_at.isoformat(),
-                channel_id=message.channel.id,
-                channel_name=message.channel.name,
+                channel_id=channel.id,
+                channel_name=channel.name,
                 guild_id=message.guild.id,
             )
             buffer.append(buffered_msg)
 
             # 6. Quick VADER check on THIS message only (pass the threshold)
-            should_trigger, score, is_extreme = self._vader_check_single(buffered_msg, threshold)
+            _should_trigger, score, is_extreme = self._vader_check_single(buffered_msg, threshold)
 
             # 7. Determine if we should process now
             if is_extreme:
                 should_process = True
-                log.warning(f"Extreme toxicity detected in #{message.channel.name}: {score}")
-            elif len(buffer) >= buffer.maxlen:
+                log.warning(f"Extreme toxicity detected in #{channel.name}: {score}")
+            elif len(buffer) >= (buffer.maxlen or 0):
                 should_process = True
 
             # 8. CRITICAL: Take snapshot and release lock BEFORE API call
@@ -624,7 +633,9 @@ Analyze this conversation against the server rules, paying close attention to ch
 
         # 9. Process outside the lock (non-blocking)
         if should_process:
-            asyncio.create_task(self._process_buffer(message.guild, message.channel, messages_snapshot, threshold))
+            task = asyncio.create_task(self._process_buffer(message.guild, channel, messages_snapshot, threshold))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
     @tasks.loop(minutes=2)
     async def idle_buffer_check(self):
@@ -655,11 +666,11 @@ Analyze this conversation against the server rules, paying close attention to ch
                 if age > 120 and len(buffer) > 0:
                     # Get guild from channel for threshold lookup
                     channel_obj = self.bot.get_channel(channel_id)
-                    if channel_obj and hasattr(channel_obj, "guild") and channel_obj.guild:
+                    if channel_obj and isinstance(channel_obj, (discord.TextChannel, discord.Thread)):
                         guild = channel_obj.guild
                         threshold = await self.config.guild(guild).vader_threshold()
 
-                        should_review, score, _ = self.check_vader_scores(list(buffer), threshold)
+                        should_review, _score, _ = self.check_vader_scores(list(buffer), threshold)
 
                         if should_review:
                             log.info(f"Processing idle buffer for channel {channel_id}")
@@ -669,7 +680,11 @@ Analyze this conversation against the server rules, paying close attention to ch
                             buffer.clear()
 
                             # Process in background (outside lock after this block)
-                            asyncio.create_task(self._process_buffer(guild, channel_obj, messages_snapshot, threshold))
+                            task = asyncio.create_task(
+                                self._process_buffer(guild, channel_obj, messages_snapshot, threshold)
+                            )
+                            self._background_tasks.add(task)
+                            task.add_done_callback(self._background_tasks.discard)
 
     @idle_buffer_check.before_loop
     async def before_idle_check(self):
@@ -687,7 +702,7 @@ Analyze this conversation against the server rules, paying close attention to ch
 
     # ==================== COMMANDS ====================
 
-    @commands.group(name="unimod")
+    @commands.group(name="unimod")  # pyright: ignore[reportArgumentType]
     @commands.is_owner()
     async def unimod_group(self, ctx: commands.Context):
         """UniMod configuration commands."""
@@ -697,6 +712,7 @@ Analyze this conversation against the server rules, paying close attention to ch
     @commands.guild_only()
     async def toggle_monitoring(self, ctx: commands.Context):
         """Enable or disable monitoring in this guild."""
+        assert ctx.guild is not None
         current = await self.config.guild(ctx.guild).enabled()
         await self.config.guild(ctx.guild).enabled.set(not current)
         status = "enabled" if not current else "disabled"
@@ -704,8 +720,9 @@ Analyze this conversation against the server rules, paying close attention to ch
 
     @unimod_group.command(name="channel")
     @commands.guild_only()
-    async def set_alert_channel(self, ctx: commands.Context, channel: discord.TextChannel = None):
+    async def set_alert_channel(self, ctx: commands.Context, channel: discord.TextChannel | None = None):
         """Set the alert channel. Leave empty to DM owner instead."""
+        assert ctx.guild is not None
         if channel:
             await self.config.guild(ctx.guild).alert_channel_id.set(channel.id)
             await ctx.send(f"✅ Alert channel set to {channel.mention}")
@@ -717,6 +734,7 @@ Analyze this conversation against the server rules, paying close attention to ch
     @commands.guild_only()
     async def whitelist_channels(self, ctx: commands.Context, *channels: discord.TextChannel):
         """Add channels to the monitoring whitelist."""
+        assert ctx.guild is not None
         if not channels:
             await ctx.send("❌ Please specify at least one channel.")
             return
@@ -733,12 +751,13 @@ Analyze this conversation against the server rules, paying close attention to ch
         if added:
             await ctx.send(f"✅ Added to whitelist: {', '.join(added)}")
         else:
-            await ctx.send("ℹ️ All specified channels are already whitelisted.")
+            await ctx.send("ℹ️ All specified channels are already whitelisted.")  # noqa: RUF001
 
     @unimod_group.command(name="unwhitelist")
     @commands.guild_only()
     async def unwhitelist_channels(self, ctx: commands.Context, *channels: discord.TextChannel):
         """Remove channels from the monitoring whitelist."""
+        assert ctx.guild is not None
         if not channels:
             await ctx.send("❌ Please specify at least one channel.")
             return
@@ -755,12 +774,13 @@ Analyze this conversation against the server rules, paying close attention to ch
         if removed:
             await ctx.send(f"✅ Removed from whitelist: {', '.join(removed)}")
         else:
-            await ctx.send("ℹ️ None of the specified channels were whitelisted.")
+            await ctx.send("ℹ️ None of the specified channels were whitelisted.")  # noqa: RUF001
 
     @unimod_group.command(name="clearwhitelist")
     @commands.guild_only()
     async def clear_whitelist(self, ctx: commands.Context):
         """Clear all channels from the whitelist."""
+        assert ctx.guild is not None
         await self.config.guild(ctx.guild).whitelisted_channels.set([])
         await ctx.send("✅ Whitelist cleared.")
 
@@ -768,6 +788,7 @@ Analyze this conversation against the server rules, paying close attention to ch
     @commands.guild_only()
     async def show_status(self, ctx: commands.Context):
         """Show monitoring status for this guild."""
+        assert ctx.guild is not None
         enabled = await self.config.guild(ctx.guild).enabled()
         alert_channel_id = await self.config.guild(ctx.guild).alert_channel_id()
         whitelisted = await self.config.guild(ctx.guild).whitelisted_channels()
@@ -822,6 +843,7 @@ Analyze this conversation against the server rules, paying close attention to ch
     @commands.guild_only()
     async def set_threshold(self, ctx: commands.Context, threshold: float):
         """Set the VADER threshold (-1.0 to 0.0). More negative = less sensitive."""
+        assert ctx.guild is not None
         if threshold < -1.0 or threshold > 0.0:
             await ctx.send("❌ Threshold must be between -1.0 and 0.0")
             return
@@ -832,6 +854,7 @@ Analyze this conversation against the server rules, paying close attention to ch
     @commands.guild_only()
     async def set_buffer_size(self, ctx: commands.Context, size: int):
         """Set the message buffer size (10-50)."""
+        assert ctx.guild is not None
         if size < 10 or size > 50:
             await ctx.send("❌ Buffer size must be between 10 and 50")
             return

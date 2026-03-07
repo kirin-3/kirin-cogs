@@ -16,11 +16,13 @@ log = logging.getLogger("red.kirin_cogs.tickets.base")
 
 
 class BaseCommands(MixinMeta):
-    @commands.hybrid_command(name="add", description="Add a user to your ticket")
+    @commands.hybrid_command(name="add", description="Add a user to your ticket")  # pyright: ignore[reportArgumentType]
     @app_commands.describe(user="The Discord user you want to add to your ticket")
     @commands.guild_only()
     async def add_user_to_ticket(self, ctx: commands.Context, *, user: discord.Member):
         """Add a user to your ticket"""
+        assert ctx.guild is not None
+        assert isinstance(ctx.author, discord.Member)
         conf = await self.config.guild(ctx.guild).all()
         opened = conf["opened"]
         owner_id = get_ticket_owner(opened, str(ctx.channel.id))
@@ -45,20 +47,24 @@ class BaseCommands(MixinMeta):
         channel = ctx.channel
         try:
             if isinstance(channel, discord.TextChannel):
-                await ctx.channel.set_permissions(user, read_messages=True, send_messages=True)
-            else:
+                await channel.set_permissions(user, read_messages=True, send_messages=True)
+            elif isinstance(channel, discord.Thread):
                 await channel.add_user(user)
+            else:
+                return await ctx.send("This channel type does not support adding users.")
         except Exception as e:
             log.exception(f"Failed to add {user.name} to ticket", exc_info=e)
             return await ctx.send(f"Failed to add user to ticket: {e}")
 
         await ctx.send(f"**{user.name}** has been added to this ticket!")
 
-    @commands.hybrid_command(name="renameticket", description="Rename your ticket")
+    @commands.hybrid_command(name="renameticket", description="Rename your ticket")  # pyright: ignore[reportArgumentType]
     @app_commands.describe(new_name="The new name for your ticket")
     @commands.guild_only()
     async def rename_ticket(self, ctx: commands.Context, *, new_name: str):
         """Rename your ticket channel"""
+        assert ctx.guild is not None
+        assert isinstance(ctx.author, discord.Member)
         conf = await self.config.guild(ctx.guild).all()
         opened = conf["opened"]
         owner_id = get_ticket_owner(opened, str(ctx.channel.id))
@@ -79,22 +85,25 @@ class BaseCommands(MixinMeta):
 
         if not can_rename:
             return await ctx.send("You do not have permissions to rename this ticket")
+        assert isinstance(ctx.me, discord.Member)
         if not ctx.channel.permissions_for(ctx.me).manage_channels:
             return await ctx.send("I no longer have permission to edit this channel")
 
-        if isinstance(ctx.channel, discord.TextChannel):
-            txt = f"Renaming channel to **{new_name}**"
-            if ctx.interaction:
-                await ctx.interaction.response.send_message(txt)
+        if isinstance(ctx.channel, (discord.TextChannel, discord.Thread)):
+            if isinstance(ctx.channel, discord.TextChannel):
+                txt = f"Renaming channel to **{new_name}**"
+                if ctx.interaction:
+                    await ctx.interaction.response.send_message(txt)
+                else:
+                    await ctx.send(txt)
             else:
-                await ctx.send(txt)
+                # Threads already alert to name changes
+                await ctx.tick()
+            await ctx.channel.edit(name=new_name)
         else:
-            # Threads already alert to name changes
-            await ctx.tick()
+            await ctx.send("This channel type cannot be renamed.")
 
-        await ctx.channel.edit(name=new_name)
-
-    @commands.hybrid_command(name="close", description="Close your ticket")
+    @commands.hybrid_command(name="close", description="Close your ticket")  # pyright: ignore[reportArgumentType]
     @app_commands.describe(reason="Reason for closing the ticket")
     @commands.guild_only()
     async def close_a_ticket(self, ctx: commands.Context, *, reason: str | None = None):
@@ -107,6 +116,8 @@ class BaseCommands(MixinMeta):
         `[p]close 1h` - closes in 1 hour with no reason attached
         `[p]close 1m thanks for helping!` - closes in 1 minute with reason "thanks for helping!"
         """
+        assert ctx.guild is not None
+        assert isinstance(ctx.author, discord.Member)
         conf = await self.config.guild(ctx.guild).all()
         owner_id = get_ticket_owner(conf["opened"], str(ctx.channel.id))
         if not owner_id:
@@ -114,7 +125,10 @@ class BaseCommands(MixinMeta):
                 "Cannot find the owner of this ticket! Maybe it is not a ticket channel or was cleaned from the config?"
             )
 
-        user_can_close = await can_close(self.bot, ctx.guild, ctx.channel, ctx.author, owner_id, conf)
+        ticket_channel = ctx.channel
+        if not isinstance(ticket_channel, (discord.TextChannel, discord.Thread)):
+            return await ctx.send("This command can only be used in a ticket channel.")
+        user_can_close = await can_close(self.bot, ctx.guild, ticket_channel, ctx.author, owner_id, conf)
         if not user_can_close:
             return await ctx.send("You do not have permissions to close this ticket")
         else:
@@ -147,7 +161,7 @@ class BaseCommands(MixinMeta):
                     return
 
                 conf = await self.config.guild(ctx.guild).all()
-                owner_id = get_ticket_owner(conf["opened"], str(ctx.channel.id))
+                owner_id = get_ticket_owner(conf["opened"], str(ticket_channel.id))
                 if not owner_id:
                     # Ticket already closed...
                     return
@@ -158,7 +172,7 @@ class BaseCommands(MixinMeta):
             bot=self.bot,
             member=owner,
             guild=ctx.guild,
-            channel=ctx.channel,
+            channel=ticket_channel,
             conf=conf,
             reason=reason,
             closedby=ctx.author.name,

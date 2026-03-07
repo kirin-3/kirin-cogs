@@ -78,11 +78,12 @@ class Functions(MixinMeta):
         if conf["suspended_msg"]:
             return f"Tickets are suspended: {conf['suspended_msg']}"
 
-        logchannel = guild.get_channel(conf["log_channel"]) if conf["log_channel"] else None
+        logchannel_raw = guild.get_channel(conf["log_channel"]) if conf["log_channel"] else None
+        logchannel = logchannel_raw if isinstance(logchannel_raw, discord.TextChannel) else None
         category = guild.get_channel(conf["category_id"]) if conf["category_id"] else None
         channel = guild.get_channel(conf["channel_id"]) if conf["channel_id"] else None
 
-        if not category:
+        if not isinstance(category, discord.CategoryChannel):
             return "The category for this panel is missing!"
         if not channel:
             return "The channel required for this ticket panel is missing!"

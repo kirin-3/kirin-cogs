@@ -35,7 +35,7 @@ class Patron(commands.Cog):
         self.bg_task = self.bot.loop.create_task(self.sync_loop())
         self.lock = asyncio.Lock()
 
-    def cog_unload(self):
+    async def cog_unload(self) -> None:
         if self.bg_task:
             self.bg_task.cancel()
 
@@ -87,7 +87,7 @@ class Patron(commands.Cog):
 
     async def _process_sheet_logic(self, guild: discord.Guild, sheet_id: str):
         records, error = await self.connect_to_sheet(sheet_id)
-        if error:
+        if error or records is None:
             log.error(f"Failed to connect to sheet for guild {guild.name}: {error}")
             return
 
@@ -108,6 +108,7 @@ class Patron(commands.Cog):
             if i > 0 and i % 5 == 0:
                 await asyncio.sleep(2)
 
+            username = ""
             try:
                 username = str(row.get("Discord", "")).strip()
                 if not username:
@@ -321,7 +322,7 @@ class Patron(commands.Cog):
         except Exception as e:
             log.error(f"Failed to award currency to {member.name}: {e}")
 
-    @commands.group()
+    @commands.group()  # pyright: ignore[reportArgumentType]
     @checks.is_owner()
     async def patronset(self, ctx):
         """Settings for Patron cog."""

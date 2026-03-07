@@ -16,7 +16,7 @@ log = logging.getLogger("red.kirin_cogs.tickets.admin")
 
 
 class AdminCommands(MixinMeta):
-    @commands.group(aliases=["tset"])
+    @commands.group(aliases=["tset"])  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
     @commands.admin_or_permissions(administrator=True)
     async def tickets(self, ctx: commands.Context):
@@ -86,6 +86,7 @@ class AdminCommands(MixinMeta):
         Suspend the ticket system
         If a suspension message is set, any user that tries to open a ticket will receive this message
         """
+        assert ctx.guild is not None
         suspended = await self.config.guild(ctx.guild).suspended_msg()
         if message is None and suspended is None:
             return await ctx.send_help()
@@ -108,6 +109,8 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def category(self, ctx: commands.Context, category: discord.CategoryChannel):
         """Set the category ID for tickets"""
+        assert ctx.guild is not None
+        assert isinstance(ctx.me, discord.Member)
         if not category.permissions_for(ctx.me).manage_channels:
             return await ctx.send("I need the `manage channels` permission to set this category")
         if not category.permissions_for(ctx.me).manage_permissions:
@@ -126,6 +129,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def channel(self, ctx: commands.Context, channel: discord.TextChannel):
         """Set the channel ID where the ticket panel is located"""
+        assert ctx.guild is not None
         if not channel.permissions_for(ctx.guild.me).view_channel:
             return await ctx.send("I cannot see that channel!")
         if not channel.permissions_for(ctx.guild.me).read_message_history:
@@ -140,6 +144,8 @@ class AdminCommands(MixinMeta):
         Set the message ID of the ticket panel
         Run this command in the same channel as the ticket panel message
         """
+        assert ctx.guild is not None
+        assert self.bot.user is not None
         if message.author.id != self.bot.user.id:
             return await ctx.send("I cannot add buttons to messages sent by other users!")
         if isinstance(
@@ -164,6 +170,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def buttontext(self, ctx: commands.Context, *, button_text: str):
         """Set the button text for the ticket panel"""
+        assert ctx.guild is not None
         if len(button_text) > 80:
             return await ctx.send("The text content of a button must be less than 80 characters!")
         butt = TestButton(label=button_text)
@@ -178,6 +185,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def buttoncolor(self, ctx: commands.Context, *, button_color: str):
         """Set the button color for the ticket panel"""
+        assert ctx.guild is not None
         button_color = button_color.lower()
         valid = ["red", "blue", "green", "grey", "gray"]
         if button_color not in valid:
@@ -199,6 +207,7 @@ class AdminCommands(MixinMeta):
         emoji: discord.Emoji | discord.PartialEmoji | str,
     ):
         """Set the button emoji for the ticket panel"""
+        assert ctx.guild is not None
         try:
             butt = TestButton(emoji=emoji)
             await ctx.send(
@@ -228,6 +237,7 @@ class AdminCommands(MixinMeta):
 
         You can set this to {default} to use default "Ticket-Username"
         """
+        assert ctx.guild is not None
         ticket_name = ticket_name.lower()
         await self.config.guild(ctx.guild).ticket_name.set(ticket_name)
         await ctx.tick()
@@ -236,6 +246,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def logchannel(self, ctx: commands.Context, channel: discord.TextChannel):
         """Set the logging channel for tickets"""
+        assert ctx.guild is not None
         if not channel.permissions_for(ctx.guild.me).view_channel:
             return await ctx.send("I cannot see that channel!")
         if not channel.permissions_for(ctx.guild.me).read_message_history:
@@ -254,6 +265,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def modaltitle(self, ctx: commands.Context, *, title: str = ""):
         """Set a title for the ticket modal"""
+        assert ctx.guild is not None
         if len(title) > 45:
             return await ctx.send("The max length is 45!")
 
@@ -290,6 +302,7 @@ class AdminCommands(MixinMeta):
         existing_modal: dict | None = None,
         preview: discord.Message | None = None,
     ):
+        assert ctx.guild is not None
         if not existing_modal:
             # User wants to add or delete a field
             modal_data = await self.config.guild(ctx.guild).modal()
@@ -515,6 +528,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def viewmodal(self, ctx: commands.Context):
         """View/Delete modal fields"""
+        assert ctx.guild is not None
         modal = await self.config.guild(ctx.guild).modal()
         if not modal:
             return await ctx.send("Ticket system does not have any modal fields set!")
@@ -546,9 +560,13 @@ class AdminCommands(MixinMeta):
         await menu(ctx, embeds, controls)
 
     async def edit_modal_field(self, instance, interaction: discord.Interaction):
+        assert instance.view is not None
+        assert interaction.guild is not None
         index = instance.view.page
         em: Embed = instance.view.pages[index]
+        assert em.footer is not None
         fieldname = em.footer.text
+        assert fieldname is not None
         modal_data = await self.config.guild(interaction.guild).modal()
         modal = modal_data[fieldname]
         em = Embed(description=f"Editing {fieldname} modal field!")
@@ -557,9 +575,13 @@ class AdminCommands(MixinMeta):
         await self.create_or_edit_modal(instance.view.ctx, fieldname, modal)
 
     async def delete_modal_field(self, instance: MenuButton, interaction: discord.Interaction):
+        assert instance.view is not None
+        assert interaction.guild is not None
         index = instance.view.page
         em: Embed = instance.view.pages[index]
+        assert em.footer is not None
         fieldname = em.footer.text
+        assert fieldname is not None
         async with self.config.guild(interaction.guild).modal() as modal:
             del modal[fieldname]
 
@@ -596,6 +618,7 @@ class AdminCommands(MixinMeta):
 
         The bot will walk you through a few steps to set up the embed.
         """
+        assert ctx.guild is not None
         foot = "type 'cancel' to cancel the setup"
         color = ctx.author.color
         # TITLE
@@ -717,6 +740,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def viewmessages(self, ctx: commands.Context):
         """View/Delete ticket messages"""
+        assert ctx.guild is not None
         messages = await self.config.guild(ctx.guild).ticket_messages()
         if not messages:
             return await ctx.send("Ticket system does not have any messages added!")
@@ -752,6 +776,8 @@ class AdminCommands(MixinMeta):
         await menu(ctx, embeds, controls)
 
     async def delete_panel_message(self, instance, interaction: discord.Interaction):
+        assert instance.view is not None
+        assert interaction.guild is not None
         index = instance.view.page
         async with self.config.guild(interaction.guild).ticket_messages() as messages:
             del messages[index]
@@ -771,6 +797,7 @@ class AdminCommands(MixinMeta):
     @tickets.command(name="view")
     async def view_settings(self, ctx: commands.Context):
         """View support ticket settings"""
+        assert ctx.guild is not None
         conf = await self.config.guild(ctx.guild).all()
         inactive = conf["inactive"]
         plural = "hours"
@@ -858,6 +885,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def maxtickets(self, ctx: commands.Context, amount: int):
         """Set the max tickets a user can have open at one time of any kind"""
+        assert ctx.guild is not None
         if not amount:
             return await ctx.send("Max ticket amount must be greater than 0!")
         await self.config.guild(ctx.guild).max_tickets.set(amount)
@@ -877,6 +905,7 @@ class AdminCommands(MixinMeta):
 
         To remove a role, simply run this command with it again to remove it
         """
+        assert ctx.guild is not None
         entry = [role.id, mention]
         async with self.config.guild(ctx.guild).support_roles() as roles:
             for i in roles.copy():
@@ -896,6 +925,7 @@ class AdminCommands(MixinMeta):
 
         Specify the same role to remove it
         """
+        assert ctx.guild is not None
         async with self.config.guild(ctx.guild).required_roles() as roles:
             if role.id in roles:
                 roles.remove(role.id)
@@ -917,6 +947,7 @@ class AdminCommands(MixinMeta):
 
         Users and roles in the blacklist will not be able to create a ticket
         """
+        assert ctx.guild is not None
         async with self.config.guild(ctx.guild).blacklist() as bl:
             if user_or_role.id in bl:
                 bl.remove(user_or_role.id)
@@ -932,6 +963,7 @@ class AdminCommands(MixinMeta):
 
         Set to 0 to disable this
         """
+        assert ctx.guild is not None
         await self.config.guild(ctx.guild).inactive.set(hours)
         await ctx.tick()
 
@@ -947,6 +979,7 @@ class AdminCommands(MixinMeta):
 
         The overview message shows all active tickets.
         """
+        assert ctx.guild is not None
         if not channel:
             await ctx.send("Overview channel has been **Disabled**")
             await self.config.guild(ctx.guild).overview_channel.set(0)
@@ -961,6 +994,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def overviewmention(self, ctx: commands.Context):
         """Toggle whether channels are mentioned in the active ticket overview"""
+        assert ctx.guild is not None
         toggle = await self.config.guild(ctx.guild).overview_mention()
         if toggle:
             await self.config.guild(ctx.guild).overview_mention.set(False)
@@ -973,6 +1007,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def cleanup(self, ctx: commands.Context):
         """Cleanup tickets that no longer exist"""
+        assert ctx.guild is not None
         async with ctx.typing():
             conf = await self.config.guild(ctx.guild).all()
             await prune_invalid_tickets(ctx.guild, conf, self.config, ctx)
@@ -981,6 +1016,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def dm(self, ctx: commands.Context):
         """(Toggle) The bot sending DM's for ticket alerts"""
+        assert ctx.guild is not None
         toggle = await self.config.guild(ctx.guild).dm()
         if toggle:
             await self.config.guild(ctx.guild).dm.set(False)
@@ -992,6 +1028,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def selfrename(self, ctx: commands.Context):
         """(Toggle) If users can rename their own tickets"""
+        assert ctx.guild is not None
         toggle = await self.config.guild(ctx.guild).user_can_rename()
         if toggle:
             await self.config.guild(ctx.guild).user_can_rename.set(False)
@@ -1003,6 +1040,7 @@ class AdminCommands(MixinMeta):
     @tickets.command()
     async def selfclose(self, ctx: commands.Context):
         """(Toggle) If users can close their own tickets"""
+        assert ctx.guild is not None
         toggle = await self.config.guild(ctx.guild).user_can_close()
         if toggle:
             await self.config.guild(ctx.guild).user_can_close.set(False)
@@ -1018,6 +1056,7 @@ class AdminCommands(MixinMeta):
 
         Users will be able to add/remove others to their support ticket
         """
+        assert ctx.guild is not None
         toggle = await self.config.guild(ctx.guild).user_can_manage()
         if toggle:
             await self.config.guild(ctx.guild).user_can_manage.set(False)
@@ -1059,7 +1098,10 @@ class AdminCommands(MixinMeta):
     ):
         """Create an embed for ticket panel buttons to be added to"""
         foot = "type 'cancel' to cancel"
-        channel = channel or ctx.channel
+        if channel is None:
+            if not isinstance(ctx.channel, discord.TextChannel):
+                return await ctx.send("This command must be run in a text channel.")
+            channel = ctx.channel
         color = color or ctx.author.color
         # FOOTER
         em = Embed(
@@ -1177,10 +1219,11 @@ class AdminCommands(MixinMeta):
         except Exception as e:
             await ctx.send(f"Failed to send embed!\nException: {box(str(e), 'py')}")
 
-    @commands.hybrid_command(name="openfor")
+    @commands.hybrid_command(name="openfor")  # pyright: ignore[reportArgumentType]
     @commands.mod_or_permissions(manage_messages=True)
     async def openfor(self, ctx: commands.Context, user: discord.Member):
         """Open a ticket for another user"""
+        assert ctx.guild is not None
         conf = await self.config.guild(ctx.guild).all()
         # Create a custom temp view by using the config directly
 

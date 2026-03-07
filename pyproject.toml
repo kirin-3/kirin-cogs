@@ -47,6 +47,8 @@ venv = "redenv"
 # Redbot is not fully typed, and its dependencies can cause missing import errors.
 # Only report missing imports if they are truly missing from the environment.
 reportMissingImports = true
+# Suppress warnings from libraries that ship without type stubs (discord.py, redbot, etc.)
+reportMissingModuleSource = "none"
 
 # Ignore test files or specific temporary directories if any
 exclude = [
@@ -54,5 +56,7 @@ exclude = [
     ".vscode",
     ".github",
     "redenv",
-    "__pycache__"
+    "__pycache__",
+    "docs",
+    "bechmark.py"
 ]

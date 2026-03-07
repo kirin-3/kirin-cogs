@@ -14,6 +14,18 @@ from .vertex import VertexClient
 log = logging.getLogger("red.unicorn_ai")
 
 
+def _summon_user_cd(ctx: commands.Context) -> commands.Cooldown | None:
+    if ctx.author.id in ctx.bot.owner_ids:
+        return None
+    return commands.Cooldown(1, 3600)
+
+
+def _summon_channel_cd(ctx: commands.Context) -> commands.Cooldown | None:
+    if ctx.author.id in ctx.bot.owner_ids:
+        return None
+    return commands.Cooldown(1, 600)
+
+
 class UnicornAI(commands.Cog):
     """
     Autonomous AI persona using Vertex AI or OpenAI-compatible endpoints.
@@ -56,7 +68,7 @@ class UnicornAI(commands.Cog):
         # Start loop
         self.auto_message_loop.start()
 
-    def cog_unload(self):
+    async def cog_unload(self):
         self.auto_message_loop.cancel()
 
     @tasks.loop(seconds=60)
@@ -80,7 +92,7 @@ class UnicornAI(commands.Cog):
 
             if (now - last_run) >= interval:
                 channel = self.bot.get_channel(channel_id)
-                if channel:
+                if isinstance(channel, discord.TextChannel):
                     await self._trigger_ai(channel=channel)
 
     @auto_message_loop.before_loop
@@ -88,7 +100,10 @@ class UnicornAI(commands.Cog):
         await self.bot.wait_until_ready()
 
     async def _trigger_ai(
-        self, channel: discord.TextChannel = None, ctx: commands.Context = None, persona_override: str = None
+        self,
+        channel: discord.TextChannel | None = None,
+        ctx: commands.Context | None = None,
+        persona_override: str | None = None,
     ):
         """
         Core logic to fetch history and generate response.
@@ -103,7 +118,9 @@ class UnicornAI(commands.Cog):
         if not target_channel:
             return
 
-        # Fetch settings
+        # Fetch settings — only guild channels are tracked in config
+        if not isinstance(target_channel, (discord.TextChannel, discord.Thread)):
+            return
         settings = await self.config.channel(target_channel).all()
         global_settings = await self.config.all()
 
@@ -228,9 +245,14 @@ class UnicornAI(commands.Cog):
                 target_channel = channel.parent
                 thread_obj = channel
 
+            if not isinstance(target_channel, discord.TextChannel):
+                await channel.send(content)
+                return
+
             # Fetch or create webhook
             webhooks = await target_channel.webhooks()
-            webhook = next((w for w in webhooks if w.user.id == self.bot.user.id), None)
+            assert self.bot.user is not None
+            webhook = next((w for w in webhooks if w.user and w.user.id == self.bot.user.id), None)
 
             if not webhook:
                 webhook = await target_channel.create_webhook(name="UnicornAI Webhook")
@@ -271,23 +293,12 @@ class UnicornAI(commands.Cog):
             # Silently fail autocomplete rather than spamming logs/console
             return []
 
-    # Dynamic cooldowns to allow owner bypass
-    def _summon_user_cd(ctx):
-        if ctx.author.id in ctx.bot.owner_ids:
-            return None
-        return commands.Cooldown(1, 3600)
-
-    def _summon_channel_cd(ctx):
-        if ctx.author.id in ctx.bot.owner_ids:
-            return None
-        return commands.Cooldown(1, 600)
-
     @commands.hybrid_command(name="summon", description="Summon a specific persona to chat.")
     @app_commands.describe(persona="The name of the persona to summon")
     @app_commands.autocomplete(persona=persona_autocomplete)
     @commands.guild_only()
-    @commands.dynamic_cooldown(_summon_user_cd, commands.BucketType.user)
-    @commands.dynamic_cooldown(_summon_channel_cd, commands.BucketType.channel)
+    @commands.dynamic_cooldown(_summon_user_cd, commands.BucketType.user)  # pyright: ignore[reportArgumentType]
+    @commands.dynamic_cooldown(_summon_channel_cd, commands.BucketType.channel)  # pyright: ignore[reportArgumentType]
     async def ai_summon(self, ctx: commands.Context, persona: str):
         """
         Summons a specific persona to the current channel.
@@ -310,7 +321,8 @@ class UnicornAI(commands.Cog):
 
         try:
             # We pass the persona_override to _trigger_ai
-            await self._trigger_ai(ctx.channel, ctx=ctx, persona_override=persona)
+            channel = ctx.channel if isinstance(ctx.channel, discord.TextChannel) else None
+            await self._trigger_ai(channel, ctx=ctx, persona_override=persona)
         except Exception as e:
             log.exception("Failed to summon persona")
             await ctx.send(f"Failed to summon persona: {e}")

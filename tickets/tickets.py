@@ -37,7 +37,7 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
         info = f"{helpcmd}\nCog Version: {self.__version__}\nAuthor: {self.__author__}\n"
         return info
 
-    async def red_delete_data_for_user(self, *, requester, user_id: int):
+    async def red_delete_data_for_user(self, *, requester, user_id: int):  # pyright: ignore[reportIncompatibleMethodOverride]
         """No data to delete"""
         return
 
@@ -139,7 +139,7 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
             category = guild.get_channel(category_id)
             channel_obj = guild.get_channel(channel_id)
 
-            if category and channel_obj:
+            if category and isinstance(channel_obj, discord.TextChannel):
                 try:
                     # Validate visibility/existence
                     await channel_obj.fetch_message(message_id)
@@ -165,6 +165,8 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
                     continue
 
                 if message_id := ticket_info.get("message_id"):
+                    if not isinstance(ticket_channel, (discord.TextChannel, discord.Thread)):
+                        continue
                     view = CloseView(self.bot, self.config, int(uid), ticket_channel)
                     self.bot.add_view(view, message_id=message_id)
                     self.view_cache[guild.id].append(view)
@@ -199,7 +201,7 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
                     if channel_id in self.valid:
                         continue
                     channel = guild.get_channel_or_thread(int(channel_id))
-                    if not channel:
+                    if not isinstance(channel, (discord.TextChannel, discord.Thread)):
                         continue
                     now = datetime.datetime.now().astimezone()
                     opened_on = datetime.datetime.fromisoformat(ticket["opened"])
@@ -228,7 +230,7 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
                             channel,
                             conf,
                             "(Auto-Close) Opened ticket with no response for " + f"{inactive} {time}",
-                            self.bot.user.name,
+                            self.bot.user.name if self.bot.user else "AutoClose",
                             self.config,
                         )
                         log.info(
@@ -261,7 +263,7 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
 
         for cid in tickets:
             chan = guild.get_channel_or_thread(int(cid))
-            if not chan:
+            if not isinstance(chan, (discord.TextChannel, discord.Thread)):
                 continue
             try:
                 await close_ticket(
@@ -271,7 +273,7 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
                     channel=chan,
                     conf=conf,
                     reason="User left guild(Auto-Close)",
-                    closedby=self.bot.user.name,
+                    closedby=self.bot.user.name if self.bot.user else "AutoClose",
                     config=self.config,
                 )
             except Exception as e:

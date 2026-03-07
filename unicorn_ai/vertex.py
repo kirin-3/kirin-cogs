@@ -62,6 +62,9 @@ class VertexClient:
                 if not await self._load_credentials():
                     return None
 
+            if self._creds is None:
+                return None
+
             if not self._creds.valid:
                 try:
                     # Refresh token in thread

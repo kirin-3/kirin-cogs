@@ -51,7 +51,8 @@ class Suggest(commands.Cog):
             await self.config.next_id.set(132)
 
     async def get_suggestion_channel(self) -> discord.TextChannel | None:
-        return self.bot.get_channel(SUGGEST_CHANNEL_ID)
+        channel = self.bot.get_channel(SUGGEST_CHANNEL_ID)
+        return channel if isinstance(channel, discord.TextChannel) else None
 
     async def process_new_suggestion(self, interaction: discord.Interaction, content: str):
         channel = await self.get_suggestion_channel()
@@ -81,7 +82,7 @@ class Suggest(commands.Cog):
         except Exception as e:
             log.error(f"Failed to add reactions: {e}")
 
-        async with self.config.custom("SUGGESTION", s_id).all() as data:
+        async with self.config.custom("SUGGESTION", str(s_id)).all() as data:
             data["author_id"] = interaction.user.id
             data["content"] = content
             data["msg_id"] = msg.id
@@ -90,20 +91,20 @@ class Suggest(commands.Cog):
         await interaction.response.send_message("Suggestion submitted!", ephemeral=True)
         await self._maybe_repost_sticky(channel)
 
-    @commands.command()
+    @commands.command()  # pyright: ignore[reportArgumentType]
     @commands.is_owner()
     async def approve(self, ctx, suggestion_id: int, *, reason: str | None = None):
         """Approve a suggestion."""
         await self._resolve_suggestion(ctx, suggestion_id, "approved", reason)
 
-    @commands.command()
+    @commands.command()  # pyright: ignore[reportArgumentType]
     @commands.is_owner()
     async def reject(self, ctx, suggestion_id: int, *, reason: str | None = None):
         """Reject a suggestion."""
         await self._resolve_suggestion(ctx, suggestion_id, "rejected", reason)
 
     async def _resolve_suggestion(self, ctx, suggestion_id: int, status: str, reason: str | None):
-        data = await self.config.custom("SUGGESTION", suggestion_id).all()
+        data = await self.config.custom("SUGGESTION", str(suggestion_id)).all()
         if not data["msg_id"]:
             return await ctx.send("Suggestion not found.")
 
@@ -147,7 +148,7 @@ class Suggest(commands.Cog):
 
         await msg.edit(embed=embed)
 
-        async with self.config.custom("SUGGESTION", suggestion_id).all() as d:
+        async with self.config.custom("SUGGESTION", str(suggestion_id)).all() as d:
             d["status"] = status
             d["reason"] = reason
 
@@ -171,7 +172,7 @@ class Suggest(commands.Cog):
             return
 
         # Check if it's one of our custom emojis
-        if not hasattr(reaction.emoji, "id"):
+        if not isinstance(reaction.emoji, (discord.Emoji, discord.PartialEmoji)):
             return
 
         if reaction.emoji.id not in (UP_EMOJI_ID, DOWN_EMOJI_ID):
@@ -184,7 +185,10 @@ class Suggest(commands.Cog):
                 continue
 
             # Check if this other reaction is one of our voting emojis
-            if hasattr(r.emoji, "id") and r.emoji.id in (UP_EMOJI_ID, DOWN_EMOJI_ID):
+            if isinstance(r.emoji, (discord.Emoji, discord.PartialEmoji)) and r.emoji.id in (
+                UP_EMOJI_ID,
+                DOWN_EMOJI_ID,
+            ):
                 # Check if user reacted to this one too
                 async for u in r.users():
                     if u.id == user.id:
@@ -199,7 +203,8 @@ class Suggest(commands.Cog):
         if message.channel.id != SUGGEST_CHANNEL_ID:
             return
 
-        await self._maybe_repost_sticky(message.channel, responding_to_message=message)
+        if isinstance(message.channel, discord.TextChannel):
+            await self._maybe_repost_sticky(message.channel, responding_to_message=message)
 
     @commands.Cog.listener()
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
@@ -209,7 +214,7 @@ class Suggest(commands.Cog):
         sticky_id = await self.config.sticky_message_id()
         if payload.message_id == sticky_id:
             channel = self.bot.get_channel(payload.channel_id)
-            if channel:
+            if isinstance(channel, discord.TextChannel):
                 await self._maybe_repost_sticky(channel)
 
     async def _maybe_repost_sticky(

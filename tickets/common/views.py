@@ -115,11 +115,11 @@ class TestButton(View):
         self,
         style: str = "grey",
         label: str = "Button Test",
-        emoji: discord.Emoji | discord.PartialEmoji | str = None,
+        emoji: discord.Emoji | discord.PartialEmoji | str | None = None,
     ):
         super().__init__()
-        style = get_color(style)
-        butt = discord.ui.Button(label=label, style=style, emoji=emoji)
+        button_style = get_color(style)
+        butt = discord.ui.Button(label=label, style=button_style, emoji=emoji)
         self.add_item(butt)
 
 
@@ -270,6 +270,10 @@ class CloseView(View):
         if str(self.channel.id) not in conf["opened"][str(self.owner_id)]:
             return await interaction.response.send_message(txt, ephemeral=True)
 
+        if not isinstance(interaction.channel, (discord.TextChannel, discord.Thread)):
+            return await interaction.response.send_message(
+                "This command can only be used in a ticket channel.", ephemeral=True
+            )
         allowed = await can_close(
             bot=self.bot,
             guild=interaction.guild,
@@ -383,11 +387,11 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         # Fallback: check interaction data directly if custom component retrieval failed
         if (
             not attachments
-            and hasattr(interaction, "data")
+            and interaction.data is not None
             and "resolved" in interaction.data
-            and "attachments" in interaction.data["resolved"]
+            and "attachments" in interaction.data["resolved"]  # pyright: ignore[reportOptionalSubscript]
         ):
-            raw_attachments = interaction.data["resolved"]["attachments"]
+            raw_attachments = interaction.data["resolved"]["attachments"]  # pyright: ignore[reportOptionalSubscript]
             if raw_attachments:
                 for attachment_data in raw_attachments.values():
                     attachments.append(
@@ -396,8 +400,10 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
                         )
                     )
 
+        from ..common.functions import Functions as TicketFunctions
+
         cog = self.bot.get_cog("Tickets")
-        if not cog:
+        if not cog or not isinstance(cog, TicketFunctions):
             return await interaction.followup.send("Tickets cog not loaded!", ephemeral=True)
 
         result = await cog.create_ticket_for_user(self.user)
@@ -412,7 +418,8 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
             ticket_ids = sorted([int(x) for x in opened[uid].keys()], reverse=True)
             if ticket_ids:
                 latest_channel_id = ticket_ids[0]
-                channel = self.guild.get_channel(latest_channel_id)
+                channel_raw = self.guild.get_channel(latest_channel_id)
+                channel = channel_raw if isinstance(channel_raw, (discord.TextChannel, discord.Thread)) else None
 
                 if channel and attachments:
                     for i, attachment in enumerate(attachments):
@@ -430,12 +437,13 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
 
 
 class SupportButton(Button):
-    def __init__(self, conf: dict, mock_user: discord.Member = None):
+    def __init__(self, conf: dict, mock_user: discord.Member | None = None):
+        emoji_val: discord.Emoji | discord.PartialEmoji | str | None = conf["button_emoji"] or None
         super().__init__(
             style=get_color(conf["button_color"]),
             label=conf["button_text"],
             custom_id="create_ticket_button",
-            emoji=conf["button_emoji"],
+            emoji=emoji_val,
             disabled=False,
         )
         self.conf = conf
@@ -445,16 +453,19 @@ class SupportButton(Button):
         try:
             await self.create_ticket(interaction)
         except Exception as e:
-            guild = interaction.guild.name
-            user = self.mock_user.name if self.mock_user else interaction.user.name
-            log.exception(f"Failed to create ticket in {guild} for {user}", exc_info=e)
+            guild_name = interaction.guild.name if interaction.guild else "Unknown"
+            user_name = self.mock_user.name if self.mock_user else interaction.user.name
+            log.exception(f"Failed to create ticket in {guild_name} for {user_name}", exc_info=e)
 
     async def create_ticket(self, interaction: Interaction):
         guild = interaction.guild
-        user = self.mock_user or guild.get_member(interaction.user.id)
         if not guild:
             return
+        user: discord.Member | None = self.mock_user or guild.get_member(interaction.user.id)
+        if not user:
+            return
 
+        assert isinstance(self.view, PanelView)
         conf = await self.view.config.guild(guild).all()
 
         if conf["suspended_msg"]:
@@ -481,7 +492,7 @@ class SupportButton(Button):
 
         if required_roles := conf.get("required_roles", []):
             if not any(r.id in required_roles for r in user.roles):
-                roles = [guild.get_role(i).mention for i in required_roles if guild.get_role(i)]
+                roles = [r.mention for i in required_roles if (r := guild.get_role(i))]
                 em = discord.Embed(
                     description="You must have one of the following roles to open this ticket: " + humanize_list(roles),
                     color=discord.Color.red(),

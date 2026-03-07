@@ -42,9 +42,10 @@ class Profile(commands.Cog):
 
     async def get_profile_channel(self) -> discord.TextChannel | None:
         channel_id = await self.config.channel_id()
-        return self.bot.get_channel(channel_id)
+        channel = self.bot.get_channel(channel_id)
+        return channel if isinstance(channel, discord.TextChannel) else None
 
-    @commands.group()
+    @commands.group()  # pyright: ignore[reportArgumentType]
     @checks.admin_or_permissions(manage_guild=True)
     async def profileset(self, ctx: commands.Context):
         """Settings for the profile cog."""
@@ -67,8 +68,12 @@ class Profile(commands.Cog):
         await ctx.tick()
 
     async def handle_create_edit(self, interaction: discord.Interaction):
+        if not isinstance(interaction.user, discord.Member):
+            return
+        member = interaction.user
+
         # Check 24h cooldown after deletion
-        user_conf = await self.config.user(interaction.user).all()
+        user_conf = await self.config.user(member).all()
         last_delete = user_conf.get("last_delete")
 
         if last_delete:
@@ -76,7 +81,7 @@ class Profile(commands.Cog):
             now = datetime.now(UTC)
             diff = now - last_delete_dt
             if diff.total_seconds() < 86400:  # 24 hours
-                if not await self.bot.is_owner(interaction.user):
+                if not await self.bot.is_owner(member):
                     hours_remaining = int((86400 - diff.total_seconds()) / 3600)
                     return await interaction.response.send_message(
                         f"You must wait 24 hours after deleting your profile to create a new one. (~{hours_remaining} hours remaining)",
@@ -84,23 +89,27 @@ class Profile(commands.Cog):
                     )
 
         user_data = user_conf["profile_data"]
-        view = ProfileBuilderView(interaction.user, user_data)
+        view = ProfileBuilderView(member, user_data)
 
         msg = "Welcome to the Profile Builder! Fill out the fields below. Required fields are marked with *."
         await interaction.response.send_message(msg, view=view, ephemeral=True)
 
         await view.wait()
         if view.submitted:
-            await self.config.user(interaction.user).profile_data.set(view.data)
-            await self._update_profile_embed(interaction.user, view.data)
+            await self.config.user(member).profile_data.set(view.data)
+            await self._update_profile_embed(member, view.data)
             await interaction.followup.send("Profile updated successfully!", ephemeral=True)
 
     async def handle_delete_request(self, interaction: discord.Interaction):
-        user_conf = await self.config.user(interaction.user).all()
+        if not isinstance(interaction.user, discord.Member):
+            return
+        member = interaction.user
+
+        user_conf = await self.config.user(member).all()
         if not user_conf["profile_data"]:
             return await interaction.response.send_message("You don't have a profile to delete.", ephemeral=True)
 
-        view = ProfileDeleteConfirmView(interaction.user)
+        view = ProfileDeleteConfirmView(member)
         await interaction.response.send_message(
             "Are you sure you want to delete your profile?", view=view, ephemeral=True
         )
@@ -116,10 +125,10 @@ class Profile(commands.Cog):
                 except discord.NotFound:
                     pass
                 except Exception as e:
-                    log.error(f"Failed to delete profile message for {interaction.user.id}: {e}")
+                    log.error(f"Failed to delete profile message for {member.id}: {e}")
 
-            await self.config.user(interaction.user).clear()
-            await self.config.user(interaction.user).last_delete.set(datetime.now(UTC).timestamp())
+            await self.config.user(member).clear()
+            await self.config.user(member).last_delete.set(datetime.now(UTC).timestamp())
             await interaction.followup.send("Your profile has been deleted.", ephemeral=True)
 
     async def _update_profile_embed(self, user: discord.Member, data: ProfileData):
@@ -137,25 +146,23 @@ class Profile(commands.Cog):
         embed.add_field(name="Gender", value=data.get("gender", "Unknown"), inline=True)
         embed.add_field(name="Sexuality", value=data.get("sexuality", "Unknown"), inline=True)
 
-        if data.get("role"):
-            embed.add_field(name="Role", value=data["role"], inline=True)
+        if role := data.get("role"):
+            embed.add_field(name="Role", value=role, inline=True)
 
         # Block fields
-        if data.get("likes"):
-            embed.add_field(name="Likes", value=data["likes"], inline=False)
-        if data.get("dislikes"):
-            embed.add_field(name="Dislikes", value=data["dislikes"], inline=False)
-        if data.get("kinks"):
-            embed.add_field(name="Kinks", value=data["kinks"], inline=False)
-        if data.get("limits"):
-            embed.add_field(name="Limits", value=data["limits"], inline=False)
-        if data.get("about_me"):
-            embed.add_field(name="About Me", value=data["about_me"], inline=False)
+        if likes := data.get("likes"):
+            embed.add_field(name="Likes", value=likes, inline=False)
+        if dislikes := data.get("dislikes"):
+            embed.add_field(name="Dislikes", value=dislikes, inline=False)
+        if kinks := data.get("kinks"):
+            embed.add_field(name="Kinks", value=kinks, inline=False)
+        if limits := data.get("limits"):
+            embed.add_field(name="Limits", value=limits, inline=False)
+        if about_me := data.get("about_me"):
+            embed.add_field(name="About Me", value=about_me, inline=False)
 
-        if data.get("picture_url"):
-            embed.set_image(url=data["picture_url"])
-        elif data.get("picture"):  # In case field name is "picture" in data
-            embed.set_image(url=data["picture"])
+        if picture_url := data.get("picture_url"):
+            embed.set_image(url=picture_url)
 
         embed.set_footer(text=f"Profile created by {user.display_name}")
 
@@ -187,7 +194,8 @@ class Profile(commands.Cog):
         if message.channel.id != channel_id:
             return
 
-        await self._maybe_repost_sticky(message.channel, responding_to_message=message)
+        if isinstance(message.channel, discord.TextChannel):
+            await self._maybe_repost_sticky(message.channel, responding_to_message=message)
 
     @commands.Cog.listener()
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
@@ -198,7 +206,7 @@ class Profile(commands.Cog):
         sticky_id = await self.config.sticky_message_id()
         if payload.message_id == sticky_id:
             channel = self.bot.get_channel(payload.channel_id)
-            if channel:
+            if isinstance(channel, discord.TextChannel):
                 await self._maybe_repost_sticky(channel)
 
     async def _maybe_repost_sticky(

@@ -25,7 +25,7 @@ class CustomCommand(commands.Cog):
         for guild_id, guild_data in all_guilds_data.items():
             self.command_cache[guild_id] = guild_data.get("commands", {})
 
-    def cog_unload(self):
+    async def cog_unload(self) -> None:
         """Clear cache on cog unload."""
         self.command_cache.clear()
         self.trigger_cooldowns.clear()
@@ -41,7 +41,7 @@ class CustomCommand(commands.Cog):
         for k in keys_to_remove:
             del self.trigger_cooldowns[k]
 
-    async def log_action(self, ctx, action: str, trigger: str, response: str = None):
+    async def log_action(self, ctx, action: str, trigger: str, response: str | None = None):
         """Log custom command actions to the hardcoded channel."""
         channel = self.bot.get_channel(self.LOG_CHANNEL_ID)
         if not channel:
@@ -79,7 +79,7 @@ class CustomCommand(commands.Cog):
         if limit < 1:
             await ctx.send("Limit must be at least 1.")
             return
-        await self.config.guild(ctx.guild).user_limits.set_raw(str(member.id), value=limit)
+        await self.config.guild(ctx.guild).user_limits.set_raw(str(member.id), value=limit)  # pyright: ignore[reportAttributeAccessIssue]
         await ctx.send(f"Custom command limit for {member.display_name} set to {limit}.")
 
     @customcommand.command(name="list")
@@ -196,7 +196,7 @@ class CustomCommand(commands.Cog):
 
         # Update owner list
         user_commands.append(trigger.lower())
-        await self.config.guild(guild).command_owners.set_raw(str(author.id), value=user_commands)
+        await self.config.guild(guild).command_owners.set_raw(str(author.id), value=user_commands)  # pyright: ignore[reportAttributeAccessIssue]
 
         # Update cache
         self.command_cache.setdefault(guild.id, {})[trigger.lower()] = response
@@ -205,7 +205,7 @@ class CustomCommand(commands.Cog):
         await ctx.send(f"Custom command `{trigger}` has been created.")
 
     @customcommand.command(name="delete")
-    async def customcommand_delete(self, ctx, trigger: str = None):
+    async def customcommand_delete(self, ctx, trigger: str | None = None):
         """
         Delete a custom command.
 
@@ -253,9 +253,9 @@ class CustomCommand(commands.Cog):
                     if trigger in triggers:
                         triggers.remove(trigger)
                         if not triggers:
-                            await self.config.guild(guild).command_owners.clear_raw(owner_found)
+                            await self.config.guild(guild).command_owners.clear_raw(owner_found)  # pyright: ignore[reportAttributeAccessIssue]
                         else:
-                            await self.config.guild(guild).command_owners.set_raw(owner_found, value=triggers)
+                            await self.config.guild(guild).command_owners.set_raw(owner_found, value=triggers)  # pyright: ignore[reportAttributeAccessIssue]
 
                 await self.log_action(ctx, "Deleted (Mod)", trigger)
                 await ctx.send(f"Custom command `{trigger}` has been deleted by moderator.")
@@ -283,6 +283,7 @@ class CustomCommand(commands.Cog):
                 await ctx.send(f"You have multiple commands: {cmd_list}. Please specify which one to delete.")
                 return
 
+        assert trigger is not None
         trigger = trigger.lower()
         if trigger not in user_commands:
             await ctx.send("You don't own a command with that name.")
@@ -301,9 +302,9 @@ class CustomCommand(commands.Cog):
 
         user_commands.remove(trigger)
         if not user_commands:
-            await self.config.guild(guild).command_owners.clear_raw(str(author.id))
+            await self.config.guild(guild).command_owners.clear_raw(str(author.id))  # pyright: ignore[reportAttributeAccessIssue]
         else:
-            await self.config.guild(guild).command_owners.set_raw(str(author.id), value=user_commands)
+            await self.config.guild(guild).command_owners.set_raw(str(author.id), value=user_commands)  # pyright: ignore[reportAttributeAccessIssue]
 
         await self.log_action(ctx, "Deleted", trigger)
         await ctx.send(f"Your custom command `{trigger}` has been deleted.")

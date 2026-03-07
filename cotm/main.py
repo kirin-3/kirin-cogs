@@ -137,7 +137,7 @@ class ContestCog(commands.Cog):
         dashboard_view = ContestDashboardView(self, self._contest_number, texts)
         await cast(discord.TextChannel, ctx.channel).send(view=dashboard_view)
 
-    @commands.command(aliases=["cotm"])
+    @commands.command(aliases=["cotm"])  # pyright: ignore[reportArgumentType]
     @commands.admin_or_permissions(administrator=True)
     async def contest(self, ctx: commands.Context, contest_number: int | None = None) -> None:
         """Handles the contest command.
@@ -218,7 +218,7 @@ class ContestCog(commands.Cog):
         container.add_item(ui.TextDisplay(content=standings_text))
         return container
 
-    @commands.command()
+    @commands.command()  # pyright: ignore[reportArgumentType]
     @commands.admin_or_permissions(administrator=True)
     async def contestcount(
         self,

@@ -18,7 +18,7 @@ async def can_close(
     guild: discord.Guild,
     channel: discord.TextChannel | discord.Thread,
     author: discord.Member,
-    owner_id: int,
+    owner_id: int | str,
     conf: dict,
 ):
     if str(owner_id) not in conf["opened"]:
@@ -41,7 +41,7 @@ async def can_close(
     return can_close
 
 
-async def ticket_owner_hastyped(channel: discord.TextChannel, user: discord.Member) -> bool:
+async def ticket_owner_hastyped(channel: discord.TextChannel | discord.Thread, user: discord.Member) -> bool:
     async for msg in channel.history(limit=50, oldest_first=True):
         if msg.author.id == user.id:
             return True
@@ -109,7 +109,8 @@ async def close_ticket(
     embed.set_thumbnail(url=pfp)
 
     # Using conf instead of panel since it's flattened
-    log_chan: discord.TextChannel = guild.get_channel(conf["log_channel"]) if conf["log_channel"] else None
+    _log_chan_raw = guild.get_channel(conf["log_channel"]) if conf["log_channel"] else None
+    log_chan: discord.TextChannel | None = _log_chan_raw if isinstance(_log_chan_raw, discord.TextChannel) else None
 
     if log_chan and ticket["logmsg"]:
         try:
@@ -150,7 +151,7 @@ async def close_ticket(
 
         if not sent:
             fallback = bot.get_channel(686092688059400454)
-            if fallback:
+            if isinstance(fallback, (discord.TextChannel, discord.Thread)):
                 try:
                     await fallback.send(content=member.mention, embed=notif_embed)
                 except Exception as e:
@@ -223,6 +224,8 @@ async def prune_invalid_tickets(
             log_channel_id = conf["log_channel"]
             if log_channel_id and log_message_id:
                 log_channel = guild.get_channel(log_channel_id)
+                if not isinstance(log_channel, (discord.TextChannel, discord.Thread)):
+                    continue
                 try:
                     log_message = await log_channel.fetch_message(log_message_id)
                     await log_message.delete()
@@ -298,7 +301,8 @@ async def update_active_overview(guild: discord.Guild, conf: dict) -> int | None
     """
     if not conf["overview_channel"]:
         return
-    channel: discord.TextChannel = guild.get_channel(conf["overview_channel"])
+    _channel_raw = guild.get_channel(conf["overview_channel"])
+    channel: discord.TextChannel | None = _channel_raw if isinstance(_channel_raw, discord.TextChannel) else None
     if not channel:
         return
     if not channel.permissions_for(guild.me).send_messages:

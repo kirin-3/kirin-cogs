@@ -26,10 +26,11 @@ mapping = {
 class MenuButton(Button):
     def __init__(self, emoji: str, style: ButtonStyle, row: int, label: str | None = None):
         super().__init__(emoji=emoji, style=style, row=row, label=label)
-        self.emoji = emoji
+        self._emoji_str = emoji
 
-    async def callback(self, inter: Interaction):
-        await self.view.controls[self.emoji.name](self, inter)
+    async def callback(self, inter: Interaction):  # pyright: ignore[reportIncompatibleMethodOverride]
+        assert self.view is not None
+        await self.view.controls[self._emoji_str](self, inter)
 
 
 class MenuView(View):
@@ -38,7 +39,7 @@ class MenuView(View):
         ctx: commands.Context,
         pages: list[str] | list[discord.Embed],
         controls: dict,
-        message: discord.Message = None,
+        message: discord.Message | None = None,
         page: int = 0,
         timeout: int = 60,
     ):
@@ -64,7 +65,8 @@ class MenuView(View):
 
     async def on_timeout(self):
         try:
-            await self.message.edit(view=None)
+            if self.message is not None:
+                await self.message.edit(view=None)
         except discord.NotFound:
             pass
 
@@ -96,7 +98,7 @@ async def menu(
     ctx: commands.Context,
     pages: list[str] | list[discord.Embed] | list[tuple],
     controls: dict,
-    message: discord.Message = None,
+    message: discord.Message | None = None,
     page: int = 0,
     timeout: int = 60,
 ):
@@ -112,13 +114,15 @@ async def menu(
             maybe_coro = value.func
         if not asyncio.iscoroutinefunction(maybe_coro):
             raise RuntimeError("Function must be a coroutine")
-    m = MenuView(ctx, pages, controls, message, page, timeout)
+    m = MenuView(ctx, pages, controls, message, page, timeout)  # pyright: ignore[reportArgumentType]
     await m.start()
 
 
 async def close_menu(instance, interaction: discord.Interaction):
     await interaction.response.defer()
-    await interaction.message.delete()
+    if interaction.message is not None:
+        await interaction.message.delete()
+    assert instance.view is not None
     instance.view.stop()
 
 

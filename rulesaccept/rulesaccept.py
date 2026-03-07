@@ -17,7 +17,7 @@ class RulesAccept(commands.Cog):
     async def cog_load(self):
         self.bot.add_view(rulesacceptView(self))
 
-    @commands.command()
+    @commands.command()  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
     async def sendrules(self, ctx):
@@ -25,7 +25,7 @@ class RulesAccept(commands.Cog):
         view = rulesacceptView(self)
         await ctx.send("Please read the rules. When ready, click the button below to accept.", view=view)
 
-    @commands.command()
+    @commands.command()  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
     async def setrole(self, ctx, role: discord.Role):
@@ -90,6 +90,8 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
         if self.answer.value.strip() in valid_responses:
             guild = interaction.guild
             member = interaction.user
+            if guild is None or not isinstance(member, discord.Member):
+                return
             role_id = await self.cog.config.guild(guild).member_role_id()
             role = guild.get_role(role_id)
             if role:

@@ -1,6 +1,5 @@
 """Unit, async, and dpytest integration tests for the CustomRoleColor cog."""
 
-import asyncio
 import inspect
 import io
 from collections.abc import AsyncGenerator
@@ -12,10 +11,8 @@ import discord.ext.test as dpytest
 import pytest
 import pytest_asyncio
 from redbot.core import Config
-from redbot.core.bot import Red
 
 from customrolecolor.customrolecolor import PALETTE_COLORS, CustomRoleColor, generate_palette_image
-
 
 # ---------------------------------------------------------------------------
 # Pure-function tests
@@ -151,7 +148,7 @@ async def test_assignrole_role_too_high(cog: CustomRoleColor, bot_mock: MagicMoc
     role = _make_role(position=200)
     ctx.guild.me.top_role.position = 100
 
-    await cog.assignrole.callback(cog, ctx, ctx.author, role)
+    await cog.assignrole.callback(cog, ctx, ctx.author, role)  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("I can't manage that role (it's higher than my top role).")
 
 
@@ -170,7 +167,7 @@ async def test_assignrole_success(cog: CustomRoleColor, bot_mock: MagicMock, con
     guild_group = config_mock.guild.return_value
     guild_group.assignments.set_raw = AsyncMock()
 
-    await cog.assignrole.callback(cog, ctx, member, role)
+    await cog.assignrole.callback(cog, ctx, member, role)  # pyright: ignore[reportArgumentType]
 
     guild_group.assignments.set_raw.assert_called_once_with("42", value=role.id)
     ctx.send.assert_called_once()
@@ -187,7 +184,7 @@ async def test_myrolecolor_no_assignment(cog: CustomRoleColor, bot_mock: MagicMo
     ctx = _make_ctx(bot_mock, author_id=500)
     config_mock.guild.return_value.assignments = AsyncMock(return_value={})
 
-    await cog.myrolecolor.callback(cog, ctx, "#ff0000")
+    await cog.myrolecolor.callback(cog, ctx, "#ff0000")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("You don't have a role assigned for color management.")
 
 
@@ -197,7 +194,7 @@ async def test_myrolecolor_role_not_found(cog: CustomRoleColor, bot_mock: MagicM
     config_mock.guild.return_value.assignments = AsyncMock(return_value={"500": 999})
     ctx.guild.get_role = MagicMock(return_value=None)
 
-    await cog.myrolecolor.callback(cog, ctx, "#ff0000")
+    await cog.myrolecolor.callback(cog, ctx, "#ff0000")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("The assigned role no longer exists.")
 
 
@@ -210,7 +207,7 @@ async def test_myrolecolor_role_too_high(cog: CustomRoleColor, bot_mock: MagicMo
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myrolecolor.callback(cog, ctx, "#ff0000")
+    await cog.myrolecolor.callback(cog, ctx, "#ff0000")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("I can't edit that role (it's higher than my top role).")
 
 
@@ -223,7 +220,7 @@ async def test_myrolecolor_invalid_hex(cog: CustomRoleColor, bot_mock: MagicMock
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myrolecolor.callback(cog, ctx, "notahex")
+    await cog.myrolecolor.callback(cog, ctx, "notahex")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once()
     assert "valid hex color" in ctx.send.call_args[0][0]
 
@@ -239,7 +236,7 @@ async def test_myrolecolor_flat_color_success(
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myrolecolor.callback(cog, ctx, "#ff0000")
+    await cog.myrolecolor.callback(cog, ctx, "#ff0000")  # pyright: ignore[reportArgumentType]
 
     role.edit.assert_called_once()
     call_kwargs = role.edit.call_args[1]
@@ -258,7 +255,7 @@ async def test_myrolecolor_gradient_success(cog: CustomRoleColor, bot_mock: Magi
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myrolecolor.callback(cog, ctx, "#ff0000", "#00ff00")
+    await cog.myrolecolor.callback(cog, ctx, "#ff0000", "#00ff00")  # pyright: ignore[reportArgumentType]
 
     role.edit.assert_called_once()
     ctx.send.assert_called_once()
@@ -274,7 +271,7 @@ async def test_myrolecolor_holographic(cog: CustomRoleColor, bot_mock: MagicMock
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myrolecolor.callback(cog, ctx, "holographic")
+    await cog.myrolecolor.callback(cog, ctx, "holographic")  # pyright: ignore[reportArgumentType]
 
     role.edit.assert_called_once()
     ctx.send.assert_called_once()
@@ -294,7 +291,7 @@ async def test_myrolecolor_forbidden(cog: CustomRoleColor, bot_mock: MagicMock, 
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myrolecolor.callback(cog, ctx, "#ff0000")
+    await cog.myrolecolor.callback(cog, ctx, "#ff0000")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("I don't have permission to edit that role.")
 
 
@@ -308,7 +305,7 @@ async def test_myrolename_no_assignment(cog: CustomRoleColor, bot_mock: MagicMoc
     ctx = _make_ctx(bot_mock, author_id=500)
     config_mock.guild.return_value.assignments = AsyncMock(return_value={})
 
-    await cog.myrolename.callback(cog, ctx, new_name="Cool Name")
+    await cog.myrolename.callback(cog, ctx, new_name="Cool Name")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("You don't have a role assigned for name management.")
 
 
@@ -321,7 +318,7 @@ async def test_myrolename_empty_name(cog: CustomRoleColor, bot_mock: MagicMock, 
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myrolename.callback(cog, ctx, new_name="")
+    await cog.myrolename.callback(cog, ctx, new_name="")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("Role name must be between 1 and 100 characters.")
 
 
@@ -334,7 +331,7 @@ async def test_myrolename_too_long(cog: CustomRoleColor, bot_mock: MagicMock, co
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myrolename.callback(cog, ctx, new_name="x" * 101)
+    await cog.myrolename.callback(cog, ctx, new_name="x" * 101)  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("Role name must be between 1 and 100 characters.")
 
 
@@ -347,7 +344,7 @@ async def test_myrolename_success(cog: CustomRoleColor, bot_mock: MagicMock, con
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myrolename.callback(cog, ctx, new_name="Awesome Role")
+    await cog.myrolename.callback(cog, ctx, new_name="Awesome Role")  # pyright: ignore[reportArgumentType]
 
     role.edit.assert_called_once()
     ctx.send.assert_called_once()
@@ -364,7 +361,7 @@ async def test_myroleicon_no_assignment(cog: CustomRoleColor, bot_mock: MagicMoc
     ctx = _make_ctx(bot_mock, author_id=500)
     config_mock.guild.return_value.assignments = AsyncMock(return_value={})
 
-    await cog.myroleicon.callback(cog, ctx, emoji="🎉")
+    await cog.myroleicon.callback(cog, ctx, emoji="🎉")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("You don't have a role assigned for icon management.")
 
 
@@ -379,7 +376,7 @@ async def test_myroleicon_no_role_icons_feature(
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myroleicon.callback(cog, ctx, emoji="🎉")
+    await cog.myroleicon.callback(cog, ctx, emoji="🎉")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("This server does not have the ROLE_ICONS feature (requires Level 2 boost).")
 
 
@@ -394,7 +391,7 @@ async def test_myroleicon_custom_emoji_rejected(
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myroleicon.callback(cog, ctx, emoji="<:customemoji:123456>")
+    await cog.myroleicon.callback(cog, ctx, emoji="<:customemoji:123456>")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("Only unicode emoji are supported as role icons, not custom Discord emoji.")
 
 
@@ -409,7 +406,7 @@ async def test_myroleicon_no_emoji_no_attachment(
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myroleicon.callback(cog, ctx, emoji=None)
+    await cog.myroleicon.callback(cog, ctx, emoji=None)  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("Please attach a PNG or JPEG image, or provide a unicode emoji as an argument.")
 
 
@@ -427,7 +424,7 @@ async def test_myroleicon_attachment_wrong_type(
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myroleicon.callback(cog, ctx, emoji=None)
+    await cog.myroleicon.callback(cog, ctx, emoji=None)  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("The icon must be a PNG or JPEG image.")
 
 
@@ -445,7 +442,7 @@ async def test_myroleicon_attachment_too_large(
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myroleicon.callback(cog, ctx, emoji=None)
+    await cog.myroleicon.callback(cog, ctx, emoji=None)  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("The image must be under 256 KB.")
 
 
@@ -460,7 +457,7 @@ async def test_myroleicon_unicode_emoji_success(
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myroleicon.callback(cog, ctx, emoji="🎉")
+    await cog.myroleicon.callback(cog, ctx, emoji="🎉")  # pyright: ignore[reportArgumentType]
 
     role.edit.assert_called_once()
     ctx.send.assert_called_once()
@@ -477,7 +474,7 @@ async def test_mentionable_no_assignment(cog: CustomRoleColor, bot_mock: MagicMo
     ctx = _make_ctx(bot_mock, author_id=500)
     config_mock.guild.return_value.assignments = AsyncMock(return_value={})
 
-    await cog.myrolementionable.callback(cog, ctx, "on")
+    await cog.myrolementionable.callback(cog, ctx, "on")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("You don't have a role assigned for mention management.")
 
 
@@ -490,7 +487,7 @@ async def test_mentionable_invalid_state(cog: CustomRoleColor, bot_mock: MagicMo
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myrolementionable.callback(cog, ctx, "maybe")
+    await cog.myrolementionable.callback(cog, ctx, "maybe")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("Please specify `on` or `off`.")
 
 
@@ -520,7 +517,7 @@ async def test_mentionable_valid_states(
     ctx.guild.me.top_role.position = 100
     ctx.guild.get_role = MagicMock(return_value=role)
 
-    await cog.myrolementionable.callback(cog, ctx, state)
+    await cog.myrolementionable.callback(cog, ctx, state)  # pyright: ignore[reportArgumentType]
 
     role.edit.assert_called_once()
     call_kwargs = role.edit.call_args[1]
@@ -535,14 +532,14 @@ async def test_mentionable_valid_states(
 @pytest.mark.asyncio
 async def test_colorpreview_invalid_hex(cog: CustomRoleColor, bot_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock)
-    await cog.colorpreview.callback(cog, ctx, "zzzzzz")
+    await cog.colorpreview.callback(cog, ctx, "zzzzzz")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("Invalid hex color.")
 
 
 @pytest.mark.asyncio
 async def test_colorpreview_short_hex(cog: CustomRoleColor, bot_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock)
-    await cog.colorpreview.callback(cog, ctx, "#fff")
+    await cog.colorpreview.callback(cog, ctx, "#fff")  # pyright: ignore[reportArgumentType]
     ctx.send.assert_called_once_with("Please provide a valid hex color (e.g., #ff0000).")
 
 
@@ -555,7 +552,7 @@ async def test_colorpreview_success(cog: CustomRoleColor, bot_mock: MagicMock) -
 
     bot_mock.loop.run_in_executor = AsyncMock(side_effect=run_executor)
 
-    await cog.colorpreview.callback(cog, ctx, "#ff0000")
+    await cog.colorpreview.callback(cog, ctx, "#ff0000")  # pyright: ignore[reportArgumentType]
 
     ctx.send.assert_called_once()
     _, kwargs = ctx.send.call_args
@@ -577,7 +574,7 @@ async def test_colorpalette_success(cog: CustomRoleColor, bot_mock: MagicMock) -
 
     bot_mock.loop.run_in_executor = AsyncMock(side_effect=run_executor)
 
-    await cog.colorpalette.callback(cog, ctx)
+    await cog.colorpalette.callback(cog, ctx)  # pyright: ignore[reportArgumentType]
 
     ctx.send.assert_called_once()
     _, kwargs = ctx.send.call_args

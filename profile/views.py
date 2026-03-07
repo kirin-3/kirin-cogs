@@ -109,11 +109,11 @@ class PictureUploadModal(Modal):
         # Fallback check interaction data directly
         if (
             not attachments
-            and hasattr(interaction, "data")
+            and interaction.data is not None
             and "resolved" in interaction.data
-            and "attachments" in interaction.data["resolved"]
+            and "attachments" in interaction.data["resolved"]  # pyright: ignore[reportOptionalSubscript]
         ):
-            raw_attachments = interaction.data["resolved"]["attachments"]
+            raw_attachments = interaction.data["resolved"]["attachments"]  # pyright: ignore[reportOptionalSubscript]
             if raw_attachments:
                 for attachment_data in raw_attachments.values():
                     attachments.append(
@@ -200,7 +200,8 @@ class ProfileBuilderView(View):
 
             self._setup_buttons()
             try:
-                await interaction.message.edit(view=self)
+                if interaction.message is not None:
+                    await interaction.message.edit(view=self)
             except discord.NotFound:
                 # Original message was deleted (likely dismissed by user)
                 # If we have a fresh interaction from the modal, send a new message
