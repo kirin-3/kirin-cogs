@@ -252,6 +252,8 @@ class CustomEmoji(commands.Cog):
         else:
             user = ctx.author
 
+        assert user is not None
+
         ownership = await self.config.guild(ctx.guild).emoji_ownership()
 
         # Filter emojis for this user

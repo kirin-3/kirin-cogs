@@ -41,6 +41,8 @@ pythonVersion = "3.11"
 typeCheckingMode = "standard"
 useLibraryCodeForTypes = true
 baselineFile = ".basedpyright/baseline.json"
+venvPath = "."
+venv = "redenv"
 
 # Redbot is not fully typed, and its dependencies can cause missing import errors.
 # Only report missing imports if they are truly missing from the environment.

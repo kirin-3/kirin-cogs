@@ -96,7 +96,7 @@ class CustomRoleColor(commands.Cog):
         default_guild = {"assignments": {}}
         self.config.register_guild(**default_guild)
 
-    @commands.command()
+    @commands.command()  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
     @checks.admin_or_permissions(manage_roles=True)
     async def assignrole(self, ctx, member: discord.Member, role: discord.Role):
@@ -108,13 +108,13 @@ class CustomRoleColor(commands.Cog):
             await ctx.send("I can't manage that role (it's higher than my top role).")
             return
 
-        await self.config.guild(ctx.guild).assignments.set_raw(str(member.id), value=role.id)
+        await self.config.guild(ctx.guild).assignments.set_raw(str(member.id), value=role.id)  # type: ignore[reportAttributeAccessIssue]
         await ctx.send(f"{member.mention} can now manage the color, name, and icon of {role.mention}.")
 
     @commands.command()
     @commands.guild_only()
     @commands.cooldown(1, 10, commands.BucketType.user)
-    async def myrolecolor(self, ctx, color: str, secondary_color: str = None):
+    async def myrolecolor(self, ctx, color: str, secondary_color: str | None = None):
         """
         Change the color of your assigned role.
 
@@ -234,7 +234,7 @@ class CustomRoleColor(commands.Cog):
     @commands.command()
     @commands.guild_only()
     @commands.cooldown(1, 10, commands.BucketType.user)
-    async def myroleicon(self, ctx, emoji: str = None):
+    async def myroleicon(self, ctx, emoji: str | None = None):
         """
         Change the icon of your assigned role.
         Usage:
