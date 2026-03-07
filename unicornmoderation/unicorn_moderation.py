@@ -1,5 +1,6 @@
 import functools
 import logging
+from typing import Literal
 
 import discord
 from redbot.core import Config, commands
@@ -21,12 +22,17 @@ class UnicornModeration(commands.Cog):
     __author__ = "Vertyco"
     __version__ = "0.0.1"
 
-    def format_help_for_context(self, ctx):
+    def format_help_for_context(self, ctx: commands.Context) -> str:
         helpcmd = super().format_help_for_context(ctx)
         info = f"{helpcmd}\nCog Version: {self.__version__}\nAuthor: {self.__author__}\n"
         return info
 
-    async def red_delete_data_for_user(self, *, requester, user_id: int):
+    async def red_delete_data_for_user(  # type: ignore[override]
+        self,
+        *,
+        requester: Literal["discord_deleted_user", "owner", "user", "user_strict"],
+        user_id: int,
+    ) -> None:
         """No data to delete"""
         return
 
@@ -36,10 +42,10 @@ class UnicornModeration(commands.Cog):
         default_member = {"warnings": []}
         self.config.register_member(**default_member)
 
-    async def _log_action(self, action: str, member: discord.Member, reason: str):
+    async def _log_action(self, action: str, member: discord.Member, reason: str) -> None:
         """Generate and send the citation image to the log channel."""
         log_channel = self.bot.get_channel(694857480307474432)
-        if not log_channel:
+        if not log_channel or not isinstance(log_channel, discord.abc.Messageable):
             return
 
         task = functools.partial(generate_citation, action, member.display_name, reason)
@@ -47,60 +53,66 @@ class UnicornModeration(commands.Cog):
         file = discord.File(image_buffer, filename="citation.png")
         await log_channel.send(file=file)
 
-    @commands.command()
+    @commands.command()  # type: ignore[arg-type]
     @commands.guild_only()
     @commands.has_permissions(ban_members=True)
-    async def ban(self, ctx: commands.Context, member: discord.Member, *, reason: str = None):
+    async def ban(self, ctx: commands.Context, member: discord.Member, *, reason: str | None = None) -> None:
         """Ban a member and delete their messages from the last hour."""
+        assert ctx.guild is not None
         if reason is None:
             reason = f"Banned by {ctx.author.name}"
         await member.ban(delete_message_seconds=3600, reason=reason)
         await self._log_action("Ban", member, reason)
         await ctx.send(f"Banned {member.mention} for: {reason}")
 
-    @commands.command()
+    @commands.command()  # type: ignore[arg-type]
     @commands.guild_only()
     @commands.has_permissions(kick_members=True)
-    async def kick(self, ctx: commands.Context, member: discord.Member, *, reason: str = None):
+    async def kick(self, ctx: commands.Context, member: discord.Member, *, reason: str | None = None) -> None:
         """Kick a member from the server."""
+        assert ctx.guild is not None
         if reason is None:
             reason = f"Kicked by {ctx.author.name}"
         await member.kick(reason=reason)
         await self._log_action("Kick", member, reason)
         await ctx.send(f"Kicked {member.mention} for: {reason}")
 
-    @commands.command()
+    @commands.command()  # type: ignore[arg-type]
     @commands.guild_only()
     @commands.has_permissions(manage_roles=True)
-    async def mute(self, ctx: commands.Context, member: discord.Member, *, reason: str = None):
+    async def mute(self, ctx: commands.Context, member: discord.Member, *, reason: str | None = None) -> None:
         """Mute a member."""
+        assert ctx.guild is not None
         muted_role = ctx.guild.get_role(686252873583165520)
         if not muted_role:
-            return await ctx.send("The muted role could not be found.")
+            await ctx.send("The muted role could not be found.")
+            return
         if reason is None:
             reason = f"Muted by {ctx.author.name}"
         await member.add_roles(muted_role, reason=reason)
         await self._log_action("Mute", member, reason)
         await ctx.send(f"Muted {member.mention} for: {reason}")
 
-    @commands.command()
+    @commands.command()  # type: ignore[arg-type]
     @commands.guild_only()
     @commands.has_permissions(manage_roles=True)
-    async def unmute(self, ctx: commands.Context, member: discord.Member, *, reason: str = None):
+    async def unmute(self, ctx: commands.Context, member: discord.Member, *, reason: str | None = None) -> None:
         """Unmute a member."""
+        assert ctx.guild is not None
         muted_role = ctx.guild.get_role(686252873583165520)
         if not muted_role:
-            return await ctx.send("The muted role could not be found.")
+            await ctx.send("The muted role could not be found.")
+            return
         if reason is None:
             reason = f"Unmuted by {ctx.author.name}"
         await member.remove_roles(muted_role, reason=reason)
         await self._log_action("Unmute", member, reason)
         await ctx.send(f"Unmuted {member.mention}")
 
-    @commands.command()
+    @commands.command()  # type: ignore[arg-type]
     @commands.guild_only()
     @commands.has_permissions(kick_members=True)
-    async def warn(self, ctx: commands.Context, member: discord.Member, *, reason: str):
+    async def warn(self, ctx: commands.Context, member: discord.Member, *, reason: str) -> None:
         """Warn a user."""
         warning = {"moderator": ctx.author.id, "reason": reason, "timestamp": ctx.message.created_at.isoformat()}
         async with self.config.member(member).warnings() as warnings:
@@ -108,14 +120,16 @@ class UnicornModeration(commands.Cog):
         await self._log_action("Warning", member, reason)
         await ctx.send(f"Warned {member.mention} for: {reason}")
 
-    @commands.command()
+    @commands.command()  # type: ignore[arg-type]
     @commands.guild_only()
     @commands.has_permissions(kick_members=True)
-    async def warnings(self, ctx: commands.Context, member: discord.Member):
+    async def warnings(self, ctx: commands.Context, member: discord.Member) -> None:
         """Check a user's warnings."""
+        assert ctx.guild is not None
         warnings = await self.config.member(member).warnings()
         if not warnings:
-            return await ctx.send(f"{member.mention} has no warnings.")
+            await ctx.send(f"{member.mention} has no warnings.")
+            return
 
         embed = discord.Embed(title=f"Warnings for {member.display_name}", color=await ctx.embed_color())
         for i, warning in enumerate(warnings, 1):

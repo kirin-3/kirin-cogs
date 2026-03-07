@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -82,7 +83,7 @@ def config_mock() -> MagicMock:
 
 
 @pytest_asyncio.fixture
-async def cog(bot_mock: MagicMock, config_mock: MagicMock) -> CustomCommand:
+async def cog(bot_mock: MagicMock, config_mock: MagicMock) -> Any:
     with patch("customcommand.customcommand.Config.get_conf", return_value=config_mock):
         c = CustomCommand(bot_mock)
     c.config = config_mock
@@ -97,7 +98,7 @@ def _make_ctx(
     author_roles: list | None = None,
     has_ban_members: bool = False,
     attachments: list | None = None,
-) -> MagicMock:
+) -> Any:
     """Build a minimal Context mock."""
     guild = MagicMock(spec=discord.Guild)
     guild.id = guild_id
@@ -149,18 +150,18 @@ async def test_cog_load_populates_cache(config_mock: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-async def test_cog_unload_clears_state(cog: CustomCommand) -> None:
+async def test_cog_unload_clears_state(cog: Any) -> None:
     cog.command_cache[1] = {"hi": "there"}
     cog.trigger_cooldowns[(1, "hi")] = MagicMock()
 
-    cog.cog_unload()
+    await cog.cog_unload()
 
     assert cog.command_cache == {}
     assert cog.trigger_cooldowns == {}
 
 
 @pytest.mark.asyncio
-async def test_on_guild_remove_clears_guild_cache(cog: CustomCommand) -> None:
+async def test_on_guild_remove_clears_guild_cache(cog: Any) -> None:
     guild = MagicMock(spec=discord.Guild)
     guild.id = 99
 
@@ -182,7 +183,7 @@ async def test_on_guild_remove_clears_guild_cache(cog: CustomCommand) -> None:
 
 
 @pytest.mark.asyncio
-async def test_limit_rejects_zero(cog: CustomCommand, bot_mock: MagicMock) -> None:
+async def test_limit_rejects_zero(cog: Any, bot_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock)
     member = MagicMock(spec=discord.Member)
     member.display_name = "target"
@@ -193,7 +194,7 @@ async def test_limit_rejects_zero(cog: CustomCommand, bot_mock: MagicMock) -> No
 
 
 @pytest.mark.asyncio
-async def test_limit_sets_value(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_limit_sets_value(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock)
     member = MagicMock(spec=discord.Member)
     member.id = 42
@@ -214,7 +215,7 @@ async def test_limit_sets_value(cog: CustomCommand, bot_mock: MagicMock, config_
 
 
 @pytest.mark.asyncio
-async def test_list_no_commands(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_list_no_commands(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock)
     guild_group = config_mock.guild.return_value
     guild_group.command_owners = AsyncMock(return_value={})
@@ -225,7 +226,7 @@ async def test_list_no_commands(cog: CustomCommand, bot_mock: MagicMock, config_
 
 
 @pytest.mark.asyncio
-async def test_list_non_mod_no_commands(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_list_non_mod_no_commands(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=200, has_ban_members=False)
     guild_group = config_mock.guild.return_value
     guild_group.command_owners = AsyncMock(return_value={"999": ["other"]})
@@ -237,7 +238,7 @@ async def test_list_non_mod_no_commands(cog: CustomCommand, bot_mock: MagicMock,
 
 
 @pytest.mark.asyncio
-async def test_list_mod_sees_all(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_list_mod_sees_all(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=1, has_ban_members=True)
     member = MagicMock(spec=discord.Member)
     member.configure_mock(**{"__str__.return_value": "SomeUser"})
@@ -254,7 +255,7 @@ async def test_list_mod_sees_all(cog: CustomCommand, bot_mock: MagicMock, config
 
 
 @pytest.mark.asyncio
-async def test_list_non_mod_sees_own_commands(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_list_non_mod_sees_own_commands(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500, has_ban_members=False)
     member = MagicMock(spec=discord.Member)
     member.configure_mock(**{"__str__.return_value": "Me"})
@@ -276,14 +277,14 @@ async def test_list_non_mod_sees_own_commands(cog: CustomCommand, bot_mock: Magi
 
 
 @pytest.mark.asyncio
-async def test_create_requires_role(cog: CustomCommand, bot_mock: MagicMock) -> None:
+async def test_create_requires_role(cog: Any, bot_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock)  # no roles
     await cog.customcommand_create.callback(cog, ctx, "hello", "world")
     ctx.send.assert_called_once_with("You don't have the required role to create a custom command.")
 
 
 @pytest.mark.asyncio
-async def test_create_requires_response(cog: CustomCommand, bot_mock: MagicMock) -> None:
+async def test_create_requires_response(cog: Any, bot_mock: MagicMock) -> None:
     role = MagicMock(spec=discord.Role)
     role.id = cog.role_id
     ctx = _make_ctx(bot_mock, author_roles=[role])
@@ -293,7 +294,7 @@ async def test_create_requires_response(cog: CustomCommand, bot_mock: MagicMock)
 
 
 @pytest.mark.asyncio
-async def test_create_rejects_bot_prefix_response(cog: CustomCommand, bot_mock: MagicMock) -> None:
+async def test_create_rejects_bot_prefix_response(cog: Any, bot_mock: MagicMock) -> None:
     role = MagicMock(spec=discord.Role)
     role.id = cog.role_id
     ctx = _make_ctx(bot_mock, author_roles=[role])
@@ -303,9 +304,7 @@ async def test_create_rejects_bot_prefix_response(cog: CustomCommand, bot_mock: 
 
 
 @pytest.mark.asyncio
-async def test_create_rejects_non_alphanumeric_trigger(
-    cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock
-) -> None:
+async def test_create_rejects_non_alphanumeric_trigger(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     role = MagicMock(spec=discord.Role)
     role.id = cog.role_id
     ctx = _make_ctx(bot_mock, author_roles=[role])
@@ -319,9 +318,7 @@ async def test_create_rejects_non_alphanumeric_trigger(
 
 
 @pytest.mark.asyncio
-async def test_create_rejects_existing_bot_command(
-    cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock
-) -> None:
+async def test_create_rejects_existing_bot_command(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     role = MagicMock(spec=discord.Role)
     role.id = cog.role_id
     ctx = _make_ctx(bot_mock, author_roles=[role])
@@ -336,9 +333,7 @@ async def test_create_rejects_existing_bot_command(
 
 
 @pytest.mark.asyncio
-async def test_create_rejects_existing_custom_command(
-    cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock
-) -> None:
+async def test_create_rejects_existing_custom_command(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     role = MagicMock(spec=discord.Role)
     role.id = cog.role_id
     ctx = _make_ctx(bot_mock, author_roles=[role])
@@ -353,7 +348,7 @@ async def test_create_rejects_existing_custom_command(
 
 
 @pytest.mark.asyncio
-async def test_create_enforces_user_limit(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_create_enforces_user_limit(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     role = MagicMock(spec=discord.Role)
     role.id = cog.role_id
     ctx = _make_ctx(bot_mock, author_id=500, author_roles=[role])
@@ -369,7 +364,7 @@ async def test_create_enforces_user_limit(cog: CustomCommand, bot_mock: MagicMoc
 
 
 @pytest.mark.asyncio
-async def test_create_success(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_create_success(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     role = MagicMock(spec=discord.Role)
     role.id = cog.role_id
     ctx = _make_ctx(bot_mock, author_id=500, author_roles=[role], guild_id=1)
@@ -392,7 +387,7 @@ async def test_create_success(cog: CustomCommand, bot_mock: MagicMock, config_mo
 
 
 @pytest.mark.asyncio
-async def test_create_with_attachment(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_create_with_attachment(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     role = MagicMock(spec=discord.Role)
     role.id = cog.role_id
 
@@ -423,7 +418,7 @@ async def test_create_with_attachment(cog: CustomCommand, bot_mock: MagicMock, c
 
 
 @pytest.mark.asyncio
-async def test_delete_no_commands_for_user(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_delete_no_commands_for_user(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500, has_ban_members=False)
     guild_group = config_mock.guild.return_value
     guild_group.command_owners = AsyncMock(return_value={})
@@ -433,7 +428,7 @@ async def test_delete_no_commands_for_user(cog: CustomCommand, bot_mock: MagicMo
 
 
 @pytest.mark.asyncio
-async def test_delete_trigger_not_owned(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_delete_trigger_not_owned(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500, has_ban_members=False)
     guild_group = config_mock.guild.return_value
     guild_group.command_owners = AsyncMock(return_value={"500": ["othercmd"]})
@@ -443,9 +438,7 @@ async def test_delete_trigger_not_owned(cog: CustomCommand, bot_mock: MagicMock,
 
 
 @pytest.mark.asyncio
-async def test_delete_multiple_commands_no_trigger(
-    cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock
-) -> None:
+async def test_delete_multiple_commands_no_trigger(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500, has_ban_members=False)
     guild_group = config_mock.guild.return_value
     guild_group.command_owners = AsyncMock(return_value={"500": ["cmd1", "cmd2"]})
@@ -456,7 +449,7 @@ async def test_delete_multiple_commands_no_trigger(
 
 
 @pytest.mark.asyncio
-async def test_delete_user_success(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_delete_user_success(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500, guild_id=1, has_ban_members=False)
     cog.command_cache[1] = {"hello": "world"}
 
@@ -485,7 +478,7 @@ async def test_delete_user_success(cog: CustomCommand, bot_mock: MagicMock, conf
 
 
 @pytest.mark.asyncio
-async def test_delete_mod_not_found(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_delete_mod_not_found(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=1, guild_id=1, has_ban_members=True)
     cog.command_cache[1] = {}
 
@@ -497,7 +490,7 @@ async def test_delete_mod_not_found(cog: CustomCommand, bot_mock: MagicMock, con
 
 
 @pytest.mark.asyncio
-async def test_delete_mod_success(cog: CustomCommand, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_delete_mod_success(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=1, guild_id=1, has_ban_members=True)
     cog.command_cache[1] = {"hello": "world"}
 
@@ -526,7 +519,7 @@ async def test_delete_mod_success(cog: CustomCommand, bot_mock: MagicMock, confi
 
 
 @pytest.mark.asyncio
-async def test_on_message_ignores_bots(cog: CustomCommand) -> None:
+async def test_on_message_ignores_bots(cog: Any) -> None:
     message = MagicMock(spec=discord.Message)
     message.author = MagicMock()
     message.author.bot = True
@@ -538,7 +531,7 @@ async def test_on_message_ignores_bots(cog: CustomCommand) -> None:
 
 
 @pytest.mark.asyncio
-async def test_on_message_ignores_dm(cog: CustomCommand) -> None:
+async def test_on_message_ignores_dm(cog: Any) -> None:
     message = MagicMock(spec=discord.Message)
     message.author.bot = False
     message.guild = None
@@ -549,7 +542,7 @@ async def test_on_message_ignores_dm(cog: CustomCommand) -> None:
 
 
 @pytest.mark.asyncio
-async def test_on_message_unknown_trigger(cog: CustomCommand) -> None:
+async def test_on_message_unknown_trigger(cog: Any) -> None:
     guild = MagicMock(spec=discord.Guild)
     guild.id = 1
     cog.command_cache[1] = {"hello": "world"}
@@ -566,7 +559,7 @@ async def test_on_message_unknown_trigger(cog: CustomCommand) -> None:
 
 
 @pytest.mark.asyncio
-async def test_on_message_sends_response(cog: CustomCommand) -> None:
+async def test_on_message_sends_response(cog: Any) -> None:
     guild = MagicMock(spec=discord.Guild)
     guild.id = 1
     cog.command_cache[1] = {"hello": "world"}
@@ -584,7 +577,7 @@ async def test_on_message_sends_response(cog: CustomCommand) -> None:
 
 
 @pytest.mark.asyncio
-async def test_on_message_respects_cooldown(cog: CustomCommand) -> None:
+async def test_on_message_respects_cooldown(cog: Any) -> None:
     """Second identical trigger within the cooldown window is suppressed."""
     guild = MagicMock(spec=discord.Guild)
     guild.id = 1
@@ -616,7 +609,7 @@ async def test_on_message_respects_cooldown(cog: CustomCommand) -> None:
 
 
 @pytest.mark.asyncio
-async def test_log_action_silent_when_channel_missing(cog: CustomCommand, bot_mock: MagicMock) -> None:
+async def test_log_action_silent_when_channel_missing(cog: Any, bot_mock: MagicMock) -> None:
     bot_mock.get_channel.return_value = None
     ctx = _make_ctx(bot_mock)
 

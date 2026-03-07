@@ -116,9 +116,9 @@ class ImageFilter(commands.Cog):
                 # No need to check other URLs in this message since it's deleted
                 break
 
-    @commands.group()
+    @commands.group()  # type: ignore[arg-type]
     @commands.admin_or_permissions(administrator=True)
-    async def imagefilter(self, ctx):
+    async def imagefilter(self, ctx: commands.Context) -> None:
         """Image filter settings."""
         if ctx.invoked_subcommand is None:
             await ctx.send_help(ctx.command)
@@ -145,7 +145,7 @@ class ImageFilter(commands.Cog):
 
     @imagefilter.command(name="setchannel")
     @commands.admin_or_permissions(administrator=True)
-    async def set_filter_channel(self, ctx, channel: discord.TextChannel = None):
+    async def set_filter_channel(self, ctx, channel: discord.TextChannel | None = None):
         """Set the channel for the Tenor-only filter.
 
         If no channel is specified, the current channel will be used.

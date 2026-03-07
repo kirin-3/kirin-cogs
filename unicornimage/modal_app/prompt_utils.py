@@ -1,6 +1,6 @@
 import logging
 
-import torch
+import torch  # type: ignore[import-untyped]
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -314,6 +314,13 @@ def encode_prompt_chunked(
 
     # REMOVED: Batch size expansion happens in the run method instead
     # No longer repeating embeddings for batch_size here
+
+    assert prompt_embeds is not None, "prompt_embeds should not be None after chunked encoding"
+    assert negative_prompt_embeds is not None, "negative_prompt_embeds should not be None after chunked encoding"
+    assert pooled_prompt_embeds is not None, "pooled_prompt_embeds should not be None after chunked encoding"
+    assert negative_pooled_prompt_embeds is not None, (
+        "negative_pooled_prompt_embeds should not be None after chunked encoding"
+    )
 
     logger.info(f"Completed chunked encoding of prompt with {num_chunks} chunks.")
     logger.debug(f"Final embeds shape: {prompt_embeds.shape}, pooled shape: {pooled_prompt_embeds.shape}")

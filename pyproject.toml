@@ -58,5 +58,5 @@ exclude = [
     "redenv",
     "__pycache__",
     "docs",
-    "bechmark.py"
+    "benchmark.py"
 ]

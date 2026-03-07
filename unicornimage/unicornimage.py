@@ -40,9 +40,9 @@ class UnicornImage(commands.Cog):
         self._session: aiohttp.ClientSession | None = None
         self._init_lock = asyncio.Lock()
 
-    def cog_unload(self):
+    async def cog_unload(self) -> None:
         if self._session:
-            asyncio.create_task(self._session.close())
+            await self._session.close()
 
     def _get_session(self) -> aiohttp.ClientSession:
         # Try to retrieve bot session, fallback to creating one
@@ -76,15 +76,18 @@ class UnicornImage(commands.Cog):
         if await self.bot.is_owner(ctx.author):
             return True
 
+        if not ctx.guild:
+            return False
+
         role_id = await self.config.guild(ctx.guild).premium_role_id()
         if not role_id:
             return False  # No role configured, so no premium access
 
-        if not ctx.guild:
-            return False
-
         role = ctx.guild.get_role(role_id)
         if not role:
+            return False
+
+        if not isinstance(ctx.author, discord.Member):
             return False
 
         return role in ctx.author.roles
@@ -136,13 +139,14 @@ class UnicornImage(commands.Cog):
 
         return lora_configs, None
 
-    def _gen_free_cooldown(ctx: commands.Context):
+    @staticmethod
+    def _gen_free_cooldown(ctx: commands.Context) -> commands.Cooldown | None:  # type: ignore[override]
         if ctx.author.id in ctx.bot.owner_ids:
             return None
         return commands.Cooldown(1, 3600)
 
     @commands.hybrid_command(name="genfree", description="Generate image using HordeAI (Free)")
-    @commands.dynamic_cooldown(_gen_free_cooldown, commands.BucketType.user)
+    @commands.dynamic_cooldown(_gen_free_cooldown, commands.BucketType.user)  # type: ignore[arg-type]
     @app_commands.describe(
         prompt="Image description",
         style="Optional style (LoRA)",
@@ -213,13 +217,14 @@ class UnicornImage(commands.Cog):
         except Exception as e:
             await ctx.send(f"An error occurred: {e!s}")
 
-    def _gen_premium_cooldown(ctx: commands.Context):
+    @staticmethod
+    def _gen_premium_cooldown(ctx: commands.Context) -> commands.Cooldown | None:  # type: ignore[override]
         if ctx.author.id in ctx.bot.owner_ids:
             return None
         return commands.Cooldown(1, 21600)
 
     @commands.hybrid_command(name="gen", description="[PREMIUM] Generate image using Modal")
-    @commands.dynamic_cooldown(_gen_premium_cooldown, commands.BucketType.user)
+    @commands.dynamic_cooldown(_gen_premium_cooldown, commands.BucketType.user)  # type: ignore[arg-type]
     @app_commands.describe(
         prompt="Image description",
         model="Base model to use",
@@ -257,7 +262,7 @@ class UnicornImage(commands.Cog):
         raw_styles = [s for s in [style, style2, style3, style4, style5] if s]
         await self._run_modal_gen(ctx, prompt, model, raw_styles, negative_prompt, batch_size)
 
-    @commands.hybrid_command(name="gentest", description="[OWNER] Test generation with seed")
+    @commands.hybrid_command(name="gentest", description="[OWNER] Test generation with seed")  # type: ignore[arg-type]
     @commands.is_owner()
     @app_commands.describe(
         prompt="Image description",
@@ -284,7 +289,7 @@ class UnicornImage(commands.Cog):
         style4: str | None = None,
         style5: str | None = None,
         negative_prompt: str | None = None,
-    ):
+    ) -> None:
         """
         Owner test generation using Modal with seed support.
         """
@@ -381,7 +386,7 @@ class UnicornImage(commands.Cog):
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
         choices = []
-        is_free_command = interaction.command.name == "genfree"
+        is_free_command = interaction.command is not None and interaction.command.name == "genfree"
 
         for key, data in LORAS.items():
             # Hide hidden loras from genfree command
@@ -411,10 +416,10 @@ class UnicornImage(commands.Cog):
 
     # --- Config Commands ---
 
-    @commands.group(name="unicornimage")
+    @commands.group(name="unicornimage")  # type: ignore[arg-type]
     @commands.guild_only()
     @commands.admin_or_permissions(administrator=True)
-    async def unicorn_config(self, ctx):
+    async def unicorn_config(self, ctx: commands.Context) -> None:
         """Configure UnicornImage settings."""
         pass
 

@@ -289,6 +289,10 @@ def encode_prompt_chunked(
         negative_prompt_embeds = final_negative_prompt_embeds
 
         # --- MODIFIED: Use averaged pooled embeddings ---
+        assert first_chunk_pooled_prompt_embeds is not None, "pooled_prompt_embeds should not be None after chunking"
+        assert first_chunk_negative_pooled_prompt_embeds is not None, (
+            "negative_pooled_prompt_embeds should not be None after chunking"
+        )
         pooled_prompt_embeds = first_chunk_pooled_prompt_embeds / num_chunks
         negative_pooled_prompt_embeds = first_chunk_negative_pooled_prompt_embeds / num_chunks
 
@@ -329,6 +333,13 @@ def encode_prompt_chunked(
     # REMOVED: Batch size expansion happens in the run method instead
     # No longer repeating embeddings for batch_size here
 
+    assert prompt_embeds is not None, "prompt_embeds should not be None after chunked encoding"
+    assert negative_prompt_embeds is not None, "negative_prompt_embeds should not be None after chunked encoding"
+    assert pooled_prompt_embeds is not None, "pooled_prompt_embeds should not be None after chunked encoding"
+    assert negative_pooled_prompt_embeds is not None, (
+        "negative_pooled_prompt_embeds should not be None after chunked encoding"
+    )
+
     logging.getLogger("text2image").info(f"Completed chunked encoding of prompt with {num_chunks} chunks.")
     logging.getLogger("text2image").debug(
         f"Final embeds shape: {prompt_embeds.shape}, pooled shape: {pooled_prompt_embeds.shape}"
@@ -347,7 +358,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger("text2image")
 
 if TYPE_CHECKING:
-    import torch
+    import torch  # type: ignore[import-untyped]
 
 MINUTES = 60
 
@@ -390,15 +401,15 @@ image = (
 civitai_secret = modal.Secret.from_name("civitai-token")
 
 with image.imports():
-    import diffusers
-    import torch
-    from diffusers import AutoencoderKL
-    from diffusers.schedulers import (
+    import diffusers  # type: ignore[import-untyped]
+    import torch  # type: ignore[import-untyped]
+    from diffusers import AutoencoderKL  # type: ignore[import-untyped]
+    from diffusers.schedulers import (  # type: ignore[import-untyped]
         DPMSolverMultistepScheduler,
         EulerAncestralDiscreteScheduler,
     )
-    from huggingface_hub import hf_hub_download
-    from transformers import CLIPTextConfig
+    from huggingface_hub import hf_hub_download  # type: ignore[import-untyped]
+    from transformers import CLIPTextConfig  # type: ignore[import-untyped]
 
     def get_gpu_memory_info():
         if torch.cuda.is_available():
@@ -926,6 +937,9 @@ class Inference:
                 batch_size=1,
                 max_length=MAX_TOKEN_LENGTH,
             )
+
+            assert pooled_prompt_embeds is not None, "pooled_prompt_embeds should not be None"
+            assert negative_pooled_prompt_embeds is not None, "negative_pooled_prompt_embeds should not be None"
 
             if batch_size > 1:
                 prompt_embeds = prompt_embeds.repeat(batch_size, 1, 1)

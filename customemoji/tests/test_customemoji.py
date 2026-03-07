@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -69,7 +70,7 @@ def config_mock() -> MagicMock:
 
 
 @pytest_asyncio.fixture
-async def cog(bot_mock: MagicMock, config_mock: MagicMock) -> CustomEmoji:
+async def cog(bot_mock: MagicMock, config_mock: MagicMock) -> Any:
     with patch("customemoji.customemoji.Config.get_conf", return_value=config_mock):
         c = CustomEmoji(bot_mock)
     c.config = config_mock
@@ -85,7 +86,7 @@ def _make_ctx(
     is_mod: bool = False,
     manage_emojis: bool = False,
     attachments: list | None = None,
-) -> MagicMock:
+) -> Any:
     guild = MagicMock(spec=discord.Guild)
     guild.id = guild_id
     guild.features = []
@@ -116,7 +117,7 @@ def _make_ctx(
 
 
 @pytest.mark.asyncio
-async def test_get_user_limit_default(cog: CustomEmoji, config_mock: MagicMock) -> None:
+async def test_get_user_limit_default(cog: Any, config_mock: MagicMock) -> None:
     guild = MagicMock(spec=discord.Guild)
     config_mock.guild.return_value.user_limits = AsyncMock(return_value={})
 
@@ -125,7 +126,7 @@ async def test_get_user_limit_default(cog: CustomEmoji, config_mock: MagicMock) 
 
 
 @pytest.mark.asyncio
-async def test_get_user_limit_custom(cog: CustomEmoji, config_mock: MagicMock) -> None:
+async def test_get_user_limit_custom(cog: Any, config_mock: MagicMock) -> None:
     guild = MagicMock(spec=discord.Guild)
     config_mock.guild.return_value.user_limits = AsyncMock(return_value={"42": 5})
 
@@ -134,7 +135,7 @@ async def test_get_user_limit_custom(cog: CustomEmoji, config_mock: MagicMock) -
 
 
 @pytest.mark.asyncio
-async def test_get_user_emoji_count(cog: CustomEmoji, config_mock: MagicMock) -> None:
+async def test_get_user_emoji_count(cog: Any, config_mock: MagicMock) -> None:
     guild = MagicMock(spec=discord.Guild)
     config_mock.guild.return_value.emoji_ownership = AsyncMock(return_value={"1001": 42, "1002": 99, "1003": 42})
 
@@ -143,7 +144,7 @@ async def test_get_user_emoji_count(cog: CustomEmoji, config_mock: MagicMock) ->
 
 
 @pytest.mark.asyncio
-async def test_download_image_too_large(cog: CustomEmoji, bot_mock: MagicMock) -> None:
+async def test_download_image_too_large(cog: Any, bot_mock: MagicMock) -> None:
     response_mock = MagicMock()
     response_mock.status = 200
     response_mock.read = AsyncMock(return_value=b"x" * (257 * 1024))
@@ -156,7 +157,7 @@ async def test_download_image_too_large(cog: CustomEmoji, bot_mock: MagicMock) -
 
 
 @pytest.mark.asyncio
-async def test_download_image_non_200(cog: CustomEmoji, bot_mock: MagicMock) -> None:
+async def test_download_image_non_200(cog: Any, bot_mock: MagicMock) -> None:
     response_mock = MagicMock()
     response_mock.status = 404
     response_mock.__aenter__ = AsyncMock(return_value=response_mock)
@@ -173,7 +174,7 @@ async def test_download_image_non_200(cog: CustomEmoji, bot_mock: MagicMock) -> 
 
 
 @pytest.mark.asyncio
-async def test_setrole_with_role(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_setrole_with_role(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock)
     role = MagicMock(spec=discord.Role)
     role.id = 999
@@ -189,7 +190,7 @@ async def test_setrole_with_role(cog: CustomEmoji, bot_mock: MagicMock, config_m
 
 
 @pytest.mark.asyncio
-async def test_setrole_clear(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_setrole_clear(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock)
     guild_group = config_mock.guild.return_value
     guild_group.required_role_id.set = AsyncMock()
@@ -207,7 +208,7 @@ async def test_setrole_clear(cog: CustomEmoji, bot_mock: MagicMock, config_mock:
 
 
 @pytest.mark.asyncio
-async def test_limit_negative(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_limit_negative(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock)
     member = MagicMock(spec=discord.Member)
     member.id = 42
@@ -218,7 +219,7 @@ async def test_limit_negative(cog: CustomEmoji, bot_mock: MagicMock, config_mock
 
 
 @pytest.mark.asyncio
-async def test_limit_zero_allowed(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_limit_zero_allowed(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock)
     member = MagicMock(spec=discord.Member)
     member.id = 42
@@ -239,7 +240,7 @@ async def test_limit_zero_allowed(cog: CustomEmoji, bot_mock: MagicMock, config_
 
 
 @pytest.mark.asyncio
-async def test_resetlimit_has_custom(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_resetlimit_has_custom(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock)
     member = MagicMock(spec=discord.Member)
     member.id = 42
@@ -256,7 +257,7 @@ async def test_resetlimit_has_custom(cog: CustomEmoji, bot_mock: MagicMock, conf
 
 
 @pytest.mark.asyncio
-async def test_resetlimit_no_custom(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_resetlimit_no_custom(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock)
     member = MagicMock(spec=discord.Member)
     member.id = 42
@@ -276,7 +277,7 @@ async def test_resetlimit_no_custom(cog: CustomEmoji, bot_mock: MagicMock, confi
 
 
 @pytest.mark.asyncio
-async def test_create_requires_role_when_set(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_create_requires_role_when_set(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
 
     required_role = MagicMock(spec=discord.Role)
@@ -291,7 +292,7 @@ async def test_create_requires_role_when_set(cog: CustomEmoji, bot_mock: MagicMo
 
 
 @pytest.mark.asyncio
-async def test_create_role_no_longer_exists(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_create_role_no_longer_exists(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
     ctx.guild.get_role = MagicMock(return_value=None)
 
@@ -304,7 +305,7 @@ async def test_create_role_no_longer_exists(cog: CustomEmoji, bot_mock: MagicMoc
 
 
 @pytest.mark.asyncio
-async def test_create_at_limit(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_create_at_limit(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
 
     guild_group = config_mock.guild.return_value
@@ -317,7 +318,7 @@ async def test_create_at_limit(cog: CustomEmoji, bot_mock: MagicMock, config_moc
 
 
 @pytest.mark.asyncio
-async def test_create_no_source_no_attachment(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_create_no_source_no_attachment(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
 
     guild_group = config_mock.guild.return_value
@@ -330,7 +331,7 @@ async def test_create_no_source_no_attachment(cog: CustomEmoji, bot_mock: MagicM
 
 
 @pytest.mark.asyncio
-async def test_create_invalid_attachment_type(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_create_invalid_attachment_type(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     attachment = MagicMock(spec=discord.Attachment)
     attachment.filename = "file.txt"
     attachment.size = 1024
@@ -347,7 +348,7 @@ async def test_create_invalid_attachment_type(cog: CustomEmoji, bot_mock: MagicM
 
 
 @pytest.mark.asyncio
-async def test_create_attachment_too_large(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_create_attachment_too_large(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     attachment = MagicMock(spec=discord.Attachment)
     attachment.filename = "image.png"
     attachment.size = 300 * 1024
@@ -364,7 +365,7 @@ async def test_create_attachment_too_large(cog: CustomEmoji, bot_mock: MagicMock
 
 
 @pytest.mark.asyncio
-async def test_create_success_with_attachment(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_create_success_with_attachment(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     image_bytes = b"fakepngdata"
     attachment = MagicMock(spec=discord.Attachment)
     attachment.filename = "image.png"
@@ -401,7 +402,7 @@ async def test_create_success_with_attachment(cog: CustomEmoji, bot_mock: MagicM
 
 
 @pytest.mark.asyncio
-async def test_delete_not_owner_not_mod(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_delete_not_owner_not_mod(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
     bot_mock.is_mod = AsyncMock(return_value=False)
 
@@ -417,7 +418,7 @@ async def test_delete_not_owner_not_mod(cog: CustomEmoji, bot_mock: MagicMock, c
 
 
 @pytest.mark.asyncio
-async def test_delete_owner_success(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_delete_owner_success(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
     bot_mock.is_mod = AsyncMock(return_value=False)
 
@@ -440,9 +441,7 @@ async def test_delete_owner_success(cog: CustomEmoji, bot_mock: MagicMock, confi
 
 
 @pytest.mark.asyncio
-async def test_delete_mod_can_delete_others_emoji(
-    cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock
-) -> None:
+async def test_delete_mod_can_delete_others_emoji(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=1, manage_emojis=True)
     bot_mock.is_mod = AsyncMock(return_value=True)
 
@@ -461,7 +460,7 @@ async def test_delete_mod_can_delete_others_emoji(
 
 
 @pytest.mark.asyncio
-async def test_delete_forbidden(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_delete_forbidden(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
     bot_mock.is_mod = AsyncMock(return_value=False)
 
@@ -483,7 +482,7 @@ async def test_delete_forbidden(cog: CustomEmoji, bot_mock: MagicMock, config_mo
 
 
 @pytest.mark.asyncio
-async def test_rename_invalid_name(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_rename_invalid_name(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
 
     emoji = MagicMock(spec=discord.Emoji)
@@ -498,7 +497,7 @@ async def test_rename_invalid_name(cog: CustomEmoji, bot_mock: MagicMock, config
 
 
 @pytest.mark.asyncio
-async def test_rename_not_owner(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_rename_not_owner(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
 
     emoji = MagicMock(spec=discord.Emoji)
@@ -512,7 +511,7 @@ async def test_rename_not_owner(cog: CustomEmoji, bot_mock: MagicMock, config_mo
 
 
 @pytest.mark.asyncio
-async def test_rename_success(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_rename_success(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
 
     emoji = MagicMock(spec=discord.Emoji)
@@ -534,7 +533,7 @@ async def test_rename_success(cog: CustomEmoji, bot_mock: MagicMock, config_mock
 
 
 @pytest.mark.asyncio
-async def test_list_self_no_emojis(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_list_self_no_emojis(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
 
     guild_group = config_mock.guild.return_value
@@ -547,7 +546,7 @@ async def test_list_self_no_emojis(cog: CustomEmoji, bot_mock: MagicMock, config
 
 
 @pytest.mark.asyncio
-async def test_list_other_user_non_mod_rejected(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_list_other_user_non_mod_rejected(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
     bot_mock.is_mod = AsyncMock(return_value=False)
 
@@ -559,7 +558,7 @@ async def test_list_other_user_non_mod_rejected(cog: CustomEmoji, bot_mock: Magi
 
 
 @pytest.mark.asyncio
-async def test_list_mod_can_view_other(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_list_mod_can_view_other(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=1)
     bot_mock.is_mod = AsyncMock(return_value=True)
 
@@ -585,7 +584,7 @@ async def test_list_mod_can_view_other(cog: CustomEmoji, bot_mock: MagicMock, co
 
 
 @pytest.mark.asyncio
-async def test_list_cleans_up_stale_emojis(cog: CustomEmoji, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_list_cleans_up_stale_emojis(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     """Stale emoji IDs (deleted from guild) are cleaned up and user is notified."""
     ctx = _make_ctx(bot_mock, author_id=500)
 
