@@ -293,7 +293,7 @@ class EconomySystem:
         except Exception as e:
             print(f"Error processing interest: {e}")
 
-    async def get_gambling_stats(self, user_id: int = None) -> list[tuple]:
+    async def get_gambling_stats(self, user_id: int | None = None) -> list[tuple]:
         """Get gambling statistics.
 
         Args:

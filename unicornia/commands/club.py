@@ -3,6 +3,7 @@ from discord import ui
 from redbot.core import app_commands, commands
 from redbot.core.utils.views import ConfirmView
 
+from ..mixins import UnicorniaMixinBase
 from ..utils import validate_club_name, validate_text_input, validate_url
 from ..views import ApplicantProcessView
 
@@ -92,7 +93,7 @@ class ClubInfoView(ui.View):
 
         # Double-check permissions in case status changed
         is_owner = interaction.user.id == self.club_data["owner_id"]
-        is_admin = interaction.user.guild_permissions.manage_guild
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.manage_guild
 
         if not (is_owner or is_admin):
             await interaction.response.send_message(
@@ -104,8 +105,8 @@ class ClubInfoView(ui.View):
         await interaction.response.send_modal(modal)
 
 
-class ClubCommands:
-    @commands.hybrid_group(name="club")
+class ClubCommands(UnicorniaMixinBase):
+    @commands.hybrid_group(name="club")  # type: ignore[arg-type]
     @commands.guild_only()
     async def club_group(self, ctx):
         """
@@ -348,7 +349,7 @@ class ClubCommands:
         else:
             await ctx.send(f"❌ {message}")
 
-    @club_group.group(name="invitations", aliases=["invites"], invoke_without_command=True)
+    @club_group.group(name="invitations", aliases=["invites"], invoke_without_command=True)  # type: ignore[arg-type]
     async def club_invitations(self, ctx):
         """
         Manage club invitations.
@@ -374,7 +375,7 @@ class ClubCommands:
         embed.set_footer(text="Use [p]club invitations accept <club_name> to join.")
         await ctx.send(embed=embed)
 
-    @club_invitations.command(name="accept")
+    @club_invitations.command(name="accept")  # type: ignore[attr-defined]
     async def club_invitations_accept(self, ctx, *, club_name: str):
         """
         Accept a club invitation.
@@ -388,7 +389,7 @@ class ClubCommands:
         else:
             await ctx.send(f"❌ {message}")
 
-    @club_invitations.command(name="reject", aliases=["decline"])
+    @club_invitations.command(name="reject", aliases=["decline"])  # type: ignore[attr-defined]
     async def club_invitations_reject(self, ctx, *, club_name: str):
         """
         Reject a club invitation.

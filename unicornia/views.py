@@ -11,7 +11,7 @@ class UnicorniaHelpView(ui.View):
         super().__init__(timeout=180)
         self.ctx = ctx
         self.current_category = "intro"
-        self.message = None
+        self.message: discord.Message | None = None
 
         self.update_components()
 
@@ -24,7 +24,7 @@ class UnicorniaHelpView(ui.View):
     async def on_timeout(self):
         if self.message:
             for child in self.children:
-                child.disabled = True
+                child.disabled = True  # type: ignore[attr-defined]
             try:
                 await self.message.edit(view=self)
             except discord.HTTPException:
@@ -88,7 +88,8 @@ class UnicorniaHelpView(ui.View):
         quit_btn = ui.Button(label="Quit", style=discord.ButtonStyle.danger, emoji="✖️")
 
         async def quit_callback(interaction: discord.Interaction):
-            await interaction.message.delete()
+            if interaction.message:
+                await interaction.message.delete()
             self.stop()
 
         quit_btn.callback = quit_callback
@@ -100,7 +101,7 @@ class RockPaperScissorsView(ui.View):
         super().__init__(timeout=timeout)
         self.user = user
         self.choice = None
-        self.message = None
+        self.message: discord.Message | None = None
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user.id:
@@ -111,7 +112,7 @@ class RockPaperScissorsView(ui.View):
     async def on_timeout(self):
         if self.message:
             for child in self.children:
-                child.disabled = True
+                child.disabled = True  # type: ignore[attr-defined]
             try:
                 await self.message.edit(view=self)
             except discord.HTTPException:
@@ -142,7 +143,7 @@ class CoinFlipView(ui.View):
         super().__init__(timeout=timeout)
         self.user = user
         self.choice = None
-        self.message = None
+        self.message: discord.Message | None = None
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user.id:
@@ -153,7 +154,7 @@ class CoinFlipView(ui.View):
     async def on_timeout(self):
         if self.message:
             for child in self.children:
-                child.disabled = True
+                child.disabled = True  # type: ignore[attr-defined]
             try:
                 await self.message.edit(view=self)
             except discord.HTTPException:
@@ -174,13 +175,13 @@ class CoinFlipView(ui.View):
 
 
 class ApplicantProcessView(ui.View):
-    def __init__(self, ctx, applicants: list[dict], club_system):
+    def __init__(self, ctx, applicants: list, club_system):
         super().__init__(timeout=120)
         self.ctx = ctx
         self.applicants = applicants
         self.club_system = club_system
         self.selected_user_id = None
-        self.message = None
+        self.message: discord.Message | None = None
 
         self.update_components()
 
@@ -193,7 +194,7 @@ class ApplicantProcessView(ui.View):
     async def on_timeout(self):
         if self.message:
             for child in self.children:
-                child.disabled = True
+                child.disabled = True  # type: ignore[attr-defined]
             try:
                 await self.message.edit(view=self)
             except discord.HTTPException:
@@ -228,7 +229,7 @@ class ApplicantProcessView(ui.View):
             # Enable buttons
             for child in self.children:
                 if isinstance(child, ui.Button):
-                    child.disabled = False
+                    child.disabled = False  # type: ignore[attr-defined]
 
             await interaction.response.edit_message(view=self)
 
@@ -295,7 +296,7 @@ class ApplicantProcessView(ui.View):
 
 
 class ShopBrowserView(ui.LayoutView):
-    def __init__(self, ctx, items: list[dict], shop_system):
+    def __init__(self, ctx, items: list, shop_system):
         super().__init__(timeout=120)
         self.ctx = ctx
         self.all_items = items
@@ -309,7 +310,7 @@ class ShopBrowserView(ui.LayoutView):
         self.current_page = 0
         self.items_per_page = 7
 
-        self.message = None
+        self.message: discord.Message | None = None
         self.currency_symbol = "$"  # Default, updated in init()
 
     async def init(self):
@@ -325,7 +326,7 @@ class ShopBrowserView(ui.LayoutView):
     async def on_timeout(self):
         if self.message:
             for child in self.children:
-                child.disabled = True
+                child.disabled = True  # type: ignore[attr-defined]
             try:
                 await self.message.edit(view=self)
             except discord.HTTPException:
@@ -487,9 +488,9 @@ class LeaderboardView(ui.View):
         self,
         ctx,
         entries: list[tuple[int, int]],
-        user_position: int = None,
+        user_position: int | None = None,
         currency_symbol: str = "$",
-        title: str = None,
+        title: str | None = None,
         formatter=None,
     ):
         super().__init__(timeout=60)
@@ -502,7 +503,7 @@ class LeaderboardView(ui.View):
 
         self.current_page = 0
         self.items_per_page = 10
-        self.message = None
+        self.message: discord.Message | None = None
 
         # Init page based on user position if user called it to see themselves?
         # Usually starts at 0. Jump to me handles the rest.
@@ -521,7 +522,7 @@ class LeaderboardView(ui.View):
     async def on_timeout(self):
         if self.message:
             for child in self.children:
-                child.disabled = True
+                child.disabled = True  # type: ignore[attr-defined]
             try:
                 await self.message.edit(view=self)
             except discord.HTTPException:
@@ -624,7 +625,7 @@ class NitroShopView(ui.View):
         super().__init__(timeout=120)
         self.ctx = ctx
         self.nitro_system = nitro_system
-        self.message = None
+        self.message: discord.Message | None = None
         self.update_components_task = None
 
     async def init(self):
@@ -640,7 +641,7 @@ class NitroShopView(ui.View):
     async def on_timeout(self):
         if self.message:
             for child in self.children:
-                child.disabled = True
+                child.disabled = True  # type: ignore[attr-defined]
             try:
                 await self.message.edit(view=self)
             except discord.HTTPException:
@@ -664,7 +665,7 @@ class NitroShopView(ui.View):
             emoji="🚀",
             disabled=(boost_stock <= 0 or user_bal < boost_price),
         )
-        boost_btn.callback = lambda i: self.buy_callback(i, "boost")
+        boost_btn.callback = lambda i: self.buy_callback(i, "boost")  # type: ignore[attr-defined]
         self.add_item(boost_btn)
 
         # Nitro Basic Button
@@ -674,7 +675,7 @@ class NitroShopView(ui.View):
             emoji="⭐",
             disabled=(basic_stock <= 0 or user_bal < basic_price),
         )
-        basic_btn.callback = lambda i: self.buy_callback(i, "basic")
+        basic_btn.callback = lambda i: self.buy_callback(i, "basic")  # type: ignore[attr-defined]
         self.add_item(basic_btn)
 
     async def buy_callback(self, interaction: discord.Interaction, item_type: str):
@@ -703,7 +704,8 @@ class NitroShopView(ui.View):
                 # Update buttons on the main view
                 await self.update_components()
                 try:
-                    await self.message.edit(view=self)
+                    if self.message:
+                        await self.message.edit(view=self)
                 except:
                     pass
 
@@ -782,6 +784,10 @@ class TransactionModal(ui.Modal):
 
             currency_symbol = await self.cog.config.currency_symbol()
 
+            success: bool = False
+            msg: str = ""
+            fail_msg: str = "❌ Unknown error."
+
             if self.transaction_type == "deposit":
                 success = await self.cog.economy_system.deposit_bank(interaction.user.id, amount)
                 msg = f"<a:zz_YesTick:729318762356015124> Deposited {currency_symbol}{amount:,} to your bank account!"
@@ -798,11 +804,11 @@ class TransactionModal(ui.Modal):
                 target_user = None
 
                 # Try by ID
-                if target_str.isdigit():
+                if target_str.isdigit() and interaction.guild:
                     target_user = interaction.guild.get_member(int(target_str))
 
                 # Try by Name if not found
-                if not target_user:
+                if not target_user and interaction.guild:
                     target_user = discord.utils.get(interaction.guild.members, name=target_str)
 
                 if not target_user:
@@ -923,7 +929,7 @@ class MinesView(ui.View):
 
         self.revealed_indices = set()
         self.finished = False
-        self.message = None
+        self.message: discord.Message | None = None
         self.current_multiplier = 1.0
         self.end_time = discord.utils.utcnow().timestamp() + 120
 
@@ -971,7 +977,7 @@ class MinesView(ui.View):
             # But here it's simple bot. Let's mark as finished and disable.
             self.finished = True
             for child in self.children:
-                child.disabled = True
+                child.disabled = True  # type: ignore[attr-defined]
             if self.message:
                 try:
                     await self.message.edit(view=self)
@@ -1026,25 +1032,26 @@ class MinesView(ui.View):
 
         # Update Button Visuals
         for item in self.children:
-            if item.custom_id and item.custom_id.startswith("mine_"):
-                idx = int(item.custom_id.split("_")[1])
+            btn = item  # type: ignore[assignment]
+            if btn.custom_id and btn.custom_id.startswith("mine_"):  # type: ignore[attr-defined]
+                idx = int(btn.custom_id.split("_")[1])  # type: ignore[attr-defined]
                 if idx in self.revealed_indices:
-                    item.style = discord.ButtonStyle.success
-                    item.label = None
-                    item.emoji = "💎"
-                    item.disabled = True
+                    btn.style = discord.ButtonStyle.success  # type: ignore[attr-defined]
+                    btn.label = None  # type: ignore[attr-defined]
+                    btn.emoji = "💎"  # type: ignore[attr-defined]
+                    btn.disabled = True  # type: ignore[attr-defined]
                 else:
-                    item.style = discord.ButtonStyle.secondary
-                    item.label = "\u200b"
-                    item.emoji = None
-                    item.disabled = False
+                    btn.style = discord.ButtonStyle.secondary  # type: ignore[attr-defined]
+                    btn.label = "\u200b"  # type: ignore[attr-defined]
+                    btn.emoji = None  # type: ignore[attr-defined]
+                    btn.disabled = False  # type: ignore[attr-defined]
 
         # Update Cashout Button
         payout = int(self.amount * self.current_multiplier)
-        cashout_btn = [x for x in self.children if x.custom_id == "cashout"][0]
+        cashout_btn = [x for x in self.children if x.custom_id == "cashout"][0]  # type: ignore[attr-defined]
         # Only show amount in label, emoji is separate
-        cashout_btn.label = f"Cash Out {humanize_number(payout)}"
-        cashout_btn.disabled = False
+        cashout_btn.label = f"Cash Out {humanize_number(payout)}"  # type: ignore[attr-defined]
+        cashout_btn.disabled = False  # type: ignore[attr-defined]
 
         # Update Message with Timer
         timer_str = f"<t:{int(self.end_time)}:R>"
@@ -1054,25 +1061,26 @@ class MinesView(ui.View):
     async def cashout_callback(self, interaction: discord.Interaction):
         await self.game_over(interaction, True)
 
-    async def game_over(self, interaction: discord.Interaction, won: bool, hit_mine_index: int = None):
+    async def game_over(self, interaction: discord.Interaction, won: bool, hit_mine_index: int | None = None):
         self.finished = True
 
         # Disable all buttons and reveal mines
         for item in self.children:
-            item.disabled = True
-            if item.custom_id and item.custom_id.startswith("mine_"):
-                idx = int(item.custom_id.split("_")[1])
+            btn = item  # type: ignore[assignment]
+            btn.disabled = True  # type: ignore[attr-defined]
+            if btn.custom_id and btn.custom_id.startswith("mine_"):  # type: ignore[attr-defined]
+                idx = int(btn.custom_id.split("_")[1])  # type: ignore[attr-defined]
                 if idx in self.mines_indices:
-                    item.style = discord.ButtonStyle.danger
-                    item.emoji = "💣"
+                    btn.style = discord.ButtonStyle.danger  # type: ignore[attr-defined]
+                    btn.emoji = "💣"  # type: ignore[attr-defined]
                     if idx == hit_mine_index:
-                        item.style = discord.ButtonStyle.danger  # Highlight hit mine? Already danger.
+                        btn.style = discord.ButtonStyle.danger  # type: ignore[attr-defined]
                 elif idx in self.revealed_indices:
-                    item.style = discord.ButtonStyle.success
-                    item.emoji = "💎"
+                    btn.style = discord.ButtonStyle.success  # type: ignore[attr-defined]
+                    btn.emoji = "💎"  # type: ignore[attr-defined]
                 else:
-                    item.style = discord.ButtonStyle.secondary
-                    item.emoji = None  # Keep hidden
+                    btn.style = discord.ButtonStyle.secondary  # type: ignore[attr-defined]
+                    btn.emoji = None  # type: ignore[attr-defined]
 
         if won:
             payout = int(self.amount * self.current_multiplier)
@@ -1102,12 +1110,12 @@ class ClubInviteView(ui.View):
         self.club_name = club_name
         self.club_id = club_id
         self.club_system = club_system
-        self.message = None
+        self.message: discord.Message | None = None
 
     async def on_timeout(self):
         if self.message:
             for child in self.children:
-                child.disabled = True
+                child.disabled = True  # type: ignore[attr-defined]
             try:
                 await self.message.edit(view=self)
             except discord.HTTPException:
@@ -1123,9 +1131,10 @@ class ClubInviteView(ui.View):
         if success:
             await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
             for item in self.children:
-                item.disabled = True
+                item.disabled = True  # type: ignore[attr-defined]
             try:
-                await interaction.message.edit(view=self)
+                if interaction.message:
+                    await interaction.message.edit(view=self)
             except:
                 pass
             self.stop()
@@ -1141,9 +1150,10 @@ class ClubInviteView(ui.View):
         if success:
             await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
             for item in self.children:
-                item.disabled = True
+                item.disabled = True  # type: ignore[attr-defined]
             try:
-                await interaction.message.edit(view=self)
+                if interaction.message:
+                    await interaction.message.edit(view=self)
             except:
                 pass
             self.stop()

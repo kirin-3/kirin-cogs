@@ -5,6 +5,7 @@ Core Database Logic
 import asyncio
 import logging
 import math
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -22,7 +23,7 @@ class CoreDB:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.nadeko_db_path = nadeko_db_path
-        self._conn = None
+        self._conn: aiosqlite.Connection | None = None
         self._lock = asyncio.Lock()
 
     async def connect(self) -> None:
@@ -45,11 +46,12 @@ class CoreDB:
             log.info("Closed database connection")
 
     @asynccontextmanager
-    async def _get_connection(self):
+    async def _get_connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:
         """Yield the persistent database connection"""
         async with self._lock:
             if self._conn is None:
                 await self.connect()
+            assert self._conn is not None, "Database connection is not established"
             yield self._conn
 
     async def _setup_wal_mode(self, db: aiosqlite.Connection) -> None:
@@ -83,7 +85,7 @@ class CoreDB:
                 # Check if WAL mode is active
                 cursor = await db.execute("PRAGMA journal_mode")
                 mode = await cursor.fetchone()
-                if mode[0] != "wal":
+                if mode and mode[0] != "wal":
                     log.warning("Database not in WAL mode, attempting to enable...")
                     await db.execute("PRAGMA journal_mode=WAL")
                     await db.commit()
@@ -91,7 +93,7 @@ class CoreDB:
                 # Check database integrity
                 cursor = await db.execute("PRAGMA integrity_check")
                 result = await cursor.fetchone()
-                if result[0] != "ok":
+                if result and result[0] != "ok":
                     log.error(f"Database integrity check failed: {result[0]}")
                     return False
 

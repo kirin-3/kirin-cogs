@@ -3,12 +3,13 @@ from redbot.core import checks, commands
 from redbot.core.utils.chat_formatting import box, humanize_number
 from redbot.core.utils.menus import DEFAULT_CONTROLS, menu
 
+from ..mixins import UnicorniaMixinBase
 from ..views import UnicorniaHelpView
 
 
-class AdminCommands:
+class AdminCommands(UnicorniaMixinBase):
     # Configuration commands
-    @commands.group(name="unicornia", aliases=["uni"])
+    @commands.group(name="unicornia", aliases=["uni"])  # type: ignore[arg-type]
     async def unicornia_group(self, ctx):
         """
         Unicornia configuration and administration.
@@ -152,7 +153,7 @@ class AdminCommands:
 
     @unicornia_group.command(name="config")
     @checks.is_owner()
-    async def config_cmd(self, ctx, setting: str = None, *, value: str = None):
+    async def config_cmd(self, ctx, setting: str | None = None, *, value: str | None = None):
         """
         Configure global settings.
 
@@ -620,7 +621,7 @@ class AdminCommands:
         pass
 
     @wl_command_group.command(name="add")
-    async def wl_command_add(self, ctx, command_name: str, channel: discord.TextChannel = None):
+    async def wl_command_add(self, ctx, command_name: str, channel: discord.TextChannel | None = None):
         """
         Restrict a command to a channel.
 
@@ -630,6 +631,7 @@ class AdminCommands:
         `[p]unicornia whitelist command add <command> [channel]`
         """
         channel = channel or ctx.channel
+        assert isinstance(channel, discord.TextChannel)
 
         # Verify command exists and belongs to Unicornia
         cmd = self.bot.get_command(command_name)
@@ -637,8 +639,9 @@ class AdminCommands:
             await ctx.send(f"❌ Command `{command_name}` not found.")
             return
 
-        if cmd.cog_name != self.qualified_name:
-            await ctx.send(f"❌ You can only whitelist commands from {self.qualified_name} cog.")
+        expected_cog_name = type(self).__name__
+        if cmd.cog_name != expected_cog_name:
+            await ctx.send(f"❌ You can only whitelist commands from {expected_cog_name} cog.")
             return
 
         async with self.config.guild(ctx.guild).command_whitelist() as whitelist:
@@ -653,7 +656,7 @@ class AdminCommands:
                 await ctx.send(f"❌ Command `{full_name}` is already allowed in {channel.mention}.")
 
     @wl_command_group.command(name="remove", aliases=["rm", "del"])
-    async def wl_command_remove(self, ctx, command_name: str, channel: discord.TextChannel = None):
+    async def wl_command_remove(self, ctx, command_name: str, channel: discord.TextChannel | None = None):
         """
         Remove channel from command whitelist.
 
@@ -661,6 +664,7 @@ class AdminCommands:
         `[p]unicornia whitelist command remove <command> [channel]`
         """
         channel = channel or ctx.channel
+        assert isinstance(channel, discord.TextChannel)
 
         # Verify command exists (optional)
         cmd = self.bot.get_command(command_name)
@@ -724,7 +728,7 @@ class AdminCommands:
         pass
 
     @wl_system_group.command(name="add")
-    async def wl_system_add(self, ctx, system: str, channel: discord.TextChannel = None):
+    async def wl_system_add(self, ctx, system: str, channel: discord.TextChannel | None = None):
         """
         Restrict a system to a channel.
 
@@ -734,6 +738,7 @@ class AdminCommands:
         `[p]unicornia whitelist system add <system> [channel]`
         """
         channel = channel or ctx.channel
+        assert isinstance(channel, discord.TextChannel)
         system = system.lower()
 
         # Valid systems
@@ -753,7 +758,7 @@ class AdminCommands:
                 await ctx.send(f"❌ System `{system}` is already allowed in {channel.mention}.")
 
     @wl_system_group.command(name="remove", aliases=["rm", "del"])
-    async def wl_system_remove(self, ctx, system: str, channel: discord.TextChannel = None):
+    async def wl_system_remove(self, ctx, system: str, channel: discord.TextChannel | None = None):
         """
         Remove channel from system whitelist.
 
@@ -761,6 +766,7 @@ class AdminCommands:
         `[p]unicornia whitelist system remove <system> [channel]`
         """
         channel = channel or ctx.channel
+        assert isinstance(channel, discord.TextChannel)
         system = system.lower()
 
         async with self.config.guild(ctx.guild).system_whitelist() as whitelist:

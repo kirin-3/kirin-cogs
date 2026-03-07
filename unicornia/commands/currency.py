@@ -1,10 +1,12 @@
 import discord
 from redbot.core import commands
 
+from ..mixins import UnicorniaMixinBase
 
-class CurrencyCommands:
+
+class CurrencyCommands(UnicorniaMixinBase):
     # Currency generation commands
-    @commands.group(name="currency")
+    @commands.group(name="currency")  # type: ignore[arg-type]
     async def currency_group(self, ctx):
         """
         Currency generation and management.
@@ -14,7 +16,7 @@ class CurrencyCommands:
         """
         pass
 
-    @commands.command(name="pick")
+    @commands.command(name="pick")  # type: ignore[arg-type]
     async def pick_cmd(self, ctx):
         """
         Pick up generated currency.
@@ -69,7 +71,7 @@ class CurrencyCommands:
     # Keep the old command as an alias or redirect if needed, or remove it.
     # For now, let's redirect it to the new one if they provide a password (ignore it)
     @currency_group.command(name="pick")
-    async def currency_pick(self, ctx, password: str = None):
+    async def currency_pick(self, ctx, password: str | None = None):
         """
         Pick up currency.
 

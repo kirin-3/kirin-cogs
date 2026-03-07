@@ -100,7 +100,7 @@ class MarketSystem:
 
             # Random Event
             event_multiplier = 1.0
-            event_name = None
+            event_name: str | None = None
             if random.random() < 0.05:  # 5% chance
                 if random.random() < 0.5:
                     event_multiplier = 1.3  # Bull Run
@@ -188,7 +188,7 @@ class MarketSystem:
 
         self.top_held = sorted(top_held_list, key=lambda s: s["held_shares"], reverse=True)[:10]
 
-    async def update_dashboard(self, event_name: str = None):
+    async def update_dashboard(self, event_name: str | None = None):
         """Update the dashboard message in all configured guilds."""
         for guild in self.bot.guilds:
             channel_id = await self.config.guild(guild).market_channel()

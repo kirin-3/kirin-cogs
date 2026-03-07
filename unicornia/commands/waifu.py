@@ -1,10 +1,12 @@
 import discord
 from redbot.core import app_commands, checks, commands
 
+from ..mixins import UnicorniaMixinBase
 
-class WaifuCommands:
+
+class WaifuCommands(UnicorniaMixinBase):
     # Waifu commands
-    @commands.hybrid_group(name="waifu", aliases=["wf"])
+    @commands.hybrid_group(name="waifu", aliases=["wf"])  # type: ignore[arg-type]
     async def waifu_group(self, ctx):
         """
         Claim and collect users as waifus.
@@ -15,7 +17,7 @@ class WaifuCommands:
         pass
 
     @waifu_group.command(name="claim")
-    async def waifu_claim(self, ctx, member: discord.Member, price: int = None):
+    async def waifu_claim(self, ctx, member: discord.Member, price: int | None = None):
         """
         Claim a user as your waifu.
 
@@ -248,7 +250,7 @@ class WaifuCommands:
         """
         await self.gifts_list(ctx)
 
-    @commands.command(name="gifts")
+    @commands.command(name="gifts")  # type: ignore[arg-type]
     async def gifts_list(self, ctx):
         """
         List available waifu gifts.
@@ -278,7 +280,7 @@ class WaifuCommands:
 
     @waifu_group.command(name="info")
     @app_commands.describe(member="The waifu to check")
-    async def waifu_info(self, ctx, member: discord.Member = None):
+    async def waifu_info(self, ctx, member: discord.Member | None = None):
         """
         Get info about a waifu.
 
@@ -383,7 +385,7 @@ class WaifuCommands:
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error getting waifu info: {e}", mention_author=False)
 
     @waifu_group.command(name="list", aliases=["my"])
-    async def waifu_list(self, ctx, member: discord.Member = None):
+    async def waifu_list(self, ctx, member: discord.Member | None = None):
         """
         List owned waifus.
 
@@ -485,7 +487,7 @@ class WaifuCommands:
             await ctx.send(f"<a:zz_NoTick:729318761655435355> Error updating waifu price: {e}")
 
     @waifu_group.command(name="affinity")
-    async def waifu_affinity(self, ctx, affinity_user: discord.Member = None):
+    async def waifu_affinity(self, ctx, affinity_user: discord.Member | None = None):
         """
         Set your affinity to a user.
 

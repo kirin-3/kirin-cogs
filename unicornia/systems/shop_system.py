@@ -180,10 +180,10 @@ class ShopSystem:
         name: str,
         author_id: int,
         item_type: int,
-        role_name: str = None,
-        role_id: int = None,
-        role_requirement: int = None,
-        command: str = None,
+        role_name: str | None = None,
+        role_id: int | None = None,
+        role_requirement: int | None = None,
+        command: str | None = None,
     ) -> int:
         """Add a new shop item.
 

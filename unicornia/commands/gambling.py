@@ -1,10 +1,11 @@
 import discord
 from redbot.core import app_commands, commands
 
+from ..mixins import UnicorniaMixinBase
 from ..views import CoinFlipView, RockPaperScissorsView
 
 
-class GamblingCommands:
+class GamblingCommands(UnicorniaMixinBase):
     async def _resolve_bet(self, ctx, amount: int | str) -> int | None:
         """Resolve bet amount from int or 'all'"""
         if isinstance(amount, str):
@@ -30,7 +31,7 @@ class GamblingCommands:
         return amount
 
     # Gambling commands
-    @commands.hybrid_group(name="gambling", aliases=["gamble"])
+    @commands.hybrid_group(name="gambling", aliases=["gamble"])  # type: ignore[arg-type]
     async def gambling_group(self, ctx):
         """
         Play gambling games to win currency.
@@ -64,12 +65,12 @@ class GamblingCommands:
             await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
 
-        amount = await self._resolve_bet(ctx, amount)
-        if amount is None:
+        amount_int = await self._resolve_bet(ctx, amount)
+        if amount_int is None:
             return
 
         try:
-            success, result = await self.gambling_system.betroll(ctx.author.id, amount)
+            success, result = await self.gambling_system.betroll(ctx.author.id, amount_int)
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
@@ -137,13 +138,15 @@ class GamblingCommands:
                 return
             choice = view.choice
 
+        amount_int: int = 0
         if amount != "0" and amount != 0:
-            amount = await self._resolve_bet(ctx, amount)
-            if amount is None:
+            resolved = await self._resolve_bet(ctx, amount)
+            if resolved is None:
                 return
+            amount_int = resolved
 
         try:
-            success, result = await self.gambling_system.rock_paper_scissors(ctx.author.id, choice, amount)
+            success, result = await self.gambling_system.rock_paper_scissors(ctx.author.id, choice, amount_int)
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
@@ -163,7 +166,7 @@ class GamblingCommands:
                 return
 
             currency_symbol = await self.config.currency_symbol()
-            if amount > 0:
+            if amount_int > 0:
                 if result["result"] == "win":
                     await ctx.reply(
                         f"{result['user_choice']} vs {result['bot_choice']} - You won {currency_symbol}{result['win_amount']:,}!",
@@ -219,12 +222,12 @@ class GamblingCommands:
             await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
 
-        amount = await self._resolve_bet(ctx, amount)
-        if amount is None:
+        amount_int = await self._resolve_bet(ctx, amount)
+        if amount_int is None:
             return
 
         try:
-            success, result = await self.gambling_system.slots(ctx.author.id, amount)
+            success, result = await self.gambling_system.slots(ctx.author.id, amount_int)
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
@@ -274,12 +277,12 @@ class GamblingCommands:
             await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
 
-        amount = await self._resolve_bet(ctx, amount)
-        if amount is None:
+        amount_int = await self._resolve_bet(ctx, amount)
+        if amount_int is None:
             return
 
         try:
-            await self.gambling_system.play_blackjack(ctx, amount)
+            await self.gambling_system.play_blackjack(ctx, amount_int)
         except Exception as e:
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error in blackjack: {e}", mention_author=False)
 
@@ -307,8 +310,8 @@ class GamblingCommands:
             await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
 
-        amount = await self._resolve_bet(ctx, amount)
-        if amount is None:
+        amount_int = await self._resolve_bet(ctx, amount)
+        if amount_int is None:
             return
 
         if guess is None:
@@ -324,7 +327,7 @@ class GamblingCommands:
             guess = view.choice
 
         try:
-            success, result = await self.gambling_system.bet_flip(ctx.author.id, amount, guess)
+            success, result = await self.gambling_system.bet_flip(ctx.author.id, amount_int, guess)
 
             if not success:
                 if result.get("error") == "insufficient_funds":
@@ -397,12 +400,12 @@ class GamblingCommands:
             await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
 
-        amount = await self._resolve_bet(ctx, amount)
-        if amount is None:
+        amount_int = await self._resolve_bet(ctx, amount)
+        if amount_int is None:
             return
 
         try:
-            success, result = await self.gambling_system.lucky_ladder(ctx.author.id, amount)
+            success, result = await self.gambling_system.lucky_ladder(ctx.author.id, amount_int)
             if not success:
                 if result.get("error") == "insufficient_funds":
                     currency_symbol = await self.config.currency_symbol()
@@ -482,17 +485,17 @@ class GamblingCommands:
             await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
 
-        amount = await self._resolve_bet(ctx, amount)
-        if amount is None:
+        amount_int = await self._resolve_bet(ctx, amount)
+        if amount_int is None:
             return
 
         try:
-            await self.gambling_system.play_mines(ctx, amount, mines)
+            await self.gambling_system.play_mines(ctx, amount_int, mines)
         except Exception as e:
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error in Mines: {e}", mention_author=False)
 
     # Top-level aliases for gambling commands
-    @commands.hybrid_command(name="betroll", aliases=["roll"])
+    @commands.hybrid_command(name="betroll", aliases=["roll"])  # type: ignore[arg-type]
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
     async def top_betroll(self, ctx, amount: str):
@@ -506,7 +509,7 @@ class GamblingCommands:
         """
         await self.gambling_betroll(ctx, amount)
 
-    @commands.hybrid_command(name="rps", aliases=["rockpaperscissors"])
+    @commands.hybrid_command(name="rps", aliases=["rockpaperscissors"])  # type: ignore[arg-type]
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(choice="rock, paper, or scissors", amount="Amount to bet")
     async def top_rps(self, ctx, choice: str | None = None, amount: str = "0"):
@@ -520,7 +523,7 @@ class GamblingCommands:
         """
         await self.gambling_rps(ctx, choice, amount)
 
-    @commands.hybrid_command(name="slots")
+    @commands.hybrid_command(name="slots")  # type: ignore[arg-type]
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
     async def top_slots(self, ctx, amount: str):
@@ -534,7 +537,7 @@ class GamblingCommands:
         """
         await self.gambling_slots(ctx, amount)
 
-    @commands.command(name="blackjack", aliases=["21"])
+    @commands.command(name="blackjack", aliases=["21"])  # type: ignore[arg-type]
     @commands.cooldown(1, 1, commands.BucketType.user)
     async def top_blackjack(self, ctx, amount: str):
         """
@@ -547,7 +550,7 @@ class GamblingCommands:
         """
         await self.gambling_blackjack(ctx, amount)
 
-    @commands.hybrid_command(name="betflip", aliases=["bf"])
+    @commands.hybrid_command(name="betflip", aliases=["bf"])  # type: ignore[arg-type]
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet", guess="heads or tails")
     async def top_betflip(self, ctx, amount: str, guess: str | None = None):
@@ -561,7 +564,7 @@ class GamblingCommands:
         """
         await self.gambling_betflip(ctx, amount, guess)
 
-    @commands.hybrid_command(name="luckyladder", aliases=["ladder"])
+    @commands.hybrid_command(name="luckyladder", aliases=["ladder"])  # type: ignore[arg-type]
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet")
     async def top_luckyladder(self, ctx, amount: str):
@@ -575,7 +578,7 @@ class GamblingCommands:
         """
         await self.gambling_lucky_ladder(ctx, amount)
 
-    @commands.hybrid_command(name="mines")
+    @commands.hybrid_command(name="mines")  # type: ignore[arg-type]
     @commands.cooldown(1, 1, commands.BucketType.user)
     @app_commands.describe(amount="Amount to bet", mines="Number of mines (1-19)")
     async def top_mines(self, ctx, amount: str | None = None, mines: int = 3):

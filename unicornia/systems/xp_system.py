@@ -253,7 +253,9 @@ class XPSystem:
 
         # 2. Role Exclusion Check
         excluded_roles = await self.config.guild(message.guild).excluded_roles()
-        if any(role.id in excluded_roles for role in message.author.roles):
+        if isinstance(message.author, discord.Member) and any(
+            role.id in excluded_roles for role in message.author.roles
+        ):
             return
 
         # --- XP CALCULATION (LRU Cache) ---

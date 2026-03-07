@@ -110,7 +110,7 @@ class StockBuySelectView(ui.View):
         self.current_page = 0
         self.items_per_page = 25
 
-        self.select = None
+        self.select: discord.ui.Select | None = None
         self.update_components()
 
     def update_components(self):
@@ -162,6 +162,8 @@ class StockBuySelectView(ui.View):
             self.add_item(next_btn)
 
     async def on_select(self, interaction: discord.Interaction):
+        if not self.select:
+            return
         symbol = self.select.values[0]
         if symbol == "NONE":
             return
@@ -187,7 +189,7 @@ class StockSellSelectView(ui.View):
         self.current_page = 0
         self.items_per_page = 25
 
-        self.select = None
+        self.select: discord.ui.Select | None = None
         self.update_components()
 
     def update_components(self):
@@ -235,6 +237,8 @@ class StockSellSelectView(ui.View):
             self.add_item(next_btn)
 
     async def on_select(self, interaction: discord.Interaction):
+        if not self.select:
+            return
         symbol = self.select.values[0]
         if symbol == "NONE":
             return
@@ -360,7 +364,7 @@ class StockPortfolioView(ui.LayoutView):
 class StockListView(ui.LayoutView):
     """Ephemeral V2 View to show all stocks (Paginated)."""
 
-    def __init__(self, market_system, held_counts: dict = None):
+    def __init__(self, market_system, held_counts: dict | None = None):
         super().__init__(timeout=180)
         self.market_system = market_system
         self.held_counts = held_counts or {}
@@ -443,7 +447,7 @@ class StockListView(ui.LayoutView):
 class StockDashboardView(ui.LayoutView):
     """Components V2 Dashboard for Unicornia Stock Exchange."""
 
-    def __init__(self, market_system, event_name: str = None):
+    def __init__(self, market_system, event_name: str | None = None):
         super().__init__(timeout=None)  # Persistent view
         self.market_system = market_system
         self.event_name = event_name

@@ -26,11 +26,11 @@ class XPCardGenerator:
 
     def __init__(self, cog_dir: str):
         self.cog_dir = cog_dir
-        self.xp_config = None
-        self.fonts_cache = {}
+        self.xp_config: dict[str, Any] | None = None
+        self.fonts_cache: dict[tuple[int, bool], Any] = {}
         self.images_cache = OrderedDict()
         self.default_font_size = 25
-        self.fallback_fonts_cache = {}
+        self.fallback_fonts_cache: dict[Any, Any] = {}
 
         # Card dimensions (matching Nadeko's template)
         self.card_width = 500
@@ -120,7 +120,9 @@ class XPCardGenerator:
             }
         }
 
-    async def _get_font(self, size: int = None, bold: bool = False) -> ImageFont.FreeTypeFont:
+    async def _get_font(
+        self, size: int | None = None, bold: bool = False
+    ) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         """Get font for text rendering"""
         if size is None:
             size = self.default_font_size
@@ -165,6 +167,7 @@ class XPCardGenerator:
             except OSError:
                 font = ImageFont.load_default()
 
+        assert font is not None
         self.fonts_cache[cache_key] = font
         return font
 
@@ -241,13 +244,13 @@ class XPCardGenerator:
 
     def _draw_text_with_fallback(
         self,
-        draw: ImageDraw.Draw,
+        draw: ImageDraw.ImageDraw,
         xy: tuple[int, int],
         text: str,
         primary_font: ImageFont.FreeTypeFont,
         fallback_fonts: list[ImageFont.FreeTypeFont],
         fill: Any,
-        anchor: str = None,
+        anchor: str | None = None,
     ):
         """Draw text handling missing glyphs by switching to fallback fonts"""
         # Fast Path: If text is purely ASCII, skip expensive checks and draw directly
@@ -478,7 +481,7 @@ class XPCardGenerator:
         default_avatar.putalpha(mask)
         return default_avatar
 
-    def _draw_skewed_bar(self, draw: ImageDraw.Draw, x: int, y: int, width: int, height: int, progress: float):
+    def _draw_skewed_bar(self, draw: ImageDraw.ImageDraw, x: int, y: int, width: int, height: int, progress: float):
         """Draws a skewed XP bar directly onto the card"""
         skew_offset = 20  # This controls how much the bar leans to the right
 
@@ -521,7 +524,7 @@ class XPCardGenerator:
         club_icon: Image.Image | None,
         club_name: str | None,
         fonts: dict[str, ImageFont.FreeTypeFont],
-        fallback_fonts: dict[str, list[ImageFont.FreeTypeFont]] = None,
+        fallback_fonts: dict[str, list[ImageFont.FreeTypeFont]] | None = None,
     ) -> Image.Image:
         """Create the overlay with user info (Avatar, Text, XP Bar)"""
         if fallback_fonts is None:
@@ -623,7 +626,7 @@ class XPCardGenerator:
         rank: int,
         club_name: str | None,
         fonts: dict[str, ImageFont.FreeTypeFont],
-        fallback_fonts: dict[str, list[ImageFont.FreeTypeFont]] = None,
+        fallback_fonts: dict[str, list[ImageFont.FreeTypeFont]] | None = None,
     ) -> tuple[io.BytesIO, str]:
         """Synchronous method to draw the XP card (runs in thread)"""
 
@@ -710,14 +713,15 @@ class XPCardGenerator:
         total_xp: int,
         rank: int,
         background_key: str = "default",
-        club_icon_url: str = None,
-        club_name: str = None,
+        club_icon_url: str | None = None,
+        club_name: str | None = None,
     ) -> tuple[io.BytesIO, str]:
         """Generate XP card image (Non-blocking)"""
 
         # Ensure config is loaded
         if not self.xp_config:
             await self._load_xp_config()
+        assert self.xp_config is not None
 
         # 1. Fetch all resources asynchronously (I/O bound)
         bg_config = self.xp_config.get("shop", {}).get("bgs", {}).get(background_key, {})

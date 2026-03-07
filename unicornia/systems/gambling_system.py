@@ -3,14 +3,16 @@ Gambling system for Unicornia
 """
 
 import secrets
+from typing import Any, TypeAlias
 
 import discord
 from discord import ui
 from redbot.core import commands
 
 from ..database import DatabaseManager
-from ..types import GamblingResult
 from ..views import MinesView
+
+_GamblingResult: TypeAlias = dict[str, Any]
 
 
 class BlackjackView(ui.View):
@@ -24,7 +26,7 @@ class BlackjackView(ui.View):
         self.dealer_hand = dealer_hand
         self.deck = deck
         self.currency_symbol = currency_symbol
-        self.message = None
+        self.message: discord.Message | None = None
         self.finished = False
         self.end_time = discord.utils.utcnow().timestamp() + 60
 
@@ -59,11 +61,12 @@ class BlackjackView(ui.View):
         if not self.finished:
             self.finished = True
             for child in self.children:
-                child.disabled = True
+                child.disabled = True  # type: ignore[attr-defined]
 
             embed = self.get_embed("Timed out. You stand.", discord.Color.red())
             try:
-                await self.message.edit(embed=embed, view=self)
+                if self.message:
+                    await self.message.edit(embed=embed, view=self)
             except discord.HTTPException:
                 pass
             await self.do_stand_logic()
@@ -81,7 +84,7 @@ class BlackjackView(ui.View):
             # Bust
             self.finished = True
             for child in self.children:
-                child.disabled = True
+                child.disabled = True  # type: ignore[attr-defined]
 
             await self.system._log_gambling_result(self.user_id, "blackjack", self.amount, False)
             embed = self.get_embed(
@@ -111,7 +114,7 @@ class BlackjackView(ui.View):
     async def do_stand_logic(self):
         self.finished = True
         for child in self.children:
-            child.disabled = True
+            child.disabled = True  # type: ignore[attr-defined]
 
         # Dealer turn
         dealer_total = self.calculate_hand(self.dealer_hand)
@@ -201,7 +204,7 @@ class GamblingSystem:
             return f"Bet cannot exceed {max_bet}."
         return None
 
-    async def betroll(self, user_id: int, amount: int) -> tuple[bool, GamblingResult]:
+    async def betroll(self, user_id: int, amount: int) -> tuple[bool, _GamblingResult]:
         """Play betroll game.
 
         Args:
@@ -246,7 +249,7 @@ class GamblingSystem:
                 )
             return True, {"won": False, "roll": roll, "threshold": threshold, "loss_amount": amount}
 
-    async def rock_paper_scissors(self, user_id: int, choice: str, amount: int = 0) -> tuple[bool, GamblingResult]:
+    async def rock_paper_scissors(self, user_id: int, choice: str, amount: int = 0) -> tuple[bool, _GamblingResult]:
         """Play rock paper scissors.
 
         Args:
@@ -325,7 +328,7 @@ class GamblingSystem:
         else:
             return True, {"result": result, "user_choice": choices[user_choice], "bot_choice": choices[bot_choice]}
 
-    async def slots(self, user_id: int, amount: int) -> tuple[bool, GamblingResult]:
+    async def slots(self, user_id: int, amount: int) -> tuple[bool, _GamblingResult]:
         """Play slots game.
 
         Args:
@@ -452,7 +455,7 @@ class GamblingSystem:
         embed = view.get_embed()
         view.message = await ctx.send(embed=embed, view=view)
 
-    async def bet_flip(self, user_id: int, amount: int, guess: str) -> tuple[bool, GamblingResult]:
+    async def bet_flip(self, user_id: int, amount: int, guess: str) -> tuple[bool, _GamblingResult]:
         """Play betflip game.
 
         Args:
@@ -527,7 +530,7 @@ class GamblingSystem:
 
             return True, {"won": False, "result": result_str, "guess": guess_str, "loss_amount": amount}
 
-    async def lucky_ladder(self, user_id: int, amount: int) -> tuple[bool, GamblingResult]:
+    async def lucky_ladder(self, user_id: int, amount: int) -> tuple[bool, _GamblingResult]:
         """Play lucky ladder game.
 
         Args:

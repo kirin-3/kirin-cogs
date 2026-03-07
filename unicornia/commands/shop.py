@@ -1,6 +1,7 @@
 import discord
 from redbot.core import app_commands, commands
 
+from ..mixins import UnicorniaMixinBase
 from ..views import ShopBrowserView
 
 
@@ -24,25 +25,31 @@ class BackgroundShopView(discord.ui.View):
         return self.backgrounds[self.index]
 
     def update_buttons(self):
-        self.children[0].disabled = self.index == 0  # Previous
-        self.children[2].disabled = self.index == len(self.backgrounds) - 1  # Next
+        prev_btn = self.children[0]
+        buy_btn = self.children[1]
+        next_btn = self.children[2]
+        assert isinstance(prev_btn, discord.ui.Button)
+        assert isinstance(buy_btn, discord.ui.Button)
+        assert isinstance(next_btn, discord.ui.Button)
+        prev_btn.disabled = self.index == 0  # Previous
+        next_btn.disabled = self.index == len(self.backgrounds) - 1  # Next
 
         key, data = self.get_current_bg()
 
         # Purchase button state
         price = data.get("price", -1)
         if key in self.user_owned:
-            self.children[1].label = "Owned (Use)"
-            self.children[1].style = discord.ButtonStyle.success
-            self.children[1].disabled = False
+            buy_btn.label = "Owned (Use)"
+            buy_btn.style = discord.ButtonStyle.success
+            buy_btn.disabled = False
         elif price == -1:
-            self.children[1].label = "Unavailable"
-            self.children[1].style = discord.ButtonStyle.secondary
-            self.children[1].disabled = True
+            buy_btn.label = "Unavailable"
+            buy_btn.style = discord.ButtonStyle.secondary
+            buy_btn.disabled = True
         else:
-            self.children[1].label = f"Purchase ({price:,})"
-            self.children[1].style = discord.ButtonStyle.primary
-            self.children[1].disabled = False
+            buy_btn.label = f"Purchase ({price:,})"
+            buy_btn.style = discord.ButtonStyle.primary
+            buy_btn.disabled = False
 
     async def get_embed(self):
         key, data = self.get_current_bg()
@@ -130,9 +137,9 @@ class BackgroundShopView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
 
 
-class ShopCommands:
+class ShopCommands(UnicorniaMixinBase):
     # Shop commands
-    @commands.hybrid_group(name="shop", aliases=["store"])
+    @commands.hybrid_group(name="shop", aliases=["store"])  # type: ignore[arg-type]
     @commands.guild_only()
     async def shop_group(self, ctx):
         """
@@ -520,7 +527,7 @@ class ShopCommands:
         except Exception as e:
             await ctx.send(f"<a:zz_NoTick:729318761655435355> Error removing shop item: {e}")
 
-    @commands.command(name="inventory", aliases=["inv", "bag"])
+    @commands.command(name="inventory", aliases=["inv", "bag"])  # type: ignore[arg-type]
     async def show_inventory(self, ctx):
         """
         View your inventory.
@@ -555,8 +562,8 @@ class ShopCommands:
             await ctx.send(f"<a:zz_NoTick:729318761655435355> Error loading inventory: {e}")
 
     # XP Shop commands
-    @commands.command(name="xpshopbuy")
-    async def xpshopbuy_shortcut(self, ctx, item_type: str, item_key: str = None):
+    @commands.command(name="xpshopbuy")  # type: ignore[arg-type]
+    async def xpshopbuy_shortcut(self, ctx, item_type: str, item_key: str | None = None):
         """
         Shortcut to buy items from the XP Shop.
 
@@ -581,7 +588,7 @@ class ShopCommands:
         # If user provided "bg" but no key
         await ctx.send(f"Usage: `{ctx.prefix}xpshopbuy bg <item_key>`")
 
-    @commands.hybrid_group(name="xpshop", aliases=["xps"])
+    @commands.hybrid_group(name="xpshop", aliases=["xps"])  # type: ignore[arg-type]
     @commands.guild_only()
     async def xp_shop_group(self, ctx):
         """

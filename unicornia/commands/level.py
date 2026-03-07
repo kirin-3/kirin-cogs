@@ -1,12 +1,13 @@
 import discord
 from redbot.core import app_commands, checks, commands
 
+from ..mixins import UnicorniaMixinBase
 from ..views import LeaderboardView
 
 
-class LevelCommands:
+class LevelCommands(UnicorniaMixinBase):
     # Level commands
-    @commands.hybrid_command(name="xplb")
+    @commands.hybrid_command(name="xplb")  # type: ignore[arg-type]
     async def xplb_shortcut(self, ctx):
         """
         Show the XP leaderboard.
@@ -18,7 +19,7 @@ class LevelCommands:
         """
         await self.level_leaderboard(ctx)
 
-    @commands.hybrid_group(name="level", aliases=["lvl"], invoke_without_command=True)
+    @commands.hybrid_group(name="level", aliases=["lvl"], invoke_without_command=True)  # type: ignore[arg-type]
     async def level_group(self, ctx, member: discord.Member | None = None):
         """
         View your level and rank.
@@ -36,7 +37,7 @@ class LevelCommands:
         if ctx.invoked_subcommand is None:
             await self._level_check_logic(ctx, member)
 
-    @commands.hybrid_command(name="xp")
+    @commands.hybrid_command(name="xp")  # type: ignore[arg-type]
     @app_commands.describe(member="The user to check XP for")
     async def xp_command(self, ctx, member: discord.Member | None = None):
         """
@@ -51,7 +52,7 @@ class LevelCommands:
 
     @level_group.command(name="check", aliases=["me"])
     @app_commands.describe(member="The user to check XP for")
-    async def level_check(self, ctx, member: discord.Member = None):
+    async def level_check(self, ctx, member: discord.Member | None = None):
         """
         Check your rank card.
 
@@ -60,7 +61,7 @@ class LevelCommands:
         """
         await self._level_check_logic(ctx, member)
 
-    async def _level_check_logic(self, ctx, member: discord.Member = None):
+    async def _level_check_logic(self, ctx, member: discord.Member | None = None):
         """Logic for checking level/XP"""
         if not await self.config.xp_enabled():
             await ctx.reply("<a:zz_NoTick:729318761655435355> XP system is disabled.", mention_author=False)

@@ -133,6 +133,7 @@ class CurrencyGeneration:
                 (guild_id, channel_id, amount, password),
             )
             plant_id = cursor.lastrowid
+            assert plant_id is not None
             await db.commit()
             return plant_id
 

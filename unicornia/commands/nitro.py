@@ -2,16 +2,19 @@
 Nitro Shop Commands for Unicornia
 """
 
+from typing import Literal, cast
+
 from redbot.core import commands
 from redbot.core.utils.chat_formatting import humanize_number
 
+from ..mixins import UnicorniaMixinBase
 from ..views import NitroShopView
 
 
-class NitroCommands:
+class NitroCommands(UnicorniaMixinBase):
     """Commands for the Nitro Shop system"""
 
-    @commands.hybrid_command(name="nitroshop")
+    @commands.hybrid_command(name="nitroshop")  # type: ignore[arg-type]
     @commands.guild_only()
     async def nitroshop(self, ctx):
         """
@@ -32,7 +35,7 @@ class NitroCommands:
         embed = await view.get_embed()
         view.message = await ctx.reply(embed=embed, view=view, mention_author=False)
 
-    @commands.command(name="nitrostock")
+    @commands.command(name="nitrostock")  # type: ignore[arg-type]
     @commands.is_owner()
     async def nitrostock(self, ctx, type: str, amount: int):
         """
@@ -46,6 +49,7 @@ class NitroCommands:
         **Types**
         `boost`, `basic`
         """
+
         type = type.lower()
         if type not in ["boost", "basic"]:
             return await ctx.send("Invalid type. Use `boost` or `basic`.")
@@ -53,13 +57,13 @@ class NitroCommands:
         if amount < 0:
             return await ctx.send("Stock cannot be negative.")
 
-        new_amount = await self.nitro_system.set_stock(type, amount)
+        new_amount = await self.nitro_system.set_stock(cast("Literal['boost', 'basic']", type), amount)
 
         await ctx.send(
             f"<a:zz_YesTick:729318762356015124> Stock updated. New **Nitro {type.capitalize()}** stock: `{new_amount}`"
         )
 
-    @commands.command(name="nitroprice")
+    @commands.command(name="nitroprice")  # type: ignore[arg-type]
     @commands.is_owner()
     async def nitroprice(self, ctx, type: str, price: int):
         """
@@ -77,7 +81,7 @@ class NitroCommands:
         if price < 0:
             return await ctx.send("Price cannot be negative.")
 
-        await self.nitro_system.set_price(type, price)
+        await self.nitro_system.set_price(cast("Literal['boost', 'basic']", type), price)
 
         await ctx.send(
             f"<a:zz_YesTick:729318762356015124> Price updated. **Nitro {type.capitalize()}** now costs `{humanize_number(price)}` Slut points."

@@ -27,7 +27,13 @@ class EconomyRepository:
         return row[0] if row else 0
 
     async def add_currency(
-        self, user_id: int, amount: int, transaction_type: str, extra: str = "", other_id: int = None, note: str = ""
+        self,
+        user_id: int,
+        amount: int,
+        transaction_type: str,
+        extra: str = "",
+        other_id: int | None = None,
+        note: str = "",
     ) -> bool:
         """Add currency to user's wallet.
 
@@ -72,7 +78,13 @@ class EconomyRepository:
                 raise
 
     async def remove_currency(
-        self, user_id: int, amount: int, transaction_type: str, extra: str = "", other_id: int = None, note: str = ""
+        self,
+        user_id: int,
+        amount: int,
+        transaction_type: str,
+        extra: str = "",
+        other_id: int | None = None,
+        note: str = "",
     ) -> bool:
         """Remove currency from user's wallet.
 
@@ -600,9 +612,9 @@ class EconomyRepository:
         user_id: int,
         transaction_type: str,
         amount: int,
-        reason: str = None,
-        other_id: int = None,
-        extra: str = None,
+        reason: str | None = None,
+        other_id: int | None = None,
+        extra: str | None = None,
     ) -> None:
         """Log a currency transaction.
 
@@ -816,7 +828,7 @@ class EconomyRepository:
             return balance
 
     # Currency generation channel methods
-    async def get_currency_generation_channels(self, guild_id: int = None) -> list[tuple]:
+    async def get_currency_generation_channels(self, guild_id: int | None = None) -> list[tuple]:
         """Get currency generation channels.
 
         Args:

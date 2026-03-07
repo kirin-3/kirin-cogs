@@ -82,7 +82,7 @@ class StockRepository:
     async def update_stock_price(self, symbol: str, new_price: int, update_previous: bool = False) -> bool:
         """Update stock price."""
         query = "UPDATE Stocks SET CurrentPrice = ?"
-        params = [new_price]
+        params: list = [new_price]
 
         if update_previous:
             # If updating previous, we set previous = current (before this update)
@@ -192,7 +192,7 @@ class StockRepository:
             return {row[0]: row[1] for row in rows}
 
     async def update_holding(
-        self, user_id: int, symbol: str, amount_delta: int, cost_basis_update: float = None
+        self, user_id: int, symbol: str, amount_delta: int, cost_basis_update: float | None = None
     ) -> bool:
         """Update user holding (Buy/Sell).
         amount_delta: + for buy, - for sell.

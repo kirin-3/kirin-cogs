@@ -1,13 +1,14 @@
 import discord
 from redbot.core import app_commands, checks, commands
 
+from ..mixins import UnicorniaMixinBase
 from ..utils import validate_text_input
 from ..views import LeaderboardView, TransferView
 
 
-class EconomyCommands:
+class EconomyCommands(UnicorniaMixinBase):
     # Economy commands
-    @commands.hybrid_command(name="baltop", aliases=["ballb"])
+    @commands.hybrid_command(name="baltop", aliases=["ballb"])  # type: ignore[arg-type]
     async def baltop_shortcut(self, ctx):
         """
         Show the currency leaderboard.
@@ -19,7 +20,7 @@ class EconomyCommands:
         """
         await self.economy_leaderboard(ctx)
 
-    @commands.hybrid_group(name="economy", aliases=["econ", "money"])
+    @commands.hybrid_group(name="economy", aliases=["econ", "money"])  # type: ignore[arg-type]
     async def economy_group(self, ctx):
         """
         Manage your economy and currency.
@@ -33,7 +34,7 @@ class EconomyCommands:
 
     @economy_group.command(name="balance", aliases=["bal", "wallet"])
     @app_commands.describe(member="The user to check balance for")
-    async def economy_balance(self, ctx, member: discord.Member = None):
+    async def economy_balance(self, ctx, member: discord.Member | None = None):
         """
         Check your or another user's balance.
 
@@ -48,9 +49,9 @@ class EconomyCommands:
         """
         await self._balance_logic(ctx, member)
 
-    @commands.hybrid_command(name="balance", aliases=["bal", "$", "€", "£"])
+    @commands.hybrid_command(name="balance", aliases=["bal", "$", "€", "£"])  # type: ignore[arg-type]
     @app_commands.describe(member="The user to check balance for")
-    async def global_balance(self, ctx, member: discord.Member = None):
+    async def global_balance(self, ctx, member: discord.Member | None = None):
         """
         Check your or another user's balance.
 
@@ -65,9 +66,9 @@ class EconomyCommands:
         """
         await self._balance_logic(ctx, member)
 
-    @commands.hybrid_command(name="wallet")
+    @commands.hybrid_command(name="wallet")  # type: ignore[arg-type]
     @app_commands.describe(member="The user to check wallet for")
-    async def wallet_command(self, ctx, member: discord.Member = None):
+    async def wallet_command(self, ctx, member: discord.Member | None = None):
         """
         Check your or another user's wallet.
 
@@ -78,7 +79,7 @@ class EconomyCommands:
         """
         await self._balance_logic(ctx, member)
 
-    async def _balance_logic(self, ctx, member: discord.Member = None):
+    async def _balance_logic(self, ctx, member: discord.Member | None = None):
         """Shared logic for balance commands"""
         if not await self.config.economy_enabled():
             await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
@@ -174,7 +175,7 @@ class EconomyCommands:
         """
         await self._timely_logic(ctx)
 
-    @commands.hybrid_command(name="timely", aliases=["daily"])
+    @commands.hybrid_command(name="timely", aliases=["daily"])  # type: ignore[arg-type]
     async def global_timely(self, ctx):
         """
         Claim your daily reward.
@@ -245,7 +246,7 @@ class EconomyCommands:
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error claiming daily reward: {e}", mention_author=False)
 
     @economy_group.command(name="history", aliases=["transactions", "tx"])
-    async def economy_history(self, ctx, member: discord.Member = None):
+    async def economy_history(self, ctx, member: discord.Member | None = None):
         """
         View recent transactions.
 
@@ -285,7 +286,7 @@ class EconomyCommands:
 
     @economy_group.command(name="stats", aliases=["gambling"])
     @app_commands.describe(member="The user to check stats for")
-    async def gambling_stats(self, ctx, member: discord.Member = None):
+    async def gambling_stats(self, ctx, member: discord.Member | None = None):
         """
         View gambling statistics.
 
@@ -373,7 +374,7 @@ class EconomyCommands:
             await ctx.send(f"<a:zz_NoTick:729318761655435355> Error with rakeback: {e}")
 
     @economy_group.command(name="bank")
-    async def bank_info(self, ctx, member: discord.Member = None):
+    async def bank_info(self, ctx, member: discord.Member | None = None):
         """
         View bank account details.
 
@@ -516,7 +517,7 @@ class EconomyCommands:
             await ctx.send(f"<a:zz_NoTick:729318761655435355> Error retrieving leaderboard: {e}")
 
     # Bank commands
-    @commands.hybrid_group(name="bank")
+    @commands.hybrid_group(name="bank")  # type: ignore[arg-type]
     async def bank_group(self, ctx):
         """
         Manage your bank account.
@@ -544,30 +545,31 @@ class EconomyCommands:
                 await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
                 return
 
+            amount_int: int
             if amount.lower() == "all":
                 wallet, _ = await self.economy_system.get_balance(ctx.author.id)
-                amount = wallet
-                if amount <= 0:
+                amount_int = wallet
+                if amount_int <= 0:
                     await ctx.send(
                         "<a:zz_NoTick:729318761655435355> You don't have anything in your wallet to deposit."
                     )
                     return
             else:
                 try:
-                    amount = int(amount.replace(",", ""))
+                    amount_int = int(amount.replace(",", ""))
                 except ValueError:
                     await ctx.send("<a:zz_NoTick:729318761655435355> Invalid amount. Please use a number or 'all'.")
                     return
 
-            if amount <= 0:
+            if amount_int <= 0:
                 await ctx.send("<a:zz_NoTick:729318761655435355> Amount must be positive.")
                 return
 
-            success = await self.economy_system.deposit_bank(ctx.author.id, amount)
+            success = await self.economy_system.deposit_bank(ctx.author.id, amount_int)
             if success:
                 currency_symbol = await self.config.currency_symbol()
                 await ctx.send(
-                    f"<a:zz_YesTick:729318762356015124> Deposited {currency_symbol}{amount:,} into your bank account!"
+                    f"<a:zz_YesTick:729318762356015124> Deposited {currency_symbol}{amount_int:,} into your bank account!"
                 )
             else:
                 currency_symbol = await self.config.currency_symbol()
@@ -596,28 +598,29 @@ class EconomyCommands:
                 await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
                 return
 
+            amount_int: int
             if amount.lower() == "all":
                 _, bank = await self.economy_system.get_balance(ctx.author.id)
-                amount = bank
-                if amount <= 0:
+                amount_int = bank
+                if amount_int <= 0:
                     await ctx.send("<a:zz_NoTick:729318761655435355> You don't have anything in your bank to withdraw.")
                     return
             else:
                 try:
-                    amount = int(amount.replace(",", ""))
+                    amount_int = int(amount.replace(",", ""))
                 except ValueError:
                     await ctx.send("<a:zz_NoTick:729318761655435355> Invalid amount. Please use a number or 'all'.")
                     return
 
-            if amount <= 0:
+            if amount_int <= 0:
                 await ctx.send("<a:zz_NoTick:729318761655435355> Amount must be positive.")
                 return
 
-            success = await self.economy_system.withdraw_bank(ctx.author.id, amount)
+            success = await self.economy_system.withdraw_bank(ctx.author.id, amount_int)
             if success:
                 currency_symbol = await self.config.currency_symbol()
                 await ctx.send(
-                    f"<a:zz_YesTick:729318762356015124> Withdrew {currency_symbol}{amount:,} from your bank account!"
+                    f"<a:zz_YesTick:729318762356015124> Withdrew {currency_symbol}{amount_int:,} from your bank account!"
                 )
             else:
                 currency_symbol = await self.config.currency_symbol()

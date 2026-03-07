@@ -6,9 +6,10 @@ from ..market_views import (
     StockListView,
     StockPortfolioView,
 )
+from ..mixins import UnicorniaMixinBase
 
 
-class StockCommands:
+class StockCommands(UnicorniaMixinBase):
     """Stock Market Commands for Unicornia"""
 
     async def ticker_autocomplete(
@@ -23,7 +24,7 @@ class StockCommands:
                 choices.append(app_commands.Choice(name=f"{s['symbol']} - {s['name']}", value=s["symbol"]))
         return choices[:25]
 
-    @commands.hybrid_group(name="stock", aliases=["market", "stocks"])
+    @commands.hybrid_group(name="stock", aliases=["market", "stocks"])  # type: ignore[arg-type]
     async def stock_group(self, ctx):
         """
         Invest in the Stock Market.
@@ -58,7 +59,7 @@ class StockCommands:
 
     @stock_group.command(name="buy")
     @app_commands.describe(ticker="Stock Symbol", amount="Number of shares")
-    @app_commands.autocomplete(ticker=ticker_autocomplete)
+    @app_commands.autocomplete(ticker=ticker_autocomplete)  # type: ignore[arg-type]
     async def stock_buy(self, ctx, ticker: str, amount: int):
         """
         Buy shares of a stock.
@@ -77,7 +78,7 @@ class StockCommands:
 
     @stock_group.command(name="sell")
     @app_commands.describe(ticker="Stock Symbol", amount="Number of shares")
-    @app_commands.autocomplete(ticker=ticker_autocomplete)
+    @app_commands.autocomplete(ticker=ticker_autocomplete)  # type: ignore[arg-type]
     async def stock_sell(self, ctx, ticker: str, amount: int):
         """
         Sell shares of a stock.
@@ -95,7 +96,7 @@ class StockCommands:
             await ctx.send(f"❌ {msg}")
 
     @stock_group.command(name="portfolio", aliases=["holdings"])
-    async def stock_portfolio(self, ctx, user: discord.Member = None):
+    async def stock_portfolio(self, ctx, user: discord.Member | None = None):
         """
         View your portfolio.
 
@@ -119,7 +120,7 @@ class StockCommands:
 
     @stock_group.command(name="dashboard")
     @checks.admin_or_permissions(manage_guild=True)
-    async def stock_dashboard(self, ctx, channel: discord.TextChannel = None):
+    async def stock_dashboard(self, ctx, channel: discord.TextChannel | None = None):
         """
         Create a live stock dashboard.
 
@@ -129,6 +130,7 @@ class StockCommands:
         `[p]stock dashboard [channel]`
         """
         channel = channel or ctx.channel
+        assert isinstance(channel, discord.TextChannel)
 
         view = StockDashboardView(self.market_system)
         msg = await channel.send(view=view)  # No embed, components only

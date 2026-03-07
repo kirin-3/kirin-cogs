@@ -4,7 +4,7 @@ Handles stock management, purchases, and notifications for Discord Nitro items.
 """
 
 import logging
-from typing import Literal
+from typing import Literal, cast
 
 import discord
 from redbot.core import Config
@@ -132,7 +132,11 @@ class NitroSystem:
         )
         embed.add_field(name="Buyer", value=f"{ctx.author.mention} (`{ctx.author.id}`)", inline=False)
         embed.add_field(name="Item", value=pretty_name, inline=True)
-        embed.add_field(name="Price Paid", value=humanize_number(await self.get_price(item_type)), inline=True)
+        embed.add_field(
+            name="Price Paid",
+            value=humanize_number(await self.get_price(cast("Literal['boost', 'basic']", item_type))),
+            inline=True,
+        )
         embed.set_footer(text="Please send the code to the user.")
 
         # 1. Notify Log Channel

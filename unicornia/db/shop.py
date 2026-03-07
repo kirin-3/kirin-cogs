@@ -105,10 +105,10 @@ class ShopRepository:
         name: str,
         author_id: int,
         entry_type: int,
-        role_name: str = None,
-        role_id: int = None,
-        role_requirement: int = None,
-        command: str = None,
+        role_name: str | None = None,
+        role_id: int | None = None,
+        role_requirement: int | None = None,
+        command: str | None = None,
     ) -> int:
         """Add a new shop entry.
 
@@ -142,13 +142,13 @@ class ShopRepository:
         self,
         guild_id: int,
         entry_id: int,
-        price: int = None,
-        name: str = None,
-        entry_type: int = None,
-        role_name: str = None,
-        role_id: int = None,
-        role_requirement: int = None,
-        command: str = None,
+        price: int | None = None,
+        name: str | None = None,
+        entry_type: int | None = None,
+        role_name: str | None = None,
+        role_id: int | None = None,
+        role_requirement: int | None = None,
+        command: str | None = None,
     ) -> bool:
         """Update a shop entry.
 

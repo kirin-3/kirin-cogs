@@ -138,7 +138,7 @@ class WaifuRepository:
             await db.commit()
 
     async def force_claim_waifu(
-        self, waifu_id: int, claimer_id: int, old_owner_id: int, price: int, claimer_note: str, owner_note: str
+        self, waifu_id: int, claimer_id: int, old_owner_id: int | None, price: int, claimer_note: str, owner_note: str
     ) -> bool:
         """Atomically force claim a waifu: transfer currency and ownership.
 

@@ -8,6 +8,7 @@ Includes XP gain, currency transactions, gambling, banking, shop, and more.
 import asyncio
 import logging
 import os
+from typing import Literal
 
 from redbot.core import Config, commands
 from redbot.core.bot import Red
@@ -121,14 +122,14 @@ class Unicornia(
         self.config.register_guild(**default_guild)
 
         # Initialize systems (will be properly initialized in cog_load)
-        self.db = None
-        self.xp_system = None
-        self.economy_system = None
-        self.gambling_system = None
-        self.currency_generation = None
-        self.currency_decay = None
-        self.nitro_system = None
-        self.market_system = None
+        self.db = None  # type: ignore[assignment]
+        self.xp_system = None  # type: ignore[assignment]
+        self.economy_system = None  # type: ignore[assignment]
+        self.gambling_system = None  # type: ignore[assignment]
+        self.currency_generation = None  # type: ignore[assignment]
+        self.currency_decay = None  # type: ignore[assignment]
+        self.nitro_system = None  # type: ignore[assignment]
+        self.market_system = None  # type: ignore[assignment]
         self.wal_task = None
         self.market_task = None
 
@@ -241,7 +242,12 @@ class Unicornia(
             log.error(f"Error getting user data for {user_id}: {e}")
             return {}
 
-    async def red_delete_data_for_user(self, *, requester: str, user_id: int):
+    async def red_delete_data_for_user(  # type: ignore[override]
+        self,
+        *,
+        requester: Literal["discord_deleted_user", "owner", "user", "user_strict"],
+        user_id: int,
+    ) -> None:
         """Delete user data (Red bot requirement)"""
         # See: https://docs.discord-red.com/en/stable/framework_commands.html
         try:
@@ -317,7 +323,7 @@ class Unicornia(
             user_id, amount, transaction_type="api_remove", extra=source, note=reason
         )
 
-    async def cog_check(self, ctx: commands.Context) -> bool:
+    async def cog_check(self, ctx: commands.Context) -> bool:  # type: ignore[override]
         """Global check for all commands in this cog"""
         if not self._check_systems_ready():
             raise SystemNotReadyError()

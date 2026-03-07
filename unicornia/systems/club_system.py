@@ -58,7 +58,7 @@ class ClubSystem:
             return False, f"Error creating club: {e}"
 
     async def get_club_info(
-        self, club_identifier: str = None, user: discord.Member = None
+        self, club_identifier: str | None = None, user: discord.Member | None = None
     ) -> tuple[ClubData | None, str]:
         """Get club info by name or member.
 
