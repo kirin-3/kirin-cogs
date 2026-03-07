@@ -15,7 +15,7 @@ lerna-debug.log*
 plans/
 docs/
 unicorn_docs/docs/*
-nadeko/*
+.opencode/
 nadeko/
 unicornia/Nadeko_Bot_Comprehensive_Documentation.md
 unicornia/test_xp_generation.py
