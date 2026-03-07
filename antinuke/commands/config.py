@@ -1,16 +1,26 @@
 """Configuration commands for the AntiNuke cog."""
 
 import discord
+from typing import TYPE_CHECKING, Any
 from redbot.core import commands, app_commands
 from redbot.core.utils.chat_formatting import bold, inline, pagify
 
 from ..constants import ACTION_NAMES, DEFAULT_MONITOR_CONFIG
 
+if TYPE_CHECKING:
+    from redbot.core import Config
+    from antinuke.actions import QuarantineActions
+    from antinuke.utils import ActionCache
+
 
 class AntiNukeConfigCommands(commands.Cog):
     """Configuration commands for AntiNuke."""
+    config: "Config"
+    action_cache: "ActionCache"
+    quarantine_actions: "QuarantineActions"
 
-    @commands.group(name="antinuke", aliases=["an"])
+
+    @commands.group(name="antinuke", aliases=["an"])  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
     async def antinuke(self, ctx: commands.Context) -> None:
@@ -20,13 +30,19 @@ class AntiNukeConfigCommands(commands.Cog):
     @antinuke.command(name="enable")
     async def antinuke_enable(self, ctx: commands.Context) -> None:
         """Enable AntiNuke for this server."""
-        await self.config.guild(ctx.guild).enabled.set(True)
+        guild = ctx.guild
+        if not guild:
+            return
+        await self.config.guild(guild).enabled.set(True)
         await ctx.send(f"✅ AntiNuke has been {bold('enabled')} for this server.")
 
     @antinuke.command(name="disable")
     async def antinuke_disable(self, ctx: commands.Context) -> None:
         """Disable AntiNuke for this server."""
-        await self.config.guild(ctx.guild).enabled.set(False)
+        guild = ctx.guild
+        if not guild:
+            return
+        await self.config.guild(guild).enabled.set(False)
         await ctx.send(f"❌ AntiNuke has been {bold('disabled')} for this server.")
 
     @antinuke.command(name="logchannel")
@@ -35,7 +51,10 @@ class AntiNukeConfigCommands(commands.Cog):
         self, ctx: commands.Context, channel: discord.TextChannel
     ) -> None:
         """Set the log channel for AntiNuke alerts."""
-        await self.config.guild(ctx.guild).log_channel.set(channel.id)
+        guild = ctx.guild
+        if not guild:
+            return
+        await self.config.guild(guild).log_channel.set(channel.id)
         await ctx.send(f"✅ AntiNuke log channel set to {channel.mention}.")
 
     @antinuke.command(name="quarantinerole")
@@ -48,20 +67,26 @@ class AntiNukeConfigCommands(commands.Cog):
         This role should have minimal permissions and be positioned
         below the bot's highest role.
         """
+        guild = ctx.guild
+        if not guild:
+            return
         # Check hierarchy
-        if ctx.guild.me.top_role <= role:
+        if guild.me.top_role <= role:
             await ctx.send(
                 "❌ The quarantine role must be **below** the bot's highest role."
             )
             return
 
-        await self.config.guild(ctx.guild).quarantine_role.set(role.id)
+        await self.config.guild(guild).quarantine_role.set(role.id)
         await ctx.send(f"✅ Quarantine role set to {role.mention}.")
 
     @antinuke.command(name="settings", aliases=["show"])
     async def antinuke_settings(self, ctx: commands.Context) -> None:
         """Show current AntiNuke settings."""
-        guild_config = await self.config.guild(ctx.guild).all()
+        guild = ctx.guild
+        if not guild:
+            return
+        guild_config = await self.config.guild(guild).all()
 
         enabled = guild_config.get("enabled", False)
         log_channel_id = guild_config.get("log_channel")
@@ -74,7 +99,7 @@ class AntiNukeConfigCommands(commands.Cog):
         status = "🟢 Enabled" if enabled else "🔴 Disabled"
 
         lines = [
-            f"## AntiNuke Settings for {ctx.guild.name}",
+            f"## AntiNuke Settings for {guild.name}",
             f"",
             f"**Status:** {status}",
             f"",
@@ -83,7 +108,7 @@ class AntiNukeConfigCommands(commands.Cog):
 
         # Log channel
         if log_channel_id:
-            log_channel = ctx.guild.get_channel(log_channel_id)
+            log_channel = guild.get_channel(log_channel_id)
             if log_channel:
                 lines.append(f"**Log Channel:** {log_channel.mention}")
             else:
@@ -93,7 +118,7 @@ class AntiNukeConfigCommands(commands.Cog):
 
         # Quarantine role
         if quarantine_role_id:
-            quarantine_role = ctx.guild.get_role(quarantine_role_id)
+            quarantine_role = guild.get_role(quarantine_role_id)
             if quarantine_role:
                 lines.append(f"**Quarantine Role:** {quarantine_role.mention}")
             else:
@@ -107,7 +132,7 @@ class AntiNukeConfigCommands(commands.Cog):
         if trusted_users:
             user_mentions = []
             for user_id in trusted_users[:10]:  # Limit to 10
-                user = ctx.guild.get_member(user_id)
+                user = guild.get_member(user_id)
                 if user:
                     user_mentions.append(user.mention)
             if user_mentions:
@@ -121,7 +146,7 @@ class AntiNukeConfigCommands(commands.Cog):
         if trusted_roles:
             role_mentions = []
             for role_id in trusted_roles[:10]:
-                role = ctx.guild.get_role(role_id)
+                role = guild.get_role(role_id)
                 if role:
                     role_mentions.append(role.mention)
             lines.append(f"**Trusted Roles:** {', '.join(role_mentions)}")
@@ -158,7 +183,7 @@ class AntiNukeConfigCommands(commands.Cog):
         action_type="The action type to enable monitoring for"
     )
     async def monitor_enable(
-        self, ctx: commands.Context, action_type: str.lower
+        self, ctx: commands.Context, action_type: str
     ) -> None:
         """Enable monitoring for a specific action type.
 
@@ -172,13 +197,17 @@ class AntiNukeConfigCommands(commands.Cog):
         - vanity_change
         - bot_add
         """
+        guild = ctx.guild
+        if not guild:
+            return
+        action_type = action_type.lower()
         if action_type not in ACTION_NAMES:
             await ctx.send(
                 f"❌ Invalid action type. Valid types: {', '.join(ACTION_NAMES.keys())}"
             )
             return
 
-        async with self.config.guild(ctx.guild).monitor() as monitor:
+        async with self.config.guild(guild).monitor() as monitor:
             if action_type not in monitor:
                 monitor[action_type] = DEFAULT_MONITOR_CONFIG.copy()
             monitor[action_type]["enabled"] = True
@@ -192,16 +221,20 @@ class AntiNukeConfigCommands(commands.Cog):
         action_type="The action type to disable monitoring for"
     )
     async def monitor_disable(
-        self, ctx: commands.Context, action_type: str.lower
+        self, ctx: commands.Context, action_type: str
     ) -> None:
         """Disable monitoring for a specific action type."""
+        guild = ctx.guild
+        if not guild:
+            return
+        action_type = action_type.lower()
         if action_type not in ACTION_NAMES:
             await ctx.send(
                 f"❌ Invalid action type. Valid types: {', '.join(ACTION_NAMES.keys())}"
             )
             return
 
-        async with self.config.guild(ctx.guild).monitor() as monitor:
+        async with self.config.guild(guild).monitor() as monitor:
             if action_type not in monitor:
                 monitor[action_type] = DEFAULT_MONITOR_CONFIG.copy()
             monitor[action_type]["enabled"] = False
@@ -219,7 +252,7 @@ class AntiNukeConfigCommands(commands.Cog):
     async def monitor_threshold(
         self,
         ctx: commands.Context,
-        action_type: str.lower,
+        action_type: str,
         threshold: int,
         timeframe: int = 60,
     ) -> None:
@@ -228,6 +261,10 @@ class AntiNukeConfigCommands(commands.Cog):
         Threshold is the number of actions allowed within the timeframe.
         Set to 0 for instant action (like guild_prune).
         """
+        guild = ctx.guild
+        if not guild:
+            return
+        action_type = action_type.lower()
         if action_type not in ACTION_NAMES:
             await ctx.send(
                 f"❌ Invalid action type. Valid types: {', '.join(ACTION_NAMES.keys())}"
@@ -242,7 +279,7 @@ class AntiNukeConfigCommands(commands.Cog):
             await ctx.send("❌ Timeframe must be at least 10 seconds.")
             return
 
-        async with self.config.guild(ctx.guild).monitor() as monitor:
+        async with self.config.guild(guild).monitor() as monitor:
             if action_type not in monitor:
                 monitor[action_type] = DEFAULT_MONITOR_CONFIG.copy()
             monitor[action_type]["threshold"] = threshold
@@ -266,7 +303,10 @@ class AntiNukeConfigCommands(commands.Cog):
         self, ctx: commands.Context, enabled: bool
     ) -> None:
         """Configure whether to automatically kick unauthorized bots."""
-        async with self.config.guild(ctx.guild).monitor() as monitor:
+        guild = ctx.guild
+        if not guild:
+            return
+        async with self.config.guild(guild).monitor() as monitor:
             if "bot_add" not in monitor:
                 monitor["bot_add"] = DEFAULT_MONITOR_CONFIG.copy()
             monitor["bot_add"]["kick_bot"] = enabled

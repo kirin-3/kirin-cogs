@@ -16,7 +16,7 @@ class Persona:
     after_context: Optional[str] = None
     history_limit: Optional[int] = None
     first_message: Optional[str] = None
-    examples: List[Dict[str, str]] = None
+    examples: Optional[List[Dict[str, str]]] = None
     allow_summon: bool = False
 
     @classmethod

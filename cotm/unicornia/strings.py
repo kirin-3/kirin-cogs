@@ -15,16 +15,18 @@ def replace_pronouns(text):
         "ours": "yours",
     }
 
-    words = text.split()
-    replaced_words = []
-    for word in words:
-        stripped_word = word.strip(",.!?;:")
-        if stripped_word in REPLACEMENTS:
-            replaced_words.append(REPLACEMENTS[stripped_word])
-        else:
-            replaced_words.append(word)
+    def replace(match):
+        word = match.group(1)
+        lower_word = word.lower()
+        if lower_word in REPLACEMENTS:
+            replacement = REPLACEMENTS[lower_word]
+            if word.istitle():
+                replacement = replacement.capitalize()
+            return replacement + match.group(2)
+        return match.group(0)
 
-    return " ".join(replaced_words)
+    # Match words and following punctuation/whitespace
+    return re.sub(r"(\w+)([^\w\s]*)", replace, text)
 
 
 def get_indefinite_article(word: str) -> str:

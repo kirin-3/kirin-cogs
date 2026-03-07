@@ -1,53 +1,89 @@
 import discord
 from discord import ui
 
+
 class ContestDashboardView(ui.LayoutView):
     """V2 Components Dashboard for the Cutie of the Month Contest."""
-    
+
     def __init__(self, cog, contest_number: int, texts: dict):
-        super().__init__(timeout=None) # Persistent view
+        super().__init__(timeout=None)  # Persistent view
         self.cog = cog
         self.contest_number = contest_number
-        self.texts = texts # Dictionary holding the formatted description, terms, prizes, votes text
-        
+        self.texts = texts  # Dictionary holding the formatted description, terms, prizes, votes text
+
         # Determine current state: "home", "terms", "prizes", "votes"
         self.current_tab = "home"
         self.update_components()
 
     def update_components(self):
         self.clear_items()
-        
+
         # Main Container
         container = ui.Container(accent_color=discord.Color.from_rgb(175, 126, 235))
-        
+
         # Display the active tab's content
         if self.current_tab == "home":
-             content = f"## 🎀 Cutie of the Month {self.contest_number}\n{self.texts['description']}"
+            content = f"## 🎀 Cutie of the Month {self.contest_number}\n{self.texts['description']}"
         elif self.current_tab == "terms":
-             content = f"### 📜 Entry Terms\n{self.texts['terms']}"
+            content = f"### 📜 Entry Terms\n{self.texts['terms']}"
         elif self.current_tab == "prizes":
-             content = f"### 🏆 Prizes\n{self.texts['prizes']}"
+            content = f"### 🏆 Prizes\n{self.texts['prizes']}"
         elif self.current_tab == "votes":
-             content = f"### 🗳️ How to Vote\n{self.texts['votes']}"
-             
+            content = f"### 🗳️ How to Vote\n{self.texts['votes']}"
+        else:
+            content = "Error: Unknown tab state."
+
         container.add_item(ui.TextDisplay(content=content))
         container.add_item(ui.Separator())
-        
+
         # Navigation Buttons
-        home_btn = ui.Button(label="Home", style=discord.ButtonStyle.primary if self.current_tab == "home" else discord.ButtonStyle.secondary, custom_id="cotm:home", row=0)
-        terms_btn = ui.Button(label="Terms", style=discord.ButtonStyle.primary if self.current_tab == "terms" else discord.ButtonStyle.secondary, custom_id="cotm:terms", row=0)
-        prizes_btn = ui.Button(label="Prizes", style=discord.ButtonStyle.primary if self.current_tab == "prizes" else discord.ButtonStyle.secondary, custom_id="cotm:prizes", row=0)
-        votes_btn = ui.Button(label="How to Vote", style=discord.ButtonStyle.primary if self.current_tab == "votes" else discord.ButtonStyle.secondary, custom_id="cotm:votes", row=0)
-        
+        home_btn = ui.Button(
+            label="Home",
+            style=discord.ButtonStyle.primary
+            if self.current_tab == "home"
+            else discord.ButtonStyle.secondary,
+            custom_id="cotm:home",
+            row=0,
+        )
+        terms_btn = ui.Button(
+            label="Terms",
+            style=discord.ButtonStyle.primary
+            if self.current_tab == "terms"
+            else discord.ButtonStyle.secondary,
+            custom_id="cotm:terms",
+            row=0,
+        )
+        prizes_btn = ui.Button(
+            label="Prizes",
+            style=discord.ButtonStyle.primary
+            if self.current_tab == "prizes"
+            else discord.ButtonStyle.secondary,
+            custom_id="cotm:prizes",
+            row=0,
+        )
+        votes_btn = ui.Button(
+            label="How to Vote",
+            style=discord.ButtonStyle.primary
+            if self.current_tab == "votes"
+            else discord.ButtonStyle.secondary,
+            custom_id="cotm:votes",
+            row=0,
+        )
+
         # Special action button
-        standings_btn = ui.Button(label="Check Standings", style=discord.ButtonStyle.success, custom_id="cotm:standings", row=1)
-        
+        standings_btn = ui.Button(
+            label="Check Standings",
+            style=discord.ButtonStyle.success,
+            custom_id="cotm:standings",
+            row=1,
+        )
+
         home_btn.callback = self.home_button
         terms_btn.callback = self.terms_button
         prizes_btn.callback = self.prizes_button
         votes_btn.callback = self.votes_button
         standings_btn.callback = self.standings_button
-        
+
         self.add_item(container)
         self.add_item(ui.ActionRow(home_btn, terms_btn, prizes_btn, votes_btn))
         self.add_item(ui.ActionRow(standings_btn))
@@ -56,7 +92,7 @@ class ContestDashboardView(ui.LayoutView):
         self.current_tab = "home"
         self.update_components()
         await interaction.response.edit_message(view=self)
-        
+
     async def terms_button(self, interaction: discord.Interaction):
         self.current_tab = "terms"
         self.update_components()
@@ -71,27 +107,44 @@ class ContestDashboardView(ui.LayoutView):
         self.current_tab = "votes"
         self.update_components()
         await interaction.response.edit_message(view=self)
-        
+
     async def standings_button(self, interaction: discord.Interaction):
         # Send an ephemeral loading message first, so we don't edit the dashboard
-        await interaction.response.send_message("Tallying votes, please wait...", ephemeral=True)
-        
+        await interaction.response.send_message(
+            "Tallying votes, please wait...", ephemeral=True
+        )
+
         # Find the entries channel
         entries_channel = interaction.client.get_channel(782019562795302934)
-             
+
         if not entries_channel:
-             await interaction.edit_original_response(content="❌ Error: Could not find the entries channel to tally votes.", view=None)
-             return
-             
+            await interaction.edit_original_response(
+                content="❌ Error: Could not find the entries channel to tally votes.",
+                view=None,
+            )
+            return
+
         # Tally the votes
         entries = await self.cog._get_contest_results(entries_channel)
-        
+
         # Format the leaderboard via Container (hide invalid votes)
-        container = self.cog._build_standings_container(entries, title="📊 Current Standings", show_invalid=False)
-        
+        container = self.cog._build_standings_container(
+            entries, title="📊 Current Standings", show_invalid=False
+        )
+
         class StandingsView(ui.LayoutView):
-             def __init__(self, container):
-                  super().__init__(timeout=180)
-                  self.add_item(container)
-                  
-        await interaction.edit_original_response(content=None, view=StandingsView(container))
+            def __init__(self, container):
+                super().__init__(timeout=180)
+                self.add_item(container)
+
+        await interaction.edit_original_response(
+            content=None, view=StandingsView(container)
+        )
+
+
+class StandingsView(ui.LayoutView):
+    """A simple LayoutView wrapper for displaying a standings container."""
+
+    def __init__(self, container: ui.Container, timeout: float = 180) -> None:
+        super().__init__(timeout=timeout)
+        self.add_item(container)

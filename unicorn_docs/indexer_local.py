@@ -3,7 +3,7 @@ import sys
 import pickle
 import numpy as np
 from pathlib import Path
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer  # type: ignore
 
 # --- SETUP AND CONFIGURATION ---
 

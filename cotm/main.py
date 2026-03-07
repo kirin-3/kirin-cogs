@@ -7,17 +7,18 @@ embeds, retrieving contest channels, formatting text with contest-specific
 details, and posting contest information to a designated channel.
 """
 
-from pathlib import Path
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Optional, cast
 
 import discord
 from discord import ui
-
 from redbot.core import commands
 from redbot.core.bot import Red
 
 from . import __version__, const
+from .cotm_views import ContestDashboardView, StandingsView
 from .unicornia import strings
 
 
@@ -76,16 +77,18 @@ class ContestCog(commands.Cog):
         Returns:
             discord.Embed: The created embed with the specified title, description, footer, and color.
         """
-        embed = discord.Embed(title=title, description=description)
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=discord.Color(const.UNICORNIA_BOT_COLOR),
+        )
 
         footer_text = strings.format_string(
             const.FOOTER_TEXT, contest_number=self.contest_number
         )
         embed.set_footer(text=footer_text, icon_url=const.FOOTER_ICON_URL)
-        embed.color = const.UNICORNIA_BOT_COLOR
 
         return embed
-
 
     def _format_text(self, ctx: commands.Context, text: str) -> str:
         """
@@ -107,8 +110,8 @@ class ContestCog(commands.Cog):
         )
 
     async def _post_contest_info(
-        self, ctx: commands.Context, contest_number: int = None
-    ):
+        self, ctx: commands.Context, contest_number: Optional[int] = None
+    ) -> None:
         """Posts information about the Cutie of the Month Contest to the designated channel.
 
         This method sends a unified V2 Components Dashboard to the specific channel, detailing
@@ -127,34 +130,39 @@ class ContestCog(commands.Cog):
 
         # Load and format the texts
         texts = {
-            "description": self._format_text(ctx, self._import_txt(const.CONTEST_DESCRIPTION)),
+            "description": self._format_text(
+                ctx, self._import_txt(const.CONTEST_DESCRIPTION)
+            ),
             "terms": self._format_text(ctx, self._import_txt(const.TERMS_DESCRIPTION)),
-            "prizes": self._format_text(ctx, self._import_txt(const.PRIZES_DESCRIPTION)),
-            "votes": self._format_text(ctx, self._import_txt(const.VOTES_DESCRIPTION))
+            "prizes": self._format_text(
+                ctx, self._import_txt(const.PRIZES_DESCRIPTION)
+            ),
+            "votes": self._format_text(ctx, self._import_txt(const.VOTES_DESCRIPTION)),
         }
 
-        # Import the view (doing it here to avoid circular imports if needed, though top level is fine)
-        from .cotm_views import ContestDashboardView
+        # ContestDashboardView is already top-level imported
 
-        dashboard_view = ContestDashboardView(self, self.contest_number, texts)
-        await channel.send(view=dashboard_view)
+        dashboard_view = ContestDashboardView(self, self._contest_number, texts)
+        await cast(discord.TextChannel, ctx.channel).send(view=dashboard_view)
 
     @commands.command(aliases=["cotm"])
     @commands.admin_or_permissions(administrator=True)
-    async def contest(self, ctx: commands.Context, contest_number: int = None):
+    async def contest(
+        self, ctx: commands.Context, contest_number: Optional[int] = None
+    ) -> None:
         """Handles the contest command.
 
         Parameters:
             ctx (commands.Context): The context in which the command was invoked.
             contest_number (int, optional): The number of the contest to retrieve information for. Defaults to None.
         """
-        return await self._post_contest_info(ctx, contest_number)
+        await self._post_contest_info(ctx, contest_number)
 
     async def _get_contest_results(
         self,
         channel: discord.TextChannel,
         emote: str = const.COTM_VOTE_EMOJI,
-        voter_server_age: commands.TimedeltaConverter = None,
+        voter_server_age: Optional[timedelta] = None,
         *other_emotes,
     ) -> list:
         """Helper to tally valid votes from a channel."""
@@ -188,31 +196,37 @@ class ContestCog(commands.Cog):
 
         if entries:
             entries = sorted(entries, key=lambda e: e["valid_votes"], reverse=True)
-            return entries[:10] # Return Top 10
+            return entries[:10]  # Return Top 10
         return []
 
-    def _build_standings_container(self, top_entries: list, title: str, channel: discord.TextChannel = None, show_invalid: bool = True) -> ui.Container:
+    def _build_standings_container(
+        self,
+        top_entries: list,
+        title: str,
+        channel: Optional[discord.TextChannel] = None,
+        show_invalid: bool = True,
+    ) -> ui.Container:
         """Builds a V2 Container for displaying the Top 10 standings."""
         container = ui.Container(accent_color=discord.Color.from_rgb(175, 126, 235))
-        
+
         header_text = f"## {title}"
         if channel:
-             header_text += f"\nTop {len(top_entries)} results for {channel.mention}"
-             
+            header_text += f"\nTop {len(top_entries)} results for {channel.mention}"
+
         container.add_item(ui.TextDisplay(content=header_text))
         container.add_item(ui.Separator())
-        
+
         standings_text = ""
         for i, entry in enumerate(top_entries):
             if show_invalid:
                 val = f"{entry['valid_votes']} valid votes ({entry['invalid_votes']} invalid)"
             else:
                 val = f"{entry['valid_votes']} votes"
-            standings_text += f"**#{i+1} {entry['name']}** - {val}\n"
-            
+            standings_text += f"**#{i + 1} {entry['name']}** - {val}\n"
+
         if not standings_text:
-             standings_text = "_No valid entries found._"
-             
+            standings_text = "_No valid entries found._"
+
         container.add_item(ui.TextDisplay(content=standings_text))
         return container
 
@@ -224,26 +238,25 @@ class ContestCog(commands.Cog):
         channel: discord.TextChannel,
         emote: str = const.COTM_VOTE_EMOJI,
         show_invalid: bool = False,
-        voter_server_age: commands.TimedeltaConverter = None,
+        voter_server_age: Optional[commands.TimedeltaConverter] = None,
         *other_emotes,
-    ):
+    ) -> None:
         """
         Counts reactions in a channel and displays a leaderboard.
         """
-        top_entries = await self._get_contest_results(channel, emote, voter_server_age, *other_emotes)
-        
-        if not top_entries:
-            return await ctx.send(f"No entries found for channel {channel.mention}")
+        age_td = cast(Optional[timedelta], voter_server_age)
+        top_entries = await self._get_contest_results(
+            channel, emote, age_td, *other_emotes
+        )
 
-        container = self._build_standings_container(top_entries, f"Contest Leaderboard", channel, show_invalid)
-        
-        # Create a simple LayoutView to hold the container
-        class StandingsView(ui.LayoutView):
-             def __init__(self, container):
-                  super().__init__(timeout=180)
-                  self.add_item(container)
-                  
-        await ctx.send(view=StandingsView(container))
+        if not top_entries:
+            await ctx.send(f"No entries found for channel {channel.mention}")
+            return
+
+        container = self._build_standings_container(
+            top_entries, "Contest Leaderboard", channel, show_invalid
+        )
+        await cast(discord.TextChannel, ctx.channel).send(view=StandingsView(container))
 
     @commands.guild_only()
     @commands.is_owner()
@@ -252,19 +265,20 @@ class ContestCog(commands.Cog):
         self,
         ctx: commands.Context,
         channel: discord.TextChannel,
-    ):
+    ) -> None:
         """
         Counts the Top 10 users in a contest channel using the predetermined emoji
         and automatically distributes the tiered Unicornia currency rewards to them.
 
         This command is restricted to bot owners.
         """
-        unicornia = self.bot.get_cog("Unicornia")
+        unicornia: Any = self.bot.get_cog("Unicornia")
         if not unicornia:
-            return await ctx.send(
+            await ctx.send(
                 "❌ **Error:** The `Unicornia` cog is not currently loaded or available. "
                 "Cannot distribute rewards."
             )
+            return
 
         async with ctx.typing():
             timenow = datetime.now(timezone.utc)
@@ -286,13 +300,14 @@ class ContestCog(commands.Cog):
                         all_votes = [u async for u in r.users()]
                         valid_votes_list = list(filter(valid_user_vote, all_votes))
                         entry["valid_votes"] += len(valid_votes_list)
-                
+
                 # We only want entries that actually got votes
                 if entry["valid_votes"] > 0:
                     entries.append(entry)
 
             if not entries:
-                return await ctx.send(f"No valid entries found for channel {channel.mention}")
+                await ctx.send(f"No valid entries found for channel {channel.mention}")
+                return
 
             # Sort users by valid votes descending
             entries = sorted(entries, key=lambda e: e["valid_votes"], reverse=True)
@@ -300,38 +315,41 @@ class ContestCog(commands.Cog):
 
             # --- Build Confirmation V2 Container ---
             # Reuse the container builder but append the payout details
-            container = self._build_standings_container(top_entries, f"Contest Rewards Distributed", channel, show_invalid=False)
-            
+            container = self._build_standings_container(
+                top_entries, "Contest Rewards Distributed", channel, show_invalid=False
+            )
+
             # Add a separator and the payout logs
             container.add_item(ui.Separator())
             payout_text = "### 💸 Payout Log\n"
-            
+
             for i, entry in enumerate(top_entries):
                 if i >= len(const.COTM_REWARDS):
-                    break # Safety bounds check just in case
+                    break  # Safety bounds check just in case
 
                 reward_amount = const.COTM_REWARDS[i]
                 rank = i + 1
                 user = entry["user"]
 
-                # Payout 
+                # Payout
                 success = await unicornia.add_balance(
                     user_id=user.id,
                     amount=reward_amount,
                     reason=f"COTM Top 10 Reward (Rank {rank})",
-                    source="ContestCog"
+                    source="ContestCog",
                 )
 
                 if success:
-                    payout_text += f"**#{rank} {entry['name']}**: +{reward_amount:,} 🦄\n"
+                    payout_text += (
+                        f"**#{rank} {entry['name']}**: +{reward_amount:,} 🦄\n"
+                    )
                 else:
-                    payout_text += f"**#{rank} {entry['name']}**: ❌ Failed to deposit\n"
-                    
+                    payout_text += (
+                        f"**#{rank} {entry['name']}**: ❌ Failed to deposit\n"
+                    )
+
             container.add_item(ui.TextDisplay(content=payout_text))
-            
-            class StandingsView(ui.LayoutView):
-                 def __init__(self, container):
-                      super().__init__(timeout=180)
-                      self.add_item(container)
-                      
-            await ctx.send(view=StandingsView(container))
+
+            await cast(discord.TextChannel, ctx.channel).send(
+                view=StandingsView(container)
+            )

@@ -1,0 +1,23 @@
+# --- Runtime Dependencies (from info.json files) ---
+aiohttp
+aiosqlite
+chromadb
+google-auth
+gspread
+modal
+nltk>=3.8.0
+numpy>=1.21.0
+pillow
+python-dotenv>=0.19.0
+pyyaml
+requests>=2.25.0
+
+# --- Base Framework (from AGENTS.md) ---
+Red-DiscordBot>=3.5.0
+discord.py>=2.6.0
+
+# --- Development & Testing Tools (from AGENTS.md) ---
+basedpyright
+pytest
+pytest-asyncio
+dpytest

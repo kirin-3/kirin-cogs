@@ -162,7 +162,7 @@ class AuditLogHelper:
             cutoff = current_time - timeframe
 
             async for entry in guild.audit_logs(
-                action=discord.AuditLogAction.guild_prune,
+                action=discord.AuditLogAction.member_prune,
                 limit=5,
             ):
                 if entry.created_at.timestamp() > cutoff:
@@ -217,7 +217,7 @@ class AuditLogHelper:
         guild: discord.Guild,
         role_id: int,
         timeframe: int,
-        dangerous_perms: List[str] = None,
+        dangerous_perms: Optional[List[str]] = None,
     ) -> Optional[Tuple[discord.Member, str]]:
         """
         Find user who updated a role with dangerous permissions.
@@ -254,27 +254,19 @@ class AuditLogHelper:
 
                 if entry.target and entry.target.id == role_id:
                     # Check if dangerous permissions were added
-                    if entry.changes:
-                        for change in entry.changes:
-                            if change.key == "permissions":
-                                # Check which dangerous perms were added
-                                if hasattr(change, "new") and hasattr(change, "old"):
-                                    try:
-                                        old_perms = discord.Permissions(change.old)
-                                        new_perms = discord.Permissions(change.new)
-
-                                        for perm_name in dangerous_perms:
-                                            if not getattr(
-                                                old_perms, perm_name, False
-                                            ) and getattr(new_perms, perm_name, False):
-                                                if entry.user:
-                                                    member = guild.get_member(
-                                                        entry.user.id
-                                                    )
-                                                    if member:
-                                                        return (member, perm_name)
-                                    except (TypeError, ValueError):
-                                        pass
+                    if hasattr(entry.after, "permissions"):
+                        old_perms = getattr(entry.before, "permissions", discord.Permissions())
+                        new_perms = getattr(entry.after, "permissions", discord.Permissions())
+                        if old_perms is not None and new_perms is not None:
+                            try:
+                                for perm_name in dangerous_perms:
+                                    if not getattr(old_perms, perm_name, False) and getattr(new_perms, perm_name, False):
+                                        if entry.user:
+                                            member = guild.get_member(entry.user.id)
+                                            if member:
+                                                return (member, perm_name)
+                            except (TypeError, ValueError):
+                                pass
             return None
 
         except discord.Forbidden:
@@ -309,11 +301,9 @@ class AuditLogHelper:
             ):
                 if entry.created_at.timestamp() > cutoff:
                     # Check if vanity was changed
-                    if entry.changes:
-                        for change in entry.changes:
-                            if change.key == "vanity_url_code":
-                                if entry.user:
-                                    return guild.get_member(entry.user.id)
+                    if hasattr(entry.after, "vanity_url_code"):
+                        if entry.user:
+                            return guild.get_member(entry.user.id)
             return None
 
         except discord.Forbidden:

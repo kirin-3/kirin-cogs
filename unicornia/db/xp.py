@@ -224,7 +224,7 @@ class XPRepository:
             await db.commit()
 
     # XP Shop methods
-    async def get_user_xp_items(self, user_id: int, item_type: int = None) -> List[Tuple]:
+    async def get_user_xp_items(self, user_id: int, item_type: int | None = None) -> List[Tuple]:
         """Get user's owned XP shop items.
         
         Args:

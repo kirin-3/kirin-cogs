@@ -177,7 +177,7 @@ class AntiNuke(
 
     # ==================== Commands from config.py ====================
 
-    @commands.group(name="antinuke", aliases=["an"])
+    @commands.group(name="antinuke", aliases=["an"])  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
     async def antinuke(self, ctx: commands.Context) -> None:
@@ -187,13 +187,19 @@ class AntiNuke(
     @antinuke.command(name="enable")
     async def antinuke_enable(self, ctx: commands.Context) -> None:
         """Enable AntiNuke for this server."""
-        await self.config.guild(ctx.guild).enabled.set(True)
+        guild = ctx.guild
+        if not guild:
+            return
+        await self.config.guild(guild).enabled.set(True)
         await ctx.send(f"✅ AntiNuke has been **enabled** for this server.")
 
     @antinuke.command(name="disable")
     async def antinuke_disable(self, ctx: commands.Context) -> None:
         """Disable AntiNuke for this server."""
-        await self.config.guild(ctx.guild).enabled.set(False)
+        guild = ctx.guild
+        if not guild:
+            return
+        await self.config.guild(guild).enabled.set(False)
         await ctx.send(f"❌ AntiNuke has been **disabled** for this server.")
 
     @antinuke.command(name="logchannel")
@@ -201,7 +207,10 @@ class AntiNuke(
         self, ctx: commands.Context, channel: discord.TextChannel
     ) -> None:
         """Set the log channel for AntiNuke alerts."""
-        await self.config.guild(ctx.guild).log_channel.set(channel.id)
+        guild = ctx.guild
+        if not guild:
+            return
+        await self.config.guild(guild).log_channel.set(channel.id)
         await ctx.send(f"✅ AntiNuke log channel set to {channel.mention}.")
 
     @antinuke.command(name="quarantinerole")
@@ -213,22 +222,28 @@ class AntiNuke(
         This role should have minimal permissions and be positioned
         below the bot's highest role.
         """
-        if ctx.guild.me.top_role <= role:
+        guild = ctx.guild
+        if not guild:
+            return
+        if guild.me.top_role <= role:
             await ctx.send(
                 "❌ The quarantine role must be **below** the bot's highest role."
             )
             return
 
-        await self.config.guild(ctx.guild).quarantine_role.set(role.id)
+        await self.config.guild(guild).quarantine_role.set(role.id)
         await ctx.send(f"✅ Quarantine role set to {role.mention}.")
 
     @antinuke.command(name="settings", aliases=["show"])
     async def antinuke_settings(self, ctx: commands.Context) -> None:
         """Show current AntiNuke settings."""
+        guild = ctx.guild
+        if not guild:
+            return
         from .constants import ACTION_NAMES, DEFAULT_MONITOR_CONFIG
         from redbot.core.utils.chat_formatting import pagify
 
-        guild_config = await self.config.guild(ctx.guild).all()
+        guild_config = await self.config.guild(guild).all()
 
         enabled = guild_config.get("enabled", False)
         log_channel_id = guild_config.get("log_channel")
@@ -240,7 +255,7 @@ class AntiNuke(
         status = "🟢 Enabled" if enabled else "🔴 Disabled"
 
         lines = [
-            f"## AntiNuke Settings for {ctx.guild.name}",
+            f"## AntiNuke Settings for {guild.name}",
             "",
             f"**Status:** {status}",
             "",
@@ -248,7 +263,7 @@ class AntiNuke(
         ]
 
         if log_channel_id:
-            log_channel = ctx.guild.get_channel(log_channel_id)
+            log_channel = guild.get_channel(log_channel_id)
             if log_channel:
                 lines.append(f"**Log Channel:** {log_channel.mention}")
             else:
@@ -257,7 +272,7 @@ class AntiNuke(
             lines.append("**Log Channel:** Not set")
 
         if quarantine_role_id:
-            quarantine_role = ctx.guild.get_role(quarantine_role_id)
+            quarantine_role = guild.get_role(quarantine_role_id)
             if quarantine_role:
                 lines.append(f"**Quarantine Role:** {quarantine_role.mention}")
             else:
@@ -270,7 +285,7 @@ class AntiNuke(
         if trusted_users:
             user_mentions = []
             for user_id in trusted_users[:10]:
-                user = ctx.guild.get_member(user_id)
+                user = guild.get_member(user_id)
                 if user:
                     user_mentions.append(user.mention)
             if user_mentions:
@@ -283,7 +298,7 @@ class AntiNuke(
         if trusted_roles:
             role_mentions = []
             for role_id in trusted_roles[:10]:
-                role = ctx.guild.get_role(role_id)
+                role = guild.get_role(role_id)
                 if role:
                     role_mentions.append(role.mention)
             lines.append(f"**Trusted Roles:** {', '.join(role_mentions)}")
@@ -314,9 +329,13 @@ class AntiNuke(
 
     @antinuke_monitor.command(name="enable")
     async def monitor_enable(
-        self, ctx: commands.Context, action_type: str.lower
+        self, ctx: commands.Context, action_type: str
     ) -> None:
         """Enable monitoring for a specific action type."""
+        guild = ctx.guild
+        if not guild:
+            return
+        action_type = action_type.lower()
         from .constants import ACTION_NAMES, DEFAULT_MONITOR_CONFIG
 
         if action_type not in ACTION_NAMES:
@@ -325,7 +344,7 @@ class AntiNuke(
             )
             return
 
-        async with self.config.guild(ctx.guild).monitor() as monitor:
+        async with self.config.guild(guild).monitor() as monitor:
             if action_type not in monitor:
                 monitor[action_type] = DEFAULT_MONITOR_CONFIG.copy()
             monitor[action_type]["enabled"] = True
@@ -336,9 +355,13 @@ class AntiNuke(
 
     @antinuke_monitor.command(name="disable")
     async def monitor_disable(
-        self, ctx: commands.Context, action_type: str.lower
+        self, ctx: commands.Context, action_type: str
     ) -> None:
         """Disable monitoring for a specific action type."""
+        guild = ctx.guild
+        if not guild:
+            return
+        action_type = action_type.lower()
         from .constants import ACTION_NAMES, DEFAULT_MONITOR_CONFIG
 
         if action_type not in ACTION_NAMES:
@@ -347,7 +370,7 @@ class AntiNuke(
             )
             return
 
-        async with self.config.guild(ctx.guild).monitor() as monitor:
+        async with self.config.guild(guild).monitor() as monitor:
             if action_type not in monitor:
                 monitor[action_type] = DEFAULT_MONITOR_CONFIG.copy()
             monitor[action_type]["enabled"] = False
@@ -360,11 +383,15 @@ class AntiNuke(
     async def monitor_threshold(
         self,
         ctx: commands.Context,
-        action_type: str.lower,
+        action_type: str,
         threshold: int,
         timeframe: int = 60,
     ) -> None:
         """Set the threshold for an action type."""
+        guild = ctx.guild
+        if not guild:
+            return
+        action_type = action_type.lower()
         from .constants import ACTION_NAMES, DEFAULT_MONITOR_CONFIG
 
         if action_type not in ACTION_NAMES:
@@ -381,7 +408,7 @@ class AntiNuke(
             await ctx.send("❌ Timeframe must be at least 10 seconds.")
             return
 
-        async with self.config.guild(ctx.guild).monitor() as monitor:
+        async with self.config.guild(guild).monitor() as monitor:
             if action_type not in monitor:
                 monitor[action_type] = DEFAULT_MONITOR_CONFIG.copy()
             monitor[action_type]["threshold"] = threshold
@@ -402,9 +429,12 @@ class AntiNuke(
         self, ctx: commands.Context, enabled: bool
     ) -> None:
         """Configure whether to automatically kick unauthorized bots."""
+        guild = ctx.guild
+        if not guild:
+            return
         from .constants import DEFAULT_MONITOR_CONFIG
 
-        async with self.config.guild(ctx.guild).monitor() as monitor:
+        async with self.config.guild(guild).monitor() as monitor:
             if "bot_add" not in monitor:
                 monitor["bot_add"] = DEFAULT_MONITOR_CONFIG.copy()
             monitor["bot_add"]["kick_bot"] = enabled
@@ -425,15 +455,18 @@ class AntiNuke(
         self, ctx: commands.Context, user: discord.Member
     ) -> None:
         """Add a user to the trusted list."""
+        guild = ctx.guild
+        if not guild:
+            return
         if user.bot:
             await ctx.send("❌ Bots cannot be added to the trusted list.")
             return
 
-        if user.id == ctx.guild.owner_id:
+        if user.id == guild.owner_id:
             await ctx.send("ℹ️ The server owner is always trusted by default.")
             return
 
-        async with self.config.guild(ctx.guild).trusted_users() as trusted:
+        async with self.config.guild(guild).trusted_users() as trusted:
             if user.id in trusted:
                 await ctx.send(f"❌ {user.mention} is already trusted.")
                 return
@@ -446,7 +479,10 @@ class AntiNuke(
         self, ctx: commands.Context, user: discord.Member
     ) -> None:
         """Remove a user from the trusted list."""
-        async with self.config.guild(ctx.guild).trusted_users() as trusted:
+        guild = ctx.guild
+        if not guild:
+            return
+        async with self.config.guild(guild).trusted_users() as trusted:
             if user.id not in trusted:
                 await ctx.send(f"❌ {user.mention} is not in the trusted list.")
                 return
@@ -459,11 +495,14 @@ class AntiNuke(
         self, ctx: commands.Context, role: discord.Role
     ) -> None:
         """Add a role to the trusted list."""
+        guild = ctx.guild
+        if not guild:
+            return
         if role.is_default():
             await ctx.send("❌ The @everyone role cannot be trusted.")
             return
 
-        async with self.config.guild(ctx.guild).trusted_roles() as trusted:
+        async with self.config.guild(guild).trusted_roles() as trusted:
             if role.id in trusted:
                 await ctx.send(f"❌ {role.mention} is already trusted.")
                 return
@@ -476,7 +515,10 @@ class AntiNuke(
         self, ctx: commands.Context, role: discord.Role
     ) -> None:
         """Remove a role from the trusted list."""
-        async with self.config.guild(ctx.guild).trusted_roles() as trusted:
+        guild = ctx.guild
+        if not guild:
+            return
+        async with self.config.guild(guild).trusted_roles() as trusted:
             if role.id not in trusted:
                 await ctx.send(f"❌ {role.mention} is not in the trusted list.")
                 return
@@ -487,8 +529,11 @@ class AntiNuke(
     @antinuke_trust.command(name="list", aliases=["show"])
     async def trust_list(self, ctx: commands.Context) -> None:
         """Show all trusted users and roles."""
-        trusted_users = await self.config.guild(ctx.guild).trusted_users()
-        trusted_roles = await self.config.guild(ctx.guild).trusted_roles()
+        guild = ctx.guild
+        if not guild:
+            return
+        trusted_users = await self.config.guild(guild).trusted_users()
+        trusted_roles = await self.config.guild(guild).trusted_roles()
 
         lines = [
             "## 🔒 AntiNuke Trust List",
@@ -500,7 +545,7 @@ class AntiNuke(
         if trusted_users:
             user_lines = []
             for user_id in trusted_users:
-                user = ctx.guild.get_member(user_id)
+                user = guild.get_member(user_id)
                 if user:
                     user_lines.append(f"- {user.mention} ({inline(str(user_id))})")
                 else:
@@ -516,7 +561,7 @@ class AntiNuke(
         if trusted_roles:
             role_lines = []
             for role_id in trusted_roles:
-                role = ctx.guild.get_role(role_id)
+                role = guild.get_role(role_id)
                 if role:
                     role_lines.append(f"- {role.mention} ({inline(str(role_id))})")
                 else:
@@ -532,8 +577,11 @@ class AntiNuke(
     @antinuke_trust.command(name="clear")
     async def trust_clear(self, ctx: commands.Context) -> None:
         """Clear all trusted users and roles."""
-        await self.config.guild(ctx.guild).trusted_users.set([])
-        await self.config.guild(ctx.guild).trusted_roles.set([])
+        guild = ctx.guild
+        if not guild:
+            return
+        await self.config.guild(guild).trusted_users.set([])
+        await self.config.guild(guild).trusted_roles.set([])
         await ctx.send("✅ All trusted users and roles have been cleared.")
 
     # Quarantine group
@@ -545,22 +593,25 @@ class AntiNuke(
     @antinuke_quarantine.command(name="list", aliases=["show"])
     async def quarantine_list(self, ctx: commands.Context) -> None:
         """Show all currently quarantined users."""
+        guild = ctx.guild
+        if not guild:
+            return
         from .constants import ACTION_NAMES
         from redbot.core.utils.chat_formatting import pagify
 
-        quarantined = await self.config.guild(ctx.guild).quarantined_users()
+        quarantined = await self.config.guild(guild).quarantined_users()
 
         if not quarantined:
             await ctx.send("No users are currently quarantined.")
             return
 
         lines = [
-            f"## 🛡️ Quarantined Users in {ctx.guild.name}",
+            f"## 🛡️ Quarantined Users in {guild.name}",
             "",
         ]
 
         for user_id, data in quarantined.items():
-            user = ctx.guild.get_member(int(user_id))
+            user = guild.get_member(int(user_id))
             trigger = ACTION_NAMES.get(
                 data.get("trigger_action", "unknown"), "Unknown"
             )
@@ -589,14 +640,17 @@ class AntiNuke(
         self, ctx: commands.Context, user: discord.Member
     ) -> None:
         """Restore a quarantined user's roles."""
-        quarantined = await self.config.guild(ctx.guild).quarantined_users()
+        guild = ctx.guild
+        if not guild:
+            return
+        quarantined = await self.config.guild(guild).quarantined_users()
 
         if str(user.id) not in quarantined:
             await ctx.send(f"❌ {user.mention} is not quarantined.")
             return
 
         success = await self.quarantine_actions.restore_user(
-            ctx.guild, user, restored_by=ctx.author.name
+            guild, user, restored_by=ctx.author.name
         )
 
         if success:
@@ -611,18 +665,21 @@ class AntiNuke(
         self, ctx: commands.Context, user: discord.Member, *, reason: str = "Manual quarantine"
     ) -> None:
         """Forcibly quarantine a user."""
-        if ctx.guild.me.top_role <= user.top_role:
+        guild = ctx.guild
+        if not guild:
+            return
+        if guild.me.top_role <= user.top_role:
             await ctx.send(
                 f"❌ Cannot quarantine {user.mention} - they have equal or higher roles."
             )
             return
 
-        if user.id == ctx.guild.owner_id:
+        if user.id == guild.owner_id:
             await ctx.send("❌ Cannot quarantine the server owner.")
             return
 
         success = await self.quarantine_actions.execute_quarantine(
-            ctx.guild, user, f"manual: {reason}", self.action_cache
+            guild, user, f"manual: {reason}", self.action_cache
         )
 
         if success:
@@ -637,7 +694,10 @@ class AntiNuke(
         self, ctx: commands.Context, user: discord.Member
     ) -> None:
         """Clear a user from quarantine records without restoring roles."""
-        async with self.config.guild(ctx.guild).quarantined_users() as q_users:
+        guild = ctx.guild
+        if not guild:
+            return
+        async with self.config.guild(guild).quarantined_users() as q_users:
             if str(user.id) not in q_users:
                 await ctx.send(f"❌ {user.mention} is not in quarantine records.")
                 return
@@ -652,10 +712,13 @@ class AntiNuke(
         self, ctx: commands.Context, user: discord.Member
     ) -> None:
         """Show detailed quarantine information for a user."""
+        guild = ctx.guild
+        if not guild:
+            return
         from .constants import ACTION_NAMES
         import datetime
 
-        quarantined = await self.config.guild(ctx.guild).quarantined_users()
+        quarantined = await self.config.guild(guild).quarantined_users()
 
         if str(user.id) not in quarantined:
             await ctx.send(f"❌ {user.mention} is not quarantined.")
@@ -688,7 +751,7 @@ class AntiNuke(
             role_list = []
             missing_roles = []
             for role_id in stored_roles:
-                role = ctx.guild.get_role(role_id)
+                role = guild.get_role(role_id)
                 if role:
                     role_list.append(role.mention)
                 else:
@@ -718,16 +781,19 @@ class AntiNuke(
     @antinuke_quarantine.command(name="cleanup")
     async def quarantine_cleanup(self, ctx: commands.Context) -> None:
         """Clean up quarantine records for users who have left the server."""
-        quarantined = await self.config.guild(ctx.guild).quarantined_users()
+        guild = ctx.guild
+        if not guild:
+            return
+        quarantined = await self.config.guild(guild).quarantined_users()
 
         if not quarantined:
             await ctx.send("No quarantined users to clean up.")
             return
 
         removed = 0
-        async with self.config.guild(ctx.guild).quarantined_users() as q_users:
+        async with self.config.guild(guild).quarantined_users() as q_users:
             for user_id in list(q_users.keys()):
-                member = ctx.guild.get_member(int(user_id))
+                member = guild.get_member(int(user_id))
                 if not member:
                     del q_users[user_id]
                     removed += 1

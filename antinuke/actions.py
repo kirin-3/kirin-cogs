@@ -257,7 +257,7 @@ class QuarantineActions:
             return
 
         log_channel = guild.get_channel(log_channel_id)
-        if not log_channel:
+        if not isinstance(log_channel, discord.TextChannel):
             return
 
         action_name = ACTION_NAMES.get(trigger_action, trigger_action)
@@ -312,7 +312,7 @@ class QuarantineActions:
             return
 
         log_channel = guild.get_channel(log_channel_id)
-        if not log_channel:
+        if not isinstance(log_channel, discord.TextChannel):
             return
 
         embed = discord.Embed(
@@ -365,7 +365,7 @@ class QuarantineActions:
         log_channel_id = await self.config.guild(guild).log_channel()
         if log_channel_id:
             log_channel = guild.get_channel(log_channel_id)
-            if log_channel:
+            if isinstance(log_channel, discord.TextChannel):
                 embed = discord.Embed(
                     title="⚠️ AntiNuke Hierarchy Issue",
                     description=f"Cannot quarantine {user.mention} - they have equal or higher roles than the bot.",
@@ -437,7 +437,7 @@ class QuarantineActions:
         log_channel_id = await self.config.guild(guild).log_channel()
         if log_channel_id:
             log_channel = guild.get_channel(log_channel_id)
-            if log_channel:
+            if isinstance(log_channel, discord.TextChannel):
                 try:
                     await log_channel.send(
                         f"⚠️ AntiNuke is missing the `{permission}` permission. "

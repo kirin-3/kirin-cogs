@@ -16,7 +16,7 @@ import sys
 import pickle
 import json
 from pathlib import Path
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer  # type: ignore
 
 # --- CONFIGURATION ---
 

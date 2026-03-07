@@ -1,14 +1,24 @@
 """Trust management commands for the AntiNuke cog."""
 
 import discord
+from typing import TYPE_CHECKING, Any
 from redbot.core import commands, app_commands
 from redbot.core.utils.chat_formatting import bold, inline, humanize_list
+
+if TYPE_CHECKING:
+    from redbot.core import Config
+    from ..actions import QuarantineActions
+    from ..utils import ActionCache
 
 
 class AntiNukeTrustCommands(commands.Cog):
     """Trust management commands for AntiNuke."""
+    config: "Config"
+    action_cache: "ActionCache"
+    quarantine_actions: "QuarantineActions"
 
-    @commands.group(name="antinuke", aliases=["an"])
+
+    @commands.group(name="antinuke", aliases=["an"])  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
     async def antinuke(self, ctx: commands.Context) -> None:
@@ -33,15 +43,18 @@ class AntiNukeTrustCommands(commands.Cog):
         Trusted users bypass all AntiNuke monitoring.
         The server owner is always trusted.
         """
+        guild = ctx.guild
+        if not guild:
+            return
         if user.bot:
             await ctx.send("❌ Bots cannot be added to the trusted list.")
             return
 
-        if user.id == ctx.guild.owner_id:
+        if user.id == guild.owner_id:
             await ctx.send("ℹ️ The server owner is always trusted by default.")
             return
 
-        async with self.config.guild(ctx.guild).trusted_users() as trusted:
+        async with self.config.guild(guild).trusted_users() as trusted:
             if user.id in trusted:
                 await ctx.send(f"❌ {user.mention} is already trusted.")
                 return
@@ -55,7 +68,10 @@ class AntiNukeTrustCommands(commands.Cog):
         self, ctx: commands.Context, user: discord.Member
     ) -> None:
         """Remove a user from the trusted list."""
-        async with self.config.guild(ctx.guild).trusted_users() as trusted:
+        guild = ctx.guild
+        if not guild:
+            return
+        async with self.config.guild(guild).trusted_users() as trusted:
             if user.id not in trusted:
                 await ctx.send(f"❌ {user.mention} is not in the trusted list.")
                 return
@@ -72,11 +88,14 @@ class AntiNukeTrustCommands(commands.Cog):
 
         Anyone with this role will bypass all AntiNuke monitoring.
         """
+        guild = ctx.guild
+        if not guild:
+            return
         if role.is_default():
             await ctx.send("❌ The @everyone role cannot be trusted.")
             return
 
-        async with self.config.guild(ctx.guild).trusted_roles() as trusted:
+        async with self.config.guild(guild).trusted_roles() as trusted:
             if role.id in trusted:
                 await ctx.send(f"❌ {role.mention} is already trusted.")
                 return
@@ -90,7 +109,10 @@ class AntiNukeTrustCommands(commands.Cog):
         self, ctx: commands.Context, role: discord.Role
     ) -> None:
         """Remove a role from the trusted list."""
-        async with self.config.guild(ctx.guild).trusted_roles() as trusted:
+        guild = ctx.guild
+        if not guild:
+            return
+        async with self.config.guild(guild).trusted_roles() as trusted:
             if role.id not in trusted:
                 await ctx.send(f"❌ {role.mention} is not in the trusted list.")
                 return
@@ -101,8 +123,11 @@ class AntiNukeTrustCommands(commands.Cog):
     @antinuke_trust.command(name="list", aliases=["show"])
     async def trust_list(self, ctx: commands.Context) -> None:
         """Show all trusted users and roles."""
-        trusted_users = await self.config.guild(ctx.guild).trusted_users()
-        trusted_roles = await self.config.guild(ctx.guild).trusted_roles()
+        guild = ctx.guild
+        if not guild:
+            return
+        trusted_users = await self.config.guild(guild).trusted_users()
+        trusted_roles = await self.config.guild(guild).trusted_roles()
 
         lines = [
             "## 🔒 AntiNuke Trust List",
@@ -115,7 +140,7 @@ class AntiNukeTrustCommands(commands.Cog):
         if trusted_users:
             user_lines = []
             for user_id in trusted_users:
-                user = ctx.guild.get_member(user_id)
+                user = guild.get_member(user_id)
                 if user:
                     user_lines.append(f"- {user.mention} ({inline(str(user_id))})")
                 else:
@@ -132,7 +157,7 @@ class AntiNukeTrustCommands(commands.Cog):
         if trusted_roles:
             role_lines = []
             for role_id in trusted_roles:
-                role = ctx.guild.get_role(role_id)
+                role = guild.get_role(role_id)
                 if role:
                     role_lines.append(f"- {role.mention} ({inline(str(role_id))})")
                 else:
@@ -148,6 +173,9 @@ class AntiNukeTrustCommands(commands.Cog):
     @antinuke_trust.command(name="clear")
     async def trust_clear(self, ctx: commands.Context) -> None:
         """Clear all trusted users and roles."""
-        await self.config.guild(ctx.guild).trusted_users.set([])
-        await self.config.guild(ctx.guild).trusted_roles.set([])
+        guild = ctx.guild
+        if not guild:
+            return
+        await self.config.guild(guild).trusted_users.set([])
+        await self.config.guild(guild).trusted_roles.set([])
         await ctx.send("✅ All trusted users and roles have been cleared.")

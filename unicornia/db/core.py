@@ -19,7 +19,7 @@ log = logging.getLogger("red.kirin_cogs.unicornia.database")
 class CoreDB:
     """Core database functionality"""
     
-    def __init__(self, db_path: str, nadeko_db_path: str = None):
+    def __init__(self, db_path: str, nadeko_db_path: str | None = None):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.nadeko_db_path = nadeko_db_path

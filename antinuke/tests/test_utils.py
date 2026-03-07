@@ -1,58 +1,33 @@
 # Mock discord and other potential missing modules
-import sys
 from unittest.mock import MagicMock
-
-class MockCog:
-    pass
-
-class MockType(type):
-    pass
-
-discord = MagicMock()
-sys.modules["discord"] = discord
-sys.modules["discord.ext"] = MagicMock()
-sys.modules["discord.ext.commands"] = MagicMock()
-
-redbot = MagicMock()
-sys.modules["redbot"] = redbot
-redbot_core = MagicMock()
-sys.modules["redbot.core"] = redbot_core
-redbot_core.commands = MagicMock()
-redbot_core.commands.Cog = MockCog
-sys.modules["redbot.core.bot"] = MagicMock()
-sys.modules["redbot.core.utils"] = MagicMock()
-sys.modules["redbot.core.utils.chat_formatting"] = MagicMock()
-
-# Instead of importing AntiNuke, which has problematic imports and metaclass definitions
-# for a simple utility test, we'll try to directly import from utils if possible.
-# But antinuke/__init__.py imports AntiNuke.
-# So we must satisfy AntiNuke's requirements or mock the whole module.
-
-# Let's try to mock the metaclass problematic part
-sys.modules["antinuke.antinuke"] = MagicMock()
 
 from antinuke.utils import (
     format_permission_name,
     has_dangerous_permission,
-    get_permission_diff,
     is_above_in_hierarchy,
 )
 
+
 def test_format_permission_name_single_word():
     assert format_permission_name("administrator") == "Administrator"
+
 
 def test_format_permission_name_multiple_words():
     assert format_permission_name("manage_guild") == "Manage Guild"
     assert format_permission_name("view_audit_log") == "View Audit Log"
 
+
 def test_format_permission_name_already_formatted():
     assert format_permission_name("Manage Roles") == "Manage Roles"
+
 
 def test_format_permission_name_mixed_case():
     assert format_permission_name("MANAGE_WEBHOOKS") == "Manage Webhooks"
 
+
 def test_format_permission_name_empty_string():
     assert format_permission_name("") == ""
+
 
 def test_has_dangerous_permission():
     # Setup mocks
@@ -76,6 +51,7 @@ def test_has_dangerous_permission():
     # Should detect "administrator" was added
     assert has_dangerous_permission(before, after, dangerous_perms) == "administrator"
 
+
 def test_has_dangerous_permission_none_added():
     before = MagicMock()
     after = MagicMock()
@@ -89,6 +65,7 @@ def test_has_dangerous_permission_none_added():
     dangerous_perms = ["administrator", "manage_guild"]
 
     assert has_dangerous_permission(before, after, dangerous_perms) is None
+
 
 def test_has_dangerous_permission_missing_attr():
     before = MagicMock()
@@ -105,13 +82,21 @@ def test_has_dangerous_permission_missing_attr():
     # It should skip "not_a_real_perm" and find "administrator"
     assert has_dangerous_permission(before, after, dangerous_perms) == "administrator"
 
-import antinuke.utils
+
 from unittest.mock import patch
+
+import antinuke.utils
+
 
 def test_get_permission_diff():
     # We need to mock discord.Permissions.VALID_FLAGS
     class MockPermissions:
-        VALID_FLAGS = {"administrator": 8, "manage_guild": 32, "ban_members": 4, "kick_members": 2}
+        VALID_FLAGS = {
+            "administrator": 8,
+            "manage_guild": 32,
+            "ban_members": 4,
+            "kick_members": 2,
+        }
 
     with patch("antinuke.utils.discord.Permissions", MockPermissions):
         before = MagicMock()
@@ -138,6 +123,7 @@ def test_get_permission_diff():
         assert len(diff) == 2
         assert "administrator" in diff
         assert "manage_guild" in diff
+
 
 def test_is_above_in_hierarchy():
     bot_member = MagicMock()

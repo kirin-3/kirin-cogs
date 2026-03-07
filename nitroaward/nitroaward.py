@@ -58,7 +58,7 @@ class NitroAward(commands.Cog):
             return
 
         try:
-            success = await unicornia.add_balance(
+            success = await unicornia.add_balance(  # type: ignore
                 user_id=member.id,
                 amount=AWARD_AMOUNT,
                 reason="Nitro Boost Reward",

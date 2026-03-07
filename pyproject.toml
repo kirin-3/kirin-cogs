@@ -1,0 +1,23 @@
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+
+# Basedpyright settings for Redbot cog development
+[tool.basedpyright]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+useLibraryCodeForTypes = true
+baselineFile = ".basedpyright/baseline.json"
+
+# Redbot is not fully typed, and its dependencies can cause missing import errors.
+# Only report missing imports if they are truly missing from the environment.
+reportMissingImports = true
+
+# Ignore test files or specific temporary directories if any
+exclude = [
+    ".git",
+    ".vscode",
+    ".github",
+    "redenv",
+    "__pycache__"
+]

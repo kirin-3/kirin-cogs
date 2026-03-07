@@ -496,7 +496,7 @@ class EventHandlers:
             return
 
         # Check for guild prune
-        if entry.action == discord.AuditLogAction.guild_prune:
+        if entry.action == discord.AuditLogAction.member_prune:
             monitor_config = await self.get_monitor_config(guild, "guild_prune")
             if monitor_config.get("enabled", True):
                 # Guild prune is instant action (threshold 0)

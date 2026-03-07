@@ -196,7 +196,7 @@ class UnicornDocsPrecomputed(commands.Cog):
         results.sort(key=lambda x: x['score'], reverse=True)
         return results[:max_chunks]
 
-    async def query_database(self, question: str, max_chunks: int = None) -> List[Dict[str, Any]]:
+    async def query_database(self, question: str, max_chunks: Optional[int] = None) -> List[Dict[str, Any]]:
         """Query the database for relevant document chunks."""
         await self.load_vectors()
         
