@@ -13,7 +13,7 @@ pyyaml
 requests>=2.25.0
 
 # --- Base Framework (from AGENTS.md) ---
-Red-DiscordBot>=3.5.0
+Red-DiscordBot>=3.5.22
 discord.py>=2.6.0
 
 # --- Development & Testing Tools (from AGENTS.md) ---
