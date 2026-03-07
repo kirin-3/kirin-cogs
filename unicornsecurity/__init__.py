@@ -10,4 +10,4 @@ from .imagefilter import ImageFilter
 
 
 async def setup(bot):
-    await bot.add_cog(ImageFilter(bot)) 
+    await bot.add_cog(ImageFilter(bot))

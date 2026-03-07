@@ -1,7 +1,5 @@
 import asyncio
 import logging
-import re
-from typing import Optional, Union
 
 import discord
 from discord import Embed
@@ -30,7 +28,7 @@ class AdminCommands(MixinMeta):
         """Ticket Setup Guide"""
         em = Embed(
             title="Ticket Setup Guide",
-            description=f"To setup the ticket system, follow the steps below.",
+            description="To setup the ticket system, follow the steps below.",
             color=ctx.author.color,
         )
         step1 = "Set the category ID that new tickets will be created under if using channel tickets.\n"
@@ -83,7 +81,7 @@ class AdminCommands(MixinMeta):
         await ctx.send(embed=em)
 
     @tickets.command()
-    async def suspend(self, ctx: commands.Context, *, message: Optional[str] = None):
+    async def suspend(self, ctx: commands.Context, *, message: str | None = None):
         """
         Suspend the ticket system
         If a suspension message is set, any user that tries to open a ticket will receive this message
@@ -120,7 +118,7 @@ class AdminCommands(MixinMeta):
             return await ctx.send("I cannot see that category!")
         if not category.permissions_for(ctx.me).read_message_history:
             return await ctx.send("I cannot see message history in that category!")
-        
+
         await self.config.guild(ctx.guild).category_id.set(category.id)
         await ctx.tick()
         await ctx.send("New tickets will now be opened under that category!")
@@ -132,7 +130,7 @@ class AdminCommands(MixinMeta):
             return await ctx.send("I cannot see that channel!")
         if not channel.permissions_for(ctx.guild.me).read_message_history:
             return await ctx.send("I cannot see message history in that channel!")
-        
+
         await self.config.guild(ctx.guild).channel_id.set(channel.id)
         await ctx.tick()
 
@@ -149,15 +147,15 @@ class AdminCommands(MixinMeta):
             (discord.Thread, discord.VoiceChannel, discord.ForumChannel),
         ):
             return await ctx.send("Channel of message must be a TEXT CHANNEL!")
-        
+
         category_id = await self.config.guild(ctx.guild).category_id()
         if not category_id:
             return await ctx.send("Category ID must be set first!")
-            
+
         current_channel = await self.config.guild(ctx.guild).channel_id()
         if current_channel and current_channel != message.channel.id:
             return await ctx.send("This message is part of a different channel from the one you set!")
-            
+
         await self.config.guild(ctx.guild).message_id.set(message.id)
         await self.config.guild(ctx.guild).channel_id.set(message.channel.id)
         await ctx.tick()
@@ -198,7 +196,7 @@ class AdminCommands(MixinMeta):
         self,
         ctx: commands.Context,
         *,
-        emoji: Union[discord.Emoji, discord.PartialEmoji, str],
+        emoji: discord.Emoji | discord.PartialEmoji | str,
     ):
         """Set the button emoji for the ticket panel"""
         try:
@@ -209,7 +207,7 @@ class AdminCommands(MixinMeta):
             )
         except Exception as e:
             return await ctx.send(f"Failed to create test button. Error:\n{box(str(e), lang='python')}")
-            
+
         await self.config.guild(ctx.guild).button_emoji.set(str(emoji))
         await ctx.tick()
         await self.initialize(ctx.guild)
@@ -218,7 +216,7 @@ class AdminCommands(MixinMeta):
     async def ticketname(self, ctx: commands.Context, *, ticket_name: str):
         """
         Set the default ticket channel name
-        
+
         You can include the following in the name:
         `{num}` - Ticket number
         `{user}` - user's name
@@ -227,7 +225,7 @@ class AdminCommands(MixinMeta):
         `{shortdate}` - mm-dd
         `{longdate}` - mm-dd-yyyy
         `{time}` - hh-mm AM/PM according to bot host system time
-        
+
         You can set this to {default} to use default "Ticket-Username"
         """
         ticket_name = ticket_name.lower()
@@ -248,7 +246,7 @@ class AdminCommands(MixinMeta):
             return await ctx.send("I cannot embed links in that channel!")
         if not channel.permissions_for(ctx.guild.me).attach_files:
             return await ctx.send("I cannot attach files in that channel!")
-            
+
         await self.config.guild(ctx.guild).log_channel.set(channel.id)
         await ctx.tick()
         await self.initialize(ctx.guild)
@@ -258,7 +256,7 @@ class AdminCommands(MixinMeta):
         """Set a title for the ticket modal"""
         if len(title) > 45:
             return await ctx.send("The max length is 45!")
-        
+
         if title:
             await self.config.guild(ctx.guild).modal_title.set(title)
             await ctx.send("Modal title set!")
@@ -271,15 +269,15 @@ class AdminCommands(MixinMeta):
     async def addmodal(self, ctx: commands.Context, field_name: str):
         """
         Add a modal field to the ticket panel
-        
+
         Ticket panels can have up to 5 fields per modal for the user to fill out before opening a ticket.
         If modal fields are added and have required fields,
         the user will have to fill them out before they can open a ticket.
-        
+
         **Note**
         `field_name` is just the name of the field stored in config,
         it won't be shown in the modal and should not have spaces in it
-        
+
         Specify an existing field name to delete a modal field (non-case-sensitive)
         """
         field_name = field_name.lower()
@@ -289,8 +287,8 @@ class AdminCommands(MixinMeta):
         self,
         ctx: commands.Context,
         field_name: str,
-        existing_modal: Optional[dict] = None,
-        preview: Optional[discord.Message] = None,
+        existing_modal: dict | None = None,
+        preview: discord.Message | None = None,
     ):
         if not existing_modal:
             # User wants to add or delete a field
@@ -577,7 +575,7 @@ class AdminCommands(MixinMeta):
         instance.view.page %= len(instance.view.pages)
         for i, embed in enumerate(instance.view.pages):
             # No page number in footer in this simplified version, but logic tries to keep consistent
-            pass 
+            pass
         return await menu(
             instance.view.ctx,
             instance.view.pages,
@@ -590,12 +588,12 @@ class AdminCommands(MixinMeta):
     async def addmessage(self, ctx: commands.Context):
         """
         Add a message embed to be sent when a ticket is opened
-        
+
         You can include any of these in the embed to be replaced by their value when the message is sent
         `{username}` - Person's Discord username
         `{mention}` - This will mention the user
         `{id}` - This is the ID of the user that created the ticket
-        
+
         The bot will walk you through a few steps to set up the embed.
         """
         foot = "type 'cancel' to cancel the setup"
@@ -710,7 +708,7 @@ class AdminCommands(MixinMeta):
 
         async with self.config.guild(ctx.guild).ticket_messages() as messages:
             messages.append(embed)
-            
+
         await ctx.tick()
         em = Embed(description="Your ticket message has been added!")
         await msg.edit(embed=em)
@@ -727,20 +725,22 @@ class AdminCommands(MixinMeta):
             desc = "**Title**\n" + box(msg["title"]) + "\n"
             desc += "**Description**\n" + box(msg["desc"]) + "\n"
             desc += "**Footer**\n" + box(msg["footer"]) + "\n"
-            
+
             color_val = msg.get("color")
             if color_val is not None and isinstance(color_val, int):
                 desc += "**Color**\n" + box(f"#{color_val:06X}") + "\n"
             else:
                 desc += "**Color**\n" + box("Default (user's color)") + "\n"
-                
+
             image_val = msg.get("image")
             desc += "**Image**\n" + box(image_val if image_val else "None")
-            
+
             em = Embed(
                 title="Ticket Messages",
                 description=desc,
-                color=discord.Color(color_val) if color_val is not None and isinstance(color_val, int) else ctx.author.color,
+                color=discord.Color(color_val)
+                if color_val is not None and isinstance(color_val, int)
+                else ctx.author.color,
             )
             if image_val:
                 em.set_image(url=image_val)
@@ -755,7 +755,7 @@ class AdminCommands(MixinMeta):
         index = instance.view.page
         async with self.config.guild(interaction.guild).ticket_messages() as messages:
             del messages[index]
-            
+
         em = Embed(description="Ticket message has been deleted!")
         await interaction.response.send_message(embed=em, ephemeral=True)
         del instance.view.pages[index]
@@ -806,7 +806,7 @@ class AdminCommands(MixinMeta):
                     blacklisted += f"{user_or_role.mention}-{user_or_role.id}\n"
                 else:
                     blacklisted += f"Invalid-{uid_or_rid}\n"
-                    
+
         embed = Embed(
             title="Tickets Core Settings",
             description=msg,
@@ -824,12 +824,12 @@ class AdminCommands(MixinMeta):
                 value=f"Tickets are currently suspended, users will be met with the following message\n{box(conf['suspended_msg'])}",
                 inline=False,
             )
-            
+
         # Panel Info (Flattened)
         cat = self.bot.get_channel(conf["category_id"]) if conf["category_id"] else "None"
         channel = self.bot.get_channel(conf["channel_id"]) if conf["channel_id"] else "None"
         logchannel = self.bot.get_channel(conf["log_channel"]) if conf["log_channel"] else "None"
-        
+
         panel_desc = f"`Category:       `{cat}\n"
         panel_desc += f"`Channel:        `{channel}\n"
         panel_desc += f"`MessageID:      `{conf['message_id']}\n"
@@ -841,9 +841,9 @@ class AdminCommands(MixinMeta):
         panel_desc += f"`Modal Fields:   `{len(conf.get('modal', {}))}\n"
         panel_desc += f"`Modal Title:    `{conf.get('modal_title', 'None')}\n"
         panel_desc += f"`LogChannel:     `{logchannel}\n"
-        
+
         embed.add_field(name="Panel Settings", value=panel_desc, inline=False)
-        
+
         # Required Roles
         req_roles = ""
         for role_id in conf.get("required_roles", []):
@@ -868,13 +868,13 @@ class AdminCommands(MixinMeta):
         self,
         ctx: commands.Context,
         role: discord.Role,
-        mention: Optional[bool] = False,
+        mention: bool | None = False,
     ):
         """
         Add/Remove ticket support roles (one at a time)
-        
+
         **Optional**: include `true` for mention to have that role mentioned when a ticket is opened
-        
+
         To remove a role, simply run this command with it again to remove it
         """
         entry = [role.id, mention]
@@ -893,7 +893,7 @@ class AdminCommands(MixinMeta):
     async def openrole(self, ctx: commands.Context, *, role: discord.Role):
         """
         Add/Remove roles required to open a ticket
-        
+
         Specify the same role to remove it
         """
         async with self.config.guild(ctx.guild).required_roles() as roles:
@@ -910,11 +910,11 @@ class AdminCommands(MixinMeta):
         self,
         ctx: commands.Context,
         *,
-        user_or_role: Union[discord.Member, discord.Role],
+        user_or_role: discord.Member | discord.Role,
     ):
         """
         Add/Remove users or roles from the blacklist
-        
+
         Users and roles in the blacklist will not be able to create a ticket
         """
         async with self.config.guild(ctx.guild).blacklist() as bl:
@@ -929,7 +929,7 @@ class AdminCommands(MixinMeta):
     async def noresponse(self, ctx: commands.Context, hours: int):
         """
         Auto-close ticket if opener doesn't say anything after X hours of opening
-        
+
         Set to 0 to disable this
         """
         await self.config.guild(ctx.guild).inactive.set(hours)
@@ -940,11 +940,11 @@ class AdminCommands(MixinMeta):
         self,
         ctx: commands.Context,
         *,
-        channel: Optional[discord.TextChannel] = None,
+        channel: discord.TextChannel | None = None,
     ):
         """
         Set a channel for the live overview message
-        
+
         The overview message shows all active tickets.
         """
         if not channel:
@@ -1015,7 +1015,7 @@ class AdminCommands(MixinMeta):
     async def selfmanage(self, ctx: commands.Context):
         """
         (Toggle) If users can manage their own tickets
-        
+
         Users will be able to add/remove others to their support ticket
         """
         toggle = await self.config.guild(ctx.guild).user_can_manage()
@@ -1051,8 +1051,8 @@ class AdminCommands(MixinMeta):
     async def embed(
         self,
         ctx: commands.Context,
-        color: Optional[discord.Color],
-        channel: Optional[discord.TextChannel],
+        color: discord.Color | None,
+        channel: discord.TextChannel | None,
         title: str,
         *,
         description: str,
@@ -1183,7 +1183,7 @@ class AdminCommands(MixinMeta):
         """Open a ticket for another user"""
         conf = await self.config.guild(ctx.guild).all()
         # Create a custom temp view by using the config directly
-        
+
         panel_data = {
             "category_id": conf["category_id"],
             "channel_id": conf["channel_id"],
@@ -1197,19 +1197,16 @@ class AdminCommands(MixinMeta):
             "modal": conf.get("modal", {}),
             "modal_title": conf.get("modal_title", ""),
             "ticket_num": conf.get("ticket_num", 1),
-            "disabled": False, # Implicitly enabled
+            "disabled": False,  # Implicitly enabled
             "priority": 1,
             "row": 0,
-            "roles": [], # Panel roles now merged into support roles or handled differently?
+            "roles": [],  # Panel roles now merged into support roles or handled differently?
             # Actually support roles are global now.
         }
-        
+
         # PanelView signature: (bot, guild, config, conf, mock_user=None)
         view = PanelView(self.bot, ctx.guild, self.config, panel_data, mock_user=user)
-        desc = (
-            f"Click the button below to open a ticket for {user.name}\n"
-            "This message will self-cleanup in 2 minutes."
-        )
+        desc = f"Click the button below to open a ticket for {user.name}\nThis message will self-cleanup in 2 minutes."
         embed = discord.Embed(description=desc, color=await self.bot.get_embed_color(ctx))
         await ctx.send(embed=embed, view=view, delete_after=120)
         await asyncio.sleep(120)

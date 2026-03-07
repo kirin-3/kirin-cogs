@@ -1,7 +1,7 @@
 """Integration and unit tests for ContestCog in cotm/main.py"""
 
 from collections.abc import AsyncGenerator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -74,9 +74,9 @@ async def test_get_contest_results(cog: ContestCog) -> None:
     react1.emoji = const.COTM_VOTE_EMOJI
 
     user1 = MagicMock(spec=discord.Member)
-    user1.joined_at = datetime.now(timezone.utc) - timedelta(days=10)
+    user1.joined_at = datetime.now(UTC) - timedelta(days=10)
     user2 = MagicMock(spec=discord.Member)
-    user2.joined_at = datetime.now(timezone.utc) - timedelta(days=2)
+    user2.joined_at = datetime.now(UTC) - timedelta(days=2)
 
     async def get_users() -> AsyncGenerator[MagicMock, None]:
         yield user1
@@ -91,9 +91,7 @@ async def test_get_contest_results(cog: ContestCog) -> None:
     channel.history.return_value = history()
 
     # voter_server_age = 5 days: user1 (joined 10 days ago) is valid, user2 (joined 2 days ago) is not
-    results = await cog._get_contest_results(
-        channel, const.COTM_VOTE_EMOJI, timedelta(days=5)
-    )
+    results = await cog._get_contest_results(channel, const.COTM_VOTE_EMOJI, timedelta(days=5))
 
     assert len(results) == 1
     assert results[0]["name"] == "User1"
@@ -128,9 +126,7 @@ async def test_contestcount(cog: ContestCog, ctx_mock: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-async def test_cotmreward(
-    cog: ContestCog, ctx_mock: MagicMock, bot_mock: MagicMock
-) -> None:
+async def test_cotmreward(cog: ContestCog, ctx_mock: MagicMock, bot_mock: MagicMock) -> None:
     unicornia_mock = MagicMock()
     unicornia_mock.add_balance = AsyncMock(return_value=True)
     bot_mock.get_cog.return_value = unicornia_mock
@@ -148,7 +144,7 @@ async def test_cotmreward(
     react1.emoji = const.COTM_VOTE_EMOJI
 
     voter = MagicMock(spec=discord.Member)
-    voter.joined_at = datetime.now(timezone.utc) - timedelta(days=10)
+    voter.joined_at = datetime.now(UTC) - timedelta(days=10)
 
     async def get_users() -> AsyncGenerator[MagicMock, None]:
         yield voter

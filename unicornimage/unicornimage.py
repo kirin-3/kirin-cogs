@@ -1,18 +1,19 @@
-import discord
-import io
 import asyncio
-import aiohttp
-from typing import Optional, List, Literal, Dict, Any
+import io
+from typing import Any
 
-from redbot.core import commands, Config, app_commands
+import aiohttp
+import discord
+from redbot.core import Config, app_commands, commands
 from redbot.core.bot import Red
 
+from .constants import DEFAULT_MODAL_PROMPT, HORDE_POSITIVE_PROMPT
+from .loras import LORAS
+from .models import MODELS
 from .utils.horde import HordeClient
 from .utils.modal_client import ModalClient
-from .loras import LORAS
-from .models import MODELS, DEFAULT_MODEL
-from .constants import DEFAULT_MODAL_PROMPT, HORDE_POSITIVE_PROMPT
 from .views import LoraListView
+
 
 class UnicornImage(commands.Cog):
     """
@@ -22,23 +23,21 @@ class UnicornImage(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=9876543210, force_registration=True)
-        
+
         default_global = {
             "horde_api_key": "0000000000",
             "modal_app_name": "text2image",
-            "modal_prompt": DEFAULT_MODAL_PROMPT
+            "modal_prompt": DEFAULT_MODAL_PROMPT,
         }
-        
-        default_guild = {
-            "premium_role_id": None
-        }
+
+        default_guild = {"premium_role_id": None}
 
         self.config.register_global(**default_global)
         self.config.register_guild(**default_guild)
 
-        self._horde_client: Optional[HordeClient] = None
-        self._modal_client: Optional[ModalClient] = None
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._horde_client: HordeClient | None = None
+        self._modal_client: ModalClient | None = None
+        self._session: aiohttp.ClientSession | None = None
         self._init_lock = asyncio.Lock()
 
     def cog_unload(self):
@@ -52,6 +51,7 @@ class UnicornImage(commands.Cog):
             # Check if we already created one in a race
             if self._session is None:
                 import aiohttp
+
                 self._session = aiohttp.ClientSession()
             session = self._session
         return session
@@ -75,30 +75,30 @@ class UnicornImage(commands.Cog):
     async def is_premium(self, ctx: commands.Context) -> bool:
         if await self.bot.is_owner(ctx.author):
             return True
-            
+
         role_id = await self.config.guild(ctx.guild).premium_role_id()
         if not role_id:
-            return False # No role configured, so no premium access
-        
+            return False  # No role configured, so no premium access
+
         if not ctx.guild:
             return False
 
         role = ctx.guild.get_role(role_id)
         if not role:
             return False
-            
+
         return role in ctx.author.roles
 
-    def _build_full_prompt(self, prompt: str, backend_prompt: str, lora_configs: List[Dict[str, Any]]) -> str:
+    def _build_full_prompt(self, prompt: str, backend_prompt: str, lora_configs: list[dict[str, Any]]) -> str:
         prompt_parts = []
-        
+
         # 1. LoRA Triggers & Prompt
         for config in lora_configs:
             if "trigger_words" in config:
                 prompt_parts.extend(config["trigger_words"])
             if "prompt" in config:
                 prompt_parts.append(config["prompt"])
-        
+
         # 2. User Prompt
         prompt_parts.append(prompt)
 
@@ -108,27 +108,32 @@ class UnicornImage(commands.Cog):
 
         return ", ".join(prompt_parts)
 
-    def _parse_styles(self, styles: List[str], max_count: int, required_base: str, allow_hidden: bool = True) -> tuple[List[Dict[str, Any]], Optional[str]]:
+    def _parse_styles(
+        self, styles: list[str], max_count: int, required_base: str, allow_hidden: bool = True
+    ) -> tuple[list[dict[str, Any]], str | None]:
         if not styles:
             return [], None
-            
+
         if len(styles) > max_count:
             return [], f"❌ You can only use up to {max_count} styles."
-            
+
         lora_configs = []
         for key in styles:
             if key not in LORAS:
                 return [], f"❌ Style `{key}` not found."
-            
+
             config = LORAS[key]
             if config.get("base") != required_base:
-                return [], f"❌ Style `{key}` (Base: {config.get('base')}) is incompatible with required base {required_base}."
-            
+                return (
+                    [],
+                    f"❌ Style `{key}` (Base: {config.get('base')}) is incompatible with required base {required_base}.",
+                )
+
             if not allow_hidden and config.get("hidden", False):
                 return [], f"❌ Style `{key}` is not available for this command."
 
             lora_configs.append(config)
-            
+
         return lora_configs, None
 
     def _gen_free_cooldown(ctx: commands.Context):
@@ -143,14 +148,22 @@ class UnicornImage(commands.Cog):
         style="Optional style (LoRA)",
         style2="Optional style (LoRA)",
         style3="Optional style (LoRA)",
-        negative_prompt="Things to exclude from the image"
+        negative_prompt="Things to exclude from the image",
     )
-    async def gen_free(self, ctx: commands.Context, prompt: str, style: Optional[str] = None, style2: Optional[str] = None, style3: Optional[str] = None, negative_prompt: Optional[str] = None):
+    async def gen_free(
+        self,
+        ctx: commands.Context,
+        prompt: str,
+        style: str | None = None,
+        style2: str | None = None,
+        style3: str | None = None,
+        negative_prompt: str | None = None,
+    ):
         """
         Free generation command using HordeAI.
         """
         await ctx.defer()
-        
+
         # Parse and Validate styles
         raw_styles = [s for s in [style, style2, style3] if s]
         lora_configs, error = self._parse_styles(raw_styles, max_count=3, required_base="Pony", allow_hidden=False)
@@ -159,20 +172,22 @@ class UnicornImage(commands.Cog):
 
         try:
             client = await self.get_horde_client()
-            
+
             full_prompt = self._build_full_prompt(prompt, HORDE_POSITIVE_PROMPT, lora_configs)
-            
+
             horde_loras = []
             for config in lora_configs:
                 model_id = config["model_id"]
                 if model_id.startswith("civitai:"):
                     civit_id = model_id.split(":")[1]
-                    horde_loras.append({
-                        "name": civit_id,
-                        "is_version": True,
-                        "model": config.get("strength", 1.0),
-                        "clip": 1.0,
-                    })
+                    horde_loras.append(
+                        {
+                            "name": civit_id,
+                            "is_version": True,
+                            "model": config.get("strength", 1.0),
+                            "clip": 1.0,
+                        }
+                    )
 
             # Use API key from config directly in case it changed
             api_key = await self.config.horde_api_key()
@@ -180,23 +195,23 @@ class UnicornImage(commands.Cog):
             images = await client.generate(
                 prompt=full_prompt,
                 negative_prompt=negative_prompt or "",
-                nsfw=False, # Free is always SFW
+                nsfw=False,  # Free is always SFW
                 loras=horde_loras,
-                api_key=api_key
+                api_key=api_key,
             )
-            
+
             if not images:
-                 return await ctx.send("Failed to generate image.")
+                return await ctx.send("Failed to generate image.")
 
             with io.BytesIO(images[0]) as fp:
                 raw_styles_str = ", ".join([s for s in [style, style2, style3] if s])
                 await ctx.send(
                     content=f"🎨 **Prompt:** {prompt}" + (f" | **Styles:** {raw_styles_str}" if raw_styles_str else ""),
-                    file=discord.File(fp, filename="generation.png")
+                    file=discord.File(fp, filename="generation.png"),
                 )
 
         except Exception as e:
-            await ctx.send(f"An error occurred: {str(e)}")
+            await ctx.send(f"An error occurred: {e!s}")
 
     def _gen_premium_cooldown(ctx: commands.Context):
         if ctx.author.id in ctx.bot.owner_ids:
@@ -214,18 +229,30 @@ class UnicornImage(commands.Cog):
         style3="Optional style (LoRA)",
         style4="Optional style (LoRA)",
         style5="Optional style (LoRA)",
-        negative_prompt="Things to exclude from the image"
+        negative_prompt="Things to exclude from the image",
     )
-    async def gen_premium(self, ctx: commands.Context, prompt: str, model: str, batch_size: commands.Range[int, 1, 4] = 1, style: Optional[str] = None, style2: Optional[str] = None, style3: Optional[str] = None, style4: Optional[str] = None, style5: Optional[str] = None, negative_prompt: Optional[str] = None):
+    async def gen_premium(
+        self,
+        ctx: commands.Context,
+        prompt: str,
+        model: str,
+        batch_size: commands.Range[int, 1, 4] = 1,
+        style: str | None = None,
+        style2: str | None = None,
+        style3: str | None = None,
+        style4: str | None = None,
+        style5: str | None = None,
+        negative_prompt: str | None = None,
+    ):
         """
         Premium generation using Modal.
         """
         if not await self.is_premium(ctx):
-             msg = "🔒 This command is a for Supporters only."
-             if ctx.interaction:
-                 return await ctx.send(msg, ephemeral=True)
-             return await ctx.send(msg)
-        
+            msg = "🔒 This command is a for Supporters only."
+            if ctx.interaction:
+                return await ctx.send(msg, ephemeral=True)
+            return await ctx.send(msg)
+
         await ctx.defer()
         raw_styles = [s for s in [style, style2, style3, style4, style5] if s]
         await self._run_modal_gen(ctx, prompt, model, raw_styles, negative_prompt, batch_size)
@@ -242,9 +269,22 @@ class UnicornImage(commands.Cog):
         style3="Optional style (LoRA)",
         style4="Optional style (LoRA)",
         style5="Optional style (LoRA)",
-        negative_prompt="Things to exclude from the image"
+        negative_prompt="Things to exclude from the image",
     )
-    async def gen_test(self, ctx: commands.Context, prompt: str, model: str, batch_size: commands.Range[int, 1, 4] = 1, seed: Optional[int] = None, style: Optional[str] = None, style2: Optional[str] = None, style3: Optional[str] = None, style4: Optional[str] = None, style5: Optional[str] = None, negative_prompt: Optional[str] = None):
+    async def gen_test(
+        self,
+        ctx: commands.Context,
+        prompt: str,
+        model: str,
+        batch_size: commands.Range[int, 1, 4] = 1,
+        seed: int | None = None,
+        style: str | None = None,
+        style2: str | None = None,
+        style3: str | None = None,
+        style4: str | None = None,
+        style5: str | None = None,
+        negative_prompt: str | None = None,
+    ):
         """
         Owner test generation using Modal with seed support.
         """
@@ -252,31 +292,37 @@ class UnicornImage(commands.Cog):
         raw_styles = [s for s in [style, style2, style3, style4, style5] if s]
         await self._run_modal_gen(ctx, prompt, model, raw_styles, negative_prompt, batch_size, seed=seed)
 
-    async def _run_modal_gen(self, ctx: commands.Context, prompt: str, model_alias: str, raw_styles: List[str], negative_prompt: Optional[str], batch_size: int = 1, seed: Optional[int] = None):
+    async def _run_modal_gen(
+        self,
+        ctx: commands.Context,
+        prompt: str,
+        model_alias: str,
+        raw_styles: list[str],
+        negative_prompt: str | None,
+        batch_size: int = 1,
+        seed: int | None = None,
+    ):
         # Validate Model
         if model_alias not in MODELS:
-             return await ctx.send(f"❌ Model `{model_alias}` not found. Available: {', '.join(MODELS.keys())}")
-        
+            return await ctx.send(f"❌ Model `{model_alias}` not found. Available: {', '.join(MODELS.keys())}")
+
         model_config = MODELS[model_alias]
 
         # Parse and Validate styles
         lora_configs, error = self._parse_styles(raw_styles, max_count=5, required_base=model_config["base"])
         if error:
             return await ctx.send(error)
-        
+
         try:
             client = await self.get_modal_client()
             modal_prompt = await self.config.modal_prompt()
-            
+
             full_prompt = self._build_full_prompt(prompt, modal_prompt, lora_configs)
-            
+
             modal_loras = []
             for config in lora_configs:
-                 modal_loras.append({
-                     "model_id": config["model_id"],
-                     "weight": config.get("strength", 1.0)
-                 })
-            
+                modal_loras.append({"model_id": config["model_id"], "weight": config.get("strength", 1.0)})
+
             images = await client.generate(
                 prompt=full_prompt,
                 negative_prompt=negative_prompt or "",
@@ -289,11 +335,11 @@ class UnicornImage(commands.Cog):
                 steps=model_config.get("steps", 30),
                 guidance_scale=model_config.get("cfg", 7.5),
                 clip_skip=model_config.get("clip_skip"),
-                scheduler=model_config.get("sampler")
+                scheduler=model_config.get("sampler"),
             )
-            
+
             if not images:
-                 return await ctx.send("Failed to generate image.")
+                return await ctx.send("Failed to generate image.")
 
             files = []
             for i, img_bytes in enumerate(images):
@@ -304,7 +350,7 @@ class UnicornImage(commands.Cog):
             await ctx.send(content=content, files=files)
 
         except Exception as e:
-            await ctx.send(f"An error occurred: {str(e)}")
+            await ctx.send(f"An error occurred: {e!s}")
 
     @commands.hybrid_command(name="loras", description="Preview available styles")
     async def list_loras(self, ctx: commands.Context):
@@ -313,25 +359,27 @@ class UnicornImage(commands.Cog):
         """
         if not LORAS:
             return await ctx.send("No styles are currently configured.")
-            
+
         session = self._get_session()
         view = LoraListView(LORAS, session)
         await view.send_initial(ctx)
 
-    @gen_free.autocomplete('style')
-    @gen_free.autocomplete('style2')
-    @gen_free.autocomplete('style3')
-    @gen_premium.autocomplete('style')
-    @gen_premium.autocomplete('style2')
-    @gen_premium.autocomplete('style3')
-    @gen_premium.autocomplete('style4')
-    @gen_premium.autocomplete('style5')
-    @gen_test.autocomplete('style')
-    @gen_test.autocomplete('style2')
-    @gen_test.autocomplete('style3')
-    @gen_test.autocomplete('style4')
-    @gen_test.autocomplete('style5')
-    async def style_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    @gen_free.autocomplete("style")
+    @gen_free.autocomplete("style2")
+    @gen_free.autocomplete("style3")
+    @gen_premium.autocomplete("style")
+    @gen_premium.autocomplete("style2")
+    @gen_premium.autocomplete("style3")
+    @gen_premium.autocomplete("style4")
+    @gen_premium.autocomplete("style5")
+    @gen_test.autocomplete("style")
+    @gen_test.autocomplete("style2")
+    @gen_test.autocomplete("style3")
+    @gen_test.autocomplete("style4")
+    @gen_test.autocomplete("style5")
+    async def style_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
         choices = []
         is_free_command = interaction.command.name == "genfree"
 
@@ -343,14 +391,16 @@ class UnicornImage(commands.Cog):
                 # Genfree only supports Pony base
                 if data.get("base") != "Pony":
                     continue
-                
+
             if current.lower() in key.lower() or current.lower() in data.get("name", "").lower():
                 choices.append(app_commands.Choice(name=data.get("name", key), value=key))
         return choices[:25]
 
-    @gen_premium.autocomplete('model')
-    @gen_test.autocomplete('model')
-    async def model_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    @gen_premium.autocomplete("model")
+    @gen_test.autocomplete("model")
+    async def model_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
         if not MODELS:
             return []
         choices = []
@@ -360,7 +410,7 @@ class UnicornImage(commands.Cog):
         return choices[:25]
 
     # --- Config Commands ---
-    
+
     @commands.group(name="unicornimage")
     @commands.guild_only()
     @commands.admin_or_permissions(administrator=True)
@@ -396,4 +446,4 @@ class UnicornImage(commands.Cog):
     async def set_prompt(self, ctx, *, prompt: str):
         """Set the default positive prompt appended to Modal requests."""
         await self.config.modal_prompt.set(prompt)
-        await ctx.send(f"Modal prompt updated.")
+        await ctx.send("Modal prompt updated.")

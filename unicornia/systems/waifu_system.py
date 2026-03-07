@@ -3,21 +3,21 @@ Waifu System for Unicornia - Logic for waifu gifts and management
 """
 
 import discord
-from typing import Optional, List, Tuple
-from redbot.core import commands
+
 from ..database import DatabaseManager
 from ..types import WaifuGift
 
+
 class WaifuSystem:
     """Handles waifu gifting and management logic"""
-    
+
     def __init__(self, db: DatabaseManager, config, bot):
         self.db = db
         self.config = config
         self.bot = bot
-        
+
         # Default Nadeko gifts
-        self.gifts: List[WaifuGift] = [
+        self.gifts: list[WaifuGift] = [
             {"name": "Potato", "emoji": "🥔", "price": 50, "negative": True},
             {"name": "Cookie", "emoji": "🍪", "price": 50, "negative": False},
             {"name": "Lollipop", "emoji": "🍭", "price": 150, "negative": False},
@@ -44,22 +44,22 @@ class WaifuSystem:
         # Map for easier lookup
         self.gifts_map = {g["name"].lower(): g for g in self.gifts}
 
-    def get_gifts(self) -> List[WaifuGift]:
+    def get_gifts(self) -> list[WaifuGift]:
         """Get list of available gifts.
-        
+
         Returns:
             List of WaifuGift objects.
         """
         return self.gifts
 
-    async def gift_waifu(self, giver: discord.Member, target: discord.Member, gift_name: str) -> Tuple[bool, str]:
+    async def gift_waifu(self, giver: discord.Member, target: discord.Member, gift_name: str) -> tuple[bool, str]:
         """Process gifting a waifu.
-        
+
         Args:
             giver: Discord member giving the gift.
             target: Discord member receiving the gift.
             gift_name: Name of the gift.
-            
+
         Returns:
             Tuple of (success, message).
         """
@@ -74,10 +74,10 @@ class WaifuSystem:
 
         # Get waifu current price
         current_price = await self.db.waifu.get_waifu_price(target.id)
-        
+
         # Calculate effect (90% of price)
         effect = int(gift["price"] * 0.9)
-        
+
         # Calculate new price
         if gift["negative"]:
             # Ensure price doesn't drop below 1
@@ -86,7 +86,7 @@ class WaifuSystem:
         else:
             new_price = current_price + effect
             effect_desc = f"increased by {effect}"
-        
+
         # Transaction
         success = await self.db.waifu.gift_waifu_transaction(
             giver_id=giver.id,
@@ -95,50 +95,53 @@ class WaifuSystem:
             gift_emoji=gift["emoji"],
             gift_price=gift["price"],
             new_waifu_price=new_price,
-            note=""
+            note="",
         )
-        
+
         if not success:
             return False, f"Not enough currency. You need {gift['price']}."
-        
-        return True, f"Gifted {gift['emoji']} **{gift['name']}** to **{target.display_name}**. Their price {effect_desc} to {new_price}."
 
-    async def transfer_waifu(self, user: discord.Member, waifu_id: int, new_owner: discord.Member) -> Tuple[bool, str]:
+        return (
+            True,
+            f"Gifted {gift['emoji']} **{gift['name']}** to **{target.display_name}**. Their price {effect_desc} to {new_price}.",
+        )
+
+    async def transfer_waifu(self, user: discord.Member, waifu_id: int, new_owner: discord.Member) -> tuple[bool, str]:
         """Transfer waifu ownership.
-        
+
         Args:
             user: Current owner.
             waifu_id: ID of waifu being transferred.
             new_owner: New owner.
-            
+
         Returns:
             Tuple of (success, message).
         """
         # Check if user owns the waifu
         waifu = await self.db.waifu.get_waifu_info(waifu_id)
-        if not waifu or waifu[1] != user.id: # waifu[1] is claimer_id
+        if not waifu or waifu[1] != user.id:  # waifu[1] is claimer_id
             return False, "You don't own this waifu."
-            
+
         current_price = waifu[2]
         affinity_id = waifu[3]
-        
+
         # Fee removed as per request
         fee = 0
-        
+
         # New price remains the same (no fee reduction)
         new_price = current_price
-        
+
         # Perform transfer
         await self.db.waifu.transfer_waifu(waifu_id, new_owner.id, new_price)
-        
+
         return True, f"Successfully transferred waifu to {new_owner.display_name}."
 
-    async def reset_waifu(self, waifu_id: int) -> Tuple[bool, str]:
+    async def reset_waifu(self, waifu_id: int) -> tuple[bool, str]:
         """Admin reset waifu.
-        
+
         Args:
             waifu_id: Waifu user ID.
-            
+
         Returns:
             Tuple of (success, message).
         """

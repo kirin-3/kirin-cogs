@@ -1,18 +1,17 @@
-import discord
 import asyncio
 import logging
-import gspread
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Dict, List, Union, Any
 
-from redbot.core import commands, Config, checks
-from redbot.core.utils.chat_formatting import box, pagify
+import discord
+import gspread
+from redbot.core import Config, checks, commands
 
 log = logging.getLogger("red.kirin_cogs.patron")
 
 __red_end_user_data_statement__ = "This cog processes user IDs and usernames to sync roles and rewards. Data is stored in config only for tracking charge dates."
+
 
 class Patron(commands.Cog):
     """
@@ -22,24 +21,24 @@ class Patron(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=9562341, force_registration=True)
-        
+
         default_guild = {
             "sheet_id": None,
             "role_active": None,
             "role_former": None,
             "log_channel": None,
             "processed_charges": {},  # {username: last_charge_date_str}
-            "annual_tracking": {},    # {username: {"anchor_date": str, "months_paid": int}}
+            "annual_tracking": {},  # {username: {"anchor_date": str, "months_paid": int}}
         }
-        
+
         self.config.register_guild(**default_guild)
         self.bg_task = self.bot.loop.create_task(self.sync_loop())
         self.lock = asyncio.Lock()
-        
+
     def cog_unload(self):
         if self.bg_task:
             self.bg_task.cancel()
-            
+
     async def sync_loop(self):
         """Background loop to periodically sync with Google Sheets."""
         await self.bot.wait_until_ready()
@@ -51,7 +50,7 @@ class Patron(commands.Cog):
                         await self.process_sheet(guild, sheet_id)
             except Exception as e:
                 log.error(f"Error in patron sync loop: {e}", exc_info=True)
-            
+
             await asyncio.sleep(3600)  # Check every hour
 
     def get_creds_path(self):
@@ -62,7 +61,7 @@ class Patron(commands.Cog):
         creds_path = self.get_creds_path()
         if not creds_path.exists():
             return None, "service_account.json not found in cog folder."
-            
+
         try:
             # We perform blocking I/O here, so we should run it in an executor if possible,
             # but gspread is synchronous. For simplicity in this loop, we'll run it directly
@@ -94,13 +93,13 @@ class Patron(commands.Cog):
 
         role_active_id = await self.config.guild(guild).role_active()
         role_former_id = await self.config.guild(guild).role_former()
-        
+
         role_active = guild.get_role(role_active_id) if role_active_id else None
         role_former = guild.get_role(role_former_id) if role_former_id else None
 
         processed_charges = await self.config.guild(guild).processed_charges()
         annual_tracking = await self.config.guild(guild).annual_tracking()
-        
+
         # Track usernames found in sheet with "Active" status
         active_usernames_in_sheet = set()
 
@@ -108,7 +107,7 @@ class Patron(commands.Cog):
             # Throttle to avoid rate limits
             if i > 0 and i % 5 == 0:
                 await asyncio.sleep(2)
-            
+
             try:
                 username = str(row.get("Discord", "")).strip()
                 if not username:
@@ -126,7 +125,7 @@ class Patron(commands.Cog):
                 if not member:
                     # Try partial match or discriminator logic if needed, but keeping it strict for now
                     continue
-                
+
                 # --- Role Logic ---
                 if role_active and role_former:
                     if status == "active patron":
@@ -144,7 +143,7 @@ class Patron(commands.Cog):
                             await member.remove_roles(role_active, reason="Patron Sync: No longer Active")
                             if role_former not in member.roles:
                                 await member.add_roles(role_former, reason="Patron Sync: No longer Active")
-                        
+
                         # If they are explicitly marked as Former/Declined, ensure they have Former role
                         elif status in ["declined patron", "former patron"]:
                             if role_former not in member.roles:
@@ -162,7 +161,7 @@ class Patron(commands.Cog):
                 pledge_amount_str = str(row.get("Pledge Amount", "0"))
                 charge_freq = str(row.get("Charge Frequency", "")).lower()
                 is_annual = "annual" in charge_freq
-                
+
                 # Parse Amount
                 amount = self.parse_amount(pledge_amount_str)
                 if amount <= 0:
@@ -176,25 +175,25 @@ class Patron(commands.Cog):
 
                 # Check for New Charge
                 stored_charge_date = processed_charges.get(username)
-                
+
                 if last_charge_date != stored_charge_date:
                     # NEW CHARGE DETECTED
                     await self.award_currency(guild, member, reward_value, "New Charge Processed")
-                    
+
                     processed_charges[username] = last_charge_date
-                    
+
                     # Setup Annual Tracking
                     if is_annual:
                         annual_tracking[username] = {
-                            "anchor_date": datetime.utcnow().isoformat(), # Use current time as anchor for bot distribution cycle
+                            "anchor_date": datetime.utcnow().isoformat(),  # Use current time as anchor for bot distribution cycle
                             "months_paid": 1,
-                            "last_award": datetime.utcnow().isoformat()
+                            "last_award": datetime.utcnow().isoformat(),
                         }
-                    
+
                     # Save immediately to prevent double-awarding on crash
                     await self.config.guild(guild).processed_charges.set(processed_charges)
                     await self.config.guild(guild).annual_tracking.set(annual_tracking)
-                
+
                 else:
                     # SAME CHARGE - Check for Annual Recurring
                     if is_annual and username in annual_tracking:
@@ -202,13 +201,13 @@ class Patron(commands.Cog):
                         months_paid = track_data.get("months_paid", 0)
                         anchor_iso = track_data.get("anchor_date")
                         last_award_iso = track_data.get("last_award")
-                        
+
                         if months_paid < 12 and anchor_iso:
                             anchor_date = datetime.fromisoformat(anchor_iso)
                             # Check if enough time has passed for next month's reward
                             # Simple logic: Anchor + (30 days * months_paid)
                             next_due = anchor_date + timedelta(days=30 * months_paid)
-                            
+
                             # Safety Check: Ensure we haven't awarded recently (last 25 days)
                             # This prevents double-processing if the loop restarts or logic glitches
                             safe_to_award = True
@@ -218,10 +217,12 @@ class Patron(commands.Cog):
                                     safe_to_award = False
 
                             if safe_to_award and datetime.utcnow() >= next_due:
-                                await self.award_currency(guild, member, reward_value, f"Annual Pledge Month {months_paid + 1}/12")
+                                await self.award_currency(
+                                    guild, member, reward_value, f"Annual Pledge Month {months_paid + 1}/12"
+                                )
                                 track_data["months_paid"] += 1
                                 track_data["last_award"] = datetime.utcnow().isoformat()
-                                
+
                                 # Save immediately
                                 await self.config.guild(guild).annual_tracking.set(annual_tracking)
             except Exception as e:
@@ -234,7 +235,7 @@ class Patron(commands.Cog):
                 # Throttle
                 if i > 0 and i % 5 == 0:
                     await asyncio.sleep(2)
-                    
+
                 try:
                     # Warning: Matching by name is fragile, but it's the only link we have.
                     # If the user changed their name, they might be downgraded accidentally.
@@ -248,30 +249,30 @@ class Patron(commands.Cog):
     def parse_amount(self, amount_str: str) -> float:
         """Strips currency symbols and returns float. Handles '1.000,00' and '1,000.00'."""
         # 1. Remove currency symbols and spaces
-        clean = re.sub(r'[^\d.,]', '', amount_str)
+        clean = re.sub(r"[^\d.,]", "", amount_str)
         if not clean:
             return 0.0
-            
+
         # 2. Handle specific European case: "1.234,56" -> "1234.56"
         # If both . and , exist:
-        if '.' in clean and ',' in clean:
+        if "." in clean and "," in clean:
             # Assume the last one is the decimal separator
-            last_dot = clean.rfind('.')
-            last_comma = clean.rfind(',')
-            
+            last_dot = clean.rfind(".")
+            last_comma = clean.rfind(",")
+
             if last_comma > last_dot:
                 # Comma is decimal (European: 1.000,00)
-                clean = clean.replace('.', '') # Remove thousands sep
-                clean = clean.replace(',', '.') # Replace decimal with dot
+                clean = clean.replace(".", "")  # Remove thousands sep
+                clean = clean.replace(",", ".")  # Replace decimal with dot
             else:
                 # Dot is decimal (US: 1,000.00)
-                clean = clean.replace(',', '') # Remove thousands sep
-                
+                clean = clean.replace(",", "")  # Remove thousands sep
+
         # 3. If only comma exists: "5,00" or "1,000"
-        elif ',' in clean:
+        elif "," in clean:
             # For "5,00" -> 5.00
-            clean = clean.replace(',', '.')
-            
+            clean = clean.replace(",", ".")
+
         try:
             return float(clean)
         except ValueError:
@@ -284,7 +285,7 @@ class Patron(commands.Cog):
         - Bonus: 5+: 5%, 10+: 10%, 20+: 15%, 40+: 20%
         """
         base = amount * 3000
-        
+
         bonus = 1.0
         if amount >= 40:
             bonus = 1.20
@@ -294,7 +295,7 @@ class Patron(commands.Cog):
             bonus = 1.10
         elif amount >= 5:
             bonus = 1.05
-            
+
         return int(base * bonus)
 
     async def award_currency(self, guild, member, amount, reason):
@@ -308,13 +309,15 @@ class Patron(commands.Cog):
             success = await unicornia.add_balance(member.id, amount, reason=f"Patreon: {reason}", source="patron")
             if success:
                 log.info(f"Awarded {amount} to {member.name} ({reason})")
-                
+
                 # Log to channel if configured
                 log_channel_id = await self.config.guild(guild).log_channel()
                 if log_channel_id:
                     channel = guild.get_channel(log_channel_id)
                     if channel:
-                        await channel.send(f"🏆 **Patreon Reward:** Awarded {amount} currency to {member.mention}.\n*Reason: {reason}*")
+                        await channel.send(
+                            f"🏆 **Patreon Reward:** Awarded {amount} currency to {member.mention}.\n*Reason: {reason}*"
+                        )
         except Exception as e:
             log.error(f"Failed to award currency to {member.name}: {e}")
 
@@ -323,26 +326,26 @@ class Patron(commands.Cog):
     async def patronset(self, ctx):
         """Settings for Patron cog."""
         pass
-        
+
     @patronset.command(name="setup")
     async def set_sheet_id(self, ctx, sheet_id: str):
         """Set the Google Sheet ID."""
         await self.config.guild(ctx.guild).sheet_id.set(sheet_id)
         await ctx.send(f"Sheet ID set to `{sheet_id}`.")
-        
+
     @patronset.command(name="roles")
     async def set_roles(self, ctx, active_role: discord.Role, former_role: discord.Role):
         """Set the Active and Former Patron roles."""
         await self.config.guild(ctx.guild).role_active.set(active_role.id)
         await self.config.guild(ctx.guild).role_former.set(former_role.id)
         await ctx.send(f"Roles set:\nActive: {active_role.name}\nFormer: {former_role.name}")
-        
+
     @patronset.command(name="logchannel")
     async def set_log_channel(self, ctx, channel: discord.TextChannel):
         """Set channel for reward logs."""
         await self.config.guild(ctx.guild).log_channel.set(channel.id)
         await ctx.send(f"Log channel set to {channel.mention}.")
-        
+
     @patronset.command(name="sync")
     async def manual_sync(self, ctx):
         """Manually trigger a sync."""
@@ -353,11 +356,11 @@ class Patron(commands.Cog):
         sheet_id = await self.config.guild(ctx.guild).sheet_id()
         if not sheet_id:
             return await ctx.send("Sheet ID not set.")
-            
+
         async with ctx.typing():
             await self.process_sheet(ctx.guild, sheet_id)
         await ctx.send("Sync complete.")
-        
+
     @patronset.command(name="creds")
     async def upload_creds(self, ctx):
         """Instructions to upload credentials."""

@@ -1,7 +1,7 @@
-import logging
-import discord
 import functools
+import logging
 
+import discord
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.i18n import Translator, cog_i18n
@@ -33,9 +33,7 @@ class UnicornModeration(commands.Cog):
     def __init__(self, bot: Red):
         self.bot: Red = bot
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
-        default_member = {
-            "warnings": []
-        }
+        default_member = {"warnings": []}
         self.config.register_member(**default_member)
 
     async def _log_action(self, action: str, member: discord.Member, reason: str):
@@ -104,11 +102,7 @@ class UnicornModeration(commands.Cog):
     @commands.has_permissions(kick_members=True)
     async def warn(self, ctx: commands.Context, member: discord.Member, *, reason: str):
         """Warn a user."""
-        warning = {
-            "moderator": ctx.author.id,
-            "reason": reason,
-            "timestamp": ctx.message.created_at.isoformat()
-        }
+        warning = {"moderator": ctx.author.id, "reason": reason, "timestamp": ctx.message.created_at.isoformat()}
         async with self.config.member(member).warnings() as warnings:
             warnings.append(warning)
         await self._log_action("Warning", member, reason)
@@ -123,16 +117,13 @@ class UnicornModeration(commands.Cog):
         if not warnings:
             return await ctx.send(f"{member.mention} has no warnings.")
 
-        embed = discord.Embed(
-            title=f"Warnings for {member.display_name}",
-            color=await ctx.embed_color()
-        )
+        embed = discord.Embed(title=f"Warnings for {member.display_name}", color=await ctx.embed_color())
         for i, warning in enumerate(warnings, 1):
             moderator = ctx.guild.get_member(warning["moderator"])
             moderator_name = moderator.display_name if moderator else "Unknown Moderator"
             embed.add_field(
                 name=f"Warning {i}",
                 value=f"**Moderator:** {moderator_name}\n**Reason:** {warning['reason']}\n**Date:** {warning['timestamp']}",
-                inline=False
+                inline=False,
             )
         await ctx.send(embed=embed)

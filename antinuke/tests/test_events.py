@@ -1,6 +1,5 @@
 """Unit tests for the EventHandlers class."""
 
-import asyncio
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -32,9 +31,7 @@ def event_handlers(config_mock: MagicMock) -> EventHandlers:
     action_cache = MagicMock(spec=ActionCache)
     audit_helper = MagicMock(spec=AuditLogHelper)
     quarantine_actions = MagicMock(spec=QuarantineActions)
-    return EventHandlers(
-        bot, config_mock, action_cache, audit_helper, quarantine_actions
-    )
+    return EventHandlers(bot, config_mock, action_cache, audit_helper, quarantine_actions)
 
 
 @pytest.mark.asyncio
@@ -54,9 +51,7 @@ async def test_on_guild_channel_delete_below_threshold(
         await event_handlers.on_guild_channel_delete(channel)
         cast(MagicMock, mock_create_task).assert_not_called()
 
-    cast(MagicMock, event_handlers.action_cache).record_action.assert_called_once_with(
-        1, 0, "channel_delete", 60
-    )
+    cast(MagicMock, event_handlers.action_cache).record_action.assert_called_once_with(1, 0, "channel_delete", 60)
 
 
 @pytest.mark.asyncio
@@ -77,9 +72,7 @@ async def test_on_guild_channel_delete_above_threshold(
         # A task must have been scheduled for the investigation coroutine
         cast(MagicMock, mock_create_task).assert_called_once()
 
-    cast(MagicMock, event_handlers.action_cache).record_action.assert_called_once_with(
-        1, 0, "channel_delete", 60
-    )
+    cast(MagicMock, event_handlers.action_cache).record_action.assert_called_once_with(1, 0, "channel_delete", 60)
 
 
 @pytest.mark.asyncio
@@ -125,9 +118,7 @@ async def test_investigate_channel_deletion_skips_trusted(
     trusted_culprit.roles = []
 
     audit_mock = cast(MagicMock, event_handlers.audit_helper)
-    audit_mock.get_channel_delete_culprit = AsyncMock(
-        return_value=[(trusted_culprit, 3)]
-    )
+    audit_mock.get_channel_delete_culprit = AsyncMock(return_value=[(trusted_culprit, 3)])
     # Mark culprit as trusted by ID
     guild_group = event_handlers.config.guild.return_value  # type: ignore[union-attr]
     guild_group.trusted_users = AsyncMock(return_value=[42])

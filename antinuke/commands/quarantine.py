@@ -1,25 +1,27 @@
 """Quarantine management commands for the AntiNuke cog."""
 
 import datetime
+from typing import TYPE_CHECKING
+
 import discord
-from typing import TYPE_CHECKING, Any
-from redbot.core import commands, app_commands
+from redbot.core import app_commands, commands
 from redbot.core.utils.chat_formatting import bold, inline, pagify
 
 from ..constants import ACTION_NAMES
 
 if TYPE_CHECKING:
     from redbot.core import Config
+
     from antinuke.actions import QuarantineActions
     from antinuke.utils import ActionCache
 
 
 class AntiNukeQuarantineCommands(commands.Cog):
     """Quarantine management commands for AntiNuke."""
+
     config: "Config"
     action_cache: "ActionCache"
     quarantine_actions: "QuarantineActions"
-
 
     @commands.group(name="antinuke", aliases=["an"])  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
@@ -52,9 +54,7 @@ class AntiNukeQuarantineCommands(commands.Cog):
 
         for user_id, data in quarantined.items():
             user = guild.get_member(int(user_id))
-            trigger = ACTION_NAMES.get(
-                data.get("trigger_action", "unknown"), "Unknown"
-            )
+            trigger = ACTION_NAMES.get(data.get("trigger_action", "unknown"), "Unknown")
             timestamp = data.get("quarantined_at", "Unknown time")
 
             if user:
@@ -78,9 +78,7 @@ class AntiNukeQuarantineCommands(commands.Cog):
 
     @antinuke_quarantine.command(name="restore", aliases=["unquarantine", "unq"])
     @app_commands.describe(user="The user to restore")
-    async def quarantine_restore(
-        self, ctx: commands.Context, user: discord.Member
-    ) -> None:
+    async def quarantine_restore(self, ctx: commands.Context, user: discord.Member) -> None:
         """Restore a quarantined user's roles.
 
         This will remove the quarantine role and restore their previous roles.
@@ -95,16 +93,12 @@ class AntiNukeQuarantineCommands(commands.Cog):
             return
 
         # Use the restore function from actions
-        success = await self.quarantine_actions.restore_user(
-            guild, user, restored_by=ctx.author.name
-        )
+        success = await self.quarantine_actions.restore_user(guild, user, restored_by=ctx.author.name)
 
         if success:
             await ctx.send(f"✅ {user.mention} has been restored.")
         else:
-            await ctx.send(
-                f"❌ Failed to restore {user.mention}. Check bot permissions and role hierarchy."
-            )
+            await ctx.send(f"❌ Failed to restore {user.mention}. Check bot permissions and role hierarchy.")
 
     @antinuke_quarantine.command(name="force")
     @app_commands.describe(user="The user to forcibly quarantine")
@@ -122,9 +116,7 @@ class AntiNukeQuarantineCommands(commands.Cog):
             return
         # Check hierarchy
         if guild.me.top_role <= user.top_role:
-            await ctx.send(
-                f"❌ Cannot quarantine {user.mention} - they have equal or higher roles."
-            )
+            await ctx.send(f"❌ Cannot quarantine {user.mention} - they have equal or higher roles.")
             return
 
         # Check if user is owner
@@ -133,22 +125,16 @@ class AntiNukeQuarantineCommands(commands.Cog):
             return
 
         # Execute quarantine
-        success = await self.quarantine_actions.execute_quarantine(
-            guild, user, f"manual: {reason}", self.action_cache
-        )
+        success = await self.quarantine_actions.execute_quarantine(guild, user, f"manual: {reason}", self.action_cache)
 
         if success:
             await ctx.send(f"✅ {user.mention} has been quarantined.")
         else:
-            await ctx.send(
-                f"❌ Failed to quarantine {user.mention}. Check bot permissions and role hierarchy."
-            )
+            await ctx.send(f"❌ Failed to quarantine {user.mention}. Check bot permissions and role hierarchy.")
 
     @antinuke_quarantine.command(name="clear")
     @app_commands.describe(user="The user to clear from quarantine records")
-    async def quarantine_clear(
-        self, ctx: commands.Context, user: discord.Member
-    ) -> None:
+    async def quarantine_clear(self, ctx: commands.Context, user: discord.Member) -> None:
         """Clear a user from quarantine records without restoring roles.
 
         This removes the quarantine record but does not restore their roles.
@@ -163,15 +149,11 @@ class AntiNukeQuarantineCommands(commands.Cog):
                 return
             del q_users[str(user.id)]
 
-        await ctx.send(
-            f"✅ {user.mention} has been cleared from quarantine records."
-        )
+        await ctx.send(f"✅ {user.mention} has been cleared from quarantine records.")
 
     @antinuke_quarantine.command(name="info")
     @app_commands.describe(user="The user to view quarantine info for")
-    async def quarantine_info(
-        self, ctx: commands.Context, user: discord.Member
-    ) -> None:
+    async def quarantine_info(self, ctx: commands.Context, user: discord.Member) -> None:
         """Show detailed quarantine information for a user."""
         guild = ctx.guild
         if not guild:
@@ -184,9 +166,7 @@ class AntiNukeQuarantineCommands(commands.Cog):
 
         data = quarantined[str(user.id)]
 
-        trigger = ACTION_NAMES.get(
-            data.get("trigger_action", "unknown"), "Unknown"
-        )
+        trigger = ACTION_NAMES.get(data.get("trigger_action", "unknown"), "Unknown")
         reason = data.get("reason", "Unknown reason")
         timestamp = data.get("quarantined_at", "Unknown time")
         stored_roles = data.get("roles", [])
@@ -194,7 +174,7 @@ class AntiNukeQuarantineCommands(commands.Cog):
         embed = discord.Embed(
             title=f"🛡️ Quarantine Info: {user}",
             color=discord.Color.orange(),
-            timestamp=datetime.datetime.now(datetime.timezone.utc),
+            timestamp=datetime.datetime.now(datetime.UTC),
         )
 
         embed.set_thumbnail(url=user.display_avatar.url)
@@ -259,17 +239,13 @@ class AntiNukeQuarantineCommands(commands.Cog):
         for user_id in list(quarantined.keys()):
             user = guild.get_member(int(user_id))
             if user:
-                success = await self.quarantine_actions.restore_user(
-                    guild, user, restored_by="restoreall"
-                )
+                success = await self.quarantine_actions.restore_user(guild, user, restored_by="restoreall")
                 if success:
                     count += 1
                 else:
                     failed += 1
 
-        await ctx.send(
-            f"✅ Restored {count} user(s). Failed: {failed}."
-        )
+        await ctx.send(f"✅ Restored {count} user(s). Failed: {failed}.")
 
     @antinuke_quarantine.command(name="cleanup")
     async def quarantine_cleanup(self, ctx: commands.Context) -> None:

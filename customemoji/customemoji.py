@@ -1,6 +1,6 @@
-from redbot.core import commands, Config, checks
 import discord
-from typing import Optional, Union, Dict, List
+from redbot.core import Config, checks, commands
+
 
 class CustomEmoji(commands.Cog):
     """
@@ -13,7 +13,7 @@ class CustomEmoji(commands.Cog):
         default_guild = {
             "required_role_id": None,
             "user_limits": {},
-            "emoji_ownership": {}  # {str(emoji_id): user_id}
+            "emoji_ownership": {},  # {str(emoji_id): user_id}
         }
         self.config.register_guild(**default_guild)
 
@@ -39,7 +39,7 @@ class CustomEmoji(commands.Cog):
                 raise ValueError("Failed to download image.")
             data = await response.read()
             if len(data) > 256 * 1024:
-                 raise ValueError("Image is too large (max 256KB).")
+                raise ValueError("Image is too large (max 256KB).")
             return data
 
     @commands.group(aliases=["ce"])
@@ -50,10 +50,10 @@ class CustomEmoji(commands.Cog):
 
     @customemoji.command(name="setrole")
     @checks.is_owner()
-    async def ce_setrole(self, ctx, role: Optional[discord.Role] = None):
+    async def ce_setrole(self, ctx, role: discord.Role | None = None):
         """
         Set the role required to create emojis.
-        
+
         Leave empty to remove the requirement.
         """
         if role:
@@ -70,7 +70,7 @@ class CustomEmoji(commands.Cog):
         if limit < 0:
             await ctx.send("Limit cannot be negative.")
             return
-        
+
         async with self.config.guild(ctx.guild).user_limits() as limits:
             limits[str(member.id)] = limit
         await ctx.send(f"Set emoji limit for {member.display_name} to {limit}.")
@@ -89,7 +89,7 @@ class CustomEmoji(commands.Cog):
     @customemoji.command(name="create")
     @commands.bot_has_permissions(manage_emojis=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
-    async def ce_create(self, ctx, name: str, source: Optional[Union[discord.PartialEmoji, str]] = None):
+    async def ce_create(self, ctx, name: str, source: discord.PartialEmoji | str | None = None):
         """
         Create a new custom emoji.
 
@@ -107,7 +107,9 @@ class CustomEmoji(commands.Cog):
         if required_role_id:
             role = guild.get_role(required_role_id)
             if not role:
-                await ctx.send("The required role for creating emojis no longer exists. Please ask an admin to reconfigure it.")
+                await ctx.send(
+                    "The required role for creating emojis no longer exists. Please ask an admin to reconfigure it."
+                )
                 return
             if role not in author.roles:
                 await ctx.send("You do not have the required role to create emojis.")
@@ -116,7 +118,7 @@ class CustomEmoji(commands.Cog):
         # Check Limit
         limit = await self.get_user_limit(guild, author.id)
         current_count = await self.get_user_emoji_count(guild, author.id)
-        
+
         if current_count >= limit:
             await ctx.send(f"You have reached your limit of {limit} emojis.")
             return
@@ -125,7 +127,7 @@ class CustomEmoji(commands.Cog):
         image_data = None
         if ctx.message.attachments:
             attachment = ctx.message.attachments[0]
-            if not attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+            if not attachment.filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif")):
                 await ctx.send("Invalid file type. Please upload a PNG, JPG, or GIF.")
                 return
             if attachment.size > 256 * 1024:
@@ -143,7 +145,7 @@ class CustomEmoji(commands.Cog):
             elif isinstance(source, str):
                 # Basic URL validation could go here, strictly we trust download_image to fail if bad
                 url = source
-            
+
             if url:
                 try:
                     image_data = await self.download_image(str(url))
@@ -153,20 +155,24 @@ class CustomEmoji(commands.Cog):
                 except Exception as e:
                     await ctx.send(f"Failed to download image from source: {e}")
                     return
-        
+
         if not image_data:
             await ctx.send("Please provide an image attachment or a valid emoji/URL.")
             return
 
         # Create Emoji
         try:
-            emoji = await guild.create_custom_emoji(name=name, image=image_data, reason=f"Created by {author} ({author.id}) via CustomEmoji")
-            
+            emoji = await guild.create_custom_emoji(
+                name=name, image=image_data, reason=f"Created by {author} ({author.id}) via CustomEmoji"
+            )
+
             # Save Ownership
             async with self.config.guild(guild).emoji_ownership() as ownership:
                 ownership[str(emoji.id)] = author.id
-            
-            await ctx.send(f"Emoji {emoji} (`:{emoji.name}:`) created successfully! ({current_count + 1}/{limit} slots used)")
+
+            await ctx.send(
+                f"Emoji {emoji} (`:{emoji.name}:`) created successfully! ({current_count + 1}/{limit} slots used)"
+            )
 
         except discord.HTTPException as e:
             await ctx.send(f"Failed to create emoji. Discord error: {e}")
@@ -178,12 +184,12 @@ class CustomEmoji(commands.Cog):
     async def ce_delete(self, ctx, emoji: discord.Emoji):
         """
         Delete a custom emoji.
-        
+
         You can only delete emojis you own, unless you are a moderator.
         """
         ownership = await self.config.guild(ctx.guild).emoji_ownership()
         owner_id = ownership.get(str(emoji.id))
-        
+
         is_mod = await self.bot.is_mod(ctx.author) or ctx.author.guild_permissions.manage_emojis
         is_owner = owner_id == ctx.author.id
 
@@ -193,13 +199,13 @@ class CustomEmoji(commands.Cog):
 
         try:
             await emoji.delete(reason=f"Deleted by {ctx.author} via CustomEmoji")
-            
+
             async with self.config.guild(ctx.guild).emoji_ownership() as ownership:
                 if str(emoji.id) in ownership:
                     del ownership[str(emoji.id)]
-            
+
             await ctx.send(f"Emoji `{emoji.name}` has been deleted.")
-        
+
         except discord.Forbidden:
             await ctx.send("I do not have permission to delete this emoji.")
         except discord.HTTPException as e:
@@ -213,8 +219,8 @@ class CustomEmoji(commands.Cog):
         """
         # Validate name (alphanumeric + underscores usually best for Discord)
         if not new_name.replace("_", "").isalnum():
-             await ctx.send("Emoji names should only contain alphanumeric characters and underscores.")
-             return
+            await ctx.send("Emoji names should only contain alphanumeric characters and underscores.")
+            return
 
         ownership = await self.config.guild(ctx.guild).emoji_ownership()
         owner_id = ownership.get(str(emoji.id))
@@ -227,30 +233,30 @@ class CustomEmoji(commands.Cog):
             await emoji.edit(name=new_name, reason=f"Renamed by {ctx.author} via CustomEmoji")
             await ctx.send(f"Emoji renamed to `:{new_name}:`.")
         except discord.Forbidden:
-             await ctx.send("I do not have permission to edit this emoji.")
+            await ctx.send("I do not have permission to edit this emoji.")
         except discord.HTTPException as e:
-             await ctx.send(f"Failed to edit emoji: {e}")
+            await ctx.send(f"Failed to edit emoji: {e}")
 
     @customemoji.command(name="list")
-    async def ce_list(self, ctx, user: Optional[discord.Member] = None):
+    async def ce_list(self, ctx, user: discord.Member | None = None):
         """
         List emojis owned by you or another user.
         """
         if user and user != ctx.author:
-             # Check if requester is mod/admin if viewing someone else?
-             # Plan says "If user arg provided (and requestor is Mod)"
-             is_mod = await self.bot.is_mod(ctx.author)
-             if not is_mod:
-                 await ctx.send("You can only view your own emojis.")
-                 return
+            # Check if requester is mod/admin if viewing someone else?
+            # Plan says "If user arg provided (and requestor is Mod)"
+            is_mod = await self.bot.is_mod(ctx.author)
+            if not is_mod:
+                await ctx.send("You can only view your own emojis.")
+                return
         else:
             user = ctx.author
 
         ownership = await self.config.guild(ctx.guild).emoji_ownership()
-        
+
         # Filter emojis for this user
         user_emoji_ids = [eid for eid, uid in ownership.items() if uid == user.id]
-        
+
         if not user_emoji_ids:
             await ctx.send(f"{user.display_name} has no custom emojis.")
             return
@@ -264,23 +270,23 @@ class CustomEmoji(commands.Cog):
                 valid_emojis.append(emoji)
             else:
                 cleanup_ids.append(eid)
-        
+
         # Cleanup stale entries
         if cleanup_ids:
             async with self.config.guild(ctx.guild).emoji_ownership() as ownership:
-                 for eid in cleanup_ids:
-                     if eid in ownership:
-                         del ownership[eid]
+                for eid in cleanup_ids:
+                    if eid in ownership:
+                        del ownership[eid]
 
         if not valid_emojis:
-             await ctx.send(f"{user.display_name} has no valid custom emojis (some may have been deleted manually).")
-             return
+            await ctx.send(f"{user.display_name} has no valid custom emojis (some may have been deleted manually).")
+            return
 
         # Display
         limit = await self.get_user_limit(ctx.guild, user.id)
         title = f"Custom Emojis for {user.display_name} ({len(valid_emojis)}/{limit} slots)"
-        
+
         description = "\n".join([f"{e} `:{e.name}:`" for e in valid_emojis])
-        
+
         embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
         await ctx.send(embed=embed)

@@ -12,7 +12,6 @@ DEFAULT_GUILD = {
     "user_can_close": True,  # Ticket opener can close their own ticket
     "user_can_manage": False,  # Ticket opener can add other users to their ticket
     "suspended_msg": None,  # If not None, user will be presented with this message when trying to open a ticket
-    
     # Panel Settings (Flattened)
     "category_id": 0,
     "channel_id": 0,
@@ -26,10 +25,8 @@ DEFAULT_GUILD = {
     "modal": {},
     "modal_title": "",
     "ticket_num": 1,
-    
     # Legacy / Optional
     "required_roles": [],
-    
     # Active Tickets
     "opened": {},  # All opened tickets {user_id: {channel_id: ticket_data}}
 }

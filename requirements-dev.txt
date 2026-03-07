@@ -21,3 +21,4 @@ basedpyright
 pytest
 pytest-asyncio
 dpytest
+ruff

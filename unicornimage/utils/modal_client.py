@@ -1,10 +1,10 @@
-import modal
 import logging
-import re
-from typing import Optional, List, Dict, Any
-from ..constants import NSFW_TERMS, SFW_NEGATIVE_PROMPT
+from typing import Any
+
+import modal
 
 log = logging.getLogger("red.unicornimage.modal")
+
 
 class ModalClient:
     def __init__(self, app_name: str = "text2image"):
@@ -12,7 +12,7 @@ class ModalClient:
         self.inference_cls = None
         self.reload_app()
 
-    def reload_app(self, app_name: Optional[str] = None):
+    def reload_app(self, app_name: str | None = None):
         if app_name:
             self.app_name = app_name
         try:
@@ -30,15 +30,15 @@ class ModalClient:
         height: int = 1024,
         steps: int = 30,
         guidance_scale: float = 7.5,
-        seed: Optional[int] = None,
-        model_id: Optional[str] = None,
-        loras: Optional[List[Dict[str, Any]]] = None,
+        seed: int | None = None,
+        model_id: str | None = None,
+        loras: list[dict[str, Any]] | None = None,
         batch_size: int = 1,
-        scheduler: Optional[str] = None,
-        clip_skip: Optional[int] = None,
+        scheduler: str | None = None,
+        clip_skip: int | None = None,
         nsfw: bool = False,
-    ) -> List[bytes]:
-        
+    ) -> list[bytes]:
+
         # SFW filtering removed for Modal as per configuration.
         # User is responsible for content or model handles it.
 
@@ -48,10 +48,10 @@ class ModalClient:
                 raise RuntimeError("Modal client not initialized. Is 'modal' installed and authenticated?")
 
         inference_obj = self.inference_cls()
-        
+
         try:
             log.info("Sending request to Modal")
-            
+
             # Note: The remote run method does not accept 'nsfw' argument
             images = await inference_obj.run.remote.aio(
                 prompt=prompt,

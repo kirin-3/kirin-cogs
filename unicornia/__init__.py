@@ -3,7 +3,9 @@
 
 from .unicornia import Unicornia
 
-__red_end_user_data_statement__ = "This cog stores user level, XP, currency, and economy data in its own SQLite database."
+__red_end_user_data_statement__ = (
+    "This cog stores user level, XP, currency, and economy data in its own SQLite database."
+)
 
 
 async def setup(bot):

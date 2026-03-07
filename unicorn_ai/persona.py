@@ -1,10 +1,11 @@
 import json
-import os
 import logging
-from typing import Optional, List, Dict, Any
+import os
 from dataclasses import dataclass
+from typing import Any
 
 log = logging.getLogger("red.unicorn_ai.persona")
+
 
 @dataclass
 class Persona:
@@ -12,15 +13,15 @@ class Persona:
     description: str
     system_prompt: str
     personality: str
-    avatar_url: Optional[str] = None
-    after_context: Optional[str] = None
-    history_limit: Optional[int] = None
-    first_message: Optional[str] = None
-    examples: Optional[List[Dict[str, str]]] = None
+    avatar_url: str | None = None
+    after_context: str | None = None
+    history_limit: int | None = None
+    first_message: str | None = None
+    examples: list[dict[str, str]] | None = None
     allow_summon: bool = False
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]):
+    def from_dict(cls, data: dict[str, Any]):
         # Validate history_limit
         history_limit = data.get("history_limit")
         if history_limit is not None:
@@ -40,21 +41,22 @@ class Persona:
             history_limit=history_limit,
             first_message=data.get("first_message"),
             examples=data.get("examples", []),
-            allow_summon=data.get("allow_summon", False)
+            allow_summon=data.get("allow_summon", False),
         )
+
 
 class PersonaManager:
     def __init__(self, data_path: str):
         self.data_path = data_path
-        self._summonable_cache: Optional[List[str]] = None
+        self._summonable_cache: list[str] | None = None
 
-    def list_personas(self) -> List[str]:
+    def list_personas(self) -> list[str]:
         """Returns a list of available persona names (filenames without .json)."""
         if not os.path.exists(self.data_path):
             return []
         return [f[:-5] for f in os.listdir(self.data_path) if f.endswith(".json")]
 
-    def load_persona(self, name: str) -> Optional[Persona]:
+    def load_persona(self, name: str) -> Persona | None:
         """Loads a persona by name."""
         # Security check to prevent path traversal
         if ".." in name or "/" in name or "\\" in name:
@@ -63,13 +65,13 @@ class PersonaManager:
 
         filename = f"{name}.json"
         path = os.path.join(self.data_path, filename)
-        
+
         if not os.path.exists(path):
             log.error(f"Persona file not found: {path}")
             return None
 
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
                 # Validation
                 if "system_prompt" not in data:
@@ -79,17 +81,17 @@ class PersonaManager:
             log.error(f"Failed to load persona {name}: {e}")
             return None
 
-    def get_summonable_personas(self) -> List[str]:
+    def get_summonable_personas(self) -> list[str]:
         """Returns a cached list of personas that have allow_summon=True."""
         if self._summonable_cache is not None:
             return self._summonable_cache
-            
+
         summonable = []
         all_names = self.list_personas()
         for name in all_names:
             p = self.load_persona(name)
             if p and p.allow_summon:
                 summonable.append(name)
-        
+
         self._summonable_cache = summonable
         return summonable

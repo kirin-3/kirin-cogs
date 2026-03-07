@@ -1,18 +1,18 @@
-import discord
+import asyncio
 import logging
 import os
-import asyncio
 import time
-from redbot.core import commands, app_commands, Config
-from redbot.core.utils.chat_formatting import pagify
-from discord.ext import tasks
-from typing import Optional
 
-from .vertex import VertexClient
+import discord
+from discord.ext import tasks
+from redbot.core import Config, app_commands, commands
+
 from .openai import OpenAIClient
 from .persona import PersonaManager
+from .vertex import VertexClient
 
 log = logging.getLogger("red.unicorn_ai")
+
 
 class UnicornAI(commands.Cog):
     """
@@ -22,13 +22,13 @@ class UnicornAI(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=9988776655, force_registration=True)
-        
+
         # Channel-specific config
         default_channel = {
             "enabled": False,
-            "interval": 300, # 5 minutes default
+            "interval": 300,  # 5 minutes default
             "active_persona": None,
-            "last_run": 0
+            "last_run": 0,
         }
         self.config.register_channel(**default_channel)
 
@@ -38,23 +38,21 @@ class UnicornAI(commands.Cog):
             "model": "gemini-3-pro-preview",
             "provider": "vertex",
             "openai_endpoint": "https://nano-gpt.com/api/v1/chat/completions",
-            "openai_model": "zai-org/glm-5:thinking"
+            "openai_model": "zai-org/glm-5:thinking",
         }
         self.config.register_global(**default_global)
 
         # User config for opt-out
-        default_user = {
-            "opt_out": False
-        }
+        default_user = {"opt_out": False}
         self.config.register_user(**default_user)
 
         self.cog_path = os.path.dirname(__file__)
         self.data_path = os.path.join(self.cog_path, "data", "personas")
-        
+
         self.vertex = VertexClient(self.cog_path)
         self.openai = OpenAIClient(self.bot)
         self.personas = PersonaManager(self.data_path)
-        
+
         # Start loop
         self.auto_message_loop.start()
 
@@ -68,18 +66,18 @@ class UnicornAI(commands.Cog):
         Runs every minute and checks all channels.
         """
         await self.bot.wait_until_ready()
-        
+
         all_channels = await self.config.all_channels()
         now = time.time()
-        
+
         for channel_id, settings in all_channels.items():
             if not settings["enabled"]:
                 continue
-            
+
             # Check if it's time to run
             last_run = settings["last_run"]
             interval = settings["interval"]
-            
+
             if (now - last_run) >= interval:
                 channel = self.bot.get_channel(channel_id)
                 if channel:
@@ -89,7 +87,9 @@ class UnicornAI(commands.Cog):
     async def before_loop(self):
         await self.bot.wait_until_ready()
 
-    async def _trigger_ai(self, channel: discord.TextChannel = None, ctx: commands.Context = None, persona_override: str = None):
+    async def _trigger_ai(
+        self, channel: discord.TextChannel = None, ctx: commands.Context = None, persona_override: str = None
+    ):
         """
         Core logic to fetch history and generate response.
         Can be triggered by loop (passed channel) or manual command (passed ctx).
@@ -106,36 +106,40 @@ class UnicornAI(commands.Cog):
         # Fetch settings
         settings = await self.config.channel(target_channel).all()
         global_settings = await self.config.all()
-        
+
         # If manual trigger, ignore 'enabled' check
         if not ctx and not settings["enabled"]:
             return
 
         persona_name = persona_override or settings["active_persona"]
         if not persona_name:
-            if ctx: await ctx.send("No active persona set (and no override provided).")
+            if ctx:
+                await ctx.send("No active persona set (and no override provided).")
             return
 
         persona = await asyncio.to_thread(self.personas.load_persona, persona_name)
         if not persona:
-            if ctx: await ctx.send(f"Failed to load persona '{persona_name}'.")
+            if ctx:
+                await ctx.send(f"Failed to load persona '{persona_name}'.")
             return
 
         # 2. Fetch History
         try:
             # Use persona limit if set, otherwise global
             limit = persona.history_limit if persona.history_limit is not None else global_settings["history_limit"]
-            
+
             # Ensure we are in a text channel or thread
             if not hasattr(target_channel, "history"):
-                 if ctx: await ctx.send("Cannot fetch history from this channel type.")
-                 return
+                if ctx:
+                    await ctx.send("Cannot fetch history from this channel type.")
+                return
 
             messages = [m async for m in target_channel.history(limit=limit)]
-            messages.reverse() # Oldest first
+            messages.reverse()  # Oldest first
         except Exception as e:
             log.error(f"Failed to fetch history: {e}")
-            if ctx: await ctx.send(f"Error fetching history: {e}")
+            if ctx:
+                await ctx.send(f"Error fetching history: {e}")
             return
 
         # 3. Format History for Gemini (With Opt-Out Check)
@@ -149,12 +153,9 @@ class UnicornAI(commands.Cog):
             role = "model" if msg.author.id == self.bot.user.id else "user"
             content = msg.clean_content
             if not content:
-                continue # Skip empty messages
-            
-            formatted_history.append({
-                "role": role,
-                "parts": [{"text": f"{msg.author.display_name}: {content}"}]
-            })
+                continue  # Skip empty messages
+
+            formatted_history.append({"role": role, "parts": [{"text": f"{msg.author.display_name}: {content}"}]})
 
         # 4. Generate Response
         if ctx:
@@ -170,14 +171,14 @@ class UnicornAI(commands.Cog):
                 if ctx:
                     await ctx.send(error_msg)
                 return
-            
+
             response = await self.openai.generate_response(
                 endpoint=global_settings.get("openai_endpoint", "https://nano-gpt.com/api/v1/chat/completions"),
                 api_key=api_key["api_key"],
                 model=global_settings.get("openai_model", "zai-org/glm-5:thinking"),
                 system_instruction=persona.system_prompt,
                 history=formatted_history,
-                after_context=persona.after_context
+                after_context=persona.after_context,
             )
         else:  # vertex (default)
             response = await self.vertex.generate_response(
@@ -186,11 +187,12 @@ class UnicornAI(commands.Cog):
                 api_version="v1beta1",
                 system_instruction=persona.system_prompt,
                 history=formatted_history,
-                after_context=persona.after_context
+                after_context=persona.after_context,
             )
 
         if not response:
-            if ctx: await ctx.send("Failed to generate response (empty or error).")
+            if ctx:
+                await ctx.send("Failed to generate response (empty or error).")
             return
 
         # 5. Send
@@ -199,7 +201,8 @@ class UnicornAI(commands.Cog):
             # Update last_run only on success
             await self.config.channel(target_channel).last_run.set(time.time())
         except Exception as e:
-            if ctx: await ctx.send(f"Failed to send message: {e}")
+            if ctx:
+                await ctx.send(f"Failed to send message: {e}")
 
     async def _send_response(self, channel, content: str, persona):
         """
@@ -208,8 +211,8 @@ class UnicornAI(commands.Cog):
         """
         # Check if we can use webhooks (Guild channels only)
         if not hasattr(channel, "guild"):
-             await channel.send(content)
-             return
+            await channel.send(content)
+            return
 
         perms = channel.permissions_for(channel.guild.me)
         if not perms.manage_webhooks:
@@ -220,7 +223,7 @@ class UnicornAI(commands.Cog):
             # Handle Threads
             target_channel = channel
             thread_obj = discord.utils.MISSING
-            
+
             if isinstance(channel, discord.Thread):
                 target_channel = channel.parent
                 thread_obj = channel
@@ -228,16 +231,16 @@ class UnicornAI(commands.Cog):
             # Fetch or create webhook
             webhooks = await target_channel.webhooks()
             webhook = next((w for w in webhooks if w.user.id == self.bot.user.id), None)
-            
+
             if not webhook:
                 webhook = await target_channel.create_webhook(name="UnicornAI Webhook")
-            
+
             # Send via webhook
             await webhook.send(
-                content=content, 
-                username=persona.name, 
+                content=content,
+                username=persona.name,
                 avatar_url=persona.avatar_url or self.bot.user.display_avatar.url,
-                thread=thread_obj
+                thread=thread_obj,
             )
         except Exception as e:
             log.error(f"Webhook send failed: {e}")
@@ -254,15 +257,15 @@ class UnicornAI(commands.Cog):
         try:
             # Run in thread to prevent blocking heartbeat during file I/O
             summonable_names = await asyncio.to_thread(self.personas.get_summonable_personas)
-            
+
             choices = []
             for name in summonable_names:
                 if current.lower() in name.lower():
                     choices.append(app_commands.Choice(name=name, value=name))
-                    
-                if len(choices) >= 25: # Discord limit
+
+                if len(choices) >= 25:  # Discord limit
                     break
-                    
+
             return choices
         except Exception:
             # Silently fail autocomplete rather than spamming logs/console
@@ -293,18 +296,18 @@ class UnicornAI(commands.Cog):
         # 1. Validation: Persona Exists and is Summonable
         # We use asyncio.to_thread to avoid blocking event loop with I/O
         p_data = await asyncio.to_thread(self.personas.load_persona, persona)
-        
+
         if not p_data:
             return await ctx.send(f"Persona `{persona}` not found.", ephemeral=True)
-            
+
         if not p_data.allow_summon:
             # Security fail-safe: Even if they guessed the name, deny it.
             return await ctx.send(f"Persona `{persona}` cannot be summoned manually.", ephemeral=True)
-            
+
         # 3. Trigger
         # Defer because API calls can take time
         await ctx.defer()
-        
+
         try:
             # We pass the persona_override to _trigger_ai
             await self._trigger_ai(ctx.channel, ctx=ctx, persona_override=persona)
@@ -321,9 +324,11 @@ class UnicornAI(commands.Cog):
         current = await self.config.user(ctx.author).opt_out()
         new_state = not current
         await self.config.user(ctx.author).opt_out.set(new_state)
-        
+
         if new_state:
-            await ctx.send("You have opted out. Your messages will no longer be included in the AI context.", ephemeral=True)
+            await ctx.send(
+                "You have opted out. Your messages will no longer be included in the AI context.", ephemeral=True
+            )
         else:
             await ctx.send("You have opted in. The AI can now see your messages.", ephemeral=True)
 
@@ -340,7 +345,9 @@ class UnicornAI(commands.Cog):
         if success:
             await ctx.send("Credentials loaded successfully.")
         else:
-            await ctx.send("Failed to load credentials. Check logs and ensure `service_account.json` is in the cog folder.")
+            await ctx.send(
+                "Failed to load credentials. Check logs and ensure `service_account.json` is in the cog folder."
+            )
 
     @ai_group.command(name="toggle")
     @commands.is_owner()
@@ -353,7 +360,7 @@ class UnicornAI(commands.Cog):
 
     @ai_group.command(name="trigger")
     @commands.is_owner()
-    async def ai_trigger(self, ctx, persona_name: Optional[str] = None):
+    async def ai_trigger(self, ctx, persona_name: str | None = None):
         """
         Manually trigger a generation cycle in this channel.
         Optionally provide a persona name to test specifically.
@@ -366,7 +373,7 @@ class UnicornAI(commands.Cog):
         """Set the loop interval for this channel (seconds)."""
         if seconds < 60:
             await ctx.send("Warning: Interval too short. Minimum recommended is 60 seconds.")
-        
+
         await self.config.channel(ctx.channel).interval.set(seconds)
         await ctx.send(f"Interval set to {seconds} seconds for {ctx.channel.mention}.")
 
@@ -392,12 +399,14 @@ class UnicornAI(commands.Cog):
         if provider.lower() not in valid_providers:
             await ctx.send(f"Invalid provider. Valid options: {', '.join(valid_providers)}")
             return
-        
+
         provider = provider.lower()
         await self.config.provider.set(provider)
-        
+
         if provider == "openai":
-            await ctx.send("Provider set to **OpenAI-compatible**. Make sure to set the API key with `[p]set api openai <api_key>`")
+            await ctx.send(
+                "Provider set to **OpenAI-compatible**. Make sure to set the API key with `[p]set api openai <api_key>`"
+            )
         else:
             await ctx.send("Provider set to **Vertex AI**.")
 

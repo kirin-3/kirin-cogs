@@ -104,15 +104,11 @@ async def test_member_join_bot_add(
     await dpytest.run_all_events()
 
     # Drain any remaining tasks created inside event handlers (e.g. create_task)
-    pending = [
-        t for t in asyncio.all_tasks() if not t.done() and t != asyncio.current_task()
-    ]
+    pending = [t for t in asyncio.all_tasks() if not t.done() and t != asyncio.current_task()]
     if pending:
         await asyncio.gather(*pending, return_exceptions=True)
 
-    cog.event_handlers.audit_helper.get_bot_add_culprit.assert_called_once_with(
-        guild, bot_user.id, 60
-    )
+    cog.event_handlers.audit_helper.get_bot_add_culprit.assert_called_once_with(guild, bot_user.id, 60)
 
 
 @pytest.mark.asyncio
@@ -150,9 +146,7 @@ async def test_guild_channel_delete_via_event(
     await _dispatch("guild_channel_delete", channel)
 
     # Drain any create_task coroutines spawned inside the event handlers.
-    pending = [
-        t for t in asyncio.all_tasks() if not t.done() and t != asyncio.current_task()
-    ]
+    pending = [t for t in asyncio.all_tasks() if not t.done() and t != asyncio.current_task()]
     if pending:
         await asyncio.gather(*pending, return_exceptions=True)
 

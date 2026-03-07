@@ -1,11 +1,12 @@
 from image_generator import generate_citation
 
+
 def create_example_images():
     """Generates and saves example citation images."""
     actions = {
         "ban": ("SomeUser", "Breaking rule #1"),
         "kick": ("AnotherUser", "Spamming chat"),
-        "warning": ("Kirin", "Too gay.")
+        "warning": ("Kirin", "Too gay."),
     }
 
     for action, (member_name, reason) in actions.items():
@@ -14,6 +15,7 @@ def create_example_images():
         with open(f"example_{action}.png", "wb") as f:
             f.write(image_buffer.getvalue())
         print(f"Saved example_{action}.png")
+
 
 if __name__ == "__main__":
     create_example_images()

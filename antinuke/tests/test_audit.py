@@ -48,9 +48,7 @@ async def test_get_channel_delete_culprit_below_threshold(audit_helper):
     guild.get_member.return_value = user
 
     # Threshold is 2, but only 1 action found
-    culprits = await audit_helper.get_channel_delete_culprit(
-        guild, timeframe=60, threshold=2
-    )
+    culprits = await audit_helper.get_channel_delete_culprit(guild, timeframe=60, threshold=2)
 
     assert len(culprits) == 0
 
@@ -74,9 +72,7 @@ async def test_get_channel_delete_culprit_above_threshold(audit_helper):
     guild.get_member.return_value = user
 
     # Threshold is 2, 3 actions found
-    culprits = await audit_helper.get_channel_delete_culprit(
-        guild, timeframe=60, threshold=2
-    )
+    culprits = await audit_helper.get_channel_delete_culprit(guild, timeframe=60, threshold=2)
 
     assert len(culprits) == 1
     assert culprits[0][0] == user
@@ -102,9 +98,7 @@ async def test_get_channel_delete_culprit_outside_timeframe(audit_helper):
     guild.audit_logs = mock_audit_logs
     guild.get_member.return_value = user
 
-    culprits = await audit_helper.get_channel_delete_culprit(
-        guild, timeframe=60, threshold=2
-    )
+    culprits = await audit_helper.get_channel_delete_culprit(guild, timeframe=60, threshold=2)
 
     assert len(culprits) == 0
 
@@ -181,8 +175,6 @@ async def test_get_audit_forbidden(audit_helper):
 
     guild.audit_logs = mock_audit_logs
 
-    culprits = await audit_helper.get_channel_delete_culprit(
-        guild, timeframe=60, threshold=2
-    )
+    culprits = await audit_helper.get_channel_delete_culprit(guild, timeframe=60, threshold=2)
 
     assert len(culprits) == 0

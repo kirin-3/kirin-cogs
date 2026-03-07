@@ -3,7 +3,6 @@
 import logging
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
 
 import discord
 from redbot.core import Config
@@ -23,7 +22,7 @@ class AuditLogHelper:
 
     async def get_channel_delete_culprit(
         self, guild: discord.Guild, timeframe: int, threshold: int
-    ) -> List[Tuple[discord.Member, int]]:
+    ) -> list[tuple[discord.Member, int]]:
         """
         Find users who deleted channels within the timeframe.
 
@@ -50,7 +49,7 @@ class AuditLogHelper:
 
     async def get_channel_create_culprit(
         self, guild: discord.Guild, timeframe: int, threshold: int
-    ) -> List[Tuple[discord.Member, int]]:
+    ) -> list[tuple[discord.Member, int]]:
         """
         Find users who created channels within the timeframe.
         """
@@ -63,7 +62,7 @@ class AuditLogHelper:
 
     async def get_role_delete_culprit(
         self, guild: discord.Guild, timeframe: int, threshold: int
-    ) -> List[Tuple[discord.Member, int]]:
+    ) -> list[tuple[discord.Member, int]]:
         """
         Find users who deleted roles within the timeframe.
         """
@@ -76,7 +75,7 @@ class AuditLogHelper:
 
     async def get_role_create_culprit(
         self, guild: discord.Guild, timeframe: int, threshold: int
-    ) -> List[Tuple[discord.Member, int]]:
+    ) -> list[tuple[discord.Member, int]]:
         """
         Find users who created roles within the timeframe.
         """
@@ -89,7 +88,7 @@ class AuditLogHelper:
 
     async def get_ban_culprit(
         self, guild: discord.Guild, timeframe: int, threshold: int
-    ) -> List[Tuple[discord.Member, int]]:
+    ) -> list[tuple[discord.Member, int]]:
         """
         Find users who banned members within the timeframe.
         """
@@ -102,7 +101,7 @@ class AuditLogHelper:
 
     async def get_kick_culprit(
         self, guild: discord.Guild, timeframe: int, threshold: int
-    ) -> List[Tuple[discord.Member, int]]:
+    ) -> list[tuple[discord.Member, int]]:
         """
         Find users who kicked members within the timeframe.
         """
@@ -115,7 +114,7 @@ class AuditLogHelper:
 
     async def get_webhook_create_culprit(
         self, guild: discord.Guild, timeframe: int, threshold: int
-    ) -> List[Tuple[discord.Member, int]]:
+    ) -> list[tuple[discord.Member, int]]:
         """
         Find users who created webhooks within the timeframe.
         """
@@ -128,7 +127,7 @@ class AuditLogHelper:
 
     async def get_webhook_delete_culprit(
         self, guild: discord.Guild, timeframe: int, threshold: int
-    ) -> List[Tuple[discord.Member, int]]:
+    ) -> list[tuple[discord.Member, int]]:
         """
         Find users who deleted webhooks within the timeframe.
         """
@@ -139,9 +138,7 @@ class AuditLogHelper:
             threshold,
         )
 
-    async def get_prune_culprit(
-        self, guild: discord.Guild, timeframe: int
-    ) -> Optional[discord.Member]:
+    async def get_prune_culprit(self, guild: discord.Guild, timeframe: int) -> discord.Member | None:
         """
         Find user who initiated a guild prune within the timeframe.
 
@@ -174,9 +171,7 @@ class AuditLogHelper:
             log.warning(f"Missing view_audit_log permission in guild {guild.id}")
             return None
 
-    async def get_bot_add_culprit(
-        self, guild: discord.Guild, bot_id: int, timeframe: int
-    ) -> Optional[discord.Member]:
+    async def get_bot_add_culprit(self, guild: discord.Guild, bot_id: int, timeframe: int) -> discord.Member | None:
         """
         Find user who added a bot to the guild.
 
@@ -217,8 +212,8 @@ class AuditLogHelper:
         guild: discord.Guild,
         role_id: int,
         timeframe: int,
-        dangerous_perms: Optional[List[str]] = None,
-    ) -> Optional[Tuple[discord.Member, str]]:
+        dangerous_perms: list[str] | None = None,
+    ) -> tuple[discord.Member, str] | None:
         """
         Find user who updated a role with dangerous permissions.
 
@@ -260,7 +255,9 @@ class AuditLogHelper:
                         if old_perms is not None and new_perms is not None:
                             try:
                                 for perm_name in dangerous_perms:
-                                    if not getattr(old_perms, perm_name, False) and getattr(new_perms, perm_name, False):
+                                    if not getattr(old_perms, perm_name, False) and getattr(
+                                        new_perms, perm_name, False
+                                    ):
                                         if entry.user:
                                             member = guild.get_member(entry.user.id)
                                             if member:
@@ -273,9 +270,7 @@ class AuditLogHelper:
             log.warning(f"Missing view_audit_log permission in guild {guild.id}")
             return None
 
-    async def get_vanity_change_culprit(
-        self, guild: discord.Guild, timeframe: int
-    ) -> Optional[discord.Member]:
+    async def get_vanity_change_culprit(self, guild: discord.Guild, timeframe: int) -> discord.Member | None:
         """
         Find user who changed the vanity URL.
 
@@ -316,7 +311,7 @@ class AuditLogHelper:
         action: discord.AuditLogAction,
         timeframe: int,
         threshold: int,
-    ) -> List[Tuple[discord.Member, int]]:
+    ) -> list[tuple[discord.Member, int]]:
         """
         Generic method to find users exceeding action threshold.
 
@@ -337,15 +332,12 @@ class AuditLogHelper:
             List of (user, count) tuples for users exceeding threshold.
         """
         try:
-            user_counts: Dict[int, int] = defaultdict(int)
+            user_counts: dict[int, int] = defaultdict(int)
             current_time = time.time()
             cutoff = current_time - timeframe
 
             # Fetch recent entries
-            entries = [
-                entry
-                async for entry in guild.audit_logs(action=action, limit=50)
-            ]
+            entries = [entry async for entry in guild.audit_logs(action=action, limit=50)]
 
             for entry in entries:
                 # Check if within timeframe

@@ -2,7 +2,9 @@ import discord
 from discord import ui
 from redbot.core.utils.chat_formatting import humanize_number
 from redbot.core.utils.views import ConfirmView
+
 from .help_content import HELP_CONTENT
+
 
 class UnicorniaHelpView(ui.View):
     def __init__(self, ctx):
@@ -10,9 +12,9 @@ class UnicorniaHelpView(ui.View):
         self.ctx = ctx
         self.current_category = "intro"
         self.message = None
-        
+
         self.update_components()
-        
+
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.ctx.author.id:
             await interaction.response.send_message("This menu is not for you.", ephemeral=True)
@@ -28,76 +30,70 @@ class UnicorniaHelpView(ui.View):
             except discord.HTTPException:
                 pass
         self.stop()
-        
+
     def get_embed(self):
         data = HELP_CONTENT.get(self.current_category, HELP_CONTENT["intro"])
-        
+
         embed = discord.Embed(
-            title=f"{data['emoji']} {data['title']}",
-            description=data['description'],
-            color=discord.Color.purple()
+            title=f"{data['emoji']} {data['title']}", description=data["description"], color=discord.Color.purple()
         )
-        
-        if data['commands']:
-            embed.add_field(
-                name="Key Commands",
-                value="\n".join(data['commands']),
-                inline=False
-            )
-            
+
+        if data["commands"]:
+            embed.add_field(name="Key Commands", value="\n".join(data["commands"]), inline=False)
+
         embed.set_footer(text="Unicornia Help System • Select a category below")
         return embed
 
     def update_components(self):
         self.clear_items()
-        
+
         # Select Menu
         options = []
         for key, data in HELP_CONTENT.items():
-            options.append(discord.SelectOption(
-                label=data['title'].replace(data['emoji'], "").strip(),
-                value=key,
-                emoji=data['emoji'],
-                default=(key == self.current_category)
-            ))
-            
-        select = ui.Select(
-            placeholder="Select a system...",
-            options=options,
-            min_values=1,
-            max_values=1
-        )
-        
+            options.append(
+                discord.SelectOption(
+                    label=data["title"].replace(data["emoji"], "").strip(),
+                    value=key,
+                    emoji=data["emoji"],
+                    default=(key == self.current_category),
+                )
+            )
+
+        select = ui.Select(placeholder="Select a system...", options=options, min_values=1, max_values=1)
+
         async def select_callback(interaction: discord.Interaction):
             self.current_category = select.values[0]
             self.update_components()
             embed = self.get_embed()
             await interaction.response.edit_message(embed=embed, view=self)
-            
+
         select.callback = select_callback
         self.add_item(select)
-        
+
         # Home Button
-        home_btn = ui.Button(label="Home", style=discord.ButtonStyle.secondary, emoji="🏠", disabled=(self.current_category == "intro"))
-        
+        home_btn = ui.Button(
+            label="Home", style=discord.ButtonStyle.secondary, emoji="🏠", disabled=(self.current_category == "intro")
+        )
+
         async def home_callback(interaction: discord.Interaction):
             self.current_category = "intro"
             self.update_components()
             embed = self.get_embed()
             await interaction.response.edit_message(embed=embed, view=self)
-            
+
         home_btn.callback = home_callback
         self.add_item(home_btn)
-        
+
         # Quit Button
         quit_btn = ui.Button(label="Quit", style=discord.ButtonStyle.danger, emoji="✖️")
-        
+
         async def quit_callback(interaction: discord.Interaction):
             await interaction.message.delete()
             self.stop()
-            
+
         quit_btn.callback = quit_callback
         self.add_item(quit_btn)
+
 
 class RockPaperScissorsView(ui.View):
     def __init__(self, user: discord.abc.User, timeout: float = 30):
@@ -140,6 +136,7 @@ class RockPaperScissorsView(ui.View):
         await interaction.response.defer()
         self.stop()
 
+
 class CoinFlipView(ui.View):
     def __init__(self, user: discord.abc.User, timeout: float = 30):
         super().__init__(timeout=timeout)
@@ -175,6 +172,7 @@ class CoinFlipView(ui.View):
         await interaction.response.defer()
         self.stop()
 
+
 class ApplicantProcessView(ui.View):
     def __init__(self, ctx, applicants: list[dict], club_system):
         super().__init__(timeout=120)
@@ -183,7 +181,7 @@ class ApplicantProcessView(ui.View):
         self.club_system = club_system
         self.selected_user_id = None
         self.message = None
-        
+
         self.update_components()
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -204,7 +202,7 @@ class ApplicantProcessView(ui.View):
 
     def update_components(self):
         self.clear_items()
-        
+
         if not self.applicants:
             self.stop()
             return
@@ -212,78 +210,89 @@ class ApplicantProcessView(ui.View):
         # Select Menu
         options = []
         for app in self.applicants[:25]:
-            label = app['username']
+            label = app["username"]
             # Ensure label isn't too long/empty
-            if not label: label = "Unknown User"
-            
-            options.append(discord.SelectOption(
-                label=label[:100],
-                value=str(app['user_id']),
-                description=f"XP: {app['total_xp']:,}"
-            ))
-        
+            if not label:
+                label = "Unknown User"
+
+            options.append(
+                discord.SelectOption(
+                    label=label[:100], value=str(app["user_id"]), description=f"XP: {app['total_xp']:,}"
+                )
+            )
+
         select = ui.Select(placeholder="Select an applicant to process...", options=options, min_values=1, max_values=1)
-        
+
         async def select_callback(interaction: discord.Interaction):
             self.selected_user_id = int(select.values[0])
             # Enable buttons
             for child in self.children:
                 if isinstance(child, ui.Button):
                     child.disabled = False
-            
+
             await interaction.response.edit_message(view=self)
-            
+
         select.callback = select_callback
         self.add_item(select)
-        
+
         # Buttons
         accept_btn = ui.Button(label="Accept", style=discord.ButtonStyle.success, disabled=True)
         reject_btn = ui.Button(label="Reject", style=discord.ButtonStyle.danger, disabled=True)
-        
+
         async def accept_callback(interaction: discord.Interaction):
             await self.process_application(interaction, True)
-            
+
         async def reject_callback(interaction: discord.Interaction):
             await self.process_application(interaction, False)
-            
+
         accept_btn.callback = accept_callback
         reject_btn.callback = reject_callback
-        
+
         self.add_item(accept_btn)
         self.add_item(reject_btn)
 
     async def process_application(self, interaction: discord.Interaction, accepted: bool):
-        applicant = next((a for a in self.applicants if a['user_id'] == self.selected_user_id), None)
+        applicant = next((a for a in self.applicants if a["user_id"] == self.selected_user_id), None)
         if not applicant:
-            await interaction.response.send_message("Applicant selection invalid or user already processed.", ephemeral=True)
+            await interaction.response.send_message(
+                "Applicant selection invalid or user already processed.", ephemeral=True
+            )
             self.update_components()
             await interaction.edit_original_response(view=self)
             return
 
         await interaction.response.defer()
-        
-        name = applicant['username']
+
+        name = applicant["username"]
         if accepted:
             success, msg = await self.club_system.accept_application(self.ctx.author, name)
         else:
             success, msg = await self.club_system.reject_application(self.ctx.author, name)
-            
+
         if success:
             # Remove from list
-            self.applicants = [a for a in self.applicants if a['user_id'] != self.selected_user_id]
+            self.applicants = [a for a in self.applicants if a["user_id"] != self.selected_user_id]
             self.selected_user_id = None
-            
+
             if not self.applicants:
-                 await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> Action complete: {msg}\nNo more applicants remaining.", ephemeral=True)
-                 self.clear_items()
-                 await interaction.edit_original_response(content="<a:zz_YesTick:729318762356015124> All applicants processed.", view=None)
-                 self.stop()
+                await interaction.followup.send(
+                    f"<a:zz_YesTick:729318762356015124> Action complete: {msg}\nNo more applicants remaining.",
+                    ephemeral=True,
+                )
+                self.clear_items()
+                await interaction.edit_original_response(
+                    content="<a:zz_YesTick:729318762356015124> All applicants processed.", view=None
+                )
+                self.stop()
             else:
-                 await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> Action complete: {msg}", ephemeral=True)
-                 self.update_components()
-                 await interaction.edit_original_response(view=self)
+                await interaction.followup.send(
+                    f"<a:zz_YesTick:729318762356015124> Action complete: {msg}", ephemeral=True
+                )
+                self.update_components()
+                await interaction.edit_original_response(view=self)
         else:
             await interaction.followup.send(f"❌ Error: {msg}", ephemeral=True)
+
 
 class ShopBrowserView(ui.LayoutView):
     def __init__(self, ctx, items: list[dict], shop_system):
@@ -291,18 +300,18 @@ class ShopBrowserView(ui.LayoutView):
         self.ctx = ctx
         self.all_items = items
         self.shop_system = shop_system
-        
+
         # Filter state
-        self.current_category = -1 # -1 = All
+        self.current_category = -1  # -1 = All
         self.filtered_items = self.all_items
-        
+
         # Pagination state
         self.current_page = 0
         self.items_per_page = 7
-        
+
         self.message = None
-        self.currency_symbol = "$" # Default, updated in init()
-        
+        self.currency_symbol = "$"  # Default, updated in init()
+
     async def init(self):
         self.currency_symbol = await self.ctx.cog.config.currency_symbol()
         await self.update_components()
@@ -327,8 +336,8 @@ class ShopBrowserView(ui.LayoutView):
         if self.current_category == -1:
             self.filtered_items = self.all_items
         else:
-            self.filtered_items = [i for i in self.all_items if i['type'] == self.current_category]
-        
+            self.filtered_items = [i for i in self.all_items if i["type"] == self.current_category]
+
         # Reset page if out of bounds
         max_pages = max(0, (len(self.filtered_items) - 1) // self.items_per_page)
         if self.current_page > max_pages:
@@ -341,153 +350,163 @@ class ShopBrowserView(ui.LayoutView):
 
     async def update_components(self):
         self.clear_items()
-        
+
         # Create Container to mimic Embed look
         container = ui.Container(accent_color=discord.Color.green())
-        
+
         # Header
-        container.add_item(ui.TextDisplay(content=f"## 🛒 Shop Browser\nPurchase items with your {self.currency_symbol}!"))
-        
+        container.add_item(
+            ui.TextDisplay(content=f"## 🛒 Shop Browser\nPurchase items with your {self.currency_symbol}!")
+        )
+
         # 1. Category Select
         shop_db = self.shop_system.db.shop
         categories = [
             ("All Categories", -1, "🌐"),
-            ("Roles", shop_db.SHOP_TYPE_ROLE, "🎭"), # 0
-            ("Items", shop_db.SHOP_TYPE_ITEM, "🎒"), # 4
-            ("Effects", shop_db.SHOP_TYPE_EFFECT, "✨"), # 2
-            ("Other", shop_db.SHOP_TYPE_OTHER, "📦") # 3
+            ("Roles", shop_db.SHOP_TYPE_ROLE, "🎭"),  # 0
+            ("Items", shop_db.SHOP_TYPE_ITEM, "🎒"),  # 4
+            ("Effects", shop_db.SHOP_TYPE_EFFECT, "✨"),  # 2
+            ("Other", shop_db.SHOP_TYPE_OTHER, "📦"),  # 3
         ]
-        
+
         cat_options = []
         for name, value, emoji in categories:
-            cat_options.append(discord.SelectOption(
-                label=name,
-                value=str(value),
-                emoji=emoji,
-                default=(value == self.current_category)
-            ))
-        
-        cat_select = ui.Select(
-            placeholder="Filter by category...",
-            options=cat_options,
-            custom_id="category_select"
-        )
-        
+            cat_options.append(
+                discord.SelectOption(
+                    label=name, value=str(value), emoji=emoji, default=(value == self.current_category)
+                )
+            )
+
+        cat_select = ui.Select(placeholder="Filter by category...", options=cat_options, custom_id="category_select")
+
         async def cat_callback(interaction: discord.Interaction):
             self.current_category = int(cat_select.values[0])
             self.current_page = 0
             self.filter_items()
             await self.update_components()
             await interaction.response.edit_message(embed=None, view=self)
-            
+
         cat_select.callback = cat_callback
         container.add_item(ui.ActionRow(cat_select))
-        
+
         # Item List Body
         page_items = self.get_current_page_items()
-        
+
         if not page_items:
             container.add_item(ui.TextDisplay(content="No items found in this category."))
         else:
             for i, item in enumerate(page_items):
-                item_type = self.shop_system.get_type_name(item['type'])
-                emoji = self.shop_system.get_type_emoji(item['type'])
+                item_type = self.shop_system.get_type_name(item["type"])
+                emoji = self.shop_system.get_type_emoji(item["type"])
                 price_text = f"{self.currency_symbol}{item['price']:,}"
-                
+
                 item_text = f"**{emoji} #{item['index']} - {item['name']}**\n"
                 item_text += f"Type: {item_type} | Price: {price_text}\n"
-                
-                if item['type'] == self.shop_system.db.shop.SHOP_TYPE_ROLE and item['role_name']:
+
+                if item["type"] == self.shop_system.db.shop.SHOP_TYPE_ROLE and item["role_name"]:
                     item_text += f"Role: {item['role_name']}\n"
-                
-                if item['additional_items']:
+
+                if item["additional_items"]:
                     item_text += f"Includes: {len(item['additional_items'])} items\n"
-                
+
                 container.add_item(ui.TextDisplay(content=item_text))
-                
+
                 # Add Separator between items (not after the last one)
                 if i < len(page_items) - 1:
                     container.add_item(ui.Separator())
-        
+
         # 2. Buy Select (if items exist)
         if page_items:
             buy_options = []
             for item in page_items:
                 label = f"#{item['index']} {item['name']}"
                 price_str = f"{item['price']:,}"
-                buy_options.append(discord.SelectOption(
-                    label=label[:100],
-                    value=str(item['index']),
-                    description=f"Price: {price_str}",
-                    emoji=self.shop_system.get_type_emoji(item['type'])
-                ))
-            
+                buy_options.append(
+                    discord.SelectOption(
+                        label=label[:100],
+                        value=str(item["index"]),
+                        description=f"Price: {price_str}",
+                        emoji=self.shop_system.get_type_emoji(item["type"]),
+                    )
+                )
+
             container.add_item(ui.TextDisplay(content="Select an item to purchase:"))
-            
-            buy_select = ui.Select(
-                placeholder="Select an item to buy...",
-                options=buy_options,
-                custom_id="buy_select"
-            )
-            
+
+            buy_select = ui.Select(placeholder="Select an item to buy...", options=buy_options, custom_id="buy_select")
+
             async def buy_callback(interaction: discord.Interaction):
                 index = int(buy_select.values[0])
                 await interaction.response.defer()
                 success, msg, data = await self.shop_system.purchase_item(self.ctx.author, self.ctx.guild.id, index)
                 if success:
-                    price = data.get('price', 0)
-                    item_name = data.get('item_name', 'Item')
+                    price = data.get("price", 0)
+                    item_name = data.get("item_name", "Item")
                     msg = f"Successfully purchased **{item_name}** for {price:,} {self.currency_symbol}!"
                     await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
                 else:
                     await interaction.followup.send(f"❌ {msg}", ephemeral=True)
-                    
+
             buy_select.callback = buy_callback
             container.add_item(ui.ActionRow(buy_select))
-            
+
         # 3. Pagination Buttons
         total_pages = (len(self.filtered_items) - 1) // self.items_per_page + 1
-        
+
         prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, disabled=(self.current_page == 0))
-        next_btn = ui.Button(label="▶️", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages - 1))
-        
+        next_btn = ui.Button(
+            label="▶️", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages - 1)
+        )
+
         async def prev_callback(interaction: discord.Interaction):
             self.current_page = max(0, self.current_page - 1)
             await self.update_components()
             await interaction.response.edit_message(embed=None, view=self)
-            
+
         async def next_callback(interaction: discord.Interaction):
             self.current_page = min(total_pages - 1, self.current_page + 1)
             await self.update_components()
             await interaction.response.edit_message(embed=None, view=self)
-            
+
         prev_btn.callback = prev_callback
         next_btn.callback = next_callback
-        
+
         # Indicator Button (disabled)
-        indicator = ui.Button(label=f"Page {self.current_page + 1}/{max(1, total_pages)}", style=discord.ButtonStyle.secondary, disabled=True)
-        
+        indicator = ui.Button(
+            label=f"Page {self.current_page + 1}/{max(1, total_pages)}",
+            style=discord.ButtonStyle.secondary,
+            disabled=True,
+        )
+
         container.add_item(ui.ActionRow(prev_btn, indicator, next_btn))
-        
+
         self.add_item(container)
 
+
 class LeaderboardView(ui.View):
-    def __init__(self, ctx, entries: list[tuple[int, int]], user_position: int = None, currency_symbol: str = "$", title: str = None, formatter=None):
+    def __init__(
+        self,
+        ctx,
+        entries: list[tuple[int, int]],
+        user_position: int = None,
+        currency_symbol: str = "$",
+        title: str = None,
+        formatter=None,
+    ):
         super().__init__(timeout=60)
         self.ctx = ctx
-        self.entries = entries # list of (user_id, balance)
-        self.user_position = user_position # 0-based index in the entries list
+        self.entries = entries  # list of (user_id, balance)
+        self.user_position = user_position  # 0-based index in the entries list
         self.currency_symbol = currency_symbol
         self.title = title or f"{self.currency_symbol} Economy Leaderboard"
         self.formatter = formatter
-        
+
         self.current_page = 0
         self.items_per_page = 10
         self.message = None
-        
+
         # Init page based on user position if user called it to see themselves?
         # Usually starts at 0. Jump to me handles the rest.
-        
+
         self.update_components()
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -498,7 +517,7 @@ class LeaderboardView(ui.View):
             await interaction.response.send_message("This leaderboard is not for you.", ephemeral=True)
             return False
         return True
-        
+
     async def on_timeout(self):
         if self.message:
             for child in self.children:
@@ -515,85 +534,90 @@ class LeaderboardView(ui.View):
         return self.entries[start:end], start
 
     async def get_embed(self):
-        embed = discord.Embed(
-            title=self.title,
-            color=discord.Color.gold()
-        )
-        
+        embed = discord.Embed(title=self.title, color=discord.Color.gold())
+
         page_entries, start_index = self.get_current_page_entries()
-        
+
         description = ""
         for i, (user_id, balance) in enumerate(page_entries):
             rank = start_index + i + 1
             member = self.ctx.guild.get_member(user_id)
             username = member.display_name if member else f"User ID: {user_id}"
-            
+
             rank_str = f"**{rank}.**"
-            if rank == 1: rank_str = "🥇"
-            elif rank == 2: rank_str = "🥈"
-            elif rank == 3: rank_str = "🥉"
-            
+            if rank == 1:
+                rank_str = "🥇"
+            elif rank == 2:
+                rank_str = "🥈"
+            elif rank == 3:
+                rank_str = "🥉"
+
             # Highlight caller
             if self.formatter:
                 line = self.formatter(rank, rank_str, member, user_id, balance)
             else:
                 line = f"{rank_str} **{username}**\n{self.currency_symbol}{balance:,}\n"
-            
+
             if self.user_position is not None and rank == (self.user_position + 1):
                 line = f"👉 {line}"
-                
+
             description += line
-            
+
         embed.description = description
-        
+
         total_pages = (len(self.entries) - 1) // self.items_per_page + 1
         embed.set_footer(text=f"Page {self.current_page + 1}/{total_pages} • Total: {len(self.entries)}")
-        
+
         if self.user_position is not None:
-             embed.set_footer(text=f"{embed.footer.text} • You are #{self.user_position + 1}")
-             
+            embed.set_footer(text=f"{embed.footer.text} • You are #{self.user_position + 1}")
+
         return embed
 
     def update_components(self):
         self.clear_items()
-        
+
         total_pages = (len(self.entries) - 1) // self.items_per_page + 1
-        
+
         # Navigation
         prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, disabled=(self.current_page == 0))
-        next_btn = ui.Button(label="▶️", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages - 1))
-        
+        next_btn = ui.Button(
+            label="▶️", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages - 1)
+        )
+
         async def prev_callback(interaction: discord.Interaction):
             self.current_page = max(0, self.current_page - 1)
             self.update_components()
             embed = await self.get_embed()
             await interaction.response.edit_message(embed=embed, view=self)
-            
+
         async def next_callback(interaction: discord.Interaction):
             self.current_page = min(total_pages - 1, self.current_page + 1)
             self.update_components()
             embed = await self.get_embed()
             await interaction.response.edit_message(embed=embed, view=self)
-            
+
         prev_btn.callback = prev_callback
         next_btn.callback = next_callback
-        
+
         self.add_item(prev_btn)
-        
+
         # Jump to Me
-        jump_btn = ui.Button(label="Jump to Me", style=discord.ButtonStyle.primary, disabled=(self.user_position is None))
-        
+        jump_btn = ui.Button(
+            label="Jump to Me", style=discord.ButtonStyle.primary, disabled=(self.user_position is None)
+        )
+
         async def jump_callback(interaction: discord.Interaction):
             if self.user_position is not None:
                 self.current_page = self.user_position // self.items_per_page
                 self.update_components()
                 embed = await self.get_embed()
                 await interaction.response.edit_message(embed=embed, view=self)
-        
+
         jump_btn.callback = jump_callback
         self.add_item(jump_btn)
-        
+
         self.add_item(next_btn)
+
 
 class NitroShopView(ui.View):
     def __init__(self, ctx, nitro_system):
@@ -602,7 +626,7 @@ class NitroShopView(ui.View):
         self.nitro_system = nitro_system
         self.message = None
         self.update_components_task = None
-    
+
     async def init(self):
         """Async initialization to fetch dynamic data"""
         await self.update_components()
@@ -622,37 +646,37 @@ class NitroShopView(ui.View):
             except discord.HTTPException:
                 pass
         self.stop()
-        
+
     async def update_components(self):
         self.clear_items()
-        
+
         boost_stock = await self.nitro_system.get_stock("boost")
         basic_stock = await self.nitro_system.get_stock("basic")
         boost_price = await self.nitro_system.get_price("boost")
         basic_price = await self.nitro_system.get_price("basic")
-        
+
         user_bal, _ = await self.nitro_system.economy_system.get_balance(self.ctx.author.id)
-        
+
         # Nitro Boost Button
         boost_btn = ui.Button(
             label=f"Buy Nitro Boost ({humanize_number(boost_price)})",
             style=discord.ButtonStyle.blurple,
             emoji="🚀",
-            disabled=(boost_stock <= 0 or user_bal < boost_price)
+            disabled=(boost_stock <= 0 or user_bal < boost_price),
         )
         boost_btn.callback = lambda i: self.buy_callback(i, "boost")
         self.add_item(boost_btn)
-        
+
         # Nitro Basic Button
         basic_btn = ui.Button(
             label=f"Buy Nitro Basic ({humanize_number(basic_price)})",
             style=discord.ButtonStyle.secondary,
             emoji="⭐",
-            disabled=(basic_stock <= 0 or user_bal < basic_price)
+            disabled=(basic_stock <= 0 or user_bal < basic_price),
         )
         basic_btn.callback = lambda i: self.buy_callback(i, "basic")
         self.add_item(basic_btn)
-    
+
     async def buy_callback(self, interaction: discord.Interaction, item_type: str):
         # logging import isn't in this file, but we can assume standard logging setup if we added it,
         # but for now let's just rely on the system logs we added.
@@ -660,28 +684,29 @@ class NitroShopView(ui.View):
         # But let's stick to modifying logic or minimal logging.
         pretty_name = "Nitro Boost" if item_type == "boost" else "Nitro Basic"
         price = await self.nitro_system.get_price(item_type)
-        
+
         # Confirm Dialog
         confirm_view = ConfirmView(self.ctx.author, disable_buttons=True)
 
         await interaction.response.send_message(
             f"Are you sure you want to purchase **{pretty_name}** for **{humanize_number(price)}**?",
             view=confirm_view,
-            ephemeral=True
+            ephemeral=True,
         )
-        
+
         await confirm_view.wait()
 
         if confirm_view.result:
             success, msg = await self.nitro_system.purchase_nitro(self.ctx, item_type)
-            
+
             if success:
                 # Update buttons on the main view
                 await self.update_components()
                 try:
                     await self.message.edit(view=self)
-                except: pass
-                
+                except:
+                    pass
+
                 await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
             else:
                 await interaction.followup.send(f"❌ {msg}", ephemeral=True)
@@ -693,102 +718,99 @@ class NitroShopView(ui.View):
         basic_stock = await self.nitro_system.get_stock("basic")
         boost_price = await self.nitro_system.get_price("boost")
         basic_price = await self.nitro_system.get_price("basic")
-        
+
         currency_symbol = await self.ctx.cog.config.currency_symbol()
-        
+
         embed = discord.Embed(
             title="<a:zz_unicorn_dot:965576604212396092> Unicornia Nitro Shop",
             description=f"Exchange your hard-earned {currency_symbol} for Discord Nitro!\n"
             f"Items are delivered manually by Kirin after purchase.",
-            color=discord.Color(0xff73fa)
+            color=discord.Color(0xFF73FA),
         )
-        
+
         embed.add_field(
             name="🚀 Nitro Boost (1 Month)",
             value=f"**Price:** {humanize_number(boost_price)} {currency_symbol}\n**Stock:** {boost_stock}",
-            inline=True
+            inline=True,
         )
-        
+
         embed.add_field(
             name="⭐ Nitro Basic (1 Month)",
             value=f"**Price:** {humanize_number(basic_price)} {currency_symbol}\n**Stock:** {basic_stock}",
-            inline=True
+            inline=True,
         )
-        
+
         embed.set_footer(text="Stock is limited! • No refunds once code is sent.")
-        
+
         return embed
+
 
 class TransactionModal(ui.Modal):
     def __init__(self, cog, transaction_type: str, title: str):
         super().__init__(title=title)
         self.cog = cog
-        self.transaction_type = transaction_type # "deposit", "withdraw", or "give"
-        
+        self.transaction_type = transaction_type  # "deposit", "withdraw", or "give"
+
         self.amount = ui.TextInput(
-            label="Amount",
-            placeholder="Enter amount (e.g. 1000 or all)",
-            min_length=1,
-            max_length=20
+            label="Amount", placeholder="Enter amount (e.g. 1000 or all)", min_length=1, max_length=20
         )
         self.add_item(self.amount)
-        
+
         if self.transaction_type == "give":
             self.recipient = ui.TextInput(
-                label="Recipient (ID or exact Name)",
-                placeholder="User ID preferred",
-                min_length=1,
-                max_length=50
+                label="Recipient (ID or exact Name)", placeholder="User ID preferred", min_length=1, max_length=50
             )
             self.add_item(self.recipient)
 
     async def on_submit(self, interaction: discord.Interaction):
         amount_str = self.amount.value.strip().lower()
-        
+
         try:
             # Handle "all"
             if amount_str == "all":
                 wallet, bank = await self.cog.economy_system.get_balance(interaction.user.id)
                 if self.transaction_type == "deposit":
                     amount = wallet
-                else: # withdraw or give
+                else:  # withdraw or give
                     amount = bank if self.transaction_type == "withdraw" else wallet
             else:
-                amount = int(amount_str.replace(",", "")) # Handle commas if user types "1,000"
-                
+                amount = int(amount_str.replace(",", ""))  # Handle commas if user types "1,000"
+
             if amount <= 0:
                 await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
                 return
-                
+
             currency_symbol = await self.cog.config.currency_symbol()
-            
+
             if self.transaction_type == "deposit":
                 success = await self.cog.economy_system.deposit_bank(interaction.user.id, amount)
                 msg = f"<a:zz_YesTick:729318762356015124> Deposited {currency_symbol}{amount:,} to your bank account!"
                 fail_msg = "❌ Insufficient funds in your wallet."
-                
+
             elif self.transaction_type == "withdraw":
                 success = await self.cog.economy_system.withdraw_bank(interaction.user.id, amount)
                 msg = f"<a:zz_YesTick:729318762356015124> Withdrew {currency_symbol}{amount:,} from your bank account!"
                 fail_msg = "❌ Insufficient funds in your bank account."
-                
+
             elif self.transaction_type == "give":
                 # Resolve recipient
                 target_str = self.recipient.value.strip()
                 target_user = None
-                
+
                 # Try by ID
                 if target_str.isdigit():
                     target_user = interaction.guild.get_member(int(target_str))
-                
+
                 # Try by Name if not found
                 if not target_user:
                     target_user = discord.utils.get(interaction.guild.members, name=target_str)
-                    
+
                 if not target_user:
-                    await interaction.response.send_message("❌ Recipient not found. Please use their ID or exact name.", ephemeral=True)
+                    await interaction.response.send_message(
+                        "❌ Recipient not found. Please use their ID or exact name.", ephemeral=True
+                    )
                     return
-                    
+
                 if target_user.id == interaction.user.id:
                     await interaction.response.send_message("❌ You cannot give money to yourself.", ephemeral=True)
                     return
@@ -796,38 +818,41 @@ class TransactionModal(ui.Modal):
                 success = await self.cog.economy_system.give_currency(interaction.user.id, target_user.id, amount)
                 msg = f"<a:zz_YesTick:729318762356015124> Gave {currency_symbol}{amount:,} to {target_user.mention}!"
                 fail_msg = "❌ Insufficient funds in your wallet."
-                
+
             if success:
                 await interaction.response.send_message(msg, ephemeral=True)
             else:
                 await interaction.response.send_message(fail_msg, ephemeral=True)
-                
+
         except ValueError:
-             await interaction.response.send_message("❌ Invalid amount. Please enter a number or 'all'.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Invalid amount. Please enter a number or 'all'.", ephemeral=True
+            )
         except Exception as e:
-             await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+            await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+
 
 class TransferView(ui.View):
     def __init__(self, ctx, cog):
         super().__init__(timeout=60)
         self.ctx = ctx
         self.cog = cog
-        
+
         # Bank Actions Row
         # Re-adding items with new rows
         deposit_btn = ui.Button(label="Deposit", style=discord.ButtonStyle.success, emoji="📥", row=0)
         deposit_btn.callback = self.deposit
         self.add_item(deposit_btn)
-        
+
         withdraw_btn = ui.Button(label="Withdraw", style=discord.ButtonStyle.danger, emoji="📤", row=0)
         withdraw_btn.callback = self.withdraw
         self.add_item(withdraw_btn)
-        
+
         # Transfer Actions Row
         give_btn = ui.Button(label="Give Cash", style=discord.ButtonStyle.blurple, emoji="💸", row=1)
         give_btn.callback = self.give
         self.add_item(give_btn)
-        
+
         # Info
         leaderboard_btn = ui.Button(label="Leaderboard", style=discord.ButtonStyle.secondary, emoji="🏆", row=1)
         leaderboard_btn.callback = self.leaderboard
@@ -835,8 +860,8 @@ class TransferView(ui.View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.ctx.author.id:
-             await interaction.response.send_message("These buttons are not for you.", ephemeral=True)
-             return False
+            await interaction.response.send_message("These buttons are not for you.", ephemeral=True)
+            return False
         return True
 
     async def deposit(self, interaction: discord.Interaction):
@@ -844,39 +869,49 @@ class TransferView(ui.View):
 
     async def withdraw(self, interaction: discord.Interaction):
         await interaction.response.send_modal(TransactionModal(self.cog, "withdraw", "Withdraw from Bank"))
-        
+
     async def give(self, interaction: discord.Interaction):
         await interaction.response.send_modal(TransactionModal(self.cog, "give", "Give Currency"))
 
     async def leaderboard(self, interaction: discord.Interaction):
         # Trigger leaderboard
         await interaction.response.defer()
-        
+
         try:
-             # Logic from economy_leaderboard
-             top_users = await self.cog.economy_system.get_filtered_leaderboard(self.ctx.guild)
-             
-             if not top_users:
-                 await interaction.followup.send("No economy data found for this server.", ephemeral=True)
-                 return
-                 
-             user_position = None
-             for i, (uid, _) in enumerate(top_users):
-                 if uid == self.ctx.author.id:
-                     user_position = i
-                     break
-                     
-             currency_symbol = await self.cog.config.currency_symbol()
-             
-             view = LeaderboardView(self.ctx, top_users, user_position, currency_symbol)
-             embed = await view.get_embed()
-             view.message = await interaction.followup.send(embed=embed, view=view)
-             
+            # Logic from economy_leaderboard
+            top_users = await self.cog.economy_system.get_filtered_leaderboard(self.ctx.guild)
+
+            if not top_users:
+                await interaction.followup.send("No economy data found for this server.", ephemeral=True)
+                return
+
+            user_position = None
+            for i, (uid, _) in enumerate(top_users):
+                if uid == self.ctx.author.id:
+                    user_position = i
+                    break
+
+            currency_symbol = await self.cog.config.currency_symbol()
+
+            view = LeaderboardView(self.ctx, top_users, user_position, currency_symbol)
+            embed = await view.get_embed()
+            view.message = await interaction.followup.send(embed=embed, view=view)
+
         except Exception as e:
-             await interaction.followup.send(f"❌ Error loading leaderboard: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Error loading leaderboard: {e}", ephemeral=True)
+
 
 class MinesView(ui.View):
-    def __init__(self, ctx, system, user_id: int, amount: int, mines_indices: set, total_cells: int = 20, currency_symbol: str = "$"):
+    def __init__(
+        self,
+        ctx,
+        system,
+        user_id: int,
+        amount: int,
+        mines_indices: set,
+        total_cells: int = 20,
+        currency_symbol: str = "$",
+    ):
         super().__init__(timeout=120)
         self.ctx = ctx
         self.system = system
@@ -885,16 +920,16 @@ class MinesView(ui.View):
         self.mines_indices = mines_indices
         self.total_cells = total_cells
         self.currency_symbol = currency_symbol
-        
+
         self.revealed_indices = set()
         self.finished = False
         self.message = None
         self.current_multiplier = 1.0
         self.end_time = discord.utils.utcnow().timestamp() + 120
-        
+
         # Init grid
         self._init_grid()
-        
+
     def _init_grid(self):
         # Create 20 buttons for 5x4 grid
         for i in range(self.total_cells):
@@ -902,31 +937,32 @@ class MinesView(ui.View):
             button = ui.Button(style=discord.ButtonStyle.secondary, label="\u200b", row=i // 5, custom_id=f"mine_{i}")
             button.callback = self.make_callback(i)
             self.add_item(button)
-            
+
         # Cashout button (Row 4)
         cashout_btn = ui.Button(style=discord.ButtonStyle.success, label="Cash Out", row=4, custom_id="cashout")
-        
+
         # Try to parse currency symbol as emoji
         try:
             cashout_btn.emoji = discord.PartialEmoji.from_str(self.currency_symbol)
         except:
             # Fallback if not a valid emoji string
             pass
-            
+
         cashout_btn.callback = self.cashout_callback
         self.add_item(cashout_btn)
-        
+
     def make_callback(self, index):
         async def callback(interaction: discord.Interaction):
             await self.handle_click(interaction, index)
+
         return callback
-        
+
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This game is not for you!", ephemeral=True)
             return False
         return True
-        
+
     async def on_timeout(self):
         if not self.finished:
             # Auto-loss on timeout? Or auto-cashout?
@@ -939,14 +975,15 @@ class MinesView(ui.View):
             if self.message:
                 try:
                     await self.message.edit(view=self)
-                except: pass
+                except:
+                    pass
         self.stop()
-        
+
     async def handle_click(self, interaction: discord.Interaction, index: int):
         if self.finished or index in self.revealed_indices:
             await interaction.response.defer()
             return
-            
+
         if index in self.mines_indices:
             # BOOM
             await self.game_over(interaction, False, index)
@@ -954,24 +991,24 @@ class MinesView(ui.View):
             # Safe
             self.revealed_indices.add(index)
             await self.update_game_state(interaction)
-            
+
     async def update_game_state(self, interaction: discord.Interaction):
         # Calculate new multiplier
         # Formula: current_mult * (remaining_cells / remaining_safe)
         # remaining_cells includes the one we just picked? No, previous step.
         # Let's use standard combinations: C(Total, Mines) / C(Total - Revealed, Mines)
-        # Or simpler: 
+        # Or simpler:
         # Round 1: 20 total, M mines. Probability safe = (20-M)/20. Multiplier = 1/P.
         # Round 2: 19 total, M mines. P = (19-M)/19. Mult *= 1/P.
-        
+
         mines_count = len(self.mines_indices)
         revealed_count = len(self.revealed_indices)
-        
+
         # Check if all safes revealed
         if revealed_count == (self.total_cells - mines_count):
             await self.game_over(interaction, True)
             return
-            
+
         # Calculate Multiplier
         # Recalculate from scratch to avoid float drift
         mult = 1.0
@@ -983,10 +1020,10 @@ class MinesView(ui.View):
             # Mult_step = Available / Safe
             available = self.total_cells - i
             safe = (self.total_cells - mines_count) - i
-            mult *= (available / safe)
-            
+            mult *= available / safe
+
         self.current_multiplier = mult
-        
+
         # Update Button Visuals
         for item in self.children:
             if item.custom_id and item.custom_id.startswith("mine_"):
@@ -1001,14 +1038,14 @@ class MinesView(ui.View):
                     item.label = "\u200b"
                     item.emoji = None
                     item.disabled = False
-        
+
         # Update Cashout Button
         payout = int(self.amount * self.current_multiplier)
         cashout_btn = [x for x in self.children if x.custom_id == "cashout"][0]
         # Only show amount in label, emoji is separate
         cashout_btn.label = f"Cash Out {humanize_number(payout)}"
         cashout_btn.disabled = False
-        
+
         # Update Message with Timer
         timer_str = f"<t:{int(self.end_time)}:R>"
         msg = f"**Mines** | Multiplier: **{self.current_multiplier:.2f}x** | Next Payout: {self.currency_symbol}{humanize_number(payout)}\nTime remaining: {timer_str}"
@@ -1019,7 +1056,7 @@ class MinesView(ui.View):
 
     async def game_over(self, interaction: discord.Interaction, won: bool, hit_mine_index: int = None):
         self.finished = True
-        
+
         # Disable all buttons and reveal mines
         for item in self.children:
             item.disabled = True
@@ -1029,36 +1066,39 @@ class MinesView(ui.View):
                     item.style = discord.ButtonStyle.danger
                     item.emoji = "💣"
                     if idx == hit_mine_index:
-                        item.style = discord.ButtonStyle.danger # Highlight hit mine? Already danger.
+                        item.style = discord.ButtonStyle.danger  # Highlight hit mine? Already danger.
                 elif idx in self.revealed_indices:
                     item.style = discord.ButtonStyle.success
                     item.emoji = "💎"
                 else:
                     item.style = discord.ButtonStyle.secondary
-                    item.emoji = None # Keep hidden
-        
+                    item.emoji = None  # Keep hidden
+
         if won:
             payout = int(self.amount * self.current_multiplier)
             profit = payout - self.amount
-            
+
             # DB Update
             # Log win (profit is added to balance, amount was already deducted)
             # Actually, usually play_mines deducts bet. So we add back the full payout.
-            await self.system.db.economy.add_currency(self.user_id, payout, "mines", "win", note=f"Mines Win {len(self.revealed_indices)} steps")
+            await self.system.db.economy.add_currency(
+                self.user_id, payout, "mines", "win", note=f"Mines Win {len(self.revealed_indices)} steps"
+            )
             await self.system._log_gambling_result(self.user_id, "mines", self.amount, True, payout)
-            
+
             msg = f"🎉 **Cash Out!** You won **{self.currency_symbol}{payout:,}**! (Profit: {self.currency_symbol}{profit:,})"
         else:
             # Log loss
             await self.system._log_gambling_result(self.user_id, "mines", self.amount, False)
             msg = f"💥 **BOOM!** You hit a mine and lost **{self.currency_symbol}{self.amount:,}**."
-            
+
         await interaction.response.edit_message(content=msg, view=self)
         self.stop()
 
+
 class ClubInviteView(ui.View):
     def __init__(self, club_name: str, club_id: int, club_system):
-        super().__init__(timeout=86400) # 24 hours
+        super().__init__(timeout=86400)  # 24 hours
         self.club_name = club_name
         self.club_id = club_id
         self.club_system = club_system
@@ -1077,16 +1117,17 @@ class ClubInviteView(ui.View):
     @ui.button(label="Accept Invite", style=discord.ButtonStyle.success)
     async def accept(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.defer()
-        
+
         success, msg = await self.club_system.accept_invitation(interaction.user, self.club_name)
-        
+
         if success:
             await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
             for item in self.children:
                 item.disabled = True
             try:
                 await interaction.message.edit(view=self)
-            except: pass
+            except:
+                pass
             self.stop()
         else:
             await interaction.followup.send(f"❌ {msg}", ephemeral=True)
@@ -1094,16 +1135,17 @@ class ClubInviteView(ui.View):
     @ui.button(label="Decline", style=discord.ButtonStyle.danger)
     async def decline(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.defer()
-        
+
         success, msg = await self.club_system.reject_invitation(interaction.user, self.club_name)
-        
+
         if success:
             await interaction.followup.send(f"<a:zz_YesTick:729318762356015124> {msg}", ephemeral=True)
             for item in self.children:
                 item.disabled = True
             try:
                 await interaction.message.edit(view=self)
-            except: pass
+            except:
+                pass
             self.stop()
         else:
             await interaction.followup.send(f"❌ {msg}", ephemeral=True)

@@ -1,7 +1,7 @@
 """Unit tests for cotm.unicornia.strings"""
 
-import pytest
 from cotm.unicornia import strings
+
 
 def test_replace_pronouns():
     assert strings.replace_pronouns("i like this") == "you like this"
@@ -18,6 +18,7 @@ def test_replace_pronouns():
     # Multiple punctuations
     assert strings.replace_pronouns("Is it me???") == "Is it you???"
 
+
 def test_get_indefinite_article():
     assert strings.get_indefinite_article("apple") == "an"
     assert strings.get_indefinite_article("banana") == "a"
@@ -26,6 +27,7 @@ def test_get_indefinite_article():
     assert strings.get_indefinite_article("heir") == "an"
     assert strings.get_indefinite_article("honor") == "an"
     assert strings.get_indefinite_article("University") == "an"  # Based on code logic, starts with 'u' (vowel) -> 'an'
+
 
 def test_pluralize():
     assert strings.pluralize("child") == "children"
@@ -43,20 +45,24 @@ def test_pluralize():
     assert strings.pluralize("leaf") == "leaves"
     assert strings.pluralize("knife") == "knives"
 
+
 def test_format_string():
     assert strings.format_string("Hello {name}", name="World") == "Hello World"
     assert strings.format_string("No placeholders here", name="World") == "No placeholders here"
     assert strings.format_string("{a} and {b}", a=1, b=2) == "1 and 2"
+
 
 def test_remove_emojis():
     assert strings.remove_emojis("Hello 😀") == "Hello "
     assert strings.remove_emojis("🚀 Launch") == " Launch"
     assert strings.remove_emojis("No emojis here") == "No emojis here"
 
+
 def test_dict_to_string():
     d = {"a": 1, "b": 2}
     assert strings.dict_to_string(d) == "a: 1\nb: 2"
     assert strings.dict_to_string({}) == ""
+
 
 def test_add_ordinal_suffix():
     assert strings.add_ordinal_suffix(1) == "1st"

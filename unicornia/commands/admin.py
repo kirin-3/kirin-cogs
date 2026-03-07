@@ -1,9 +1,10 @@
 import discord
-from redbot.core import commands, checks
-from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
+from redbot.core import checks, commands
 from redbot.core.utils.chat_formatting import box, humanize_number
-from typing import Optional
+from redbot.core.utils.menus import DEFAULT_CONTROLS, menu
+
 from ..views import UnicorniaHelpView
+
 
 class AdminCommands:
     # Configuration commands
@@ -51,11 +52,11 @@ class AdminCommands:
         `[p]unicornia migration setpath <path>`
         """
         await self.config.nadeko_db_path.set(path)
-        
+
         # Update current instance
         if self.db:
             self.db.nadeko_db_path = path
-            
+
         await ctx.send(f"✅ Nadeko DB path set to: `{path}`")
 
     @migration_group.command(name="run")
@@ -73,13 +74,13 @@ class AdminCommands:
         if not nadeko_path:
             await ctx.send("❌ No Nadeko DB path configured. Use `[p]unicornia migration setpath` first.")
             return
-            
+
         await ctx.send(f"⏳ Starting migration from `{nadeko_path}`... Check console for progress.")
         try:
             # Re-initialize DB with correct path if needed
             if self.db and self.db.nadeko_db_path != nadeko_path:
                 self.db.nadeko_db_path = nadeko_path
-                
+
             await self.db.migrate_from_nadeko()
             await ctx.send("✅ Migration completed successfully!")
         except Exception as e:
@@ -109,9 +110,9 @@ class AdminCommands:
         if operation.lower() not in ["add", "remove"]:
             await ctx.send("❌ Operation must be 'add' or 'remove'.")
             return
-            
+
         channels = await self.config.generation_channels()
-        
+
         if operation.lower() == "add":
             if channel.id not in channels:
                 channels.append(channel.id)
@@ -126,7 +127,7 @@ class AdminCommands:
                 await ctx.send(f"✅ Removed {channel.mention} from currency generation channels.")
             else:
                 await ctx.send(f"❌ {channel.mention} is not in the list.")
-        
+
         # Refresh cache
         if self.currency_generation:
             await self.currency_generation.refresh_config_cache()
@@ -145,7 +146,7 @@ class AdminCommands:
         if not channels:
             await ctx.send("No channels configured for currency generation.")
             return
-            
+
         channel_mentions = [f"<#{cid}>" for cid in channels]
         await ctx.send(f"**Generation Channels:**\n{', '.join(channel_mentions)}")
 
@@ -164,26 +165,41 @@ class AdminCommands:
         `[p]unicornia config <setting> <value>` (Update)
         """
         valid_settings = [
-            "currency_name", "currency_symbol", "xp_enabled", "economy_enabled",
-            "gambling_enabled", "shop_enabled", "timely_amount", "timely_cooldown",
-            "xp_per_message", "xp_cooldown", "currency_generation_enabled",
-            "generation_chance", "generation_cooldown", "generation_min_amount",
-            "generation_max_amount", "generation_has_password", "decay_percent",
-            "decay_max_amount", "decay_min_threshold", "decay_hour_interval",
-            "gambling_min_bet", "gambling_max_bet"
+            "currency_name",
+            "currency_symbol",
+            "xp_enabled",
+            "economy_enabled",
+            "gambling_enabled",
+            "shop_enabled",
+            "timely_amount",
+            "timely_cooldown",
+            "xp_per_message",
+            "xp_cooldown",
+            "currency_generation_enabled",
+            "generation_chance",
+            "generation_cooldown",
+            "generation_min_amount",
+            "generation_max_amount",
+            "generation_has_password",
+            "decay_percent",
+            "decay_max_amount",
+            "decay_min_threshold",
+            "decay_hour_interval",
+            "gambling_min_bet",
+            "gambling_max_bet",
         ]
-        
+
         if setting is None:
             # Construct display
             settings_display = []
-            
+
             # Helper to get and format value
             async def get_val(key):
                 val = await getattr(self.config, key)()
                 if isinstance(val, bool):
                     return "Enabled" if val else "Disabled"
                 if isinstance(val, (int, float)):
-                     return humanize_number(val)
+                    return humanize_number(val)
                 return str(val)
 
             settings_display.append("[General]")
@@ -193,7 +209,7 @@ class AdminCommands:
             settings_display.append(f"Economy System:      {await get_val('economy_enabled')}")
             settings_display.append(f"Gambling System:     {await get_val('gambling_enabled')}")
             settings_display.append(f"Shop System:         {await get_val('shop_enabled')}")
-            
+
             settings_display.append("\n[XP & Rewards]")
             settings_display.append(f"XP Per Message:      {await get_val('xp_per_message')}")
             settings_display.append(f"XP Cooldown:         {await get_val('xp_cooldown')}s")
@@ -213,7 +229,7 @@ class AdminCommands:
             settings_display.append(f"Max Decay Amount:    {await get_val('decay_max_amount')}")
             settings_display.append(f"Min Threshold:       {await get_val('decay_min_threshold')}")
             settings_display.append(f"Interval:            {await get_val('decay_hour_interval')}h")
-            
+
             settings_display.append("\n[Gambling]")
             settings_display.append(f"Min Bet:             {await get_val('gambling_min_bet')}")
             settings_display.append(f"Max Bet:             {await get_val('gambling_max_bet')}")
@@ -224,7 +240,7 @@ class AdminCommands:
         if setting not in valid_settings:
             await ctx.send(f"Invalid setting. Valid options: {', '.join(valid_settings)}")
             return
-            
+
         if value is None:
             # Display single setting
             val = await getattr(self.config, setting)()
@@ -232,14 +248,34 @@ class AdminCommands:
                 val = humanize_number(val)
             await ctx.send(f"**{setting}**: {val}")
             return
-        
+
         # Update setting
         try:
-            if setting in ["xp_enabled", "economy_enabled", "gambling_enabled", "shop_enabled", "currency_generation_enabled", "generation_has_password"]:
+            if setting in [
+                "xp_enabled",
+                "economy_enabled",
+                "gambling_enabled",
+                "shop_enabled",
+                "currency_generation_enabled",
+                "generation_has_password",
+            ]:
                 enabled = value.lower() in ["true", "yes", "1", "on"]
                 await getattr(self.config, setting).set(enabled)
                 await ctx.send(f"✅ {setting} {'enabled' if enabled else 'disabled'}")
-            elif setting in ["timely_amount", "timely_cooldown", "xp_per_message", "xp_cooldown", "generation_cooldown", "generation_min_amount", "generation_max_amount", "decay_max_amount", "decay_min_threshold", "decay_hour_interval", "gambling_min_bet", "gambling_max_bet"]:
+            elif setting in [
+                "timely_amount",
+                "timely_cooldown",
+                "xp_per_message",
+                "xp_cooldown",
+                "generation_cooldown",
+                "generation_min_amount",
+                "generation_max_amount",
+                "decay_max_amount",
+                "decay_min_threshold",
+                "decay_hour_interval",
+                "gambling_min_bet",
+                "gambling_max_bet",
+            ]:
                 amount = int(value)
                 if amount < 0:
                     await ctx.send("❌ Amount must be positive.")
@@ -263,18 +299,18 @@ class AdminCommands:
             else:
                 await getattr(self.config, setting).set(value)
                 await ctx.send(f"✅ {setting} updated to {value}")
-            
+
             # Refresh caches
             if self.currency_generation:
                 await self.currency_generation.refresh_config_cache()
             if self.xp_system:
                 await self.xp_system._init_config_cache()
-                
+
         except ValueError:
             await ctx.send("❌ Invalid value type for this setting.")
         except Exception as e:
             await ctx.send(f"❌ Error updating setting: {e}")
-    
+
     @unicornia_group.command(name="status")
     async def status(self, ctx):
         """
@@ -286,27 +322,33 @@ class AdminCommands:
         embed = discord.Embed(
             title="🦄 Unicornia Status",
             color=discord.Color.green(),
-            description="Full-featured leveling and economy system"
+            description="Full-featured leveling and economy system",
         )
-        
+
         xp_enabled = await self.config.xp_enabled()
         economy_enabled = await self.config.economy_enabled()
         gambling_enabled = await self.config.gambling_enabled()
         shop_enabled = await self.config.shop_enabled()
-        
+
         embed.add_field(name="XP System", value="✅ Enabled" if xp_enabled else "❌ Disabled", inline=True)
         embed.add_field(name="Economy System", value="✅ Enabled" if economy_enabled else "❌ Disabled", inline=True)
         embed.add_field(name="Gambling", value="✅ Enabled" if gambling_enabled else "❌ Disabled", inline=True)
         embed.add_field(name="Shop", value="✅ Enabled" if shop_enabled else "❌ Disabled", inline=True)
-        
+
         currency_name = await self.config.currency_name()
         currency_symbol = await self.config.currency_symbol()
-        embed.add_field(name=f"{currency_symbol} {currency_name}", value=f"Symbol: {currency_symbol}\nName: {currency_name}", inline=True)
-        
+        embed.add_field(
+            name=f"{currency_symbol} {currency_name}",
+            value=f"Symbol: {currency_symbol}\nName: {currency_name}",
+            inline=True,
+        )
+
         timely_amount = await self.config.timely_amount()
         timely_cooldown = await self.config.timely_cooldown()
-        embed.add_field(name="Daily Reward", value=f"{currency_symbol}{timely_amount} every {timely_cooldown}h", inline=True)
-        
+        embed.add_field(
+            name="Daily Reward", value=f"{currency_symbol}{timely_amount} every {timely_cooldown}h", inline=True
+        )
+
         await ctx.send(embed=embed)
 
     @unicornia_group.group(name="guild")
@@ -318,7 +360,7 @@ class AdminCommands:
         **Admin only.**
         """
         pass
-    
+
     @guild_config.group(name="xp")
     async def guild_xp_group(self, ctx):
         """
@@ -386,7 +428,7 @@ class AdminCommands:
                 channel_mentions.append(channel.mention)
             else:
                 channel_mentions.append(f"<#{channel_id}> (Deleted)")
-        
+
         await ctx.send(f"**XP Whitelisted Channels:**\n{', '.join(channel_mentions)}")
 
     @guild_xp_group.group(name="double")
@@ -457,9 +499,9 @@ class AdminCommands:
                 channel_mentions.append(channel.mention)
             else:
                 channel_mentions.append(f"<#{channel_id}> (Deleted)")
-        
+
         await ctx.send(f"**Double XP Channels:**\n{', '.join(channel_mentions)}")
-    
+
     @guild_config.command(name="rolereward")
     async def guild_role_reward(self, ctx, level: int, role: discord.Role, remove: bool = False):
         """
@@ -473,7 +515,7 @@ class AdminCommands:
         if level < 1:
             await ctx.send("❌ Level must be at least 1.")
             return
-        
+
         await self.db.xp.add_xp_role_reward(ctx.guild.id, level, role.id, remove)
         action = "removed from" if remove else "given to"
         await ctx.send(f"✅ Users reaching level {level} will have {role.mention} {action} them.")
@@ -490,7 +532,7 @@ class AdminCommands:
         """
         await self.db.xp.remove_xp_role_reward(ctx.guild.id, level, role.id)
         await ctx.send(f"✅ Removed role reward {role.mention} at level {level}.")
-    
+
     @guild_config.command(name="currencyreward")
     async def guild_currency_reward(self, ctx, level: int, amount: int):
         """
@@ -505,16 +547,16 @@ class AdminCommands:
         if level < 1:
             await ctx.send("❌ Level must be at least 1.")
             return
-        
+
         if amount < 0:
             await ctx.send("❌ Amount must be positive.")
             return
-        
+
         await self.db.xp.add_xp_currency_reward(ctx.guild.id, level, amount)
         currency_symbol = await self.config.currency_symbol()
-        
+
         if amount == 0:
-             await ctx.send(f"✅ Removed currency reward for level {level}.")
+            await ctx.send(f"✅ Removed currency reward for level {level}.")
         else:
             await ctx.send(f"✅ Users reaching level {level} will receive {currency_symbol}{amount:,}.")
 
@@ -529,33 +571,30 @@ class AdminCommands:
         `[p]unicornia guild listcurrencyrewards`
         """
         currency_rewards = await self.db.xp.get_xp_currency_rewards(ctx.guild.id)
-        
+
         if not currency_rewards:
             await ctx.send("No currency rewards configured.")
             return
 
         currency_symbol = await self.config.currency_symbol()
-        
+
         # Sort by level just in case
         currency_rewards.sort(key=lambda x: x[0])
-        
-        chunks = [currency_rewards[i:i + 30] for i in range(0, len(currency_rewards), 30)]
+
+        chunks = [currency_rewards[i : i + 30] for i in range(0, len(currency_rewards), 30)]
         pages = []
-        
+
         for i, chunk in enumerate(chunks, 1):
-            embed = discord.Embed(
-                title=f"Currency Rewards for {ctx.guild.name}",
-                color=discord.Color.gold()
-            )
-            
+            embed = discord.Embed(title=f"Currency Rewards for {ctx.guild.name}", color=discord.Color.gold())
+
             curr_text = ""
             for level, amount in chunk:
                 curr_text += f"**Level {level}:** {currency_symbol}{amount:,}\n"
-                
+
             embed.description = curr_text
             embed.set_footer(text=f"Page {i}/{len(chunks)} • Total Rewards: {len(currency_rewards)}")
             pages.append(embed)
-            
+
         if len(pages) == 1:
             await ctx.send(embed=pages[0])
         else:
@@ -591,22 +630,22 @@ class AdminCommands:
         `[p]unicornia whitelist command add <command> [channel]`
         """
         channel = channel or ctx.channel
-        
+
         # Verify command exists and belongs to Unicornia
         cmd = self.bot.get_command(command_name)
         if not cmd:
             await ctx.send(f"❌ Command `{command_name}` not found.")
             return
-            
+
         if cmd.cog_name != self.qualified_name:
             await ctx.send(f"❌ You can only whitelist commands from {self.qualified_name} cog.")
             return
-            
+
         async with self.config.guild(ctx.guild).command_whitelist() as whitelist:
             full_name = cmd.qualified_name
             if full_name not in whitelist:
                 whitelist[full_name] = []
-            
+
             if channel.id not in whitelist[full_name]:
                 whitelist[full_name].append(channel.id)
                 await ctx.send(f"✅ Command `{full_name}` is now allowed in {channel.mention}.")
@@ -622,18 +661,20 @@ class AdminCommands:
         `[p]unicornia whitelist command remove <command> [channel]`
         """
         channel = channel or ctx.channel
-        
+
         # Verify command exists (optional)
         cmd = self.bot.get_command(command_name)
         full_name = cmd.qualified_name if cmd else command_name
-            
+
         async with self.config.guild(ctx.guild).command_whitelist() as whitelist:
             if full_name in whitelist and channel.id in whitelist[full_name]:
                 whitelist[full_name].remove(channel.id)
                 # If list is empty, remove the key (back to "run everywhere" unless system restricted)
                 if not whitelist[full_name]:
                     del whitelist[full_name]
-                    await ctx.send(f"✅ Removed restrictions for `{full_name}` in {channel.mention}. It now runs based on system rules.")
+                    await ctx.send(
+                        f"✅ Removed restrictions for `{full_name}` in {channel.mention}. It now runs based on system rules."
+                    )
                 else:
                     await ctx.send(f"✅ Command `{full_name}` is no longer allowed in {channel.mention}.")
             else:
@@ -651,9 +692,9 @@ class AdminCommands:
         if not whitelist:
             await ctx.send("No commands are restricted (whitelisted).")
             return
-            
+
         embed = discord.Embed(title="Whitelisted Commands", color=discord.Color.green())
-        
+
         has_entries = False
         for cmd_name, channels in whitelist.items():
             if not channels:
@@ -666,9 +707,9 @@ class AdminCommands:
                     channel_mentions.append(ch.mention)
                 else:
                     channel_mentions.append(f"<#{cid}>")
-            
+
             embed.add_field(name=cmd_name, value=", ".join(channel_mentions), inline=False)
-            
+
         if not has_entries:
             await ctx.send("No commands are restricted.")
         else:
@@ -681,7 +722,7 @@ class AdminCommands:
         Whitelist entire systems.
         """
         pass
-    
+
     @wl_system_group.command(name="add")
     async def wl_system_add(self, ctx, system: str, channel: discord.TextChannel = None):
         """
@@ -694,17 +735,17 @@ class AdminCommands:
         """
         channel = channel or ctx.channel
         system = system.lower()
-        
+
         # Valid systems
         valid_systems = ["admin", "club", "currency", "economy", "gambling", "level", "nitro", "shop", "waifu"]
         if system not in valid_systems:
-             await ctx.send(f"❌ Invalid system. Valid systems: {', '.join(valid_systems)}")
-             return
-            
+            await ctx.send(f"❌ Invalid system. Valid systems: {', '.join(valid_systems)}")
+            return
+
         async with self.config.guild(ctx.guild).system_whitelist() as whitelist:
             if system not in whitelist:
                 whitelist[system] = []
-            
+
             if channel.id not in whitelist[system]:
                 whitelist[system].append(channel.id)
                 await ctx.send(f"✅ System `{system}` is now allowed in {channel.mention}.")
@@ -721,14 +762,16 @@ class AdminCommands:
         """
         channel = channel or ctx.channel
         system = system.lower()
-        
+
         async with self.config.guild(ctx.guild).system_whitelist() as whitelist:
             if system in whitelist and channel.id in whitelist[system]:
                 whitelist[system].remove(channel.id)
                 # If list is empty, remove the key (runs everywhere)
                 if not whitelist[system]:
                     del whitelist[system]
-                    await ctx.send(f"✅ Removed restrictions for system `{system}` in {channel.mention}. It now runs everywhere.")
+                    await ctx.send(
+                        f"✅ Removed restrictions for system `{system}` in {channel.mention}. It now runs everywhere."
+                    )
                 else:
                     await ctx.send(f"✅ System `{system}` is no longer allowed in {channel.mention}.")
             else:
@@ -746,9 +789,9 @@ class AdminCommands:
         if not whitelist:
             await ctx.send("No systems are restricted (whitelisted).")
             return
-            
+
         embed = discord.Embed(title="Whitelisted Systems", color=discord.Color.green())
-        
+
         has_entries = False
         for sys_name, channels in whitelist.items():
             if not channels:
@@ -761,9 +804,9 @@ class AdminCommands:
                     channel_mentions.append(ch.mention)
                 else:
                     channel_mentions.append(f"<#{cid}>")
-            
+
             embed.add_field(name=sys_name.title(), value=", ".join(channel_mentions), inline=False)
-            
+
         if not has_entries:
             await ctx.send("No systems are restricted.")
         else:
@@ -780,34 +823,31 @@ class AdminCommands:
         `[p]unicornia guild listrolerewards`
         """
         role_rewards = await self.db.xp.get_all_xp_role_rewards(ctx.guild.id)
-        
+
         if not role_rewards:
             await ctx.send("No role rewards configured.")
             return
-            
+
         # Sort by level
         role_rewards.sort(key=lambda x: x[0])
-        
-        chunks = [role_rewards[i:i + 30] for i in range(0, len(role_rewards), 30)]
+
+        chunks = [role_rewards[i : i + 30] for i in range(0, len(role_rewards), 30)]
         pages = []
-        
+
         for i, chunk in enumerate(chunks, 1):
-            embed = discord.Embed(
-                title=f"Role Rewards for {ctx.guild.name}",
-                color=discord.Color.purple()
-            )
-            
+            embed = discord.Embed(title=f"Role Rewards for {ctx.guild.name}", color=discord.Color.purple())
+
             role_text = ""
             for level, role_id, remove in chunk:
                 role = ctx.guild.get_role(role_id)
                 role_name = role.mention if role else f"Deleted Role ({role_id})"
                 action = "Remove" if remove else "Add"
                 role_text += f"**Level {level}:** {action} {role_name}\n"
-                
+
             embed.description = role_text
             embed.set_footer(text=f"Page {i}/{len(chunks)} • Total Rewards: {len(role_rewards)}")
             pages.append(embed)
-            
+
         if len(pages) == 1:
             await ctx.send(embed=pages[0])
         else:

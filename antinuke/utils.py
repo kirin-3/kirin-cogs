@@ -2,7 +2,6 @@
 
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional
 
 import discord
 
@@ -10,25 +9,23 @@ import discord
 class ActionCache:
     """
     In-memory cache for tracking user actions within timeframes.
-    
+
     This avoids disk I/O on every monitored action. Data is ephemeral
     and expires naturally based on timeframe windows.
     """
 
     def __init__(self) -> None:
         # Structure: {guild_id: {user_id: {action_type: [timestamps]}}}
-        self._cache: Dict[int, Dict[int, Dict[str, List[float]]]] = defaultdict(
+        self._cache: dict[int, dict[int, dict[str, list[float]]]] = defaultdict(
             lambda: defaultdict(lambda: defaultdict(list))
         )
 
-    def record_action(
-        self, guild_id: int, user_id: int, action_type: str, timeframe: int
-    ) -> int:
+    def record_action(self, guild_id: int, user_id: int, action_type: str, timeframe: int) -> int:
         """
         Record an action and return count within timeframe.
-        
+
         Automatically cleans expired entries.
-        
+
         Parameters
         ----------
         guild_id : int
@@ -39,7 +36,7 @@ class ActionCache:
             The type of action (e.g., "channel_delete").
         timeframe : int
             The timeframe in seconds to consider.
-        
+
         Returns
         -------
         int
@@ -59,12 +56,10 @@ class ActionCache:
 
         return len(action_list)
 
-    def get_count(
-        self, guild_id: int, user_id: int, action_type: str, timeframe: int
-    ) -> int:
+    def get_count(self, guild_id: int, user_id: int, action_type: str, timeframe: int) -> int:
         """
         Get current count without adding a new action.
-        
+
         Parameters
         ----------
         guild_id : int
@@ -75,7 +70,7 @@ class ActionCache:
             The type of action.
         timeframe : int
             The timeframe in seconds.
-        
+
         Returns
         -------
         int
@@ -89,7 +84,7 @@ class ActionCache:
     def clear_user(self, guild_id: int, user_id: int) -> None:
         """
         Clear all actions for a user (e.g., after quarantine).
-        
+
         Parameters
         ----------
         guild_id : int
@@ -103,7 +98,7 @@ class ActionCache:
     def clear_guild(self, guild_id: int) -> None:
         """
         Clear all actions for a guild.
-        
+
         Parameters
         ----------
         guild_id : int
@@ -114,11 +109,11 @@ class ActionCache:
 
 
 def has_dangerous_permission(
-    before: discord.Permissions, after: discord.Permissions, dangerous_perms: List[str]
-) -> Optional[str]:
+    before: discord.Permissions, after: discord.Permissions, dangerous_perms: list[str]
+) -> str | None:
     """
     Check if dangerous permissions were added to a role.
-    
+
     Parameters
     ----------
     before : discord.Permissions
@@ -127,7 +122,7 @@ def has_dangerous_permission(
         Permissions after the change.
     dangerous_perms : List[str]
         List of dangerous permission names.
-    
+
     Returns
     -------
     Optional[str]
@@ -143,19 +138,17 @@ def has_dangerous_permission(
     return None
 
 
-def get_permission_diff(
-    before: discord.Permissions, after: discord.Permissions
-) -> List[str]:
+def get_permission_diff(before: discord.Permissions, after: discord.Permissions) -> list[str]:
     """
     Get list of permissions that were added.
-    
+
     Parameters
     ----------
     before : discord.Permissions
         Permissions before the change.
     after : discord.Permissions
         Permissions after the change.
-    
+
     Returns
     -------
     List[str]
@@ -171,12 +164,12 @@ def get_permission_diff(
 def format_permission_name(perm_name: str) -> str:
     """
     Format a permission name for display.
-    
+
     Parameters
     ----------
     perm_name : str
         The internal permission name.
-    
+
     Returns
     -------
     str
@@ -188,14 +181,14 @@ def format_permission_name(perm_name: str) -> str:
 def is_above_in_hierarchy(bot_member: discord.Member, target: discord.Member) -> bool:
     """
     Check if the bot is above the target in role hierarchy.
-    
+
     Parameters
     ----------
     bot_member : discord.Member
         The bot's member object.
     target : discord.Member
         The target member to check against.
-    
+
     Returns
     -------
     bool

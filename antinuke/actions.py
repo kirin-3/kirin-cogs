@@ -3,12 +3,11 @@
 import asyncio
 import datetime
 import logging
-from typing import List
 
 import discord
 from redbot.core import Config
 from redbot.core.bot import Red
-from redbot.core.utils.chat_formatting import bold, inline
+from redbot.core.utils.chat_formatting import bold
 
 from .constants import ACTION_NAMES
 from .utils import is_above_in_hierarchy
@@ -60,23 +59,17 @@ class QuarantineActions:
         # Get quarantine role
         quarantine_role_id = await self.config.guild(guild).quarantine_role()
         if not quarantine_role_id:
-            log.warning(
-                f"Quarantine attempted in guild {guild.id} but no quarantine role is set"
-            )
+            log.warning(f"Quarantine attempted in guild {guild.id} but no quarantine role is set")
             return False
 
         quarantine_role = guild.get_role(quarantine_role_id)
         if not quarantine_role:
-            log.warning(
-                f"Quarantine role {quarantine_role_id} not found in guild {guild.id}"
-            )
+            log.warning(f"Quarantine role {quarantine_role_id} not found in guild {guild.id}")
             return False
 
         # Check hierarchy for quarantine role
         if bot_member.top_role <= quarantine_role:
-            log.warning(
-                f"Quarantine role is above bot's top role in guild {guild.id}"
-            )
+            log.warning(f"Quarantine role is above bot's top role in guild {guild.id}")
             return False
 
         # Store current roles BEFORE stripping (for restoration later)
@@ -86,7 +79,7 @@ class QuarantineActions:
             "roles": role_ids,
             "reason": f"AntiNuke triggered: {trigger_action}",
             "quarantined_by": "anti-nuke",
-            "quarantined_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "quarantined_at": datetime.datetime.now(datetime.UTC).isoformat(),
             "trigger_action": trigger_action,
         }
 
@@ -118,9 +111,7 @@ class QuarantineActions:
             log.error(f"Failed to quarantine user {user.id} in guild {guild.id}: {e}")
             return False
 
-    async def restore_user(
-        self, guild: discord.Guild, user: discord.Member, restored_by: str = "manual"
-    ) -> bool:
+    async def restore_user(self, guild: discord.Guild, user: discord.Member, restored_by: str = "manual") -> bool:
         """
         Restore a quarantined user's roles.
 
@@ -146,8 +137,8 @@ class QuarantineActions:
             return False
 
         # Get role objects for stored role IDs
-        roles_to_restore: List[discord.Role] = []
-        missing_roles: List[int] = []
+        roles_to_restore: list[discord.Role] = []
+        missing_roles: list[int] = []
 
         for role_id in user_data.get("roles", []):
             role = guild.get_role(role_id)
@@ -156,9 +147,7 @@ class QuarantineActions:
                 if guild.me.top_role > role:
                     roles_to_restore.append(role)
                 else:
-                    log.warning(
-                        f"Cannot restore role {role_id} to user {user.id}: role is above bot's top role"
-                    )
+                    log.warning(f"Cannot restore role {role_id} to user {user.id}: role is above bot's top role")
             else:
                 missing_roles.append(role_id)
 
@@ -169,7 +158,7 @@ class QuarantineActions:
         try:
             # Build final role list
             final_roles = roles_to_restore.copy()
-            
+
             # Add back any roles the user should have (excluding quarantine)
             for role in user.roles:
                 if role != guild.default_role and role != quarantine_role:
@@ -188,16 +177,12 @@ class QuarantineActions:
                     del q_users[str(user.id)]
 
             # Log restoration
-            asyncio.create_task(
-                self.log_restoration(guild, user, restored_by, missing_roles)
-            )
+            asyncio.create_task(self.log_restoration(guild, user, restored_by, missing_roles))
 
             return True
 
         except discord.Forbidden:
-            log.error(
-                f"Failed to restore user {user.id} in guild {guild.id}: missing permissions"
-            )
+            log.error(f"Failed to restore user {user.id} in guild {guild.id}: missing permissions")
             return False
         except discord.HTTPException as e:
             log.error(f"Failed to restore user {user.id} in guild {guild.id}: {e}")
@@ -226,9 +211,7 @@ class QuarantineActions:
             )
             return True
         except discord.Forbidden:
-            log.warning(
-                f"Failed to kick bot {bot_user.id} in guild {guild.id}: missing permissions"
-            )
+            log.warning(f"Failed to kick bot {bot_user.id} in guild {guild.id}: missing permissions")
             return False
         except discord.HTTPException as e:
             log.error(f"Failed to kick bot {bot_user.id} in guild {guild.id}: {e}")
@@ -266,7 +249,7 @@ class QuarantineActions:
             title="🛡️ AntiNuke Quarantine",
             description=f"{user.mention} has been quarantined.",
             color=discord.Color.red(),
-            timestamp=datetime.datetime.now(datetime.timezone.utc),
+            timestamp=datetime.datetime.now(datetime.UTC),
         )
 
         embed.add_field(name="User", value=f"{user} (`{user.id}`)", inline=True)
@@ -282,16 +265,14 @@ class QuarantineActions:
         try:
             await log_channel.send(embed=embed)
         except discord.Forbidden:
-            log.warning(
-                f"Cannot send to log channel {log_channel_id} in guild {guild.id}"
-            )
+            log.warning(f"Cannot send to log channel {log_channel_id} in guild {guild.id}")
 
     async def log_restoration(
         self,
         guild: discord.Guild,
         user: discord.Member,
         restored_by: str,
-        missing_roles: List[int],
+        missing_roles: list[int],
     ) -> None:
         """
         Log a restoration action to the designated log channel.
@@ -319,7 +300,7 @@ class QuarantineActions:
             title="✅ AntiNuke Restoration",
             description=f"{user.mention} has been unquarantined.",
             color=discord.Color.green(),
-            timestamp=datetime.datetime.now(datetime.timezone.utc),
+            timestamp=datetime.datetime.now(datetime.UTC),
         )
 
         embed.add_field(name="User", value=f"{user} (`{user.id}`)", inline=True)
@@ -337,9 +318,7 @@ class QuarantineActions:
         try:
             await log_channel.send(embed=embed)
         except discord.Forbidden:
-            log.warning(
-                f"Cannot send to log channel {log_channel_id} in guild {guild.id}"
-            )
+            log.warning(f"Cannot send to log channel {log_channel_id} in guild {guild.id}")
 
     async def notify_owner_hierarchy_issue(
         self,
@@ -370,12 +349,10 @@ class QuarantineActions:
                     title="⚠️ AntiNuke Hierarchy Issue",
                     description=f"Cannot quarantine {user.mention} - they have equal or higher roles than the bot.",
                     color=discord.Color.orange(),
-                    timestamp=datetime.datetime.now(datetime.timezone.utc),
+                    timestamp=datetime.datetime.now(datetime.UTC),
                 )
 
-                embed.add_field(
-                    name="User", value=f"{user} (`{user.id}`)", inline=True
-                )
+                embed.add_field(name="User", value=f"{user} (`{user.id}`)", inline=True)
                 embed.add_field(name="Trigger", value=bold(action_name), inline=True)
                 embed.add_field(
                     name="Action Required",
@@ -399,9 +376,7 @@ class QuarantineActions:
                     color=discord.Color.orange(),
                 )
 
-                embed.add_field(
-                    name="User", value=f"{user} (`{user.id}`)", inline=True
-                )
+                embed.add_field(name="User", value=f"{user} (`{user.id}`)", inline=True)
                 embed.add_field(name="Trigger", value=bold(action_name), inline=True)
                 embed.add_field(
                     name="Issue",
@@ -416,13 +391,9 @@ class QuarantineActions:
 
                 await owner.send(embed=embed)
             except discord.Forbidden:
-                log.warning(
-                    f"Cannot DM owner {owner.id} about hierarchy issue in guild {guild.id}"
-                )
+                log.warning(f"Cannot DM owner {owner.id} about hierarchy issue in guild {guild.id}")
 
-    async def notify_owner_missing_permissions(
-        self, guild: discord.Guild, permission: str
-    ) -> None:
+    async def notify_owner_missing_permissions(self, guild: discord.Guild, permission: str) -> None:
         """
         Notify the server owner about missing permissions.
 
@@ -440,8 +411,7 @@ class QuarantineActions:
             if isinstance(log_channel, discord.TextChannel):
                 try:
                     await log_channel.send(
-                        f"⚠️ AntiNuke is missing the `{permission}` permission. "
-                        "Some features may not work correctly."
+                        f"⚠️ AntiNuke is missing the `{permission}` permission. Some features may not work correctly."
                     )
                     return
                 except discord.Forbidden:
@@ -457,6 +427,4 @@ class QuarantineActions:
                     "Some features may not work correctly."
                 )
             except discord.Forbidden:
-                log.warning(
-                    f"Cannot DM owner {owner.id} about missing permissions in guild {guild.id}"
-                )
+                log.warning(f"Cannot DM owner {owner.id} about missing permissions in guild {guild.id}")

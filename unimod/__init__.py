@@ -6,5 +6,6 @@ __license__ = "MIT"
 
 from .unimod import UniMod
 
+
 async def setup(bot):
     await bot.add_cog(UniMod(bot))

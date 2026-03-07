@@ -1,7 +1,6 @@
 import asyncio
 import datetime
 import logging
-from typing import Optional
 
 import discord
 from discord import app_commands
@@ -32,13 +31,12 @@ class BaseCommands(MixinMeta):
         user_roles = [r.id for r in ctx.author.roles]
 
         can_add = False
-        if any(i in support_roles for i in user_roles):
-            can_add = True
-        elif ctx.author.id == ctx.guild.owner_id:
-            can_add = True
-        elif await is_admin_or_superior(self.bot, ctx.author):
-            can_add = True
-        elif owner_id == str(ctx.author.id) and conf["user_can_manage"]:
+        if (
+            any(i in support_roles for i in user_roles)
+            or ctx.author.id == ctx.guild.owner_id
+            or await is_admin_or_superior(self.bot, ctx.author)
+            or (owner_id == str(ctx.author.id) and conf["user_can_manage"])
+        ):
             can_add = True
 
         if not can_add:
@@ -71,13 +69,12 @@ class BaseCommands(MixinMeta):
         user_roles = [r.id for r in ctx.author.roles]
 
         can_rename = False
-        if any(i in support_roles for i in user_roles):
-            can_rename = True
-        elif ctx.author.id == ctx.guild.owner_id:
-            can_rename = True
-        elif await is_admin_or_superior(self.bot, ctx.author):
-            can_rename = True
-        elif owner_id == str(ctx.author.id) and conf["user_can_rename"]:
+        if (
+            any(i in support_roles for i in user_roles)
+            or ctx.author.id == ctx.guild.owner_id
+            or await is_admin_or_superior(self.bot, ctx.author)
+            or (owner_id == str(ctx.author.id) and conf["user_can_rename"])
+        ):
             can_rename = True
 
         if not can_rename:
@@ -100,7 +97,7 @@ class BaseCommands(MixinMeta):
     @commands.hybrid_command(name="close", description="Close your ticket")
     @app_commands.describe(reason="Reason for closing the ticket")
     @commands.guild_only()
-    async def close_a_ticket(self, ctx: commands.Context, *, reason: Optional[str] = None):
+    async def close_a_ticket(self, ctx: commands.Context, *, reason: str | None = None):
         """
         Close your ticket
 
@@ -142,7 +139,7 @@ class BaseCommands(MixinMeta):
                 await asyncio.sleep(1.5)
                 try:
                     await ctx.bot.wait_for("message", check=check, timeout=td.total_seconds())
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
                 else:
                     cancelled = "Closing cancelled!"

@@ -1,6 +1,6 @@
 """Constants and default configuration for the AntiNuke cog."""
 
-from typing import Dict, Any
+from typing import Any
 
 # Config identifier - unique int for this cog
 CONFIG_IDENTIFIER = 789234561
@@ -28,7 +28,7 @@ DEFAULT_MONITOR_CONFIG = {
 }
 
 # Default guild configuration schema
-DEFAULT_GUILD: Dict[str, Any] = {
+DEFAULT_GUILD: dict[str, Any] = {
     # Core Settings
     "enabled": False,
     "log_channel": None,
@@ -126,7 +126,7 @@ DEFAULT_GUILD: Dict[str, Any] = {
 }
 
 # Global config (if needed for bot-wide settings)
-DEFAULT_GLOBAL: Dict[str, Any] = {}
+DEFAULT_GLOBAL: dict[str, Any] = {}
 
 # Action type to AuditLogAction mapping
 AUDIT_LOG_ACTION_MAP = {

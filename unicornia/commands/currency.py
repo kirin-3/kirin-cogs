@@ -1,6 +1,6 @@
 import discord
-from redbot.core import commands, checks
-from typing import Optional
+from redbot.core import commands
+
 
 class CurrencyCommands:
     # Currency generation commands
@@ -13,7 +13,7 @@ class CurrencyCommands:
         `[p]currency <subcommand>`
         """
         pass
-    
+
     @commands.command(name="pick")
     async def pick_cmd(self, ctx):
         """
@@ -27,19 +27,23 @@ class CurrencyCommands:
         if not await self.config.economy_enabled():
             await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
             return
-        
+
         try:
             result = await self.currency_generation.pick_plant(ctx.author.id, ctx.channel.id)
             if result:
                 amount, message_ids, is_net_loss = result
                 currency_symbol = await self.config.currency_symbol()
-                
+
                 if is_net_loss:
-                    await ctx.reply(f"Wait... it was a fake! You lost {amount}{currency_symbol}!", mention_author=False, delete_after=30)
+                    await ctx.reply(
+                        f"Wait... it was a fake! You lost {amount}{currency_symbol}!",
+                        mention_author=False,
+                        delete_after=30,
+                    )
                 else:
                     # Auto-delete confirmation after 30 seconds
                     await ctx.reply(f"You picked up {amount}{currency_symbol}!", mention_author=False, delete_after=30)
-                
+
                 # Delete user command message after 30 seconds
                 try:
                     await ctx.message.delete(delay=30)
@@ -53,15 +57,15 @@ class CurrencyCommands:
                             msg = await ctx.channel.fetch_message(mid)
                             await msg.delete()
                         except (discord.NotFound, discord.Forbidden):
-                            pass # Already deleted or no permissions
+                            pass  # Already deleted or no permissions
                         except Exception:
-                            pass # Ignore other errors
+                            pass  # Ignore other errors
             else:
                 await ctx.send("<a:zz_NoTick:729318761655435355> No currency to pick up here.", delete_after=15)
-                
+
         except Exception as e:
             await ctx.send(f"<a:zz_NoTick:729318761655435355> Error picking currency: {e}")
-            
+
     # Keep the old command as an alias or redirect if needed, or remove it.
     # For now, let's redirect it to the new one if they provide a password (ignore it)
     @currency_group.command(name="pick")

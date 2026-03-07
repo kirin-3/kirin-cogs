@@ -39,33 +39,25 @@ class ContestDashboardView(ui.LayoutView):
         # Navigation Buttons
         home_btn = ui.Button(
             label="Home",
-            style=discord.ButtonStyle.primary
-            if self.current_tab == "home"
-            else discord.ButtonStyle.secondary,
+            style=discord.ButtonStyle.primary if self.current_tab == "home" else discord.ButtonStyle.secondary,
             custom_id="cotm:home",
             row=0,
         )
         terms_btn = ui.Button(
             label="Terms",
-            style=discord.ButtonStyle.primary
-            if self.current_tab == "terms"
-            else discord.ButtonStyle.secondary,
+            style=discord.ButtonStyle.primary if self.current_tab == "terms" else discord.ButtonStyle.secondary,
             custom_id="cotm:terms",
             row=0,
         )
         prizes_btn = ui.Button(
             label="Prizes",
-            style=discord.ButtonStyle.primary
-            if self.current_tab == "prizes"
-            else discord.ButtonStyle.secondary,
+            style=discord.ButtonStyle.primary if self.current_tab == "prizes" else discord.ButtonStyle.secondary,
             custom_id="cotm:prizes",
             row=0,
         )
         votes_btn = ui.Button(
             label="How to Vote",
-            style=discord.ButtonStyle.primary
-            if self.current_tab == "votes"
-            else discord.ButtonStyle.secondary,
+            style=discord.ButtonStyle.primary if self.current_tab == "votes" else discord.ButtonStyle.secondary,
             custom_id="cotm:votes",
             row=0,
         )
@@ -110,9 +102,7 @@ class ContestDashboardView(ui.LayoutView):
 
     async def standings_button(self, interaction: discord.Interaction):
         # Send an ephemeral loading message first, so we don't edit the dashboard
-        await interaction.response.send_message(
-            "Tallying votes, please wait...", ephemeral=True
-        )
+        await interaction.response.send_message("Tallying votes, please wait...", ephemeral=True)
 
         # Find the entries channel
         entries_channel = interaction.client.get_channel(782019562795302934)
@@ -128,18 +118,14 @@ class ContestDashboardView(ui.LayoutView):
         entries = await self.cog._get_contest_results(entries_channel)
 
         # Format the leaderboard via Container (hide invalid votes)
-        container = self.cog._build_standings_container(
-            entries, title="📊 Current Standings", show_invalid=False
-        )
+        container = self.cog._build_standings_container(entries, title="📊 Current Standings", show_invalid=False)
 
         class StandingsView(ui.LayoutView):
             def __init__(self, container):
                 super().__init__(timeout=180)
                 self.add_item(container)
 
-        await interaction.edit_original_response(
-            content=None, view=StandingsView(container)
-        )
+        await interaction.edit_original_response(content=None, view=StandingsView(container))
 
 
 class StandingsView(ui.LayoutView):

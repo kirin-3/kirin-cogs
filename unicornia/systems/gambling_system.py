@@ -3,13 +3,15 @@ Gambling system for Unicornia
 """
 
 import secrets
+
 import discord
-from typing import Optional, List, Tuple
-from redbot.core import commands
 from discord import ui
+from redbot.core import commands
+
 from ..database import DatabaseManager
 from ..types import GamblingResult
 from ..views import MinesView
+
 
 class BlackjackView(ui.View):
     def __init__(self, ctx, system, user_id, amount, user_hand, dealer_hand, deck, currency_symbol):
@@ -36,7 +38,7 @@ class BlackjackView(ui.View):
 
     def get_embed(self, result_text=None, color=discord.Color.blue()):
         user_total = self.calculate_hand(self.user_hand)
-        
+
         if self.finished:
             dealer_total = self.calculate_hand(self.dealer_hand)
             dealer_display = f"{self.dealer_hand} ({dealer_total})"
@@ -47,10 +49,10 @@ class BlackjackView(ui.View):
         embed = discord.Embed(title="🃏 Blackjack", description=description, color=color)
         embed.add_field(name="Your Hand", value=f"{self.user_hand} ({user_total})", inline=True)
         embed.add_field(name="Dealer Hand", value=dealer_display, inline=True)
-        
+
         if result_text:
             embed.title = "🃏 Blackjack Result"
-            
+
         return embed
 
     async def on_timeout(self):
@@ -58,7 +60,7 @@ class BlackjackView(ui.View):
             self.finished = True
             for child in self.children:
                 child.disabled = True
-            
+
             embed = self.get_embed("Timed out. You stand.", discord.Color.red())
             try:
                 await self.message.edit(embed=embed, view=self)
@@ -80,9 +82,11 @@ class BlackjackView(ui.View):
             self.finished = True
             for child in self.children:
                 child.disabled = True
-            
+
             await self.system._log_gambling_result(self.user_id, "blackjack", self.amount, False)
-            embed = self.get_embed(f"Busted with {user_total}! You lost {self.currency_symbol}{self.amount:,}.", discord.Color.red())
+            embed = self.get_embed(
+                f"Busted with {user_total}! You lost {self.currency_symbol}{self.amount:,}.", discord.Color.red()
+            )
             try:
                 await interaction.response.edit_message(embed=embed, view=self)
             except discord.HTTPException:
@@ -116,7 +120,7 @@ class BlackjackView(ui.View):
             dealer_total = self.calculate_hand(self.dealer_hand)
 
         user_total = self.calculate_hand(self.user_hand)
-        
+
         win = False
         tie = False
         result_text = ""
@@ -135,14 +139,18 @@ class BlackjackView(ui.View):
             result_text = f"Push! Both have {user_total}."
 
         color = discord.Color.green() if win else (discord.Color.gold() if tie else discord.Color.red())
-        
+
         if win:
             win_amount = self.amount * 2
-            await self.system.db.economy.add_currency(self.user_id, win_amount, "blackjack", "win", note="Blackjack Win")
+            await self.system.db.economy.add_currency(
+                self.user_id, win_amount, "blackjack", "win", note="Blackjack Win"
+            )
             await self.system._log_gambling_result(self.user_id, "blackjack", self.amount, True, win_amount)
             result_text += f"\nYou won {self.currency_symbol}{win_amount:,}!"
         elif tie:
-            await self.system.db.economy.add_currency(self.user_id, self.amount, "blackjack", "tie", note="Blackjack Push")
+            await self.system.db.economy.add_currency(
+                self.user_id, self.amount, "blackjack", "tie", note="Blackjack Push"
+            )
             result_text += "\nYour bet was returned."
         else:
             await self.system._log_gambling_result(self.user_id, "blackjack", self.amount, False)
@@ -159,12 +167,12 @@ class BlackjackView(ui.View):
 
 class GamblingSystem:
     """Handles all gambling games and features"""
-    
+
     def __init__(self, db: DatabaseManager, config, bot):
         self.db = db
         self.config = config
         self.bot = bot
-    
+
     async def _log_gambling_result(self, user_id: int, game: str, bet_amount: int, won: bool, win_amount: int = 0):
         """Log gambling result and update statistics"""
         if won:
@@ -176,30 +184,30 @@ class GamblingSystem:
             await self.db.economy.update_gambling_stats(game, bet_amount, 0, bet_amount)
             await self.db.economy.update_user_bet_stats(user_id, game, bet_amount, 0, bet_amount, 0)
             await self.db.economy.log_currency_transaction(user_id, "gambling_loss", -bet_amount, f"{game} loss")
-            
+
             # Add to rakeback (5% of losses)
             rakeback_amount = int(bet_amount * 0.05)
             if rakeback_amount > 0:
                 await self.db.economy.add_rakeback(user_id, rakeback_amount)
-    
-    async def _check_limits(self, amount: int) -> Optional[str]:
+
+    async def _check_limits(self, amount: int) -> str | None:
         """Check if bet is within limits"""
         min_bet = await self.config.gambling_min_bet()
         max_bet = await self.config.gambling_max_bet()
-        
+
         if amount < min_bet:
             return f"Bet must be at least {min_bet}."
         if amount > max_bet:
             return f"Bet cannot exceed {max_bet}."
         return None
 
-    async def betroll(self, user_id: int, amount: int) -> Tuple[bool, GamblingResult]:
+    async def betroll(self, user_id: int, amount: int) -> tuple[bool, GamblingResult]:
         """Play betroll game.
-        
+
         Args:
             user_id: Discord user ID.
             amount: Bet amount.
-            
+
         Returns:
             Tuple of (success, result data).
         """
@@ -212,48 +220,47 @@ class GamblingSystem:
         balance = await self.db.economy.get_user_currency(user_id)
         if balance < amount:
             return False, {"error": "insufficient_funds", "balance": balance}
-        
+
         # Roll dice
         roll = secrets.randbelow(100) + 1
         threshold = secrets.randbelow(100) + 1
-        
+
         if roll >= threshold:
             # Win
             win_amount = amount * 2
-            await self.db.economy.add_currency(user_id, win_amount - amount, "betroll", f"roll_{roll}", note=f"Betroll win: {roll} >= {threshold}")
+            await self.db.economy.add_currency(
+                user_id, win_amount - amount, "betroll", f"roll_{roll}", note=f"Betroll win: {roll} >= {threshold}"
+            )
             return True, {
                 "won": True,
                 "roll": roll,
                 "threshold": threshold,
                 "win_amount": win_amount,
-                "profit": win_amount - amount
+                "profit": win_amount - amount,
             }
         else:
             # Lose
             if amount > 0:
-                await self.db.economy.remove_currency(user_id, amount, "betroll", f"roll_{roll}", note=f"Betroll loss: {roll} < {threshold}")
-            return True, {
-                "won": False,
-                "roll": roll,
-                "threshold": threshold,
-                "loss_amount": amount
-            }
-    
-    async def rock_paper_scissors(self, user_id: int, choice: str, amount: int = 0) -> Tuple[bool, GamblingResult]:
+                await self.db.economy.remove_currency(
+                    user_id, amount, "betroll", f"roll_{roll}", note=f"Betroll loss: {roll} < {threshold}"
+                )
+            return True, {"won": False, "roll": roll, "threshold": threshold, "loss_amount": amount}
+
+    async def rock_paper_scissors(self, user_id: int, choice: str, amount: int = 0) -> tuple[bool, GamblingResult]:
         """Play rock paper scissors.
-        
+
         Args:
             user_id: Discord user ID.
             choice: User's weapon choice.
             amount: Bet amount (optional).
-            
+
         Returns:
             Tuple of (success, result data).
         """
         choice = choice.lower()
         if choice not in ["rock", "paper", "scissors", "r", "p", "s"]:
             return False, {"error": "invalid_choice"}
-        
+
         if amount > 0:
             # Check limits
             limit_error = await self._check_limits(amount)
@@ -264,15 +271,15 @@ class GamblingSystem:
             balance = await self.db.economy.get_user_currency(user_id)
             if balance < amount:
                 return False, {"error": "insufficient_funds", "balance": balance}
-        
+
         # Convert to number
         choice_map = {"rock": 0, "r": 0, "paper": 1, "p": 1, "scissors": 2, "s": 2}
         user_choice = choice_map[choice]
         choices = ["🪨 Rock", "📄 Paper", "✂️ Scissors"]
-        
+
         # Bot choice
         bot_choice = secrets.randbelow(3)
-        
+
         # Determine winner
         if user_choice == bot_choice:
             result = "draw"
@@ -280,47 +287,51 @@ class GamblingSystem:
             result = "win"
         else:
             result = "lose"
-        
+
         if amount > 0:
             if result == "win":
                 win_amount = amount * 2
-                await self.db.economy.add_currency(user_id, win_amount - amount, "rps", f"win_{user_choice}_{bot_choice}", note=f"RPS win: {choices[user_choice]} vs {choices[bot_choice]}")
+                await self.db.economy.add_currency(
+                    user_id,
+                    win_amount - amount,
+                    "rps",
+                    f"win_{user_choice}_{bot_choice}",
+                    note=f"RPS win: {choices[user_choice]} vs {choices[bot_choice]}",
+                )
                 return True, {
                     "result": result,
                     "user_choice": choices[user_choice],
                     "bot_choice": choices[bot_choice],
                     "win_amount": win_amount,
-                    "profit": win_amount - amount
+                    "profit": win_amount - amount,
                 }
             elif result == "lose":
                 if amount > 0:
-                    await self.db.economy.remove_currency(user_id, amount, "rps", f"loss_{user_choice}_{bot_choice}", note=f"RPS loss: {choices[user_choice]} vs {choices[bot_choice]}")
+                    await self.db.economy.remove_currency(
+                        user_id,
+                        amount,
+                        "rps",
+                        f"loss_{user_choice}_{bot_choice}",
+                        note=f"RPS loss: {choices[user_choice]} vs {choices[bot_choice]}",
+                    )
                 return True, {
                     "result": result,
                     "user_choice": choices[user_choice],
                     "bot_choice": choices[bot_choice],
-                    "loss_amount": amount
+                    "loss_amount": amount,
                 }
             else:
-                return True, {
-                    "result": result,
-                    "user_choice": choices[user_choice],
-                    "bot_choice": choices[bot_choice]
-                }
+                return True, {"result": result, "user_choice": choices[user_choice], "bot_choice": choices[bot_choice]}
         else:
-            return True, {
-                "result": result,
-                "user_choice": choices[user_choice],
-                "bot_choice": choices[bot_choice]
-            }
-    
-    async def slots(self, user_id: int, amount: int) -> Tuple[bool, GamblingResult]:
+            return True, {"result": result, "user_choice": choices[user_choice], "bot_choice": choices[bot_choice]}
+
+    async def slots(self, user_id: int, amount: int) -> tuple[bool, GamblingResult]:
         """Play slots game.
-        
+
         Args:
             user_id: Discord user ID.
             amount: Bet amount.
-            
+
         Returns:
             Tuple of (success, result data).
         """
@@ -333,14 +344,14 @@ class GamblingSystem:
         balance = await self.db.economy.get_user_currency(user_id)
         if balance < amount:
             return False, {"error": "insufficient_funds", "balance": balance}
-        
+
         # Generate slot results
         rolls = [secrets.randbelow(10) for _ in range(3)]
-        
+
         # Calculate winnings based on Nadeko's slot logic
         won_amount = 0
         win_type = "lose"
-        
+
         if rolls[0] == rolls[1] == rolls[2] == 9:  # Triple joker
             won_amount = int(amount * 10)
             win_type = "triple_joker"
@@ -353,25 +364,29 @@ class GamblingSystem:
         elif rolls.count(9) == 1:  # Single joker
             won_amount = int(amount * 1.2)
             win_type = "single_joker"
-        
+
         profit = won_amount - amount
         if profit > 0:
-            await self.db.economy.add_currency(user_id, profit, "slots", f"rolls_{rolls[0]}{rolls[1]}{rolls[2]}", note=f"Slots {win_type}: {rolls}")
+            await self.db.economy.add_currency(
+                user_id, profit, "slots", f"rolls_{rolls[0]}{rolls[1]}{rolls[2]}", note=f"Slots {win_type}: {rolls}"
+            )
         elif profit < 0:
-            await self.db.economy.remove_currency(user_id, -profit, "slots", f"rolls_{rolls[0]}{rolls[1]}{rolls[2]}", note=f"Slots loss: {rolls}")
-        
+            await self.db.economy.remove_currency(
+                user_id, -profit, "slots", f"rolls_{rolls[0]}{rolls[1]}{rolls[2]}", note=f"Slots loss: {rolls}"
+            )
+
         return True, {
             "rolls": rolls,
             "win_type": win_type,
             "won_amount": won_amount,
-            "profit": won_amount - amount if won_amount > 0 else -amount
+            "profit": won_amount - amount if won_amount > 0 else -amount,
         }
-    
+
     async def play_blackjack(self, ctx: commands.Context, amount: int):
         """Play an interactive blackjack game"""
         user = ctx.author
         user_id = user.id
-        
+
         # Check limits
         limit_error = await self._check_limits(amount)
         if limit_error:
@@ -381,24 +396,26 @@ class GamblingSystem:
         # Check balance
         balance = await self.db.economy.get_user_currency(user_id)
         currency_symbol = await self.config.currency_symbol()
-        
+
         if balance < amount:
-            await ctx.send(f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol}currency. You have {currency_symbol}{balance:,}.")
+            await ctx.send(
+                f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol}currency. You have {currency_symbol}{balance:,}."
+            )
             return
 
         # Deduct bet immediately
         if amount > 0:
             await self.db.economy.remove_currency(user_id, amount, "blackjack", "start", note="Blackjack start")
-        
+
         # Deck logic
-        deck = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 4 # 11 is Ace
-        
+        deck = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 4  # 11 is Ace
+
         # Secure shuffle
         # secrets module doesn't have shuffle, so we implement Fisher-Yates with secrets
         for i in range(len(deck) - 1, 0, -1):
             j = secrets.randbelow(i + 1)
             deck[i], deck[j] = deck[j], deck[i]
-        
+
         def calculate_hand(hand):
             total = sum(hand)
             aces = hand.count(11)
@@ -406,21 +423,25 @@ class GamblingSystem:
                 total -= 10
                 aces -= 1
             return total
-            
+
         user_hand = [deck.pop(), deck.pop()]
         dealer_hand = [deck.pop(), deck.pop()]
-        
+
         user_total = calculate_hand(user_hand)
         dealer_total = calculate_hand(dealer_hand)
-        
+
         # Check for natural 21
         if user_total == 21:
             # Instant win 2.5x
             win_amount = int(amount * 2.5)
             await self.db.economy.add_currency(user_id, win_amount, "blackjack", "win", note="Blackjack Natural")
             await self._log_gambling_result(user_id, "blackjack", amount, True, win_amount)
-            
-            embed = discord.Embed(title="🃏 Blackjack!", description=f"**Natural 21!** You won {currency_symbol}{win_amount:,}!", color=discord.Color.gold())
+
+            embed = discord.Embed(
+                title="🃏 Blackjack!",
+                description=f"**Natural 21!** You won {currency_symbol}{win_amount:,}!",
+                color=discord.Color.gold(),
+            )
             embed.add_field(name="Your Hand", value=f"{user_hand} ({user_total})", inline=True)
             embed.add_field(name="Dealer Hand", value=f"{dealer_hand} ({dealer_total})", inline=True)
             await ctx.send(embed=embed)
@@ -431,14 +452,14 @@ class GamblingSystem:
         embed = view.get_embed()
         view.message = await ctx.send(embed=embed, view=view)
 
-    async def bet_flip(self, user_id: int, amount: int, guess: str) -> Tuple[bool, GamblingResult]:
+    async def bet_flip(self, user_id: int, amount: int, guess: str) -> tuple[bool, GamblingResult]:
         """Play betflip game.
-        
+
         Args:
             user_id: Discord user ID.
             amount: Bet amount.
             guess: Heads or Tails.
-            
+
         Returns:
             Tuple of (success, result data).
         """
@@ -449,63 +470,70 @@ class GamblingSystem:
 
         # Validate guess
         guess = guess.lower()
-        if guess in ['h', 'head', 'heads']:
+        if guess in ["h", "head", "heads"]:
             guess_val = 0
             guess_str = "Heads"
-        elif guess in ['t', 'tail', 'tails']:
+        elif guess in ["t", "tail", "tails"]:
             guess_val = 1
             guess_str = "Tails"
         else:
             return False, {"error": "invalid_guess"}
-            
+
         # Check if user has enough currency
         balance = await self.db.economy.get_user_currency(user_id)
         if balance < amount:
             return False, {"error": "insufficient_funds", "balance": balance}
-            
+
         # Flip coin
         result_val = secrets.randbelow(2)
         result_str = "Heads" if result_val == 0 else "Tails"
-        
+
         # Calculate result
-        won = (guess_val == result_val)
-        
+        won = guess_val == result_val
+
         if won:
             # 1.95x multiplier (typical Nadeko default)
             win_amount = int(amount * 1.95)
             profit = win_amount - amount
-            
+
             if profit > 0:
-                await self.db.economy.add_currency(user_id, profit, "betflip", f"{guess_str}_{result_str}", note=f"Betflip win: {guess_str} == {result_str}")
-            
+                await self.db.economy.add_currency(
+                    user_id,
+                    profit,
+                    "betflip",
+                    f"{guess_str}_{result_str}",
+                    note=f"Betflip win: {guess_str} == {result_str}",
+                )
+
             await self._log_gambling_result(user_id, "betflip", amount, True, win_amount)
-            
+
             return True, {
                 "won": True,
                 "result": result_str,
                 "guess": guess_str,
                 "win_amount": win_amount,
-                "profit": profit
+                "profit": profit,
             }
         else:
             if amount > 0:
-                await self.db.economy.remove_currency(user_id, amount, "betflip", f"{guess_str}_{result_str}", note=f"Betflip loss: {guess_str} != {result_str}")
+                await self.db.economy.remove_currency(
+                    user_id,
+                    amount,
+                    "betflip",
+                    f"{guess_str}_{result_str}",
+                    note=f"Betflip loss: {guess_str} != {result_str}",
+                )
             await self._log_gambling_result(user_id, "betflip", amount, False)
-            
-            return True, {
-                "won": False,
-                "result": result_str,
-                "guess": guess_str,
-                "loss_amount": amount
-            }
 
-    async def lucky_ladder(self, user_id: int, amount: int) -> Tuple[bool, GamblingResult]:
+            return True, {"won": False, "result": result_str, "guess": guess_str, "loss_amount": amount}
+
+    async def lucky_ladder(self, user_id: int, amount: int) -> tuple[bool, GamblingResult]:
         """Play lucky ladder game.
-        
+
         Args:
             user_id: Discord user ID.
             amount: Bet amount.
-            
+
         Returns:
             Tuple of (success, result data).
         """
@@ -518,32 +546,36 @@ class GamblingSystem:
         balance = await self.db.economy.get_user_currency(user_id)
         if balance < amount:
             return False, {"error": "insufficient_funds", "balance": balance}
-        
+
         # Lucky ladder has 8 rungs with different multipliers
         multipliers = [2.4, 1.7, 1.5, 1.1, 0.5, 0.3, 0.2, 0.1]
         rung = secrets.randbelow(8)
         multiplier = multipliers[rung]
-        
+
         won_amount = int(amount * multiplier)
-        
+
         profit = won_amount - amount
         if profit > 0:
-            await self.db.economy.add_currency(user_id, profit, "lucky_ladder", f"rung_{rung}", note=f"Lucky ladder rung {rung + 1}: {multiplier}x")
+            await self.db.economy.add_currency(
+                user_id, profit, "lucky_ladder", f"rung_{rung}", note=f"Lucky ladder rung {rung + 1}: {multiplier}x"
+            )
         elif profit < 0:
-            await self.db.economy.remove_currency(user_id, -profit, "lucky_ladder", f"rung_{rung}", note=f"Lucky ladder rung {rung + 1}: {multiplier}x")
-        
+            await self.db.economy.remove_currency(
+                user_id, -profit, "lucky_ladder", f"rung_{rung}", note=f"Lucky ladder rung {rung + 1}: {multiplier}x"
+            )
+
         return True, {
             "rung": rung + 1,
             "multiplier": multiplier,
             "won_amount": won_amount,
-            "profit": won_amount - amount
+            "profit": won_amount - amount,
         }
 
     async def play_mines(self, ctx: commands.Context, amount: int, mines: int):
         """Play Mines game"""
         user = ctx.author
         user_id = user.id
-        
+
         # Check limits
         limit_error = await self._check_limits(amount)
         if limit_error:
@@ -558,23 +590,28 @@ class GamblingSystem:
         # Check balance
         balance = await self.db.economy.get_user_currency(user_id)
         currency_symbol = await self.config.currency_symbol()
-        
+
         if balance < amount:
-            await ctx.send(f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol}currency. You have {currency_symbol}{balance:,}.")
+            await ctx.send(
+                f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol}currency. You have {currency_symbol}{balance:,}."
+            )
             return
 
         # Deduct bet immediately
         await self.db.economy.remove_currency(user_id, amount, "mines", "start", note="Mines start")
-        
+
         # Generate mines
         # 20 cells, indices 0-19. We need unique indices.
         mines_indices = set()
         while len(mines_indices) < mines:
             mines_indices.add(secrets.randbelow(20))
-            
+
         # Create View
         view = MinesView(ctx, self, user_id, amount, mines_indices, 20, currency_symbol)
-        
+
         # Send message
         timer_str = f"<t:{int(view.end_time)}:R>"
-        await ctx.send(f"**Mines** | Bet: {currency_symbol}{amount:,} | Mines: {mines}\nClick the buttons to reveal safe spots 💎. Avoid the mines 💣!\nTime remaining: {timer_str}", view=view)
+        await ctx.send(
+            f"**Mines** | Bet: {currency_symbol}{amount:,} | Mines: {mines}\nClick the buttons to reveal safe spots 💎. Avoid the mines 💣!\nTime remaining: {timer_str}",
+            view=view,
+        )

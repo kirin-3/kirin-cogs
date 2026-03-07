@@ -1,17 +1,19 @@
+import logging
+
 import discord
 from discord import ButtonStyle, Interaction, TextStyle
-from discord.ui import Button, Modal, TextInput, View, Item
-from typing import Any, Dict, List, Optional, Union
-import logging
+from discord.ui import Button, Item, Modal, TextInput, View
 
 from .models import QUESTIONS, ProfileData
 
 log = logging.getLogger("red.kirin_cogs.profile.views")
 
+
 class SimpleAttachment:
     def __init__(self, url, filename):
         self.url = url
         self.filename = filename
+
 
 class FileUpload(Item):
     def __init__(self, custom_id: str, required: bool = True, min_values: int = 1, max_values: int = 1):
@@ -43,8 +45,18 @@ class FileUpload(Item):
     def values(self):
         return self._uploaded_attachments
 
+
 class ProfileModal(Modal):
-    def __init__(self, field_id: str, label: str, question: str, max_length: int, required: bool, style: TextStyle, current_value: str = ""):
+    def __init__(
+        self,
+        field_id: str,
+        label: str,
+        question: str,
+        max_length: int,
+        required: bool,
+        style: TextStyle,
+        current_value: str = "",
+    ):
         super().__init__(title=label)
         self.field_id = field_id
         self.input = TextInput(
@@ -54,7 +66,7 @@ class ProfileModal(Modal):
             min_length=1 if required else 0,
             max_length=max_length,
             required=required,
-            style=style
+            style=style,
         )
         self.add_item(self.input)
         self.value = None
@@ -65,6 +77,7 @@ class ProfileModal(Modal):
         self.interaction = interaction
         await interaction.response.defer()
         self.stop()
+
 
 class PictureUploadModal(Modal):
     def __init__(self):
@@ -81,7 +94,7 @@ class PictureUploadModal(Modal):
             self.label = discord.ui.Label(
                 text="Upload your profile picture",
                 description="Please upload an image for your profile.",
-                component=self.image
+                component=self.image,
             )
             self.add_item(self.label)
         except AttributeError:
@@ -92,25 +105,32 @@ class PictureUploadModal(Modal):
         attachments = []
         if self.image.values:
             attachments = self.image.values
-        
+
         # Fallback check interaction data directly
-        if not attachments and hasattr(interaction, 'data') and 'resolved' in interaction.data and 'attachments' in interaction.data['resolved']:
-            raw_attachments = interaction.data['resolved']['attachments']
+        if (
+            not attachments
+            and hasattr(interaction, "data")
+            and "resolved" in interaction.data
+            and "attachments" in interaction.data["resolved"]
+        ):
+            raw_attachments = interaction.data["resolved"]["attachments"]
             if raw_attachments:
                 for attachment_data in raw_attachments.values():
-                    attachments.append(SimpleAttachment(
-                        url=attachment_data.get('url'),
-                        filename=attachment_data.get('filename', 'image.png')
-                    ))
-        
+                    attachments.append(
+                        SimpleAttachment(
+                            url=attachment_data.get("url"), filename=attachment_data.get("filename", "image.png")
+                        )
+                    )
+
         if attachments:
             self.value = attachments[0].url
         else:
             self.value = None
-            
+
         self.interaction = interaction
         await interaction.response.defer()
         self.stop()
+
 
 class ProfileBuilderView(View):
     def __init__(self, user: discord.Member, current_data: ProfileData):
@@ -127,10 +147,10 @@ class ProfileBuilderView(View):
             label = q["label"]
             is_required = q.get("required", False)
             has_value = field_id in self.data and self.data[field_id]
-            
+
             style = ButtonStyle.green if has_value else (ButtonStyle.blurple if is_required else ButtonStyle.grey)
             status = "✅" if has_value else ("*" if is_required else "")
-            
+
             btn = Button(label=f"{status}{label}", style=style, custom_id=f"btn_{field_id}")
             btn.callback = self._make_callback(q)
             self.add_item(btn)
@@ -148,7 +168,7 @@ class ProfileBuilderView(View):
         async def callback(interaction: Interaction):
             if interaction.user.id != self.user.id:
                 return await interaction.response.send_message("This menu is not for you.", ephemeral=True)
-            
+
             field_id = question_data["id"]
             if question_data.get("type") == "image":
                 modal = PictureUploadModal()
@@ -165,7 +185,7 @@ class ProfileBuilderView(View):
                     max_length=question_data.get("max_length", 100),
                     required=question_data.get("required", False),
                     style=style,
-                    current_value=str(self.data.get(field_id, ""))
+                    current_value=str(self.data.get(field_id, "")),
                 )
                 await interaction.response.send_modal(modal)
                 await modal.wait()
@@ -184,13 +204,11 @@ class ProfileBuilderView(View):
             except discord.NotFound:
                 # Original message was deleted (likely dismissed by user)
                 # If we have a fresh interaction from the modal, send a new message
-                if hasattr(modal, 'interaction') and modal.interaction:
+                if hasattr(modal, "interaction") and modal.interaction:
                     await modal.interaction.followup.send(
-                        "Your profile builder session continues here:",
-                        view=self,
-                        ephemeral=True
+                        "Your profile builder session continues here:", view=self, ephemeral=True
                     )
-            
+
         return callback
 
     async def submit_callback(self, interaction: Interaction):
@@ -199,10 +217,12 @@ class ProfileBuilderView(View):
         for q in QUESTIONS:
             if q.get("required") and (q["id"] not in self.data or not self.data[q["id"]]):
                 missing.append(q["label"])
-        
+
         if missing:
-            return await interaction.response.send_message(f"Please fill in the following required fields: {', '.join(missing)}", ephemeral=True)
-        
+            return await interaction.response.send_message(
+                f"Please fill in the following required fields: {', '.join(missing)}", ephemeral=True
+            )
+
         self.submitted = True
         self.stop()
         await interaction.response.defer()
@@ -210,6 +230,7 @@ class ProfileBuilderView(View):
     async def cancel_callback(self, interaction: Interaction):
         self.stop()
         await interaction.response.send_message("Profile creation cancelled.", ephemeral=True)
+
 
 class ProfileDeleteConfirmView(View):
     def __init__(self, user: discord.Member):
@@ -232,6 +253,7 @@ class ProfileDeleteConfirmView(View):
         self.value = False
         self.stop()
         await interaction.response.defer()
+
 
 class ProfileStickyView(View):
     def __init__(self, cog):

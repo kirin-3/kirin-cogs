@@ -1,6 +1,5 @@
 """Unit, async, and dpytest integration tests for the Confess cog."""
 
-import asyncio
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -45,9 +44,7 @@ async def cog(bot_mock: MagicMock, config_mock: MagicMock) -> Confess:
 
 
 @pytest.mark.asyncio
-async def test_get_confession_channel_returns_text_channel(
-    cog: Confess, bot_mock: MagicMock
-) -> None:
+async def test_get_confession_channel_returns_text_channel(cog: Confess, bot_mock: MagicMock) -> None:
     channel = MagicMock(spec=discord.TextChannel)
     channel.id = CONFESSION_CHANNEL_ID
     bot_mock.get_channel.return_value = channel
@@ -57,18 +54,14 @@ async def test_get_confession_channel_returns_text_channel(
 
 
 @pytest.mark.asyncio
-async def test_get_confession_channel_returns_none_for_non_text(
-    cog: Confess, bot_mock: MagicMock
-) -> None:
+async def test_get_confession_channel_returns_none_for_non_text(cog: Confess, bot_mock: MagicMock) -> None:
     bot_mock.get_channel.return_value = MagicMock(spec=discord.VoiceChannel)
     result = await cog.get_confession_channel()
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_get_confession_channel_returns_none_when_missing(
-    cog: Confess, bot_mock: MagicMock
-) -> None:
+async def test_get_confession_channel_returns_none_when_missing(cog: Confess, bot_mock: MagicMock) -> None:
     bot_mock.get_channel.return_value = None
     result = await cog.get_confession_channel()
     assert result is None
@@ -88,9 +81,7 @@ async def test_process_confession_no_channel(cog: Confess) -> None:
 
     await cog.process_confession(interaction, "test confession")
 
-    interaction.response.send_message.assert_called_once_with(
-        "Confession channel not found.", ephemeral=True
-    )
+    interaction.response.send_message.assert_called_once_with("Confession channel not found.", ephemeral=True)
 
 
 @pytest.mark.asyncio
@@ -179,9 +170,7 @@ async def test_process_confession_generic_error(cog: Confess) -> None:
 
     await cog.process_confession(interaction, "a confession")
 
-    interaction.response.send_message.assert_called_once_with(
-        "Something went wrong.", ephemeral=True
-    )
+    interaction.response.send_message.assert_called_once_with("Something went wrong.", ephemeral=True)
 
 
 # ---------------------------------------------------------------------------
@@ -246,9 +235,7 @@ async def test_on_message_reposts_sticky_in_confession_channel(cog: Confess) -> 
     message.channel = channel
 
     await cog.on_message(message)
-    cast(AsyncMock, cog._maybe_repost_sticky).assert_called_once_with(
-        channel, responding_to_message=message
-    )
+    cast(AsyncMock, cog._maybe_repost_sticky).assert_called_once_with(channel, responding_to_message=message)
 
 
 # ---------------------------------------------------------------------------
@@ -311,9 +298,7 @@ async def test_raw_message_delete_ignores_wrong_channel(cog: Confess) -> None:
 
 
 @pytest.mark.asyncio
-async def test_raw_message_delete_ignores_non_sticky_message(
-    cog: Confess, config_mock: MagicMock
-) -> None:
+async def test_raw_message_delete_ignores_non_sticky_message(cog: Confess, config_mock: MagicMock) -> None:
     cog._maybe_repost_sticky = AsyncMock()  # type: ignore[method-assign]
     config_mock.sticky_message_id = AsyncMock(return_value=555)
 
@@ -351,9 +336,7 @@ async def test_raw_message_delete_reposts_when_sticky_is_deleted(
 
 
 @pytest.mark.asyncio
-async def test_maybe_repost_sticky_no_existing_sticky_posts(
-    cog: Confess, config_mock: MagicMock
-) -> None:
+async def test_maybe_repost_sticky_no_existing_sticky_posts(cog: Confess, config_mock: MagicMock) -> None:
     """When no sticky exists yet, _do_repost_sticky is called for the confession channel."""
     config_mock.sticky_message_id = AsyncMock(return_value=None)
     cog._do_repost_sticky = AsyncMock()  # type: ignore[method-assign]
@@ -367,9 +350,7 @@ async def test_maybe_repost_sticky_no_existing_sticky_posts(
 
 
 @pytest.mark.asyncio
-async def test_maybe_repost_sticky_skips_when_sticky_is_last_message(
-    cog: Confess, config_mock: MagicMock
-) -> None:
+async def test_maybe_repost_sticky_skips_when_sticky_is_last_message(cog: Confess, config_mock: MagicMock) -> None:
     """When the sticky message is already the last message, no repost happens."""
     sticky_id = 123456789
     config_mock.sticky_message_id = AsyncMock(return_value=sticky_id)
@@ -386,9 +367,7 @@ async def test_maybe_repost_sticky_skips_when_sticky_is_last_message(
 
 
 @pytest.mark.asyncio
-async def test_maybe_repost_sticky_skips_responding_message_is_sticky(
-    cog: Confess, config_mock: MagicMock
-) -> None:
+async def test_maybe_repost_sticky_skips_responding_message_is_sticky(cog: Confess, config_mock: MagicMock) -> None:
     """When the message triggering the repost IS the sticky itself, skip reposting."""
     sticky_id = 999
     config_mock.sticky_message_id = AsyncMock(return_value=sticky_id)

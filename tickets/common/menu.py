@@ -1,6 +1,5 @@
 import asyncio
 import functools
-from typing import List, Optional, Union
 
 import discord
 from discord import ButtonStyle, Interaction
@@ -25,9 +24,7 @@ mapping = {
 
 
 class MenuButton(Button):
-    def __init__(
-        self, emoji: str, style: ButtonStyle, row: int, label: Optional[str] = None
-    ):
+    def __init__(self, emoji: str, style: ButtonStyle, row: int, label: str | None = None):
         super().__init__(emoji=emoji, style=style, row=row, label=label)
         self.emoji = emoji
 
@@ -39,7 +36,7 @@ class MenuView(View):
     def __init__(
         self,
         ctx: commands.Context,
-        pages: Union[List[str], List[discord.Embed]],
+        pages: list[str] | list[discord.Embed],
         controls: dict,
         message: discord.Message = None,
         page: int = 0,
@@ -97,7 +94,7 @@ class MenuView(View):
 
 async def menu(
     ctx: commands.Context,
-    pages: Union[List[str], List[discord.Embed], List[tuple]],
+    pages: list[str] | list[discord.Embed] | list[tuple],
     controls: dict,
     message: discord.Message = None,
     page: int = 0,
@@ -107,9 +104,7 @@ async def menu(
         raise RuntimeError("Must provide at least 1 page.")
     if not isinstance(pages[0], (discord.Embed, str)):
         raise RuntimeError("Pages must be of type discord.Embed or str")
-    if not all(isinstance(x, discord.Embed) for x in pages) and not all(
-        isinstance(x, str) for x in pages
-    ):
+    if not all(isinstance(x, discord.Embed) for x in pages) and not all(isinstance(x, str) for x in pages):
         raise RuntimeError("All pages must be of the same type")
     for key, value in controls.items():
         maybe_coro = value

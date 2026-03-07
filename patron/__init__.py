@@ -6,5 +6,6 @@ __license__ = "MIT"
 
 from .patron import Patron, __red_end_user_data_statement__
 
+
 async def setup(bot):
-    await bot.add_cog(Patron(bot)) 
+    await bot.add_cog(Patron(bot))

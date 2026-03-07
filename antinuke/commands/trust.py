@@ -1,22 +1,24 @@
 """Trust management commands for the AntiNuke cog."""
 
+from typing import TYPE_CHECKING
+
 import discord
-from typing import TYPE_CHECKING, Any
-from redbot.core import commands, app_commands
-from redbot.core.utils.chat_formatting import bold, inline, humanize_list
+from redbot.core import app_commands, commands
+from redbot.core.utils.chat_formatting import inline
 
 if TYPE_CHECKING:
     from redbot.core import Config
+
     from ..actions import QuarantineActions
     from ..utils import ActionCache
 
 
 class AntiNukeTrustCommands(commands.Cog):
     """Trust management commands for AntiNuke."""
+
     config: "Config"
     action_cache: "ActionCache"
     quarantine_actions: "QuarantineActions"
-
 
     @commands.group(name="antinuke", aliases=["an"])  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
@@ -35,9 +37,7 @@ class AntiNukeTrustCommands(commands.Cog):
 
     @antinuke_trust.command(name="adduser")
     @app_commands.describe(user="The user to add to the trusted list")
-    async def trust_adduser(
-        self, ctx: commands.Context, user: discord.Member
-    ) -> None:
+    async def trust_adduser(self, ctx: commands.Context, user: discord.Member) -> None:
         """Add a user to the trusted list.
 
         Trusted users bypass all AntiNuke monitoring.
@@ -64,9 +64,7 @@ class AntiNukeTrustCommands(commands.Cog):
 
     @antinuke_trust.command(name="removeuser", aliases=["deluser", "rmuser"])
     @app_commands.describe(user="The user to remove from the trusted list")
-    async def trust_removeuser(
-        self, ctx: commands.Context, user: discord.Member
-    ) -> None:
+    async def trust_removeuser(self, ctx: commands.Context, user: discord.Member) -> None:
         """Remove a user from the trusted list."""
         guild = ctx.guild
         if not guild:
@@ -81,9 +79,7 @@ class AntiNukeTrustCommands(commands.Cog):
 
     @antinuke_trust.command(name="addrole")
     @app_commands.describe(role="The role to add to the trusted list")
-    async def trust_addrole(
-        self, ctx: commands.Context, role: discord.Role
-    ) -> None:
+    async def trust_addrole(self, ctx: commands.Context, role: discord.Role) -> None:
         """Add a role to the trusted list.
 
         Anyone with this role will bypass all AntiNuke monitoring.
@@ -105,9 +101,7 @@ class AntiNukeTrustCommands(commands.Cog):
 
     @antinuke_trust.command(name="removerole", aliases=["delrole", "rmrole"])
     @app_commands.describe(role="The role to remove from the trusted list")
-    async def trust_removerole(
-        self, ctx: commands.Context, role: discord.Role
-    ) -> None:
+    async def trust_removerole(self, ctx: commands.Context, role: discord.Role) -> None:
         """Remove a role from the trusted list."""
         guild = ctx.guild
         if not guild:
@@ -132,7 +126,7 @@ class AntiNukeTrustCommands(commands.Cog):
         lines = [
             "## 🔒 AntiNuke Trust List",
             "",
-            f"**Note:** The server owner is always trusted.",
+            "**Note:** The server owner is always trusted.",
             "",
         ]
 

@@ -1,11 +1,11 @@
-from redbot.core import commands
 import discord
+from redbot.core import commands
 
 
 class VerifyUser(commands.Cog):
     """
     User Verification System
-    
+
     Allows users with the authorized role to verify other users by granting them a verification role.
     """
 
@@ -21,9 +21,9 @@ class VerifyUser(commands.Cog):
     async def verifyuser(self, ctx, user_id: int):
         """
         Verify a user by granting them the verification role.
-        
+
         This command can only be used by users with the authorized role.
-        
+
         Usage: [p]verifyuser <user_id>
         """
         # Check if the command user has the required role

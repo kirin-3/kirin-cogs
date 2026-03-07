@@ -1,6 +1,8 @@
-from redbot.core import commands, Config
-import discord
 from datetime import datetime
+
+import discord
+from redbot.core import Config, commands
+
 
 class RulesAccept(commands.Cog):
     """Cog for rule acceptance with button and modal."""
@@ -9,12 +11,9 @@ class RulesAccept(commands.Cog):
         super().__init__()
         self.bot = bot
         self.config = Config.get_conf(self, identifier=862735937)
-        default_guild = {
-            "rules_channel_id": 684360255798509582,
-            "member_role_id": 686098839651876908
-        }
+        default_guild = {"rules_channel_id": 684360255798509582, "member_role_id": 686098839651876908}
         self.config.register_guild(**default_guild)
-    
+
     async def cog_load(self):
         self.bot.add_view(rulesacceptView(self))
 
@@ -24,11 +23,8 @@ class RulesAccept(commands.Cog):
     async def sendrules(self, ctx):
         """Send the rules acceptance button."""
         view = rulesacceptView(self)
-        await ctx.send(
-            "Please read the rules. When ready, click the button below to accept.",
-            view=view
-        )
-    
+        await ctx.send("Please read the rules. When ready, click the button below to accept.", view=view)
+
     @commands.command()
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
@@ -37,18 +33,18 @@ class RulesAccept(commands.Cog):
         await self.config.guild(ctx.guild).member_role_id.set(role.id)
         await ctx.send(f"Role set to {role.name}.")
 
+
 class rulesacceptView(discord.ui.View):
     def __init__(self, cog):
         super().__init__(timeout=None)
         self.cog = cog
         self.add_item(rulesacceptButton(cog))
 
+
 class rulesacceptButton(discord.ui.Button):
     def __init__(self, cog):
         super().__init__(
-            label="I have read and accept the rules.",
-            style=discord.ButtonStyle.success,
-            custom_id="rulesaccept_button"
+            label="I have read and accept the rules.", style=discord.ButtonStyle.success, custom_id="rulesaccept_button"
         )
         self.cog = cog
 
@@ -56,16 +52,14 @@ class rulesacceptButton(discord.ui.Button):
         modal = rulesacceptModal(self.cog)
         await interaction.response.send_modal(modal)
 
+
 class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
     def __init__(self, cog):
         super().__init__()
         self.cog = cog
-        
+
     answer = discord.ui.TextInput(
-        label="Type exactly: I agree to the rules.",
-        placeholder="I agree to the rules.",
-        required=True,
-        max_length=30
+        label="Type exactly: I agree to the rules.", placeholder="I agree to the rules.", required=True, max_length=30
     )
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -76,16 +70,12 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
         if log_channel:
             member = interaction.user
             typed_text = self.answer.value
-            
+
             # Create a rich embed for logging
-            embed = discord.Embed(
-                title="Rule Acceptance Log",
-                color=discord.Color.blue(),
-                timestamp=datetime.utcnow()
-            )
+            embed = discord.Embed(title="Rule Acceptance Log", color=discord.Color.blue(), timestamp=datetime.utcnow())
             embed.add_field(name="Member", value=f"{member.mention} (`{member.id}`)", inline=False)
             embed.add_field(name="What they typed", value=f"```{typed_text}```", inline=False)
-            
+
             try:
                 await log_channel.send(embed=embed)
             except discord.Forbidden:
@@ -111,20 +101,15 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
                     # Send the additional info as a followup ephemeral message
                     await interaction.followup.send(
                         "You will need a role from <#708066544688562196> channel as well for full access.",
-                        ephemeral=True
+                        ephemeral=True,
                     )
                 except Exception as e:
-                    await interaction.response.send_message(
-                        f"Could not assign the role: {e}", ephemeral=True
-                    )
+                    await interaction.response.send_message(f"Could not assign the role: {e}", ephemeral=True)
             else:
-                await interaction.response.send_message(
-                    "Role not found. Please contact an admin.", ephemeral=True
-                )
+                await interaction.response.send_message("Role not found. Please contact an admin.", ephemeral=True)
         else:
-            await interaction.response.send_message(
-                "You must type exactly: I agree to the rules.", ephemeral=True
-            )
+            await interaction.response.send_message("You must type exactly: I agree to the rules.", ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(RulesAccept(bot))

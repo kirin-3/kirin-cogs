@@ -8,9 +8,9 @@ details, and posting contest information to a designated channel.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import discord
 from discord import ui
@@ -53,7 +53,7 @@ class ContestCog(commands.Cog):
             str: The content of the file as a string. Returns an empty string if the file is not found or an error occurs.
         """
         try:
-            with open(filename, "r", encoding="utf-8") as file:
+            with open(filename, encoding="utf-8") as file:
                 text = file.read()
             self.logger.debug(f"{filename=} loaded successfully.")
             return text
@@ -83,9 +83,7 @@ class ContestCog(commands.Cog):
             color=discord.Color(const.UNICORNIA_BOT_COLOR),
         )
 
-        footer_text = strings.format_string(
-            const.FOOTER_TEXT, contest_number=self.contest_number
-        )
+        footer_text = strings.format_string(const.FOOTER_TEXT, contest_number=self.contest_number)
         embed.set_footer(text=footer_text, icon_url=const.FOOTER_ICON_URL)
 
         return embed
@@ -109,9 +107,7 @@ class ContestCog(commands.Cog):
             winners_channel=const.WINNERS_CHANNEL_MENTION,
         )
 
-    async def _post_contest_info(
-        self, ctx: commands.Context, contest_number: Optional[int] = None
-    ) -> None:
+    async def _post_contest_info(self, ctx: commands.Context, contest_number: int | None = None) -> None:
         """Posts information about the Cutie of the Month Contest to the designated channel.
 
         This method sends a unified V2 Components Dashboard to the specific channel, detailing
@@ -130,13 +126,9 @@ class ContestCog(commands.Cog):
 
         # Load and format the texts
         texts = {
-            "description": self._format_text(
-                ctx, self._import_txt(const.CONTEST_DESCRIPTION)
-            ),
+            "description": self._format_text(ctx, self._import_txt(const.CONTEST_DESCRIPTION)),
             "terms": self._format_text(ctx, self._import_txt(const.TERMS_DESCRIPTION)),
-            "prizes": self._format_text(
-                ctx, self._import_txt(const.PRIZES_DESCRIPTION)
-            ),
+            "prizes": self._format_text(ctx, self._import_txt(const.PRIZES_DESCRIPTION)),
             "votes": self._format_text(ctx, self._import_txt(const.VOTES_DESCRIPTION)),
         }
 
@@ -147,9 +139,7 @@ class ContestCog(commands.Cog):
 
     @commands.command(aliases=["cotm"])
     @commands.admin_or_permissions(administrator=True)
-    async def contest(
-        self, ctx: commands.Context, contest_number: Optional[int] = None
-    ) -> None:
+    async def contest(self, ctx: commands.Context, contest_number: int | None = None) -> None:
         """Handles the contest command.
 
         Parameters:
@@ -162,19 +152,17 @@ class ContestCog(commands.Cog):
         self,
         channel: discord.TextChannel,
         emote: str = const.COTM_VOTE_EMOJI,
-        voter_server_age: Optional[timedelta] = None,
+        voter_server_age: timedelta | None = None,
         *other_emotes,
     ) -> list:
         """Helper to tally valid votes from a channel."""
-        timenow = datetime.now(timezone.utc)
+        timenow = datetime.now(UTC)
 
         def valid_user_vote(u):
-            if not hasattr(u, "joined_at") or u.joined_at is None:
-                return False
-            # Filter out users younger than the required age (joined after the cutoff)
-            elif (
-                voter_server_age is not None
-                and u.joined_at >= timenow - voter_server_age
+            if (
+                not hasattr(u, "joined_at")
+                or u.joined_at is None
+                or (voter_server_age is not None and u.joined_at >= timenow - voter_server_age)
             ):
                 return False
             return True
@@ -203,7 +191,7 @@ class ContestCog(commands.Cog):
         self,
         top_entries: list,
         title: str,
-        channel: Optional[discord.TextChannel] = None,
+        channel: discord.TextChannel | None = None,
         show_invalid: bool = True,
     ) -> ui.Container:
         """Builds a V2 Container for displaying the Top 10 standings."""
@@ -238,24 +226,20 @@ class ContestCog(commands.Cog):
         channel: discord.TextChannel,
         emote: str = const.COTM_VOTE_EMOJI,
         show_invalid: bool = False,
-        voter_server_age: Optional[commands.TimedeltaConverter] = None,
+        voter_server_age: commands.TimedeltaConverter | None = None,
         *other_emotes,
     ) -> None:
         """
         Counts reactions in a channel and displays a leaderboard.
         """
-        age_td = cast(Optional[timedelta], voter_server_age)
-        top_entries = await self._get_contest_results(
-            channel, emote, age_td, *other_emotes
-        )
+        age_td = cast(timedelta | None, voter_server_age)
+        top_entries = await self._get_contest_results(channel, emote, age_td, *other_emotes)
 
         if not top_entries:
             await ctx.send(f"No entries found for channel {channel.mention}")
             return
 
-        container = self._build_standings_container(
-            top_entries, "Contest Leaderboard", channel, show_invalid
-        )
+        container = self._build_standings_container(top_entries, "Contest Leaderboard", channel, show_invalid)
         await cast(discord.TextChannel, ctx.channel).send(view=StandingsView(container))
 
     @commands.guild_only()
@@ -275,13 +259,12 @@ class ContestCog(commands.Cog):
         unicornia: Any = self.bot.get_cog("Unicornia")
         if not unicornia:
             await ctx.send(
-                "❌ **Error:** The `Unicornia` cog is not currently loaded or available. "
-                "Cannot distribute rewards."
+                "❌ **Error:** The `Unicornia` cog is not currently loaded or available. Cannot distribute rewards."
             )
             return
 
         async with ctx.typing():
-            timenow = datetime.now(timezone.utc)
+            timenow = datetime.now(UTC)
 
             def valid_user_vote(u):
                 if not hasattr(u, "joined_at") or u.joined_at is None:
@@ -340,16 +323,10 @@ class ContestCog(commands.Cog):
                 )
 
                 if success:
-                    payout_text += (
-                        f"**#{rank} {entry['name']}**: +{reward_amount:,} 🦄\n"
-                    )
+                    payout_text += f"**#{rank} {entry['name']}**: +{reward_amount:,} 🦄\n"
                 else:
-                    payout_text += (
-                        f"**#{rank} {entry['name']}**: ❌ Failed to deposit\n"
-                    )
+                    payout_text += f"**#{rank} {entry['name']}**: ❌ Failed to deposit\n"
 
             container.add_item(ui.TextDisplay(content=payout_text))
 
-            await cast(discord.TextChannel, ctx.channel).send(
-                view=StandingsView(container)
-            )
+            await cast(discord.TextChannel, ctx.channel).send(view=StandingsView(container))

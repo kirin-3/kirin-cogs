@@ -1,11 +1,11 @@
 """Command modules for the AntiNuke cog."""
 
 from .config import AntiNukeConfigCommands
-from .trust import AntiNukeTrustCommands
 from .quarantine import AntiNukeQuarantineCommands
+from .trust import AntiNukeTrustCommands
 
 __all__ = [
     "AntiNukeConfigCommands",
-    "AntiNukeTrustCommands",
     "AntiNukeQuarantineCommands",
+    "AntiNukeTrustCommands",
 ]

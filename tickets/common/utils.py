@@ -1,10 +1,7 @@
 import asyncio
 import logging
 import re
-from collections import defaultdict
-from contextlib import suppress
 from datetime import datetime
-from typing import List, Optional, Tuple, Union
 
 import discord
 from discord.utils import escape_markdown
@@ -19,7 +16,7 @@ log = logging.getLogger("red.kirin_cogs.tickets.utils")
 async def can_close(
     bot: Red,
     guild: discord.Guild,
-    channel: Union[discord.TextChannel, discord.Thread],
+    channel: discord.TextChannel | discord.Thread,
     author: discord.Member,
     owner_id: int,
     conf: dict,
@@ -34,13 +31,12 @@ async def can_close(
     support_roles = [i[0] for i in conf["support_roles"]]
 
     can_close = False
-    if any(i in support_roles for i in user_roles):
-        can_close = True
-    elif author.id == guild.owner_id:
-        can_close = True
-    elif await is_admin_or_superior(bot, author):
-        can_close = True
-    elif str(owner_id) == str(author.id) and conf["user_can_close"]:
+    if (
+        any(i in support_roles for i in user_roles)
+        or author.id == guild.owner_id
+        or await is_admin_or_superior(bot, author)
+        or (str(owner_id) == str(author.id) and conf["user_can_close"])
+    ):
         can_close = True
     return can_close
 
@@ -52,7 +48,7 @@ async def ticket_owner_hastyped(channel: discord.TextChannel, user: discord.Memb
     return False
 
 
-def get_ticket_owner(opened: dict, channel_id: str) -> Optional[str]:
+def get_ticket_owner(opened: dict, channel_id: str) -> str | None:
     for uid, tickets in opened.items():
         if channel_id in tickets:
             return uid
@@ -60,9 +56,9 @@ def get_ticket_owner(opened: dict, channel_id: str) -> Optional[str]:
 
 async def close_ticket(
     bot: Red,
-    member: Union[discord.Member, discord.User],
+    member: discord.Member | discord.User,
     guild: discord.Guild,
-    channel: Union[discord.TextChannel, discord.Thread],
+    channel: discord.TextChannel | discord.Thread,
     conf: dict,
     reason: str | None,
     closedby: str,
@@ -81,7 +77,7 @@ async def close_ticket(
 
     ticket = opened[uid][cid]
     pfp = ticket["pfp"]
-    
+
     if not channel.permissions_for(guild.me).manage_channels and isinstance(channel, discord.TextChannel):
         await channel.send("I am missing the `Manage Channels` permission to close this ticket!")
         return
@@ -114,7 +110,7 @@ async def close_ticket(
 
     # Using conf instead of panel since it's flattened
     log_chan: discord.TextChannel = guild.get_channel(conf["log_channel"]) if conf["log_channel"] else None
-    
+
     if log_chan and ticket["logmsg"]:
         try:
             await log_chan.send(embed=embed)
@@ -190,7 +186,7 @@ async def prune_invalid_tickets(
     guild: discord.Guild,
     conf: dict,
     config: Config,
-    ctx: Optional[commands.Context] = None,
+    ctx: commands.Context | None = None,
 ) -> bool:
     opened_tickets = conf["opened"]
     if not opened_tickets:
@@ -248,7 +244,7 @@ async def prune_invalid_tickets(
 
     grammar = "ticket" if count == 1 else "tickets"
     if count and ctx:
-        txt = "Pruned `{}` invalid {}".format(count, grammar)
+        txt = f"Pruned `{count}` invalid {grammar}"
         await ctx.send(txt)
     elif not count and ctx:
         await ctx.send("There are no tickets to prune")
@@ -290,7 +286,7 @@ def prep_overview_text(guild: discord.Guild, opened: dict, mention: bool = False
     return desc
 
 
-async def update_active_overview(guild: discord.Guild, conf: dict) -> Optional[int]:
+async def update_active_overview(guild: discord.Guild, conf: dict) -> int | None:
     """Update active ticket overview
 
     Args:

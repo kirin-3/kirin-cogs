@@ -1,8 +1,6 @@
-import asyncio
 import contextlib
 import logging
-from datetime import datetime
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 import discord
 from discord import ButtonStyle, Interaction, TextStyle
@@ -10,13 +8,11 @@ from discord.ui import Button, Modal, TextInput, View
 from discord.ui.item import Item
 from redbot.core import Config, commands
 from redbot.core.bot import Red
-from redbot.core.utils.chat_formatting import box, humanize_list, pagify
+from redbot.core.utils.chat_formatting import humanize_list
 
-from .functions import Functions
 from .utils import (
     can_close,
     close_ticket,
-    update_active_overview,
 )
 
 log = logging.getLogger("red.kirin_cogs.tickets.views")
@@ -24,9 +20,9 @@ log = logging.getLogger("red.kirin_cogs.tickets.views")
 
 async def wait_reply(
     ctx: commands.Context,
-    timeout: Optional[int] = 60,
-    delete: Optional[bool] = True,
-) -> Optional[str]:
+    timeout: int | None = 60,
+    delete: bool | None = True,
+) -> str | None:
     def check(message: discord.Message):
         return message.author == ctx.author and message.channel == ctx.channel
 
@@ -39,7 +35,7 @@ async def wait_reply(
         if res.lower().strip() == "cancel":
             return None
         return res.strip()
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return None
 
 
@@ -119,7 +115,7 @@ class TestButton(View):
         self,
         style: str = "grey",
         label: str = "Button Test",
-        emoji: Union[discord.Emoji, discord.PartialEmoji, str] = None,
+        emoji: discord.Emoji | discord.PartialEmoji | str = None,
     ):
         super().__init__()
         style = get_color(style)
@@ -133,7 +129,7 @@ class CloseReasonModal(Modal):
         bot: Red,
         config: Config,
         owner_id: int,
-        channel: Union[discord.TextChannel, discord.Thread],
+        channel: discord.TextChannel | discord.Thread,
         conf: dict,
         status: str,
     ):
@@ -156,7 +152,7 @@ class CloseReasonModal(Modal):
         with contextlib.suppress(discord.NotFound):
             await interaction.response.defer(ephemeral=True)
             await interaction.followup.send("Closing...", ephemeral=True)
-        
+
         owner = self.channel.guild.get_member(int(self.owner_id))
         if not owner:
             owner = await self.bot.fetch_user(int(self.owner_id))
@@ -180,7 +176,7 @@ class VerificationStatusView(View):
         bot: Red,
         config: Config,
         owner_id: int,
-        channel: Union[discord.TextChannel, discord.Thread],
+        channel: discord.TextChannel | discord.Thread,
         conf: dict,
     ):
         super().__init__(timeout=60)
@@ -242,7 +238,7 @@ class CloseView(View):
         bot: Red,
         config: Config,
         owner_id: int,
-        channel: Union[discord.TextChannel, discord.Thread],
+        channel: discord.TextChannel | discord.Thread,
     ):
         super().__init__(timeout=None)
         self.bot = bot
@@ -287,7 +283,7 @@ class CloseView(View):
                 "You do not have permissions to close this ticket",
                 ephemeral=True,
             )
-            
+
         view = VerificationStatusView(
             bot=self.bot,
             config=self.config,
@@ -309,18 +305,19 @@ class CloseView(View):
                 "- Send a selfie while holding your censored ID and your hand written Discord username and also today's date within the same selfie.\n\n"
                 "- The photo on the ID and year of birth should be clearly visible (day and month of birth should also be censored unless needed)."
             ),
-            color=discord.Color.red()
+            color=discord.Color.red(),
         )
-        embed.set_image(url="https://cdn.discordapp.com/attachments/686096388018405408/1267972588165136496/id-verify.png")
+        embed.set_image(
+            url="https://cdn.discordapp.com/attachments/686096388018405408/1267972588165136496/id-verify.png"
+        )
         await interaction.response.send_message(embed=embed)
 
-
-import io
 
 class SimpleAttachment:
     def __init__(self, url, filename):
         self.url = url
         self.filename = filename
+
 
 class FileUpload(discord.ui.Item):
     def __init__(self, custom_id: str, required: bool = True, min_values: int = 1, max_values: int = 3):
@@ -359,7 +356,7 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         self.guild = guild
         self.config = config
         self.user = user
-        
+
         # 1. Use custom FileUpload component
         self.image = FileUpload(
             custom_id="verification_image",
@@ -372,33 +369,39 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         self.label = discord.ui.Label(
             text="Upload your verification images",
             description="Please upload up to 3 images for verification.",
-            component=self.image
+            component=self.image,
         )
         self.add_item(self.label)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        
+
         attachments = []
         if self.image.values:
             attachments = self.image.values
-        
+
         # Fallback: check interaction data directly if custom component retrieval failed
-        if not attachments and hasattr(interaction, 'data') and 'resolved' in interaction.data and 'attachments' in interaction.data['resolved']:
-            raw_attachments = interaction.data['resolved']['attachments']
+        if (
+            not attachments
+            and hasattr(interaction, "data")
+            and "resolved" in interaction.data
+            and "attachments" in interaction.data["resolved"]
+        ):
+            raw_attachments = interaction.data["resolved"]["attachments"]
             if raw_attachments:
                 for attachment_data in raw_attachments.values():
-                    attachments.append(SimpleAttachment(
-                        url=attachment_data.get('url'),
-                        filename=attachment_data.get('filename', 'image.png')
-                    ))
+                    attachments.append(
+                        SimpleAttachment(
+                            url=attachment_data.get("url"), filename=attachment_data.get("filename", "image.png")
+                        )
+                    )
 
         cog = self.bot.get_cog("Tickets")
         if not cog:
             return await interaction.followup.send("Tickets cog not loaded!", ephemeral=True)
-            
+
         result = await cog.create_ticket_for_user(self.user)
-        
+
         # Post image to the new ticket channel
         conf = await self.config.guild(self.guild).all()
         opened = conf["opened"]
@@ -410,18 +413,18 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
             if ticket_ids:
                 latest_channel_id = ticket_ids[0]
                 channel = self.guild.get_channel(latest_channel_id)
-                
+
                 if channel and attachments:
                     for i, attachment in enumerate(attachments):
-                        embed = discord.Embed(title=f"Verification Image {i+1}", color=discord.Color.green())
+                        embed = discord.Embed(title=f"Verification Image {i + 1}", color=discord.Color.green())
                         embed.set_author(name=self.user.display_name, icon_url=self.user.display_avatar.url)
-                        
+
                         try:
                             embed.set_image(url=attachment.url)
                             await channel.send(embed=embed)
                         except Exception as e:
                             log.error(f"Failed to send verification image to {channel.name}", exc_info=e)
-                            await channel.send(f"Failed to load verification image {i+1}: {attachment.url}")
+                            await channel.send(f"Failed to load verification image {i + 1}: {attachment.url}")
 
         await interaction.followup.send(result, ephemeral=True)
 
@@ -453,7 +456,7 @@ class SupportButton(Button):
             return
 
         conf = await self.view.config.guild(guild).all()
-        
+
         if conf["suspended_msg"]:
             em = discord.Embed(
                 title="Ticket System Suspended",
@@ -480,8 +483,7 @@ class SupportButton(Button):
             if not any(r.id in required_roles for r in user.roles):
                 roles = [guild.get_role(i).mention for i in required_roles if guild.get_role(i)]
                 em = discord.Embed(
-                    description="You must have one of the following roles to open this ticket: "
-                    + humanize_list(roles),
+                    description="You must have one of the following roles to open this ticket: " + humanize_list(roles),
                     color=discord.Color.red(),
                 )
                 return await interaction.response.send_message(embed=em, ephemeral=True)
@@ -509,8 +511,8 @@ class PanelView(View):
         guild: discord.Guild,
         config: Config,
         conf: dict,
-        mock_user: Optional[discord.Member] = None,
-        timeout: Optional[int] = None,
+        mock_user: discord.Member | None = None,
+        timeout: int | None = None,
     ):
         super().__init__(timeout=timeout)
         self.bot = bot

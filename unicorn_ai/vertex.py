@@ -1,15 +1,16 @@
-import aiohttp
 import asyncio
 import json
 import logging
-import re
 import os
-from typing import Optional, List, Dict, Any
+import re
+from typing import Any
 
-from google.oauth2 import service_account
+import aiohttp
 from google.auth.transport.requests import Request
+from google.oauth2 import service_account
 
 log = logging.getLogger("red.unicorn_ai.vertex")
+
 
 class VertexClient:
     def __init__(self, cog_path: str):
@@ -27,7 +28,7 @@ class VertexClient:
         for file in os.listdir(self.cog_path):
             if file.endswith(".json") and file not in ["info.json"]:
                 try:
-                    with open(os.path.join(self.cog_path, file), "r") as f:
+                    with open(os.path.join(self.cog_path, file)) as f:
                         data = json.load(f)
                         if data.get("type") == "service_account":
                             json_path = os.path.join(self.cog_path, file)
@@ -35,7 +36,7 @@ class VertexClient:
                             break
                 except Exception:
                     continue
-        
+
         if not json_path:
             log.error("No service account JSON found in unicorn_ai directory.")
             return False
@@ -45,14 +46,14 @@ class VertexClient:
             self._creds = await asyncio.to_thread(
                 service_account.Credentials.from_service_account_file,
                 json_path,
-                scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                scopes=["https://www.googleapis.com/auth/cloud-platform"],
             )
             return True
         except Exception as e:
             log.error(f"Failed to load credentials: {e}")
             return False
 
-    async def _get_access_token(self) -> Optional[str]:
+    async def _get_access_token(self) -> str | None:
         """
         Refreshes and returns the OAuth2 access token.
         """
@@ -68,7 +69,7 @@ class VertexClient:
                 except Exception as e:
                     log.error(f"Failed to refresh token: {e}")
                     return None
-            
+
             return self._creds.token
 
     async def generate_response(
@@ -77,9 +78,9 @@ class VertexClient:
         location: str,
         api_version: str,
         system_instruction: str,
-        history: List[Dict[str, Any]],
-        after_context: Optional[str] = None
-    ) -> Optional[str]:
+        history: list[dict[str, Any]],
+        after_context: str | None = None,
+    ) -> str | None:
         """
         Generates a response from Vertex AI.
         """
@@ -93,7 +94,7 @@ class VertexClient:
             # AI Studio path: v1beta/models/{model}
             version = api_version if api_version else "v1beta"
             url = f"https://generativelanguage.googleapis.com/{version}/models/{model}:generateContent"
-        
+
         elif location == "global":
             # Vertex AI Express / Global
             hostname = "aiplatform.googleapis.com"
@@ -113,10 +114,7 @@ class VertexClient:
 
         # Append after_context if present
         if after_context:
-            history.append({
-                "role": "user",
-                "parts": [{"text": after_context}]
-            })
+            history.append({"role": "user", "parts": [{"text": after_context}]})
 
         # Construct Payload
         # Mapping reasoning_effort to thinking_config if native API requires it,
@@ -124,30 +122,25 @@ class VertexClient:
         # We will send "reasoning_effort" as a top-level generation_config param
         # assuming the model/API version supports the OpenAI-aligned param.
         # If strictly native, we might need thinking_config.
-        
+
         payload = {
             "contents": history,
-            "system_instruction": {
-                "parts": [{"text": system_instruction}]
-            },
+            "system_instruction": {"parts": [{"text": system_instruction}]},
             "generation_config": {
                 "temperature": 1.0,
                 "top_p": 0.96,
                 "max_output_tokens": 8192,
-                "response_mime_type": "text/plain"
+                "response_mime_type": "text/plain",
             },
             "safety_settings": [
                 {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
                 {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}
-            ]
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            ],
         }
 
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json; charset=utf-8"
-        }
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"}
 
         async with aiohttp.ClientSession() as session:
             try:
@@ -156,22 +149,22 @@ class VertexClient:
                         error_text = await resp.text()
                         log.error(f"Vertex AI Error {resp.status}: {error_text}")
                         return f"Error {resp.status}: {error_text}"
-                    
+
                     data = await resp.json()
-                    
+
                     # Extract text
                     try:
                         candidates = data.get("candidates", [])
                         if not candidates:
                             return None
-                        
+
                         parts = candidates[0].get("content", {}).get("parts", [])
                         text_response = "".join([p.get("text", "") for p in parts])
-                        
+
                         # Process response: Strip <think> tags (handling closed and unclosed)
-                        cleaned_text = re.sub(r'<think>.*?(?:</think>|$)', '', text_response, flags=re.DOTALL)
+                        cleaned_text = re.sub(r"<think>.*?(?:</think>|$)", "", text_response, flags=re.DOTALL)
                         return cleaned_text.strip()
-                        
+
                     except Exception as e:
                         log.error(f"Failed to parse response: {e}")
                         return f"Error parsing response: {e}"

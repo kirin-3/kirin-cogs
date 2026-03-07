@@ -1,8 +1,10 @@
 """Fixtures for COTM tests."""
+
 from unittest.mock import MagicMock
 
 import pytest
 from redbot.core.bot import Red
+
 
 @pytest.fixture
 def bot_mock():

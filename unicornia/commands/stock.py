@@ -1,11 +1,16 @@
 import discord
-from redbot.core import commands, checks, app_commands
-from redbot.core.utils.chat_formatting import humanize_number, box
-from ..market_views import StockDashboardView, StockBuySelectView, StockSellSelectView, StockPortfolioView, StockListView
+from redbot.core import app_commands, checks, commands
+
+from ..market_views import (
+    StockDashboardView,
+    StockListView,
+    StockPortfolioView,
+)
+
 
 class StockCommands:
     """Stock Market Commands for Unicornia"""
-    
+
     async def ticker_autocomplete(
         self,
         interaction: discord.Interaction,
@@ -14,8 +19,8 @@ class StockCommands:
         stocks = self.market_system.stocks_cache.values()
         choices = []
         for s in stocks:
-            if current.upper() in s['symbol'] or current.lower() in s['name'].lower():
-                choices.append(app_commands.Choice(name=f"{s['symbol']} - {s['name']}", value=s['symbol']))
+            if current.upper() in s["symbol"] or current.lower() in s["name"].lower():
+                choices.append(app_commands.Choice(name=f"{s['symbol']} - {s['name']}", value=s["symbol"]))
         return choices[:25]
 
     @commands.hybrid_group(name="stock", aliases=["market", "stocks"])
@@ -46,7 +51,7 @@ class StockCommands:
 
         # Fetch circulation data
         held_counts = await self.market_system.db.stock.get_held_shares_counts()
-        
+
         # Send V2 Paginated View
         view = StockListView(self.market_system, held_counts)
         await ctx.send(view=view)
@@ -100,10 +105,10 @@ class StockCommands:
         `[p]stock portfolio [user]`
         """
         user = user or ctx.author
-        
+
         # Fetch data
         holdings, transactions = await self.market_system.get_portfolio_data(user.id)
-        
+
         if not holdings:
             await ctx.send(f"{user.display_name} has no stock holdings.")
             return
@@ -124,15 +129,15 @@ class StockCommands:
         `[p]stock dashboard [channel]`
         """
         channel = channel or ctx.channel
-        
+
         view = StockDashboardView(self.market_system)
-        msg = await channel.send(view=view) # No embed, components only
-        
+        msg = await channel.send(view=view)  # No embed, components only
+
         # Save to Config
-        cog = ctx.cog # ctx.cog is Unicornia
+        cog = ctx.cog  # ctx.cog is Unicornia
         await cog.config.guild(ctx.guild).market_channel.set(channel.id)
         await cog.config.guild(ctx.guild).market_message.set(msg.id)
-        
+
         await ctx.send(f"Dashboard created in {channel.mention}.")
 
     @stock_group.command(name="ipo")
@@ -152,7 +157,9 @@ class StockCommands:
 
         success = await self.market_system.register_stock(symbol, name, emoji, price)
         if success:
-            await ctx.send(f"🚀 IPO Successful! **{name} ({symbol})** is now trading at {price} {self.market_system.currency_symbol}!")
+            await ctx.send(
+                f"🚀 IPO Successful! **{name} ({symbol})** is now trading at {price} {self.market_system.currency_symbol}!"
+            )
         else:
             await ctx.send("Failed to launch IPO. Symbol might already exist.")
 
@@ -169,7 +176,7 @@ class StockCommands:
         """
         # Confirmation?
         await self.market_system.db.stock.delete_stock(symbol)
-        await self.market_system.initialize() # Refresh cache
+        await self.market_system.initialize()  # Refresh cache
         await ctx.send(f"🗑️ Delisted **{symbol}**.")
 
     @stock_group.command(name="cleanup")
@@ -187,9 +194,9 @@ class StockCommands:
         if not guild:
             await ctx.send("This command must be run in a server.")
             return
-            
+
         cog = ctx.cog
         await cog.config.guild(guild).market_channel.clear()
         await cog.config.guild(guild).market_message.clear()
-        
+
         await ctx.send("Dashboard configuration cleared for this server. The bot will stop trying to update it.")

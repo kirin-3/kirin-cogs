@@ -1,7 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Dict, Optional, Set
+from datetime import UTC, datetime
 
 import discord
 from redbot.core import Config, commands
@@ -28,11 +27,11 @@ class Confess(commands.Cog):
         }
         self.config.register_global(**default_global)
 
-        self.locked_channels: Set[discord.TextChannel] = set()
-        self._channel_cvs: Dict[discord.TextChannel, asyncio.Condition] = {}
+        self.locked_channels: set[discord.TextChannel] = set()
+        self._channel_cvs: dict[discord.TextChannel, asyncio.Condition] = {}
         self.bot.add_view(StickyView(self))
 
-    async def get_confession_channel(self) -> Optional[discord.TextChannel]:
+    async def get_confession_channel(self) -> discord.TextChannel | None:
         channel = self.bot.get_channel(CONFESSION_CHANNEL_ID)
         if isinstance(channel, discord.TextChannel):
             return channel
@@ -41,13 +40,9 @@ class Confess(commands.Cog):
     async def process_confession(self, interaction: discord.Interaction, content: str):
         channel = await self.get_confession_channel()
         if not channel:
-            return await interaction.response.send_message(
-                "Confession channel not found.", ephemeral=True
-            )
+            return await interaction.response.send_message("Confession channel not found.", ephemeral=True)
 
-        confession_content = (
-            f"**Anonymous Confession**\n>>> {discord.utils.escape_mentions(content)}"
-        )
+        confession_content = f"**Anonymous Confession**\n>>> {discord.utils.escape_mentions(content)}"
 
         try:
             await channel.send(
@@ -61,27 +56,19 @@ class Confess(commands.Cog):
             )
         except Exception as e:
             log.error(f"Failed to send confession: {e}")
-            return await interaction.response.send_message(
-                "Something went wrong.", ephemeral=True
-            )
+            return await interaction.response.send_message("Something went wrong.", ephemeral=True)
 
-        await interaction.response.send_message(
-            "Your confession has been sent, you are forgiven now.", ephemeral=True
-        )
+        await interaction.response.send_message("Your confession has been sent, you are forgiven now.", ephemeral=True)
 
         # Logging to bot owners
         log_embed = discord.Embed(
             title="New Confession Log",
             description=content,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             color=discord.Color.red(),
         )
         user = interaction.user
-        icon_url = (
-            user.display_avatar.url
-            if isinstance(user, (discord.User, discord.Member))
-            else None
-        )
+        icon_url = user.display_avatar.url if isinstance(user, (discord.User, discord.Member)) else None
         log_embed.set_author(name=f"{user} ({user.id})", icon_url=icon_url)
         log_embed.set_footer(text=f"Channel: {channel.name} ({channel.id})")
 
@@ -113,9 +100,7 @@ class Confess(commands.Cog):
             return
 
         if isinstance(message.channel, discord.TextChannel):
-            await self._maybe_repost_sticky(
-                message.channel, responding_to_message=message
-            )
+            await self._maybe_repost_sticky(message.channel, responding_to_message=message)
 
     @commands.Cog.listener()
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
@@ -131,7 +116,7 @@ class Confess(commands.Cog):
     async def _maybe_repost_sticky(
         self,
         channel: discord.TextChannel,
-        responding_to_message: Optional[discord.Message] = None,
+        responding_to_message: discord.Message | None = None,
     ) -> None:
         cv = self._channel_cvs.setdefault(channel, asyncio.Condition())
 
@@ -147,14 +132,13 @@ class Confess(commands.Cog):
 
             last_message_created_at = discord.utils.snowflake_time(sticky_id)
             if responding_to_message and (
-                responding_to_message.id == sticky_id
-                or responding_to_message.created_at < last_message_created_at
+                responding_to_message.id == sticky_id or responding_to_message.created_at < last_message_created_at
             ):
                 return
 
             # Cooldown check
             try:
-                utcnow = datetime.now(timezone.utc)
+                utcnow = datetime.now(UTC)
                 last_msg_timestamp = discord.utils.snowflake_time(sticky_id)
                 time_since = utcnow - last_msg_timestamp
                 cooldown = 3
@@ -177,9 +161,7 @@ class Confess(commands.Cog):
 
             await self._do_repost_sticky(channel, cv)
 
-    async def _do_repost_sticky(
-        self, channel: discord.TextChannel, cv: asyncio.Condition
-    ):
+    async def _do_repost_sticky(self, channel: discord.TextChannel, cv: asyncio.Condition):
         self.locked_channels.add(channel)
         try:
             old_sticky_id = await self.config.sticky_message_id()

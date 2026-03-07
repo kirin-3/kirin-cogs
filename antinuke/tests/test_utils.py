@@ -103,19 +103,19 @@ def test_get_permission_diff():
         after = MagicMock()
 
         # Added
-        setattr(before, "administrator", False)
-        setattr(after, "administrator", True)
+        before.administrator = False
+        after.administrator = True
 
-        setattr(before, "manage_guild", False)
-        setattr(after, "manage_guild", True)
+        before.manage_guild = False
+        after.manage_guild = True
 
         # Removed
-        setattr(before, "ban_members", True)
-        setattr(after, "ban_members", False)
+        before.ban_members = True
+        after.ban_members = False
 
         # Unchanged
-        setattr(before, "kick_members", True)
-        setattr(after, "kick_members", True)
+        before.kick_members = True
+        after.kick_members = True
 
         diff = antinuke.utils.get_permission_diff(before, after)
 

@@ -1,11 +1,8 @@
-import asyncio
 import logging
 from datetime import datetime
 from io import StringIO
 
 import discord
-from redbot.core import commands
-from redbot.core.utils.chat_formatting import pagify
 
 from ..abc import MixinMeta
 from ..common.utils import update_active_overview
@@ -52,7 +49,7 @@ class Functions(MixinMeta):
 
         buffer = StringIO()
         q = "Pre-ticket questions (USER MUST ANSWER THESE IN DETAIL BEFORE TICKET CAN BE OPENED!)\n"
-        
+
         buffer.write("# Support Ticket System\n")
         if btext := conf["button_text"]:
             buffer.write(f"- Tag: {btext}\n")
@@ -161,13 +158,9 @@ class Functions(MixinMeta):
                 )
             except Exception as e:
                 if "Contains words not allowed" in str(e):
-                    channel_or_thread = await category.create_text_channel(
-                        default_channel_name, overwrites=overwrite
-                    )
+                    channel_or_thread = await category.create_text_channel(default_channel_name, overwrites=overwrite)
                     await channel_or_thread.send(
-                        (
-                            "I was not able to name the ticket properly due to Discord's filter!\nIntended name: {}"
-                        ).format(channel_name)
+                        f"I was not able to name the ticket properly due to Discord's filter!\nIntended name: {channel_name}"
                     )
                 else:
                     raise e
@@ -182,7 +175,7 @@ class Functions(MixinMeta):
         default_message = "Welcome to your ticket channel " + f"{user.display_name}!"
         user_can_close = conf["user_can_close"]
         if user_can_close:
-            default_message += "\nYou or an admin can close this with the `{}close` command".format(prefix)
+            default_message += f"\nYou or an admin can close this with the `{prefix}close` command"
 
         messages = conf["ticket_messages"]
         params = {
@@ -218,7 +211,9 @@ class Functions(MixinMeta):
             for index, einfo in enumerate(messages):
                 # Use custom color if set and valid, otherwise default to user's color
                 color_val = einfo.get("color")
-                embed_color = discord.Color(color_val) if color_val is not None and isinstance(color_val, int) else user.color
+                embed_color = (
+                    discord.Color(color_val) if color_val is not None and isinstance(color_val, int) else user.color
+                )
                 em = discord.Embed(
                     title=fmt_params(einfo["title"]) if einfo["title"] else None,
                     description=fmt_params(einfo["desc"]),

@@ -1,7 +1,7 @@
-from redbot.core import commands, Config
 import discord
-from typing import Optional
-from redbot.core.utils.chat_formatting import pagify, box
+from redbot.core import Config, commands
+from redbot.core.utils.chat_formatting import box, pagify
+
 
 class CustomCommand(commands.Cog):
     """
@@ -13,11 +13,7 @@ class CustomCommand(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567891, force_registration=True)
-        default_guild = {
-            "commands": {},
-            "command_owners": {},
-            "user_limits": {}
-        }
+        default_guild = {"commands": {}, "command_owners": {}, "user_limits": {}}
         self.config.register_guild(**default_guild)
         self.role_id = 700121551483437128
         self.trigger_cooldowns = {}  # (guild_id, trigger): CooldownMapping
@@ -39,7 +35,7 @@ class CustomCommand(commands.Cog):
         """Clear cache on guild remove."""
         if guild.id in self.command_cache:
             del self.command_cache[guild.id]
-        
+
         # Clear cooldowns for this guild
         keys_to_remove = [k for k in self.trigger_cooldowns if k[0] == guild.id]
         for k in keys_to_remove:
@@ -54,19 +50,21 @@ class CustomCommand(commands.Cog):
         embed = discord.Embed(
             title=f"Custom Command {action}",
             color=discord.Color.green() if action == "Created" else discord.Color.red(),
-            timestamp=ctx.message.created_at
+            timestamp=ctx.message.created_at,
         )
-        embed.set_author(name=f"{ctx.author} ({ctx.author.id})", icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
+        embed.set_author(
+            name=f"{ctx.author} ({ctx.author.id})", icon_url=ctx.author.avatar.url if ctx.author.avatar else None
+        )
         embed.add_field(name="Trigger", value=trigger, inline=True)
         if response:
             if len(response) > 1024:
                 response = response[:1021] + "..."
             embed.add_field(name="Response", value=response, inline=False)
-        
+
         try:
             await channel.send(embed=embed)
         except discord.HTTPException:
-            pass # Fail silently if permission error or other issue
+            pass  # Fail silently if permission error or other issue
 
     @commands.group(aliases=["cc"])
     @commands.guild_only()
@@ -88,19 +86,19 @@ class CustomCommand(commands.Cog):
     async def customcommand_list(self, ctx):
         """
         List custom commands.
-        
+
         If you are a moderator, lists all commands.
         Otherwise, lists only your commands.
         """
         command_owners = await self.config.guild(ctx.guild).command_owners()
         all_commands = await self.config.guild(ctx.guild).commands()
-        
+
         if not command_owners:
             await ctx.send("No custom commands found.")
             return
 
         is_mod = ctx.author.guild_permissions.ban_members
-        
+
         if not is_mod:
             user_id = str(ctx.author.id)
             if user_id in command_owners:
@@ -108,19 +106,19 @@ class CustomCommand(commands.Cog):
             else:
                 await ctx.send("You don't have any custom commands.")
                 return
-            
+
         text = ""
         for user_id, triggers in command_owners.items():
             user = ctx.guild.get_member(int(user_id))
             username = str(user) if user else f"User ID: {user_id}"
-            
+
             if isinstance(triggers, str):
                 triggers = [triggers]
-                
+
             for trigger in triggers:
                 response = all_commands.get(trigger, "Response not found (Error)")
                 text += f"Trigger: {trigger}\nOwner: {username}\nResponse: {response}\n\n"
-        
+
         if not text:
             await ctx.send("No commands to list.")
             return
@@ -131,7 +129,7 @@ class CustomCommand(commands.Cog):
 
     @customcommand.command(name="create")
     @commands.cooldown(1, 5, commands.BucketType.user)
-    async def customcommand_create(self, ctx, trigger: str, response: Optional[str] = None):
+    async def customcommand_create(self, ctx, trigger: str, response: str | None = None):
         """
         Create a custom command.
 
@@ -160,7 +158,7 @@ class CustomCommand(commands.Cog):
             return
 
         # Prevent bot triggers
-        if response.strip().startswith(('.', '-', '&')):
+        if response.strip().startswith((".", "-", "&")):
             await ctx.send("Responses cannot start with '.', '-', or '&' to prevent bot conflicts.")
             return
 
@@ -186,7 +184,7 @@ class CustomCommand(commands.Cog):
         if self.bot.get_command(trigger.lower()):
             await ctx.send("A command with this name already exists.")
             return
-            
+
         all_commands = await self.config.guild(guild).commands()
         if trigger.lower() in all_commands:
             await ctx.send("A custom command with this trigger already exists.")
@@ -195,7 +193,7 @@ class CustomCommand(commands.Cog):
         # Save new command
         async with self.config.guild(guild).commands() as commands:
             commands[trigger.lower()] = response
-        
+
         # Update owner list
         user_commands.append(trigger.lower())
         await self.config.guild(guild).command_owners.set_raw(str(author.id), value=user_commands)
@@ -210,7 +208,7 @@ class CustomCommand(commands.Cog):
     async def customcommand_delete(self, ctx, trigger: str = None):
         """
         Delete a custom command.
-        
+
         If you have ban permissions, you can delete any command.
         Otherwise, you can only delete your own commands.
         """
@@ -222,23 +220,24 @@ class CustomCommand(commands.Cog):
         if is_mod and trigger:
             trigger = trigger.lower()
             all_commands = self.command_cache.get(guild.id, {})
-            
+
             if trigger in all_commands:
                 # Find owner to clean up
                 command_owners = await self.config.guild(guild).command_owners()
                 owner_found = None
-                
+
                 for user_id, triggers in command_owners.items():
-                    if isinstance(triggers, str): triggers = [triggers]
+                    if isinstance(triggers, str):
+                        triggers = [triggers]
                     if trigger in triggers:
                         owner_found = user_id
                         break
-                
+
                 # Delete from config
                 async with self.config.guild(guild).commands() as commands:
                     if trigger in commands:
                         del commands[trigger]
-                
+
                 # Delete from cache
                 if guild.id in self.command_cache and trigger in self.command_cache[guild.id]:
                     del self.command_cache[guild.id][trigger]
@@ -249,20 +248,21 @@ class CustomCommand(commands.Cog):
 
                 if owner_found:
                     triggers = command_owners[owner_found]
-                    if isinstance(triggers, str): triggers = [triggers]
+                    if isinstance(triggers, str):
+                        triggers = [triggers]
                     if trigger in triggers:
                         triggers.remove(trigger)
                         if not triggers:
                             await self.config.guild(guild).command_owners.clear_raw(owner_found)
                         else:
                             await self.config.guild(guild).command_owners.set_raw(owner_found, value=triggers)
-                
+
                 await self.log_action(ctx, "Deleted (Mod)", trigger)
                 await ctx.send(f"Custom command `{trigger}` has been deleted by moderator.")
                 return
             elif trigger not in all_commands:
-                 await ctx.send("Command not found.")
-                 return
+                await ctx.send("Command not found.")
+                return
 
         # Regular user logic
         command_owners = await self.config.guild(guild).command_owners()
@@ -298,7 +298,7 @@ class CustomCommand(commands.Cog):
         # Cleanup cooldown
         if (guild.id, trigger) in self.trigger_cooldowns:
             del self.trigger_cooldowns[(guild.id, trigger)]
-        
+
         user_commands.remove(trigger)
         if not user_commands:
             await self.config.guild(guild).command_owners.clear_raw(str(author.id))
@@ -322,14 +322,17 @@ class CustomCommand(commands.Cog):
         if trigger in guild_commands:
             cooldown_key = (message.guild.id, trigger)
             if cooldown_key not in self.trigger_cooldowns:
-                self.trigger_cooldowns[cooldown_key] = commands.CooldownMapping.from_cooldown(1, 60, commands.BucketType.channel)
-            
+                self.trigger_cooldowns[cooldown_key] = commands.CooldownMapping.from_cooldown(
+                    1, 60, commands.BucketType.channel
+                )
+
             bucket = self.trigger_cooldowns[cooldown_key].get_bucket(message)
             retry_after = bucket.update_rate_limit()
             if retry_after:
                 return
             response = guild_commands[trigger]
             await message.channel.send(response)
+
 
 async def setup(bot):
     await bot.add_cog(CustomCommand(bot))

@@ -2,7 +2,6 @@ import asyncio
 import datetime
 import json
 import logging
-import typing as t
 from pathlib import Path
 from time import perf_counter
 
@@ -19,7 +18,6 @@ from .common.utils import (
     close_ticket,
     prune_invalid_tickets,
     ticket_owner_hastyped,
-    update_active_overview,
 )
 from .common.views import CloseView, PanelView
 
@@ -51,7 +49,7 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
         # Cache
         self.valid = []  # Valid ticket channels
         self.views = []  # Saved views to end on reload
-        self.view_cache: t.Dict[int, t.List[discord.ui.View]] = {}  # Saved views to end on reload
+        self.view_cache: dict[int, list[discord.ui.View]] = {}  # Saved views to end on reload
         self.initializing = False
         self.startup_task: asyncio.Task | None = None
 
@@ -140,12 +138,12 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
         if category_id and channel_id and message_id:
             category = guild.get_channel(category_id)
             channel_obj = guild.get_channel(channel_id)
-            
+
             if category and channel_obj:
                 try:
                     # Validate visibility/existence
                     await channel_obj.fetch_message(message_id)
-                    
+
                     panelview = PanelView(self.bot, guild, self.config, data)
                     await panelview.start()
                     self.view_cache[guild.id].append(panelview)

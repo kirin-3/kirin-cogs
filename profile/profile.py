@@ -1,17 +1,16 @@
 import asyncio
-import contextlib
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, cast
+from datetime import UTC, datetime
 
 import discord
-from redbot.core import Config, commands, checks
+from redbot.core import Config, checks, commands
 from redbot.core.bot import Red
 
-from .models import PROFILE_CHANNEL_ID, UNIQUE_ID, QUESTIONS, ProfileData
-from .views import ProfileStickyView, ProfileBuilderView, ProfileDeleteConfirmView
+from .models import PROFILE_CHANNEL_ID, UNIQUE_ID, ProfileData
+from .views import ProfileBuilderView, ProfileDeleteConfirmView, ProfileStickyView
 
 log = logging.getLogger("red.kirin_cogs.profile")
+
 
 class Profile(commands.Cog):
     """Create and manage user profiles in a specific channel."""
@@ -20,32 +19,28 @@ class Profile(commands.Cog):
         super().__init__()
         self.bot = bot
         self.config = Config.get_conf(self, identifier=UNIQUE_ID, force_registration=True)
-        
+
         default_global = {
             "channel_id": PROFILE_CHANNEL_ID,
             "sticky_message_id": None,
             "sticky_locked": False,
-            "cooldown": 3
+            "cooldown": 3,
         }
-        default_user = {
-            "profile_data": {},
-            "message_id": None,
-            "last_delete": None
-        }
-        
+        default_user = {"profile_data": {}, "message_id": None, "last_delete": None}
+
         self.config.register_global(**default_global)
         self.config.register_user(**default_user)
-        
+
         self.locked_channels = set()
-        self._channel_cvs: Dict[discord.TextChannel, asyncio.Condition] = {}
+        self._channel_cvs: dict[discord.TextChannel, asyncio.Condition] = {}
         self.bot.add_view(ProfileStickyView(self))
 
     async def cog_load(self):
-        # We don't necessarily need to repost on load, 
+        # We don't necessarily need to repost on load,
         # but we should ensure the view is active.
         pass
 
-    async def get_profile_channel(self) -> Optional[discord.TextChannel]:
+    async def get_profile_channel(self) -> discord.TextChannel | None:
         channel_id = await self.config.channel_id()
         return self.bot.get_channel(channel_id)
 
@@ -75,25 +70,25 @@ class Profile(commands.Cog):
         # Check 24h cooldown after deletion
         user_conf = await self.config.user(interaction.user).all()
         last_delete = user_conf.get("last_delete")
-        
+
         if last_delete:
-            last_delete_dt = datetime.fromtimestamp(last_delete, timezone.utc)
-            now = datetime.now(timezone.utc)
+            last_delete_dt = datetime.fromtimestamp(last_delete, UTC)
+            now = datetime.now(UTC)
             diff = now - last_delete_dt
-            if diff.total_seconds() < 86400: # 24 hours
+            if diff.total_seconds() < 86400:  # 24 hours
                 if not await self.bot.is_owner(interaction.user):
                     hours_remaining = int((86400 - diff.total_seconds()) / 3600)
                     return await interaction.response.send_message(
                         f"You must wait 24 hours after deleting your profile to create a new one. (~{hours_remaining} hours remaining)",
-                        ephemeral=True
+                        ephemeral=True,
                     )
 
         user_data = user_conf["profile_data"]
         view = ProfileBuilderView(interaction.user, user_data)
-        
+
         msg = "Welcome to the Profile Builder! Fill out the fields below. Required fields are marked with *."
         await interaction.response.send_message(msg, view=view, ephemeral=True)
-        
+
         await view.wait()
         if view.submitted:
             await self.config.user(interaction.user).profile_data.set(view.data)
@@ -104,10 +99,12 @@ class Profile(commands.Cog):
         user_conf = await self.config.user(interaction.user).all()
         if not user_conf["profile_data"]:
             return await interaction.response.send_message("You don't have a profile to delete.", ephemeral=True)
-        
+
         view = ProfileDeleteConfirmView(interaction.user)
-        await interaction.response.send_message("Are you sure you want to delete your profile?", view=view, ephemeral=True)
-        
+        await interaction.response.send_message(
+            "Are you sure you want to delete your profile?", view=view, ephemeral=True
+        )
+
         await view.wait()
         if view.value:
             # Delete message
@@ -120,9 +117,9 @@ class Profile(commands.Cog):
                     pass
                 except Exception as e:
                     log.error(f"Failed to delete profile message for {interaction.user.id}: {e}")
-            
+
             await self.config.user(interaction.user).clear()
-            await self.config.user(interaction.user).last_delete.set(datetime.now(timezone.utc).timestamp())
+            await self.config.user(interaction.user).last_delete.set(datetime.now(UTC).timestamp())
             await interaction.followup.send("Your profile has been deleted.", ephemeral=True)
 
     async def _update_profile_embed(self, user: discord.Member, data: ProfileData):
@@ -130,23 +127,19 @@ class Profile(commands.Cog):
         if not channel:
             return
 
-        embed = discord.Embed(
-            title=data.get("name", user.display_name),
-            color=user.color,
-            timestamp=datetime.now(timezone.utc)
-        )
+        embed = discord.Embed(title=data.get("name", user.display_name), color=user.color, timestamp=datetime.now(UTC))
         embed.set_author(name=f"{user.display_name}", icon_url=user.display_avatar.url)
         embed.set_thumbnail(url=user.display_avatar.url)
-        
+
         # Inline fields
         embed.add_field(name="Age", value=data.get("age", "Unknown"), inline=True)
         embed.add_field(name="Location", value=data.get("location", "Unknown"), inline=True)
         embed.add_field(name="Gender", value=data.get("gender", "Unknown"), inline=True)
         embed.add_field(name="Sexuality", value=data.get("sexuality", "Unknown"), inline=True)
-        
+
         if data.get("role"):
             embed.add_field(name="Role", value=data["role"], inline=True)
-            
+
         # Block fields
         if data.get("likes"):
             embed.add_field(name="Likes", value=data["likes"], inline=False)
@@ -158,15 +151,15 @@ class Profile(commands.Cog):
             embed.add_field(name="Limits", value=data["limits"], inline=False)
         if data.get("about_me"):
             embed.add_field(name="About Me", value=data["about_me"], inline=False)
-            
+
         if data.get("picture_url"):
             embed.set_image(url=data["picture_url"])
-        elif data.get("picture"): # In case field name is "picture" in data
-             embed.set_image(url=data["picture"])
+        elif data.get("picture"):  # In case field name is "picture" in data
+            embed.set_image(url=data["picture"])
 
         embed.set_footer(text=f"Profile created by {user.display_name}")
 
-        content = f"{user.mention}" # User mention as requested
+        content = f"{user.mention}"  # User mention as requested
 
         message_id = await self.config.user(user).message_id()
         if message_id:
@@ -176,11 +169,11 @@ class Profile(commands.Cog):
                 return
             except discord.NotFound:
                 pass
-        
+
         # Create new message if none exists or old one was deleted
         new_msg = await channel.send(content=content, embed=embed)
         await self.config.user(user).message_id.set(new_msg.id)
-        
+
         # After sending a profile, we might need to repost the sticky
         await self._maybe_repost_sticky(channel)
 
@@ -189,11 +182,11 @@ class Profile(commands.Cog):
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
             return
-        
+
         channel_id = await self.config.channel_id()
         if message.channel.id != channel_id:
             return
-        
+
         await self._maybe_repost_sticky(message.channel, responding_to_message=message)
 
     @commands.Cog.listener()
@@ -201,7 +194,7 @@ class Profile(commands.Cog):
         channel_id = await self.config.channel_id()
         if payload.channel_id != channel_id:
             return
-        
+
         sticky_id = await self.config.sticky_message_id()
         if payload.message_id == sticky_id:
             channel = self.bot.get_channel(payload.channel_id)
@@ -211,10 +204,10 @@ class Profile(commands.Cog):
     async def _maybe_repost_sticky(
         self,
         channel: discord.TextChannel,
-        responding_to_message: Optional[discord.Message] = None,
+        responding_to_message: discord.Message | None = None,
     ) -> None:
         cv = self._channel_cvs.setdefault(channel, asyncio.Condition())
-        
+
         async with cv:
             await cv.wait_for(lambda: channel not in self.locked_channels)
 
@@ -229,18 +222,16 @@ class Profile(commands.Cog):
 
             last_message_created_at = discord.utils.snowflake_time(sticky_id)
             if responding_to_message and (
-                responding_to_message.id == sticky_id
-                or responding_to_message.created_at < last_message_created_at
+                responding_to_message.id == sticky_id or responding_to_message.created_at < last_message_created_at
             ):
                 return
 
             # Cooldown check
-            utcnow = datetime.now(timezone.utc)
+            utcnow = datetime.now(UTC)
             # Since we don't have the last message object easily available with timestamp
             # without fetching, we'll fetch it if needed or just use a simpler check.
             # But let's try to be accurate.
             try:
-                
                 last_msg_timestamp = discord.utils.snowflake_time(sticky_id)
                 time_since = utcnow - last_msg_timestamp
                 cooldown = await self.config.cooldown()
@@ -256,8 +247,8 @@ class Profile(commands.Cog):
             # Re-check if still needed
             new_sticky_id = await self.config.sticky_message_id()
             if new_sticky_id != sticky_id:
-                return # Changed during sleep
-            
+                return  # Changed during sleep
+
             # Check if it's already at the bottom
             if channel.last_message_id == sticky_id:
                 return
@@ -274,7 +265,7 @@ class Profile(commands.Cog):
         try:
             # Re-fetch sticky ID after acquiring lock
             old_sticky_id = await self.config.sticky_message_id()
-            
+
             # Delete old sticky
             if old_sticky_id:
                 try:
@@ -290,7 +281,7 @@ class Profile(commands.Cog):
             embed = discord.Embed(
                 title="User Profiles",
                 description="Click the buttons below to create, edit, or delete your profile in this channel.",
-                color=discord.Color.blue()
+                color=discord.Color.blue(),
             )
             new_sticky = await channel.send(embed=embed, view=view)
             await self.config.sticky_message_id.set(new_sticky.id)

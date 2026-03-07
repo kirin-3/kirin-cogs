@@ -1,19 +1,19 @@
 import discord
-from redbot.core import commands, app_commands
 from discord import ui
-from typing import Optional
+from redbot.core import app_commands, commands
 from redbot.core.utils.views import ConfirmView
-from ..utils import validate_club_name, validate_url, validate_text_input
+
+from ..utils import validate_club_name, validate_text_input, validate_url
 from ..views import ApplicantProcessView
-import asyncio
+
 
 class ClubManageModal(ui.Modal, title="Manage Club"):
     name = ui.TextInput(label="Club Name", style=discord.TextStyle.short, max_length=20, required=True)
     description = ui.TextInput(label="Description", style=discord.TextStyle.paragraph, max_length=150, required=False)
-    
+
     # We can add a Select here if we had options like "Banner Color" or "Privacy"
     # For now, let's keep it simple with text inputs which covers rename/desc
-    
+
     def __init__(self, cog, ctx, current_name, current_desc):
         super().__init__()
         self.cog = cog
@@ -24,10 +24,12 @@ class ClubManageModal(ui.Modal, title="Manage Club"):
     async def on_submit(self, interaction: discord.Interaction):
         new_name = self.name.value
         new_desc = self.description.value
-        
+
         # Validate name
         if not validate_club_name(new_name):
-            await interaction.response.send_message("<a:zz_NoTick:729318761655435355> Invalid club name.", ephemeral=True)
+            await interaction.response.send_message(
+                "<a:zz_NoTick:729318761655435355> Invalid club name.", ephemeral=True
+            )
             return
 
         # Pass True for admin_override because Modal is only accessible if checks passed?
@@ -36,22 +38,29 @@ class ClubManageModal(ui.Modal, title="Manage Club"):
         # is_admin = ctx.author.guild_permissions.manage_guild
         # So if they see the button, they are authorized.
         # We can safely pass True for admin_override here.
-        
+
         # Update Name
         if new_name != self.name.default:
             success, msg = await self.cog.club_system.rename_club(self.ctx.author, new_name, True)
             if not success:
-                await interaction.response.send_message(f"<a:zz_NoTick:729318761655435355> Failed to rename: {msg}", ephemeral=True)
+                await interaction.response.send_message(
+                    f"<a:zz_NoTick:729318761655435355> Failed to rename: {msg}", ephemeral=True
+                )
                 return
-        
+
         # Update Description
         if new_desc != self.description.default:
             success, msg = await self.cog.club_system.set_club_description(self.ctx.author, new_desc, True)
             if not success:
-                await interaction.response.send_message(f"<a:zz_NoTick:729318761655435355> Failed to update description: {msg}", ephemeral=True)
+                await interaction.response.send_message(
+                    f"<a:zz_NoTick:729318761655435355> Failed to update description: {msg}", ephemeral=True
+                )
                 return
-                
-        await interaction.response.send_message("<a:zz_YesTick:729318762356015124> Club updated successfully!", ephemeral=True)
+
+        await interaction.response.send_message(
+            "<a:zz_YesTick:729318762356015124> Club updated successfully!", ephemeral=True
+        )
+
 
 class ClubInfoView(ui.View):
     def __init__(self, cog, ctx, club_data):
@@ -59,11 +68,11 @@ class ClubInfoView(ui.View):
         self.cog = cog
         self.ctx = ctx
         self.club_data = club_data
-        
+
         # Only show Manage button if owner or admin
-        is_owner = ctx.author.id == club_data['owner_id']
+        is_owner = ctx.author.id == club_data["owner_id"]
         is_admin = ctx.author.guild_permissions.manage_guild
-        
+
         if not (is_owner or is_admin):
             # Remove the manage button if not authorized
             # Note: We need to find the item associated with the callback
@@ -80,17 +89,20 @@ class ClubInfoView(ui.View):
         if interaction.user.id != self.ctx.author.id:
             await interaction.response.send_message("This is not your session.", ephemeral=True)
             return
-        
+
         # Double-check permissions in case status changed
-        is_owner = interaction.user.id == self.club_data['owner_id']
+        is_owner = interaction.user.id == self.club_data["owner_id"]
         is_admin = interaction.user.guild_permissions.manage_guild
-        
+
         if not (is_owner or is_admin):
-            await interaction.response.send_message("<a:zz_NoTick:729318761655435355> You are not authorized to manage this club.", ephemeral=True)
+            await interaction.response.send_message(
+                "<a:zz_NoTick:729318761655435355> You are not authorized to manage this club.", ephemeral=True
+            )
             return
-            
-        modal = ClubManageModal(self.cog, self.ctx, self.club_data['name'], self.club_data['description'])
+
+        modal = ClubManageModal(self.cog, self.ctx, self.club_data["name"], self.club_data["description"])
         await interaction.response.send_modal(modal)
+
 
 class ClubCommands:
     @commands.hybrid_group(name="club")
@@ -118,9 +130,11 @@ class ClubCommands:
         **Syntax**
         `[p]club create <name>`
         """
-            
+
         if not validate_club_name(club_name):
-            await ctx.send("<a:zz_NoTick:729318761655435355> Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols.")
+            await ctx.send(
+                "<a:zz_NoTick:729318761655435355> Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols."
+            )
             return
 
         success, message = await self.club_system.create_club(ctx.author, club_name)
@@ -131,7 +145,7 @@ class ClubCommands:
 
     @club_group.command(name="info", aliases=["profile"])
     @app_commands.describe(club_name="Name of the club to view (optional)")
-    async def club_info(self, ctx, club_name: Optional[str] = None):
+    async def club_info(self, ctx, club_name: str | None = None):
         """
         View club details.
 
@@ -144,44 +158,44 @@ class ClubCommands:
         `[p]club info` (Your club)
         `[p]club info CoolClub`
         """
-            
+
         data, message = await self.club_system.get_club_info(club_name, ctx.author if not club_name else None)
         if not data:
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> {message}", mention_author=False)
             return
-            
+
         # Format info embed
         embed = discord.Embed(
-            title=f"🛡️ {data['name']}",
-            description=data['description'] or "No description.",
-            color=discord.Color.blue()
+            title=f"🛡️ {data['name']}", description=data["description"] or "No description.", color=discord.Color.blue()
         )
-        
-        owner = ctx.guild.get_member(data['owner_id'])
+
+        owner = ctx.guild.get_member(data["owner_id"])
         owner_name = owner.display_name if owner else f"Unknown ({data['owner_id']})"
-        
+
         embed.add_field(name="Owner", value=owner_name, inline=True)
         embed.add_field(name="XP", value=f"{data['xp']:,}", inline=True)
         # embed.add_field(name="Level", value=str(data['level']), inline=True) # Calculate if needed
-        
-        if data['image_url']:
-            embed.set_thumbnail(url=data['image_url'])
-        if data['banner_url']:
-            embed.set_image(url=data['banner_url'])
-            
+
+        if data["image_url"]:
+            embed.set_thumbnail(url=data["image_url"])
+        if data["banner_url"]:
+            embed.set_image(url=data["banner_url"])
+
         # Get members
-        members = await self.db.club.get_club_members(data['id'])
+        members = await self.db.club.get_club_members(data["id"])
         member_list = []
-        for m in members[:10]: # Limit display
+        for m in members[:10]:  # Limit display
             name = m[1]
-            if m[4]: # IsAdmin
+            if m[4]:  # IsAdmin
                 name += " ⭐"
-            if m[0] == data['owner_id']:
+            if m[0] == data["owner_id"]:
                 name += " 👑"
             member_list.append(name)
-            
-        embed.add_field(name=f"Members ({len(members)})", value="\n".join(member_list) if member_list else "None", inline=False)
-        
+
+        embed.add_field(
+            name=f"Members ({len(members)})", value="\n".join(member_list) if member_list else "None", inline=False
+        )
+
         view = ClubInfoView(self, ctx, data)
         await ctx.reply(embed=embed, view=view, mention_author=False)
 
@@ -193,7 +207,7 @@ class ClubCommands:
         **Syntax**
         `[p]club leave`
         """
-            
+
         success, message = await self.club_system.leave_club(ctx.author)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
@@ -210,7 +224,7 @@ class ClubCommands:
         **Syntax**
         `[p]club apply <name>`
         """
-            
+
         success, message = await self.club_system.apply_to_club(ctx.author, club_name)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
@@ -227,7 +241,7 @@ class ClubCommands:
         **Syntax**
         `[p]club accept <user>`
         """
-            
+
         success, message = await self.club_system.accept_application(ctx.author, user.name)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
@@ -244,7 +258,7 @@ class ClubCommands:
         **Syntax**
         `[p]club reject <user>`
         """
-            
+
         success, message = await self.club_system.reject_application(ctx.author, user.name)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
@@ -261,7 +275,7 @@ class ClubCommands:
         **Syntax**
         `[p]club kick <user>`
         """
-            
+
         success, message = await self.club_system.kick_member(ctx.author, user.name)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
@@ -279,7 +293,7 @@ class ClubCommands:
         **Syntax**
         `[p]club ban <user>`
         """
-            
+
         success, message = await self.club_system.ban_member(ctx.author, user.name)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
@@ -296,7 +310,7 @@ class ClubCommands:
         **Syntax**
         `[p]club unban <user>`
         """
-            
+
         success, message = await self.club_system.unban_member(ctx.author, user.name)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
@@ -313,7 +327,7 @@ class ClubCommands:
         **Syntax**
         `[p]club transfer <user>`
         """
-            
+
         success, message = await self.club_system.transfer_club(ctx.author, new_owner)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
@@ -343,24 +357,20 @@ class ClubCommands:
         `[p]club invitations`
         """
         invites = await self.club_system.get_my_invitations(ctx.author)
-        
+
         if not invites:
             await ctx.send("You have no pending club invitations.")
             return
-            
+
         embed = discord.Embed(
             title="💌 Club Invitations",
             description="You have been invited to the following clubs:",
-            color=discord.Color.blue()
+            color=discord.Color.blue(),
         )
-        
+
         for club in invites:
-            embed.add_field(
-                name=club['name'],
-                value=f"XP: {club['xp']:,}\nOwner ID: {club['owner_id']}",
-                inline=False
-            )
-            
+            embed.add_field(name=club["name"], value=f"XP: {club['xp']:,}\nOwner ID: {club['owner_id']}", inline=False)
+
         embed.set_footer(text="Use [p]club invitations accept <club_name> to join.")
         await ctx.send(embed=embed)
 
@@ -402,13 +412,13 @@ class ClubCommands:
         **Syntax**
         `[p]club applicants`
         """
-            
+
         applicants, message = await self.club_system.get_applicants(ctx.author)
-        
+
         if applicants is None:
             await ctx.send(f"❌ {message}")
             return
-            
+
         if not applicants:
             await ctx.send("📋 No pending applications.")
             return
@@ -418,7 +428,7 @@ class ClubCommands:
         embed = discord.Embed(
             title="📋 Club Applications",
             description=f"There are **{len(applicants)}** pending applications.\nUse the menu below to accept or reject them.",
-            color=discord.Color.blue()
+            color=discord.Color.blue(),
         )
         view.message = await ctx.send(embed=embed, view=view)
 
@@ -432,29 +442,26 @@ class ClubCommands:
         **Syntax**
         `[p]club bans`
         """
-            
+
         bans, message = await self.club_system.get_banned_members(ctx.author)
-        
+
         if bans is None:
             await ctx.send(f"❌ {message}")
             return
-            
+
         if not bans:
             await ctx.send("📋 No banned members.")
             return
-            
-        embed = discord.Embed(
-            title="🚫 Banned Members",
-            color=discord.Color.red()
-        )
-        
+
+        embed = discord.Embed(title="🚫 Banned Members", color=discord.Color.red())
+
         desc = []
         for b in bans:
             desc.append(f"• **{b['username']}**")
-            
+
         embed.description = "\n".join(desc)
         embed.set_footer(text="Use [p]club unban <user> to unban")
-        
+
         await ctx.send(embed=embed)
 
     @club_group.command(name="rename")
@@ -476,7 +483,9 @@ class ClubCommands:
             return
 
         if not validate_club_name(new_name):
-            await ctx.send("<a:zz_NoTick:729318761655435355> Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols.")
+            await ctx.send(
+                "<a:zz_NoTick:729318761655435355> Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols."
+            )
             return
 
         # Passed checks (Owner via logic or Mod via permission decorator)
@@ -498,7 +507,7 @@ class ClubCommands:
         **Syntax**
         `[p]club icon <url>`
         """
-            
+
         if not validate_url(url):
             await ctx.send("<a:zz_NoTick:729318761655435355> Invalid URL. Please provide a valid HTTP/HTTPS image URL.")
             return
@@ -520,7 +529,7 @@ class ClubCommands:
         **Syntax**
         `[p]club banner <url>`
         """
-            
+
         if not validate_url(url):
             await ctx.send("❌ Invalid URL. Please provide a valid HTTP/HTTPS image URL.")
             return
@@ -570,11 +579,11 @@ class ClubCommands:
         **Syntax**
         `[p]club disband`
         """
-            
+
         view = ConfirmView(ctx.author)
         msg = await ctx.send("⚠️ Are you sure you want to disband your club? This cannot be undone.", view=view)
         await view.wait()
-        
+
         if not view.result:
             await msg.edit(content="<a:zz_NoTick:729318761655435355> Disband cancelled.")
             return
@@ -596,19 +605,16 @@ class ClubCommands:
         **Syntax**
         `[p]club leaderboard [page]`
         """
-            
+
         clubs = await self.club_system.get_leaderboard(page)
         if not clubs:
             await ctx.reply("No clubs found.", mention_author=False)
             return
-            
-        embed = discord.Embed(
-            title=f"🏆 Club Leaderboard (Page {page})",
-            color=discord.Color.gold()
-        )
-        
+
+        embed = discord.Embed(title=f"🏆 Club Leaderboard (Page {page})", color=discord.Color.gold())
+
         for i, (name, xp) in enumerate(clubs):
             idx = (page - 1) * 9 + i + 1
             embed.add_field(name=f"#{idx} {name}", value=f"{xp:,} XP", inline=False)
-            
+
         await ctx.send(embed=embed)

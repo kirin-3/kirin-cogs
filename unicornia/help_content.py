@@ -17,7 +17,7 @@ HELP_CONTENT = {
             "• **Waifus**: Collect and trade characters.\n\n"
             "*Select a category from the dropdown menu below to learn more about a specific system.*"
         ),
-        "commands": []
+        "commands": [],
     },
     "economy": {
         "title": "💰 Economy System",
@@ -36,8 +36,8 @@ HELP_CONTENT = {
             "`[p]pay <user> <amount>` - Send money to another user.",
             "`[p]bank deposit <amount>` - Move money to your bank.",
             "`[p]bank withdraw <amount>` - Move money to your wallet.",
-            "`[p]leaderboard` - See the richest users."
-        ]
+            "`[p]leaderboard` - See the richest users.",
+        ],
     },
     "gambling": {
         "title": "🎲 Gambling",
@@ -52,8 +52,8 @@ HELP_CONTENT = {
             "`[p]rps <amount> <choice>` - Rock, Paper, Scissors.",
             "`[p]slots <amount>` - Slot Machine.",
             "`[p]mines <amount>` - Minesweeper game.",
-            "`[p]rakeback` - Claim a percentage of your losses back."
-        ]
+            "`[p]rakeback` - Claim a percentage of your losses back.",
+        ],
     },
     "level": {
         "title": "🆙 Leveling System",
@@ -68,8 +68,8 @@ HELP_CONTENT = {
         "commands": [
             "`[p]rank` - View your rank card and progress.",
             "`[p]levels` - View the server leaderboard.",
-            "`[p]level rewards` - See available level-up rewards."
-        ]
+            "`[p]level rewards` - See available level-up rewards.",
+        ],
     },
     "shop": {
         "title": "🛒 Shop",
@@ -82,8 +82,8 @@ HELP_CONTENT = {
             "`[p]shop` - Open the interactive shop browser.",
             "`[p]shop buy <item>` - Purchase an item directly.",
             "`[p]inventory` - View your purchased items.",
-            "`[p]use <item>` - Use an item from your inventory."
-        ]
+            "`[p]use <item>` - Use an item from your inventory.",
+        ],
     },
     "club": {
         "title": "🏰 Clubs",
@@ -97,8 +97,8 @@ HELP_CONTENT = {
             "`[p]club join` - Join a club.",
             "`[p]club info` - View club details.",
             "`[p]club deposit` - Contribute to your club's bank.",
-            "`[p]club leave` - Leave your current club."
-        ]
+            "`[p]club leave` - Leave your current club.",
+        ],
     },
     "waifu": {
         "title": "👰 Waifus",
@@ -111,8 +111,8 @@ HELP_CONTENT = {
             "`[p]waifu claim <user>` - Buy a user as your waifu.",
             "`[p]waifu transfer <user>` - Transfer ownership.",
             "`[p]waifu divorce` - Release a waifu.",
-            "`[p]waifus` - List your waifus."
-        ]
+            "`[p]waifus` - List your waifus.",
+        ],
     },
     "nitro": {
         "title": "🚀 Nitro Shop",
@@ -121,23 +121,19 @@ HELP_CONTENT = {
             "Exchange massive amounts of currency for real Discord Nitro rewards.\n"
             "Stock is limited and manually replenished."
         ),
-        "commands": [
-            "`[p]nitro` - Open the Nitro shop menu.",
-            "`[p]nitro stock` - Check current availability."
-        ]
+        "commands": ["`[p]nitro` - Open the Nitro shop menu.", "`[p]nitro stock` - Check current availability."],
     },
     "market": {
         "title": "📈 Stock Market",
         "emoji": "📈",
         "description": (
-            "Invest in the dynamic Unicornia Stock Market.\n"
-            "Buy low, sell high, and watch your portfolio grow!"
+            "Invest in the dynamic Unicornia Stock Market.\nBuy low, sell high, and watch your portfolio grow!"
         ),
         "commands": [
             "`[p]stock list` - View active stocks and prices.",
             "`[p]stock buy <ticker> <amount>` - Buy shares.",
             "`[p]stock sell <ticker> <amount>` - Sell shares.",
-            "`[p]stock portfolio` - View your holdings."
-        ]
-    }
+            "`[p]stock portfolio` - View your holdings.",
+        ],
+    },
 }

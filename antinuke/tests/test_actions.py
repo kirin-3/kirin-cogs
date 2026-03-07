@@ -54,9 +54,7 @@ def actions(bot_mock: MagicMock, config_mock: MagicMock) -> QuarantineActions:
 
 
 @pytest.mark.asyncio
-async def test_execute_quarantine_success(
-    actions: QuarantineActions, config_mock: MagicMock
-) -> None:
+async def test_execute_quarantine_success(actions: QuarantineActions, config_mock: MagicMock) -> None:
     guild = MagicMock(spec=discord.Guild)
     guild.id = 1
 
@@ -94,9 +92,7 @@ async def test_execute_quarantine_success(
     result = await actions.execute_quarantine(guild, user, "channel_delete")
 
     assert result is True
-    user.edit.assert_called_once_with(
-        roles=[q_role], reason="AntiNuke: Channel Deletion threshold exceeded"
-    )
+    user.edit.assert_called_once_with(roles=[q_role], reason="AntiNuke: Channel Deletion threshold exceeded")
 
     q_users_ctx = config_mock.guild.return_value.quarantined_users.return_value
     assert str(user.id) in q_users_ctx
@@ -127,9 +123,7 @@ async def test_execute_quarantine_hierarchy_fail(actions: QuarantineActions) -> 
 
 
 @pytest.mark.asyncio
-async def test_execute_quarantine_no_role_configured(
-    actions: QuarantineActions, config_mock: MagicMock
-) -> None:
+async def test_execute_quarantine_no_role_configured(actions: QuarantineActions, config_mock: MagicMock) -> None:
     """Returns False and logs a warning when no quarantine role is set."""
     guild = MagicMock(spec=discord.Guild)
 
@@ -150,9 +144,7 @@ async def test_execute_quarantine_no_role_configured(
 
 
 @pytest.mark.asyncio
-async def test_execute_quarantine_role_above_bot(
-    actions: QuarantineActions, config_mock: MagicMock
-) -> None:
+async def test_execute_quarantine_role_above_bot(actions: QuarantineActions, config_mock: MagicMock) -> None:
     """Returns False when the quarantine role is at or above the bot's top role."""
     guild = MagicMock(spec=discord.Guild)
 
@@ -181,9 +173,7 @@ async def test_execute_quarantine_role_above_bot(
 
 
 @pytest.mark.asyncio
-async def test_restore_user_success(
-    actions: QuarantineActions, config_mock: MagicMock
-) -> None:
+async def test_restore_user_success(actions: QuarantineActions, config_mock: MagicMock) -> None:
     guild = MagicMock(spec=discord.Guild)
     guild.id = 1
 

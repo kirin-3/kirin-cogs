@@ -1,21 +1,46 @@
-from redbot.core import commands, Config, checks
-import discord
 import inspect
-from PIL import Image, ImageDraw, ImageFont
 import io
-from functools import partial
 import math
 
+import discord
+from PIL import Image, ImageDraw, ImageFont
+from redbot.core import Config, checks, commands
+
 PALETTE_COLORS = [
-    ("Red", "#FF0000"), ("Crimson", "#DC143C"), ("Tomato", "#FF6347"), ("Coral", "#FF7F50"),
-    ("Pink", "#FFC0CB"), ("HotPink", "#FF69B4"), ("Magenta", "#FF00FF"), ("Maroon", "#800000"),
-    ("Orange", "#FFA500"), ("Gold", "#FFD700"), ("Yellow", "#FFFF00"), ("Khaki", "#F0E68C"),
-    ("Lime", "#00FF00"), ("Green", "#008000"), ("Forest", "#228B22"), ("Olive", "#808000"),
-    ("Teal", "#008080"), ("Cyan", "#00FFFF"), ("SkyBlue", "#87CEEB"), ("Turquoise", "#40E0D0"),
-    ("Blue", "#0000FF"), ("RoyalBlue", "#4169E1"), ("Navy", "#000080"), ("Indigo", "#4B0082"),
-    ("Lavender", "#E6E6FA"), ("Purple", "#800080"), ("Violet", "#EE82EE"), ("Brown", "#A52A2A"),
-    ("White", "#FFFFFF"), ("Silver", "#C0C0C0"), ("Grey", "#808080"), ("Black", "#000000")
+    ("Red", "#FF0000"),
+    ("Crimson", "#DC143C"),
+    ("Tomato", "#FF6347"),
+    ("Coral", "#FF7F50"),
+    ("Pink", "#FFC0CB"),
+    ("HotPink", "#FF69B4"),
+    ("Magenta", "#FF00FF"),
+    ("Maroon", "#800000"),
+    ("Orange", "#FFA500"),
+    ("Gold", "#FFD700"),
+    ("Yellow", "#FFFF00"),
+    ("Khaki", "#F0E68C"),
+    ("Lime", "#00FF00"),
+    ("Green", "#008000"),
+    ("Forest", "#228B22"),
+    ("Olive", "#808000"),
+    ("Teal", "#008080"),
+    ("Cyan", "#00FFFF"),
+    ("SkyBlue", "#87CEEB"),
+    ("Turquoise", "#40E0D0"),
+    ("Blue", "#0000FF"),
+    ("RoyalBlue", "#4169E1"),
+    ("Navy", "#000080"),
+    ("Indigo", "#4B0082"),
+    ("Lavender", "#E6E6FA"),
+    ("Purple", "#800080"),
+    ("Violet", "#EE82EE"),
+    ("Brown", "#A52A2A"),
+    ("White", "#FFFFFF"),
+    ("Silver", "#C0C0C0"),
+    ("Grey", "#808080"),
+    ("Black", "#000000"),
 ]
+
 
 def generate_palette_image():
     # Grid settings
@@ -24,26 +49,26 @@ def generate_palette_image():
     cell_w, cell_h = 160, 80
     width = cols * cell_w
     height = rows * cell_h
-    
+
     image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
-    
+
     try:
         # Try to load a nicer font if available, else default
         font = ImageFont.truetype("arial.ttf", 16)
-    except IOError:
+    except OSError:
         font = ImageFont.load_default()
-        
+
     for i, (name, hex_code) in enumerate(PALETTE_COLORS):
         row = i // cols
         col = i % cols
         x = col * cell_w
         y = row * cell_h
-        
+
         # Draw color box
         rect_h = 50
         draw.rectangle([x + 5, y + 5, x + cell_w - 5, y + rect_h], fill=hex_code, outline="black")
-        
+
         # Draw text
         text_fill = "black"
         draw.text((x + 10, y + rect_h + 8), f"{name} {hex_code}", fill=text_fill, font=font)
@@ -53,13 +78,14 @@ def generate_palette_image():
     buffer.seek(0)
     return buffer
 
+
 class CustomRoleColor(commands.Cog):
     """
     Allow admins to assign a role to a user, and let that user change the color, name, and icon of that role.
-    
+
     This cog enables server administrators to designate specific roles for users to customize.
     Once assigned, users can change the color, name, icon, and mentionable status of their role.
-    
+
     Note: The bot must have manage roles permission and its top role must be above the roles being managed.
     """
 
@@ -119,7 +145,7 @@ class CustomRoleColor(commands.Cog):
                     colour=discord.Colour(11127295),
                     secondary_colour=discord.Colour(16759788),
                     tertiary_colour=discord.Colour(16761760),
-                    reason=f"Changed by {ctx.author}"
+                    reason=f"Changed by {ctx.author}",
                 )
                 await ctx.send(f"Changed color of {role.mention} to holographic.")
             except discord.Forbidden:
@@ -140,7 +166,9 @@ class CustomRoleColor(commands.Cog):
 
         primary_parsed = parse_hex(color)
         if not primary_parsed:
-            await ctx.send("Please provide a valid hex color (e.g., #ff0000) or 'holographic'. You can use [this](https://htmlcolorcodes.com) site for getting the code.")
+            await ctx.send(
+                "Please provide a valid hex color (e.g., #ff0000) or 'holographic'. You can use [this](https://htmlcolorcodes.com) site for getting the code."
+            )
             return
 
         secondary_parsed = None
@@ -157,7 +185,7 @@ class CustomRoleColor(commands.Cog):
                 colour=primary_parsed,
                 secondary_colour=secondary_parsed,
                 tertiary_colour=None,
-                reason=f"Changed by {ctx.author}"
+                reason=f"Changed by {ctx.author}",
             )
             if secondary_parsed:
                 await ctx.send(f"Changed color of {role.mention} to gradient: {color} -> {secondary_color}.")
@@ -325,7 +353,7 @@ class CustomRoleColor(commands.Cog):
         if len(c_clean) != 6:
             await ctx.send("Please provide a valid hex color (e.g., #ff0000).")
             return
-            
+
         try:
             parsed = discord.Color(int(c_clean, 16))
         except ValueError:
@@ -362,31 +390,38 @@ class CustomRoleColor(commands.Cog):
             file_buffer = await self.bot.loop.run_in_executor(None, generate_palette_image)
             filename = "palette.png"
             file = discord.File(file_buffer, filename=filename)
-            
+
             # Generate copyable text list
             desc_lines = []
             for name, hex_code in PALETTE_COLORS:
                 desc_lines.append(f"`{hex_code}` **{name}**")
-            
-            description = "Here are some common colors. You can copy the code from the list below.\n\n" + " | ".join(desc_lines)
-            
+
+            description = "Here are some common colors. You can copy the code from the list below.\n\n" + " | ".join(
+                desc_lines
+            )
+
             # If description is too long (over 4096), we might need to truncate or split.
             # 32 colors * ~25 chars = ~800 chars. It fits easily.
             # Using " | " separator might be dense. Let's use newlines or grouped.
             # Newlines are easier to scan.
-            description = "Here are some common colors. You can copy the code from the list below.\n\n" + "\n".join(desc_lines)
-            
+            description = "Here are some common colors. You can copy the code from the list below.\n\n" + "\n".join(
+                desc_lines
+            )
+
             # To save vertical space, maybe 2 columns? Embeds don't support columns in description.
             # Fields can work.
-            
-            embed = discord.Embed(title="Color Palette", description="Here are some common colors. You can copy the code from the list below.")
+
+            embed = discord.Embed(
+                title="Color Palette",
+                description="Here are some common colors. You can copy the code from the list below.",
+            )
             embed.set_image(url=f"attachment://{filename}")
-            
+
             # Add fields for text list to make it compact but copyable
             # Group into chunks of 8
             chunk_size = 8
             for i in range(0, len(PALETTE_COLORS), chunk_size):
-                chunk = PALETTE_COLORS[i:i + chunk_size]
+                chunk = PALETTE_COLORS[i : i + chunk_size]
                 value = "\n".join([f"`{code}` {name}" for name, code in chunk])
                 embed.add_field(name="\u200b", value=value, inline=True)
 
@@ -394,6 +429,7 @@ class CustomRoleColor(commands.Cog):
             await ctx.send(file=file, embed=embed)
         except Exception as e:
             await ctx.send(f"Failed to generate palette: {e}")
+
 
 async def setup(bot):
     await bot.add_cog(CustomRoleColor(bot))
