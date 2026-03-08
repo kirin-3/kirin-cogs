@@ -336,7 +336,7 @@ class ContestCog(commands.Cog):
                 )
 
                 if success:
-                    payout_text += f"**#{rank} {entry['name']}**: +{reward_amount:,} 🦄\n"
+                    payout_text += f"**#{rank} {entry['name']}**: +{reward_amount:,} <:slut:686148402941001730>\n"
                 else:
                     payout_text += f"**#{rank} {entry['name']}**: ❌ Failed to deposit\n"
 
