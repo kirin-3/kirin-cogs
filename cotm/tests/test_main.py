@@ -59,6 +59,43 @@ async def test_post_contest_info(cog: ContestCog, ctx_mock: MagicMock) -> None:
     assert isinstance(view, ContestDashboardView)
     assert view.texts["description"] == "formatted text"
 
+    # contest_number must be persisted to Config
+    saved = await cog.config.contest_number()
+    assert saved == 5
+
+
+@pytest.mark.asyncio
+async def test_post_contest_info_no_number_skips_config_save(cog: ContestCog, ctx_mock: MagicMock) -> None:
+    """Calling [p]contest without a number does not overwrite the saved contest_number."""
+    await cog.config.contest_number.set(3)
+
+    cog._import_txt = MagicMock(return_value="")  # type: ignore[method-assign]
+    cog._format_text = MagicMock(return_value="")  # type: ignore[method-assign]
+
+    await cog.contest.callback(cog, ctx_mock, None)  # type: ignore[arg-type]
+
+    saved = await cog.config.contest_number()
+    assert saved == 3  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_cog_load_restores_number_and_registers_view(cog: ContestCog, bot_mock: MagicMock) -> None:
+    """cog_load reads contest_number from Config and registers a persistent ContestDashboardView."""
+    await cog.config.contest_number.set(7)
+
+    cog._import_txt = MagicMock(return_value="")  # type: ignore[method-assign]
+    cog._format_text = MagicMock(return_value="")  # type: ignore[method-assign]
+
+    await cog.cog_load()
+
+    assert cog._contest_number == 7
+
+    bot_mock.add_view.assert_called_once()
+    view_arg = bot_mock.add_view.call_args[0][0]
+    from cotm.cotm_views import ContestDashboardView
+
+    assert isinstance(view_arg, ContestDashboardView)
+
 
 @pytest.mark.asyncio
 async def test_get_contest_results(cog: ContestCog) -> None:

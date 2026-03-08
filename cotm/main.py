@@ -14,7 +14,7 @@ from typing import Any, cast
 
 import discord
 from discord import ui
-from redbot.core import commands
+from redbot.core import Config, commands
 from redbot.core.bot import Red
 
 from . import __version__, const
@@ -31,9 +31,22 @@ class ContestCog(commands.Cog):
 
         self._contest_number: int = 1
 
+        self.config = Config.get_conf(self, identifier=906144832, force_registration=True)
+        self.config.register_global(contest_number=1)
+
         self.logger.info("-" * 32)
         self.logger.info(f"{self.__class__.__name__} v({__version__}) initialized!")
         self.logger.info("-" * 32)
+
+    async def cog_load(self) -> None:
+        """Restores persisted state and registers the persistent view with the bot.
+
+        This ensures the contest dashboard buttons remain interactive across bot restarts.
+        """
+        self._contest_number = await self.config.contest_number()
+        texts = self._load_texts()
+        self.bot.add_view(ContestDashboardView(self, self._contest_number, texts))
+        self.logger.info(f"Registered persistent ContestDashboardView (contest #{self._contest_number})")
 
     @property
     def contest_number(self) -> str:
@@ -88,12 +101,11 @@ class ContestCog(commands.Cog):
 
         return embed
 
-    def _format_text(self, ctx: commands.Context, text: str) -> str:
+    def _format_text(self, text: str) -> str:
         """
         Formats the given text with contest-specific details.
 
         Args:
-            ctx (commands.Context): The context in which the command was invoked.
             text (str): The text to be formatted.
 
         Returns:
@@ -107,6 +119,19 @@ class ContestCog(commands.Cog):
             winners_channel=const.WINNERS_CHANNEL_MENTION,
         )
 
+    def _load_texts(self) -> dict[str, str]:
+        """Loads and formats all contest text sections from disk.
+
+        Returns:
+            dict[str, str]: Mapping of section name to formatted text content.
+        """
+        return {
+            "description": self._format_text(self._import_txt(const.CONTEST_DESCRIPTION)),
+            "terms": self._format_text(self._import_txt(const.TERMS_DESCRIPTION)),
+            "prizes": self._format_text(self._import_txt(const.PRIZES_DESCRIPTION)),
+            "votes": self._format_text(self._import_txt(const.VOTES_DESCRIPTION)),
+        }
+
     async def _post_contest_info(self, ctx: commands.Context, contest_number: int | None = None) -> None:
         """Posts information about the Cutie of the Month Contest to the designated channel.
 
@@ -118,20 +143,13 @@ class ContestCog(commands.Cog):
             contest_number (int, optional): The contest number to be posted. Defaults to None.
         """
 
-        # this updates property as an integer, and gets it a a string with ordinal suffix
+        # this updates property as an integer, and gets it as a string with ordinal suffix
         # ex: "52nd", "53rd", etc
         if contest_number is not None:
             self.contest_number = contest_number
+            await self.config.contest_number.set(self._contest_number)
 
-        # Load and format the texts
-        texts = {
-            "description": self._format_text(ctx, self._import_txt(const.CONTEST_DESCRIPTION)),
-            "terms": self._format_text(ctx, self._import_txt(const.TERMS_DESCRIPTION)),
-            "prizes": self._format_text(ctx, self._import_txt(const.PRIZES_DESCRIPTION)),
-            "votes": self._format_text(ctx, self._import_txt(const.VOTES_DESCRIPTION)),
-        }
-
-        # ContestDashboardView is already top-level imported
+        texts = self._load_texts()
 
         dashboard_view = ContestDashboardView(self, self._contest_number, texts)
         await cast(discord.TextChannel, ctx.channel).send(view=dashboard_view)
@@ -158,7 +176,11 @@ class ContestCog(commands.Cog):
         timenow = datetime.now(UTC)
 
         def valid_user_vote(u):
-            return not (not hasattr(u, "joined_at") or u.joined_at is None or (voter_server_age is not None and u.joined_at >= timenow - voter_server_age))
+            return not (
+                not hasattr(u, "joined_at")
+                or u.joined_at is None
+                or (voter_server_age is not None and u.joined_at >= timenow - voter_server_age)
+            )
 
         entries = []
         async for message in channel.history(limit=None):
