@@ -16,6 +16,14 @@ Syncs Discord roles and awards currency from a Google Sheet (supporting Patreon,
   - Applies percentage bonuses for higher tiers (5%, 10%, 15%, 20%).
 - **European Currency Support**: Handles `€5,00` and `$5.00` formats correctly.
 
+## Requirements
+
+- Red-DiscordBot 3.5.0 or higher
+- Python 3.11 or higher
+- Unicornia cog must be loaded and functioning
+- Google Sheets API access (requires service account credentials)
+- Dependencies: gspread, google-auth
+
 ## Setup Guide
 
 ### 1. Google Cloud Setup (One-time)
@@ -57,11 +65,25 @@ The bot checks the sheet **every hour**.
 - It removes roles from cancelled patrons.
 - It awards currency if a new charge is detected (or if it's the next month of an annual pledge).
 
+### Commands
+
+#### Setup Commands
+```
+[p]patronset setup <SHEET_ID_FROM_URL>    # Set the Google Sheet ID
+[p]patronset roles @ActivePatron @FormerPatron    # Set Active and Former patron roles
+[p]patronset logchannel #bot-logs    # Set channel for reward logs
+[p]patronset creds    # Show instructions for uploading credentials
+[p]patronset sync    # Manually trigger a sync
+```
+
 ### Manual Sync
 You can force a sync immediately:
 ```
 [p]patronset sync
 ```
+
+### Uploading Credentials
+Use the `[p]patronset creds` command to see instructions for uploading the service account JSON file to the bot. This command provides the path where the `service_account.json` file should be placed.
 
 ## Reward Logic
 
@@ -81,3 +103,4 @@ If `Charge Frequency` contains "Annual", the bot divides the amount by 12. It th
 - **Bot not updating roles?** Check if the username in the `Discord` column matches exactly.
 - **"Service account not found"?** Ensure `service_account.json` is in the correct folder.
 - **Race conditions?** The bot uses a lock to prevent manual syncs from interfering with background syncs.
+- **Credential setup?** Use `[p]patronset creds` to see where to place your `service_account.json` file.

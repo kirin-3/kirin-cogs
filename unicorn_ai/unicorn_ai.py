@@ -49,8 +49,8 @@ class UnicornAI(commands.Cog):
             "history_limit": 50,
             "model": "gemini-3-pro-preview",
             "provider": "vertex",
-            "openai_endpoint": "https://nano-gpt.com/api/v1/chat/completions",
-            "openai_model": "zai-org/glm-5:thinking",
+            "openai_endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
+            "openai_model": "z-ai/glm5",
         }
         self.config.register_global(**default_global)
 

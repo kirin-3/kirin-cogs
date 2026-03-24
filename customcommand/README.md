@@ -25,7 +25,9 @@ Delete your custom command.
 - **Example**: `[p]cc limit @User 5`
 
 ### `[p]customcommand list`
-(Admin only) List all custom commands and their owners.
+List custom commands.
+- **Regular users**: See only your own commands.
+- **Moderators** (users with Ban Members permission): See all commands and their owners.
 - **Example**: `[p]cc list`
 
 ## Features
@@ -35,6 +37,11 @@ Delete your custom command.
 - **Logging**: Logs command creations and deletions to the configured channel.
 - **Moderation**: Moderators can delete any custom command.
 - **Cooldowns**: Commands have a cooldown to prevent spam.
+- **Permission-based listing**: Regular users see only their commands, moderators see all commands.
+
+## Requirements
+- Users must have the specific supporter role to create commands.
+- Moderators need Ban Members permission to delete others' commands or see all commands in list.
 
 ## Requirements
 - Users must have the specific supporter role to create commands.

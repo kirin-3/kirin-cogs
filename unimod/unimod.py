@@ -107,8 +107,8 @@ This conversation is taking place in the channel: #{channel_name}
 Analyze this conversation against the server rules, paying close attention to channel-specific rules. Respond with JSON only."""
 
     # NanoGPT API configuration (same as unicorn_ai)
-    NANOGPT_ENDPOINT = "https://nano-gpt.com/api/v1/chat/completions"
-    NANOGPT_MODEL = "zai-org/glm-5:thinking"
+    NANOGPT_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
+    NANOGPT_MODEL = "z-ai/glm5"
 
     def __init__(self, bot: Red):
         self.bot = bot
