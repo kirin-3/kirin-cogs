@@ -307,6 +307,32 @@ Analyze this conversation against the server rules, paying close attention to ch
             primary_message_id=primary_msg_id,
         )
 
+    @staticmethod
+    def _safe_exception_text(exc: BaseException) -> str:
+        """Return readable exception text without raising a new error."""
+        exc_type = type(exc).__name__
+
+        try:
+            text = str(exc)
+        except Exception as str_error:
+            str_error_type = type(str_error).__name__
+            try:
+                exc_repr = repr(exc)
+            except Exception as repr_error:
+                repr_error_type = type(repr_error).__name__
+                return f"{exc_type} (str() failed with {str_error_type}; repr() failed with {repr_error_type})"
+            return f"{exc_type} (str() failed with {str_error_type}): {exc_repr}"
+
+        if text:
+            return text
+
+        try:
+            exc_repr = repr(exc)
+        except Exception:
+            return exc_type
+
+        return f"{exc_type}: {exc_repr}"
+
     async def _analyze_with_ai(self, system_prompt: str, user_prompt: str) -> AIAnalysisResult:
         """Make async API call to NanoGPT using aiohttp."""
         # Get API key from Red's shared API tokens (same pattern as unicorn_ai)
@@ -350,8 +376,8 @@ Analyze this conversation against the server rules, paying close attention to ch
                         self._last_ai_error = f"API Error {response.status}: {error_text}"
                         log.error(self._last_ai_error)
                         raise aiohttp.ClientResponseError(
-                            request_info=None,  # pyright: ignore[reportArgumentType]
-                            history=None,  # pyright: ignore[reportArgumentType]
+                            request_info=response.request_info,
+                            history=response.history,
                             status=response.status,
                             message=f"NanoGPT API Error {response.status}: {error_text}",
                         )
@@ -378,8 +404,10 @@ Analyze this conversation against the server rules, paying close attention to ch
             raise
         except Exception as e:
             request_duration = time.monotonic() - request_start
-            self._last_ai_error = str(e)
-            log.error(f"AI request failed after {request_duration:.1f}s: {e}")
+            error_text = self._safe_exception_text(e)
+            if not self._last_ai_error:
+                self._last_ai_error = error_text
+            log.error(f"AI request failed after {request_duration:.1f}s: {error_text}")
             raise
 
     def _save_last_response(self, content: str):
