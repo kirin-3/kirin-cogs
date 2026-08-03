@@ -1,7 +1,10 @@
 import asyncio
+import dataclasses
 import datetime
 import json
 import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from time import perf_counter
 
@@ -12,7 +15,7 @@ from redbot.core.bot import Red
 
 from .abc import CompositeMetaClass
 from .commands import TicketCommands
-from .common.constants import DEFAULT_GUILD
+from .common.constants import DEFAULT_GUILD, TicketState
 from .common.functions import Functions
 from .common.utils import (
     close_ticket,
@@ -20,8 +23,15 @@ from .common.utils import (
     ticket_owner_hastyped,
 )
 from .common.views import CloseView, PanelView
+from .migrations import migrate_guild_schemas
 
 log = logging.getLogger("red.kirin_cogs.tickets")
+
+
+@dataclasses.dataclass
+class _LockEntry:
+    lock: asyncio.Lock = dataclasses.field(default_factory=asyncio.Lock)
+    holders: int = 0
 
 
 class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaClass):
@@ -30,7 +40,7 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
     """
 
     __author__ = "[vertyco](https://github.com/vertyco/vrt-cogs)"
-    __version__ = "2.12.1"
+    __version__ = "2.13.0"
 
     def format_help_for_context(self, ctx):
         helpcmd = super().format_help_for_context(ctx)
@@ -38,8 +48,25 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
         return info
 
     async def red_delete_data_for_user(self, *, requester, user_id: int):  # pyright: ignore[reportIncompatibleMethodOverride]
-        """No data to delete"""
-        return
+        """Delete ticket records and blacklist entries linked to a user ID."""
+        user_key = str(user_id)
+        for guild_id, data in (await self.config.all_guilds()).items():
+            if not isinstance(data, dict):
+                continue
+            opened = data.get("opened", {})
+            blacklist = data.get("blacklist", [])
+            changed = False
+            if isinstance(opened, dict):
+                removed = opened.pop(user_key, None)
+                removed = opened.pop(user_id, removed)
+                changed = removed is not None
+            if isinstance(blacklist, list) and any(str(value) == user_key for value in blacklist):
+                blacklist = [value for value in blacklist if str(value) != user_key]
+                changed = True
+            if changed:
+                group = self.config.guild_from_id(guild_id)
+                await group.opened.set(opened)
+                await group.blacklist.set(blacklist)
 
     def __init__(self, bot: Red):
         self.bot: Red = bot
@@ -53,9 +80,15 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
         self.initializing = False
         self.startup_task: asyncio.Task | None = None
 
+        # Per-guild/member creation locks prevent concurrent limit and record races.
+        self._creation_locks: dict[tuple[int, int], _LockEntry] = {}
+        # Per-guild ticket_num locks prevent numbering collisions
+        self._num_locks: dict[int, _LockEntry] = {}
+
         self.auto_close.start()
 
     async def cog_load(self) -> None:
+        await migrate_guild_schemas(self.config)
         self.startup_task = asyncio.create_task(self._startup())
 
     async def cog_unload(self) -> None:
@@ -65,11 +98,135 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
             view.stop()
         self.auto_close.cancel()
 
+    @asynccontextmanager
+    async def _creation_lock(self, guild_id: int, member_id: int) -> AsyncGenerator[asyncio.Lock, None]:
+        """Serialize ticket reservations for one member in one guild."""
+        key = (guild_id, member_id)
+        entry = self._creation_locks.get(key)
+        if entry is None:
+            entry = _LockEntry()
+            self._creation_locks[key] = entry
+        entry.holders += 1
+        try:
+            async with entry.lock:
+                yield entry.lock
+        finally:
+            entry.holders -= 1
+            if entry.holders == 0 and self._creation_locks.get(key) is entry:
+                del self._creation_locks[key]
+
+    @asynccontextmanager
+    async def _num_lock(self, guild_id: int) -> AsyncGenerator[asyncio.Lock, None]:
+        """Per-guild lock for ticket_num allocation."""
+        entry = self._num_locks.get(guild_id)
+        if entry is None:
+            entry = _LockEntry()
+            self._num_locks[guild_id] = entry
+        entry.holders += 1
+        try:
+            async with entry.lock:
+                yield entry.lock
+        finally:
+            entry.holders -= 1
+            if entry.holders == 0 and self._num_locks.get(guild_id) is entry:
+                del self._num_locks[guild_id]
+
     async def _startup(self) -> None:
         await self.bot.wait_until_red_ready()
         await self._import_settings()
         await asyncio.sleep(6)
+        await self._reconcile_stale_tickets()
         await self.initialize()
+
+    async def _reconcile_stale_tickets(self) -> None:
+        """Clean up tickets left in non-terminal states after a restart.
+
+        - PENDING tickets with no channel -> remove the record
+        - PENDING tickets with a channel -> promote to ACTIVE
+        - CLOSE_PENDING / CLOSE_FAILED tickets -> attempt channel deletion again
+        """
+        all_guilds = await self.config.all_guilds()
+        for gid, data in all_guilds.items():
+            guild = self.bot.get_guild(gid)
+            if not guild:
+                continue
+            opened = data.get("opened", {})
+            if not opened:
+                continue
+
+            modified = False
+            users_to_remove: list[str] = []
+            tickets_to_remove: list[tuple[str, str]] = []
+            tickets_to_promote: list[tuple[str, str, str]] = []
+
+            for uid, tickets in opened.items():
+                for cid, ticket in tickets.items():
+                    state = ticket.get("state", TicketState.ACTIVE)
+                    raw_channel_id = ticket.get("channel_id") if state == TicketState.PENDING else cid
+                    try:
+                        channel_id = int(raw_channel_id) if raw_channel_id else None
+                    except (TypeError, ValueError):
+                        channel_id = None
+                    channel = guild.get_channel_or_thread(channel_id) if channel_id else None
+                    if channel is None and state == TicketState.PENDING:
+                        token = ticket.get("reconcile_token")
+                        if isinstance(token, str) and token:
+                            channel = discord.utils.find(
+                                lambda candidate, expected=token: candidate.topic == expected,
+                                guild.text_channels,
+                            )
+
+                    if state == TicketState.PENDING:
+                        if channel is None:
+                            # Channel never created or was deleted
+                            tickets_to_remove.append((uid, cid))
+                        else:
+                            # Channel exists, promote and replace the placeholder key.
+                            tickets_to_promote.append((uid, cid, str(channel.id)))
+
+                    elif state in (TicketState.CLOSE_PENDING, TicketState.CLOSE_FAILED):
+                        if channel is None:
+                            # Channel already gone, just remove record
+                            tickets_to_remove.append((uid, cid))
+                        else:
+                            # Try to delete the channel again
+                            try:
+                                await channel.delete(reason="Reconciling stale close-pending ticket")
+                                tickets_to_remove.append((uid, cid))
+                            except discord.Forbidden:
+                                log.warning(
+                                    f"Cannot delete close-failed ticket channel {cid} in {guild.name}: missing perms"
+                                )
+                            except discord.HTTPException as e:
+                                log.warning(f"Failed to delete close-failed ticket channel {cid} in {guild.name}: {e}")
+
+            if tickets_to_remove or tickets_to_promote:
+                async with self.config.guild(guild).opened() as opened_conf:
+                    for uid, cid in tickets_to_remove:
+                        if uid in opened_conf and cid in opened_conf[uid]:
+                            del opened_conf[uid][cid]
+                            if not opened_conf[uid]:
+                                users_to_remove.append(uid)
+                            modified = True
+
+                    for uid in users_to_remove:
+                        if uid in opened_conf:
+                            del opened_conf[uid]
+
+                    for uid, cid, channel_id in tickets_to_promote:
+                        if uid in opened_conf and cid in opened_conf[uid]:
+                            ticket = opened_conf[uid].pop(cid)
+                            ticket["state"] = TicketState.ACTIVE
+                            ticket.pop("channel_id", None)
+                            ticket.pop("reconcile_token", None)
+                            opened_conf[uid][channel_id] = ticket
+                            modified = True
+
+            if modified:
+                log.info(
+                    f"Reconciled tickets in {guild.name}: "
+                    f"{len(tickets_to_remove)} removed, {len(tickets_to_promote)} promoted"
+                )
 
     async def _import_settings(self) -> None:
         settings_path = Path(__file__).parent / "settings.json"

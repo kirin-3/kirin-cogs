@@ -77,3 +77,5 @@ Load the cog:
 ## Troubleshooting
 - **Modal Error**: If `[p]gen` fails with an authentication error, ensure the bot's host machine has run `modal setup` or has `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` environment variables set.
 - **Horde Error**: If `[p]genfree` is slow, get an API key from Stable Horde to increase priority.
+
+Generation is globally bounded across guilds. Owners can set the process-wide limit from 1–4 with `[p]unicornimage concurrency <limit>` when no generation is active. Validation and backend failures restore command cooldowns. Prompts are byte-limited, downloaded/generated media is capped at 10 MiB, and output mentions are disabled.

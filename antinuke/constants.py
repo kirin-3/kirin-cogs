@@ -29,6 +29,8 @@ DEFAULT_MONITOR_CONFIG = {
 
 # Default guild configuration schema
 DEFAULT_GUILD: dict[str, Any] = {
+    # Schema version marker (see migrations.py); 0 = legacy unmigrated record
+    "schema_version": 0,
     # Core Settings
     "enabled": False,
     "log_channel": None,

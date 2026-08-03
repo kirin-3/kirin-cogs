@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 
 import discord
@@ -903,6 +904,7 @@ class MinesView(ui.View):
         mines_indices: set,
         total_cells: int = 20,
         currency_symbol: str = "$",
+        operation_key: str = "",
     ):
         super().__init__(timeout=120)
         self.ctx = ctx
@@ -912,15 +914,25 @@ class MinesView(ui.View):
         self.mines_indices = mines_indices
         self.total_cells = total_cells
         self.currency_symbol = currency_symbol
+        self.operation_key = operation_key
 
         self.revealed_indices = set()
         self.finished = False
+        self._settle_lock = asyncio.Lock()
         self.message: discord.Message | None = None
         self.current_multiplier = 1.0
         self.end_time = discord.utils.utcnow().timestamp() + 120
 
         # Init grid
         self._init_grid()
+
+    async def _try_begin_finalize(self) -> bool:
+        """Claim the right to finalize this game exactly once."""
+        async with self._settle_lock:
+            if self.finished:
+                return False
+            self.finished = True
+            return True
 
     def _init_grid(self):
         # Create 20 buttons for 5x4 grid
@@ -953,12 +965,20 @@ class MinesView(ui.View):
         return True
 
     async def on_timeout(self):
-        if not self.finished:
-            # Auto-loss on timeout? Or auto-cashout?
-            # Standard is auto-loss or just end. Let's auto-cashout if they have winnings, else return money?
-            # Actually standard gambling is loss on timeout to prevent exploits (wait for crash/disconnect).
-            # But here it's simple bot. Let's mark as finished and disable.
-            self.finished = True
+        if await self._try_begin_finalize():
+            # Timeout is a loss (standard anti-exploit behavior); the reserved
+            # stake settles with zero payout so the operation is recorded.
+            # If settlement fails the operation stays "reserved" in the
+            # database and can be refunded after recovery.
+            if self.operation_key:
+                await self.system.db.economy.settle_stake(
+                    key=self.operation_key,
+                    payout=0,
+                    transaction_type="mines",
+                    note="Mines timeout",
+                    result={"result": "timeout"},
+                )
+                await self.system._record_gambling_stats(self.user_id, "mines", self.amount, False)
             for child in self.children:
                 child.disabled = True  # type: ignore[attr-defined]
             if self.message:
@@ -1043,7 +1063,12 @@ class MinesView(ui.View):
         await self.game_over(interaction, True)
 
     async def game_over(self, interaction: discord.Interaction, won: bool, hit_mine_index: int | None = None):
-        self.finished = True
+        if not await self._try_begin_finalize():
+            # Another callback or the timeout handler already finalized this game.
+            if not interaction.response.is_done():
+                with contextlib.suppress(discord.HTTPException):
+                    await interaction.response.send_message("This game is already over.", ephemeral=True)
+            return
 
         # Disable all buttons and reveal mines
         for item in self.children:
@@ -1067,18 +1092,29 @@ class MinesView(ui.View):
             payout = int(self.amount * self.current_multiplier)
             profit = payout - self.amount
 
-            # DB Update
-            # Log win (profit is added to balance, amount was already deducted)
-            # Actually, usually play_mines deducts bet. So we add back the full payout.
-            await self.system.db.economy.add_currency(
-                self.user_id, payout, "mines", "win", note=f"Mines Win {len(self.revealed_indices)} steps"
-            )
-            await self.system._log_gambling_result(self.user_id, "mines", self.amount, True, payout)
+            # Settle the reserved stake once: payout covers stake + profit.
+            if self.operation_key:
+                await self.system.db.economy.settle_stake(
+                    key=self.operation_key,
+                    payout=payout,
+                    transaction_type="mines",
+                    note=f"Mines Win {len(self.revealed_indices)} steps",
+                    result={"result": "win", "payout": payout, "steps": len(self.revealed_indices)},
+                )
+            await self.system._record_gambling_stats(self.user_id, "mines", self.amount, True, payout)
 
             msg = f"🎉 **Cash Out!** You won **{self.currency_symbol}{payout:,}**! (Profit: {self.currency_symbol}{profit:,})"
         else:
-            # Log loss
-            await self.system._log_gambling_result(self.user_id, "mines", self.amount, False)
+            # Loss: the reserved stake settles with zero payout.
+            if self.operation_key:
+                await self.system.db.economy.settle_stake(
+                    key=self.operation_key,
+                    payout=0,
+                    transaction_type="mines",
+                    note="Mines loss",
+                    result={"result": "loss", "mine_index": hit_mine_index},
+                )
+            await self.system._record_gambling_stats(self.user_id, "mines", self.amount, False)
             msg = f"💥 **BOOM!** You hit a mine and lost **{self.currency_symbol}{self.amount:,}**."
 
         await interaction.response.edit_message(content=msg, view=self)

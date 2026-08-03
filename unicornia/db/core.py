@@ -3,6 +3,7 @@ Core Database Logic
 """
 
 import asyncio
+import json
 import logging
 import math
 from collections.abc import AsyncGenerator
@@ -174,6 +175,24 @@ class CoreDB:
             CREATE TABLE IF NOT EXISTS BankUsers (
                 UserId INTEGER PRIMARY KEY,
                 Balance INTEGER NOT NULL DEFAULT 0
+            )
+            """)
+
+            # Idempotent economy operations (additive; keyed by caller-supplied
+            # idempotency key so retries never repeat a balance effect)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS EconomyOperations (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                OperationKey TEXT NOT NULL UNIQUE,
+                GuildId INTEGER,
+                UserId INTEGER NOT NULL,
+                Source TEXT NOT NULL,
+                Direction TEXT NOT NULL,
+                Amount INTEGER NOT NULL,
+                State TEXT NOT NULL,
+                Result TEXT,
+                CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                SettledAt TEXT
             )
             """)
 
@@ -414,6 +433,8 @@ class CoreDB:
             await db.execute("CREATE INDEX IF NOT EXISTS idx_transactions_user ON CurrencyTransactions(UserId)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_club_xp ON Clubs(Xp DESC)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_user_club ON DiscordUser(ClubId)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_economy_operations_user ON EconomyOperations(UserId)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_economy_operations_state ON EconomyOperations(State)")
 
             # Optimized indices for Shop System and XP Caching
             await db.execute("CREATE INDEX IF NOT EXISTS idx_shop_entry_items ON ShopEntryItem(ShopEntryId)")
@@ -452,6 +473,59 @@ class CoreDB:
 
             # Run schema updates for existing databases
             await self._update_database_schema(db)
+            await self._reconcile_reserved_economy_operations(db)
+
+    async def _reconcile_reserved_economy_operations(self, db: aiosqlite.Connection) -> int:
+        """Refund stake reservations that cannot be resumed after a restart."""
+        await db.commit()
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                """
+                SELECT OperationKey, UserId, Amount
+                FROM EconomyOperations
+                WHERE State = 'reserved'
+                """
+            )
+            reservations = await cursor.fetchall()
+            reconciled = 0
+            payload = json.dumps({"result": "restart_refund"})
+            for operation_key, user_id, amount in reservations:
+                claim = await db.execute(
+                    """
+                    UPDATE EconomyOperations
+                    SET State = 'settled', Result = ?, SettledAt = datetime('now')
+                    WHERE OperationKey = ? AND State = 'reserved'
+                    """,
+                    (payload, operation_key),
+                )
+                if claim.rowcount == 0:
+                    continue
+                await db.execute(
+                    """
+                    INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
+                    ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount + ?
+                    """,
+                    (user_id, amount, amount),
+                )
+                await db.execute(
+                    """
+                    INSERT INTO CurrencyTransactions
+                        (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+                    VALUES (?, ?, 'gambling_refund', 'restart_reconciliation', NULL,
+                            'Refunded interrupted game stake', datetime('now'))
+                    """,
+                    (user_id, amount),
+                )
+                reconciled += 1
+            await db.commit()
+        except Exception:
+            await db.execute("ROLLBACK")
+            raise
+
+        if reconciled:
+            log.warning("Refunded %s interrupted gambling stake reservation(s)", reconciled)
+        return reconciled
 
     async def _update_database_schema(self, db):
         """Update existing database schema to add missing columns"""
@@ -491,7 +565,7 @@ class CoreDB:
 
             # Create ClubInvitations table if it doesn't exist
             await db.execute("""
-            CREATE TABLE IF NOT EXISTS ClubInvitations (
+                CREATE TABLE IF NOT EXISTS ClubInvitations (
                 ClubId INTEGER,
                 UserId INTEGER,
                 DateAdded TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -499,6 +573,25 @@ class CoreDB:
                 FOREIGN KEY (ClubId) REFERENCES Clubs(Id) ON DELETE CASCADE
             )
             """)
+
+            # Create EconomyOperations table if it doesn't exist (existing DBs)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS EconomyOperations (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                OperationKey TEXT NOT NULL UNIQUE,
+                GuildId INTEGER,
+                UserId INTEGER NOT NULL,
+                Source TEXT NOT NULL,
+                Direction TEXT NOT NULL,
+                Amount INTEGER NOT NULL,
+                State TEXT NOT NULL,
+                Result TEXT,
+                CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                SettledAt TEXT
+            )
+            """)
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_economy_operations_user ON EconomyOperations(UserId)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_economy_operations_state ON EconomyOperations(State)")
 
             # Migrate Command items (Type 1) to Items (Type 4)
             # Check if there are any Type 1 items first
@@ -1160,31 +1253,71 @@ class CoreDB:
     async def delete_user_data(self, user_id: int):
         """Delete all data for a user (Red bot requirement)"""
         async with self._get_connection() as db:
-            # Delete from all user-related tables
-            tables_to_clean = [
+            # Preserve accounting rows while removing direct identifiers and
+            # free-form metadata that may contain personal information.
+            await db.execute(
+                """
+                UPDATE CurrencyTransactions
+                SET UserId = 0, OtherId = CASE WHEN OtherId = ? THEN 0 ELSE OtherId END,
+                    Reason = '[deleted user]', Extra = NULL
+                WHERE UserId = ? OR OtherId = ?
+                """,
+                (user_id, user_id, user_id),
+            )
+            await db.execute(
+                """
+                UPDATE EconomyOperations
+                SET UserId = 0, OperationKey = 'deleted:' || lower(hex(randomblob(16))), Result = NULL
+                WHERE UserId = ?
+                """,
+                (user_id,),
+            )
+
+            # Remove direct identifiers from retained shared records.
+            with suppress(aiosqlite.OperationalError):
+                await db.execute("UPDATE Clubs SET OwnerId = 0 WHERE OwnerId = ?", (user_id,))
+            with suppress(aiosqlite.OperationalError):
+                await db.execute("UPDATE ShopEntry SET AuthorId = 0 WHERE AuthorId = ?", (user_id,))
+            with suppress(aiosqlite.OperationalError):
+                await db.execute("UPDATE WaifuInfo SET ClaimerId = NULL WHERE ClaimerId = ?", (user_id,))
+            with suppress(aiosqlite.OperationalError):
+                await db.execute("UPDATE WaifuInfo SET Affinity = NULL WHERE Affinity = ?", (user_id,))
+            with suppress(aiosqlite.OperationalError):
+                await db.execute(
+                    """
+                    UPDATE WaifuUpdates
+                    SET UserId = CASE WHEN UserId = ? THEN 0 ELSE UserId END,
+                        OldId = CASE WHEN OldId = ? THEN 0 ELSE OldId END,
+                        NewId = CASE WHEN NewId = ? THEN 0 ELSE NewId END
+                    WHERE UserId = ? OR OldId = ? OR NewId = ?
+                    """,
+                    (user_id, user_id, user_id, user_id, user_id, user_id),
+                )
+
+            # Delete non-audit state whose ownership is solely this user.
+            for table in (
                 "UserXpStats",
-                "CurrencyTransactions",
-                "BankUsers",
-                "TimelyCooldown",
-                "WaifuInfo",  # Remove waifu claims
-                "WaifuUpdates",  # Remove waifu history
+                "PlantedCurrency",
                 "XpShopOwnedItem",
+                "BankUsers",
+                "UserBetStats",
+                "ClubApplicants",
+                "ClubBans",
+                "ClubInvitations",
+                "Rakeback",
+                "TimelyCooldown",
                 "UserInventory",
-            ]
-
-            for table in tables_to_clean:
-                try:
+                "StockHoldings",
+            ):
+                with suppress(aiosqlite.OperationalError):
                     await db.execute(f"DELETE FROM {table} WHERE UserId = ?", (user_id,))
-                except Exception as e:
-                    # Some tables might not exist or have different column names
-                    log.warning(f"Could not clean table {table} for user {user_id}: {e}")
 
-            # Clean waifu tables with different column names
-            with suppress(Exception):
-                await db.execute("DELETE FROM WaifuInfo WHERE ClaimerId = ?", (user_id,))
-
-            with suppress(Exception):
-                await db.execute("DELETE FROM WaifuUpdates WHERE OldId = ? OR NewId = ?", (user_id, user_id))
+            # A WaifuInfo row is itself keyed by a Discord user ID. Deleting it
+            # also removes dependent WaifuItem rows through the foreign key.
+            with suppress(aiosqlite.OperationalError):
+                await db.execute("DELETE FROM WaifuInfo WHERE WaifuId = ?", (user_id,))
+            with suppress(aiosqlite.OperationalError):
+                await db.execute("DELETE FROM DiscordUser WHERE UserId = ?", (user_id,))
 
             await db.commit()
             log.info(f"Deleted all data for user {user_id}")

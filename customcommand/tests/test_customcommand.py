@@ -1,6 +1,7 @@
 """Unit, async, and dpytest integration tests for the CustomCommand cog."""
 
 import asyncio
+import copy
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -67,10 +68,30 @@ def bot_mock() -> MagicMock:
 def config_mock() -> MagicMock:
     config = MagicMock(spec=Config)
 
+    store: dict = {"commands": {}, "command_owners": {}, "user_limits": {}}
+
     guild_group = MagicMock()
-    guild_group.commands = AsyncMock(return_value={})
-    guild_group.command_owners = AsyncMock(return_value={})
-    guild_group.user_limits = AsyncMock(return_value={})
+    guild_group._store = store
+
+    async def _all() -> dict:
+        return copy.deepcopy(store)
+
+    async def _set(value: dict) -> None:
+        store.clear()
+        store.update(copy.deepcopy(value))
+
+    # Group-level accessors used by the serialized create path
+    guild_group.all = _all
+    guild_group.set = _set
+
+    # Value-level accessors backed by the same store
+    guild_group.commands = MagicMock(side_effect=lambda: _make_config_context_manager(store.setdefault("commands", {})))
+    guild_group.command_owners = MagicMock(
+        side_effect=lambda: _make_config_context_manager(store.setdefault("command_owners", {}))
+    )
+    guild_group.user_limits = MagicMock(
+        side_effect=lambda: _make_config_context_manager(store.setdefault("user_limits", {}))
+    )
     guild_group.command_owners.set_raw = AsyncMock()
     guild_group.command_owners.clear_raw = AsyncMock()
     guild_group.user_limits.set_raw = AsyncMock()
@@ -338,9 +359,7 @@ async def test_create_rejects_existing_custom_command(cog: Any, bot_mock: MagicM
     ctx = _make_ctx(bot_mock, author_roles=[role])
 
     guild_group = config_mock.guild.return_value
-    guild_group.user_limits = AsyncMock(return_value={})
-    guild_group.command_owners = AsyncMock(return_value={})
-    guild_group.commands = AsyncMock(return_value={"hello": "already exists"})
+    guild_group._store.update({"commands": {"hello": "already exists"}})
 
     await cog.customcommand_create.callback(cog, ctx, "hello", "world")
     ctx.send.assert_called_once_with("A custom command with this trigger already exists.")
@@ -354,9 +373,7 @@ async def test_create_enforces_user_limit(cog: Any, bot_mock: MagicMock, config_
     bot_mock.is_owner = AsyncMock(return_value=False)
 
     guild_group = config_mock.guild.return_value
-    guild_group.user_limits = AsyncMock(return_value={"500": 1})
-    guild_group.command_owners = AsyncMock(return_value={"500": ["existing"]})
-    guild_group.commands = AsyncMock(return_value={})
+    guild_group._store.update({"user_limits": {"500": 1}, "command_owners": {"500": ["existing"]}})
 
     await cog.customcommand_create.callback(cog, ctx, "newcmd", "response")
     ctx.send.assert_called_once_with("You have reached your limit of 1 custom command(s).")
@@ -369,13 +386,6 @@ async def test_create_success(cog: Any, bot_mock: MagicMock, config_mock: MagicM
     ctx = _make_ctx(bot_mock, author_id=500, author_roles=[role], guild_id=1)
 
     guild_group = config_mock.guild.return_value
-    guild_group.user_limits = AsyncMock(return_value={})
-    guild_group.command_owners = AsyncMock(return_value={})
-    guild_group.command_owners.set_raw = AsyncMock()
-
-    # commands() must support both `await` (returns {}) and `async with ... as c:` (yields {}).
-    commands_dict: dict = {}
-    guild_group.commands = MagicMock(return_value=_make_config_context_manager(commands_dict))
 
     cog.log_action = AsyncMock()  # type: ignore[method-assign]
 
@@ -383,6 +393,9 @@ async def test_create_success(cog: Any, bot_mock: MagicMock, config_mock: MagicM
 
     ctx.send.assert_called_once_with("Custom command `hello` has been created.")
     assert cog.command_cache[1]["hello"] == "world"
+    # Command and owner records were written as one mutation
+    assert guild_group._store["commands"] == {"hello": "world"}
+    assert guild_group._store["command_owners"] == {"500": ["hello"]}
 
 
 @pytest.mark.asyncio
@@ -395,20 +408,94 @@ async def test_create_with_attachment(cog: Any, bot_mock: MagicMock, config_mock
 
     ctx = _make_ctx(bot_mock, author_id=500, author_roles=[role], guild_id=1, attachments=[attachment])
 
-    guild_group = config_mock.guild.return_value
-    guild_group.user_limits = AsyncMock(return_value={})
-    guild_group.command_owners = AsyncMock(return_value={})
-    guild_group.command_owners.set_raw = AsyncMock()
-
-    commands_dict: dict = {}
-    guild_group.commands = MagicMock(return_value=_make_config_context_manager(commands_dict))
-
     cog.log_action = AsyncMock()  # type: ignore[method-assign]
 
     await cog.customcommand_create.callback(cog, ctx, "img", None)
 
     ctx.send.assert_called_once_with("Custom command `img` has been created.")
     assert cog.command_cache[1]["img"] == attachment.url
+
+
+# ---------------------------------------------------------------------------
+# customcommand_create — serialization (6.1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_concurrent_limit_reached_once(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+    """Two concurrent creations cannot both consume the final available slot."""
+    role = MagicMock(spec=discord.Role)
+    role.id = cog.role_id
+    bot_mock.is_owner = AsyncMock(return_value=False)
+
+    guild_group = config_mock.guild.return_value
+    guild_group._store.update({"user_limits": {"500": 1}})
+
+    ctx1 = _make_ctx(bot_mock, author_id=500, author_roles=[role], guild_id=1)
+    ctx2 = _make_ctx(bot_mock, author_id=500, author_roles=[role], guild_id=1)
+    cog.log_action = AsyncMock()  # type: ignore[method-assign]
+
+    await asyncio.gather(
+        cog.customcommand_create.callback(cog, ctx1, "cmda", "resp a"),
+        cog.customcommand_create.callback(cog, ctx2, "cmdb", "resp b"),
+    )
+
+    # Exactly one creation succeeded; owner and command records agree.
+    store = guild_group._store
+    assert len(store["commands"]) == 1
+    (owner_entries,) = store["command_owners"].values()
+    assert len(owner_entries) == 1
+    assert store["commands"] == {owner_entries[0]: store["commands"][owner_entries[0]]}
+    # The lock registry cleaned up its idle entry
+    assert cog._guild_locks == {}
+
+
+@pytest.mark.asyncio
+async def test_create_concurrent_same_trigger_wins_once(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+    """Concurrent creation of the same trigger persists exactly one command."""
+    role = MagicMock(spec=discord.Role)
+    role.id = cog.role_id
+
+    guild_group = config_mock.guild.return_value
+
+    ctx1 = _make_ctx(bot_mock, author_id=500, author_roles=[role], guild_id=1)
+    ctx2 = _make_ctx(bot_mock, author_id=501, author_roles=[role], guild_id=1)
+    cog.log_action = AsyncMock()  # type: ignore[method-assign]
+
+    await asyncio.gather(
+        cog.customcommand_create.callback(cog, ctx1, "same", "first"),
+        cog.customcommand_create.callback(cog, ctx2, "same", "second"),
+    )
+
+    store = guild_group._store
+    assert list(store["commands"].keys()) == ["same"]
+    # Exactly one owner recorded for the trigger
+    owners = [uid for uid, triggers in store["command_owners"].items() if "same" in triggers]
+    assert len(owners) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_failed_write_leaves_no_partial_state(
+    cog: Any, bot_mock: MagicMock, config_mock: MagicMock
+) -> None:
+    """A Config write failure leaves neither an owner-only record nor an orphaned command."""
+    role = MagicMock(spec=discord.Role)
+    role.id = cog.role_id
+    ctx = _make_ctx(bot_mock, author_id=500, author_roles=[role], guild_id=1)
+
+    guild_group = config_mock.guild.return_value
+    cog.log_action = AsyncMock()  # type: ignore[method-assign]
+
+    async def _failing_set(value: dict) -> None:
+        raise RuntimeError("config store unavailable")
+
+    guild_group.set = _failing_set
+
+    with pytest.raises(RuntimeError, match="config store unavailable"):
+        await cog.customcommand_create.callback(cog, ctx, "hello", "world")
+
+    assert guild_group._store["commands"] == {}
+    assert guild_group._store["command_owners"] == {}
 
 
 # ---------------------------------------------------------------------------
@@ -572,7 +659,48 @@ async def test_on_message_sends_response(cog: Any) -> None:
     message.channel.id = 10
 
     await cog.on_message_without_command(message)
-    message.channel.send.assert_called_once_with("world")
+    _assert_send_no_mentions(message.channel.send, "world")
+
+
+def _assert_send_no_mentions(send_mock: AsyncMock, expected_text: str) -> None:
+    """The response was sent with an explicit no-mention policy."""
+    call = send_mock.call_args
+    assert call is not None
+    assert call.args[0] == expected_text
+    mentions = call.kwargs.get("allowed_mentions")
+    assert mentions is not None, "responses must pass an explicit allowed_mentions policy"
+    assert mentions.everyone is False
+    assert mentions.users is False
+    assert mentions.roles is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response",
+    [
+        "@everyone hello",
+        "@here ping",
+        "<@123456789> mention",
+        "<@&987654321> role ping",
+    ],
+    ids=["everyone", "here", "user", "role"],
+)
+async def test_on_message_suppresses_mentions(cog: Any, response: str) -> None:
+    """Stored responses containing mention syntax cannot notify anyone."""
+    guild = MagicMock(spec=discord.Guild)
+    guild.id = 1
+    cog.command_cache[1] = {"ping": response}
+
+    message = MagicMock(spec=discord.Message)
+    message.author.bot = False
+    message.guild = guild
+    message.content = "ping"
+    message.channel = MagicMock()
+    message.channel.send = AsyncMock()
+    message.channel.id = 10
+
+    await cog.on_message_without_command(message)
+    _assert_send_no_mentions(message.channel.send, response)
 
 
 @pytest.mark.asyncio
@@ -598,7 +726,7 @@ async def test_on_message_respects_cooldown(cog: Any) -> None:
     await cog.on_message_without_command(msg1)
     await cog.on_message_without_command(msg2)
 
-    msg1.channel.send.assert_called_once_with("world")
+    _assert_send_no_mentions(msg1.channel.send, "world")
     msg2.channel.send.assert_not_called()
 
 
@@ -679,7 +807,7 @@ async def test_dpytest_trigger_fires_response(dpytest_bot: dpy_commands.Bot) -> 
     if pending:
         await asyncio.gather(*pending, return_exceptions=True)
 
-    channel_mock.send.assert_called_once_with("hello!")
+    _assert_send_no_mentions(channel_mock.send, "hello!")
 
 
 @pytest.mark.asyncio

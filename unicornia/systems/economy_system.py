@@ -62,12 +62,8 @@ class EconomySystem:
         if amount <= 0:
             return False
 
-        # add_currency returns True now (bug fix)
-        success = await self.db.economy.add_currency(user_id, amount, "award", "admin", note=note)
-
-        if success:
-            await self.db.economy.log_currency_transaction(user_id, "award", amount, note)
-        return success
+        # The repository writes the single canonical transaction-log row.
+        return await self.db.economy.add_currency(user_id, amount, "award", "admin", note=note)
 
     async def take_currency(self, user_id: int, amount: int, note: str = "") -> bool:
         """Take currency from a user (admin only).
@@ -83,10 +79,8 @@ class EconomySystem:
         if amount <= 0:
             return False
 
-        success = await self.db.economy.remove_currency(user_id, amount, "take", "admin", note=note)
-        if success:
-            await self.db.economy.log_currency_transaction(user_id, "take", -amount, note)
-        return success
+        # The repository writes the single canonical transaction-log row.
+        return await self.db.economy.remove_currency(user_id, amount, "take", "admin", note=note)
 
     async def add_currency(
         self, user_id: int, amount: int, transaction_type: str = "api_add", extra: str = "external", note: str = ""
@@ -132,12 +126,8 @@ class EconomySystem:
         Returns:
             Success boolean.
         """
-        success = await self.db.economy.deposit_bank(user_id, amount)
-        if success:
-            await self.db.economy.log_currency_transaction(
-                user_id, "bank_deposit", -amount, f"Deposited {amount} to bank"
-            )
-        return success
+        # The repository writes the single canonical transaction-log row.
+        return await self.db.economy.deposit_bank(user_id, amount)
 
     async def withdraw_bank(self, user_id: int, amount: int) -> bool:
         """Withdraw currency from bank.
@@ -149,12 +139,8 @@ class EconomySystem:
         Returns:
             Success boolean.
         """
-        success = await self.db.economy.withdraw_bank(user_id, amount)
-        if success:
-            await self.db.economy.log_currency_transaction(
-                user_id, "bank_withdraw", amount, f"Withdrew {amount} from bank"
-            )
-        return success
+        # The repository writes the single canonical transaction-log row.
+        return await self.db.economy.withdraw_bank(user_id, amount)
 
     async def get_bank_info(self, user_id: int) -> int:
         """Get bank balance.
@@ -229,11 +215,10 @@ class EconomySystem:
             "booster": booster_bonus,
         }
 
-        # Award currency
-        await self.db.economy.add_currency(user_id, total_amount, "timely", "system")
-        # Streak and Time were already updated by attempt_timely_claim
-        await self.db.economy.log_currency_transaction(
-            user_id, "timely", total_amount, f"Daily reward (streak: {new_streak})"
+        # Award currency; the repository writes the single canonical
+        # transaction-log row (streak info is carried in its note).
+        await self.db.economy.add_currency(
+            user_id, total_amount, "timely", "system", note=f"Daily reward (streak: {new_streak})"
         )
 
         return True, total_amount, new_streak, breakdown
@@ -330,6 +315,6 @@ class EconomySystem:
         """
         balance = await self.db.economy.claim_rakeback(user_id)
         if balance > 0:
-            await self.db.economy.add_currency(user_id, balance, "rakeback", "system")
-            await self.db.economy.log_currency_transaction(user_id, "rakeback", balance, "Claimed rakeback")
+            # The repository writes the single canonical transaction-log row.
+            await self.db.economy.add_currency(user_id, balance, "rakeback", "system", note="Claimed rakeback")
         return balance

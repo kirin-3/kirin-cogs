@@ -7,7 +7,7 @@
     "short": "Confess secretly with a sticky button.",
     "description": "Confess in a confession room to repent your crimes using a sticky message and modal.",
     "install_msg": "Let your users confess their terrible terrible crimes in secrecy!",
-    "end_user_data_statement": "This cog does not persistently store data or metadata about users.",
+    "end_user_data_statement": "This cog does not retain per-user Config records. It posts confession text to Discord and sends bot owners a Discord audit message containing the author's ID and confession; Discord message-retention policy applies.",
     "min_bot_version": "3.5.0",
     "min_python_version": [
         3,

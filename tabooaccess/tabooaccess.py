@@ -12,6 +12,15 @@ class TabooAccess(commands.Cog):
         default_guild = {"taboo_role_id": 1319776542099767316}
         self.config.register_guild(**default_guild)
 
+    def _preflight_role_edit(self, guild, role):
+        if not guild.me.guild_permissions.manage_roles:
+            return "I do not have the Manage Roles permission."
+        if role.managed is True or role.is_default() is True:
+            return "This role cannot be assigned because it is a managed or default role."
+        if role >= guild.me.top_role:
+            return "I can't assign that role (it's higher than or equal to my top role)."
+        return None
+
     async def cog_load(self):
         self.bot.add_view(TabooAccessView(self))
 
@@ -59,18 +68,27 @@ class LetMeOutButton(discord.ui.Button):
         guild = interaction.guild
         member = interaction.user
         if guild is None or not isinstance(member, discord.Member):
+            await interaction.response.send_message("This action can only be performed in a server.", ephemeral=True)
             return
         role_id = await self.cog.config.guild(guild).taboo_role_id()
         role = guild.get_role(role_id)
 
         if role and role in member.roles:
+            error_msg = self.cog._preflight_role_edit(guild, role)
+            if error_msg:
+                await interaction.response.send_message(error_msg, ephemeral=True)
+                return
             try:
                 await member.remove_roles(role, reason="Removed taboo access.")
                 await interaction.response.send_message(
                     "You have been removed from taboo content access.", ephemeral=True
                 )
-            except Exception as e:
-                await interaction.response.send_message(f"Could not remove the role: {e}", ephemeral=True)
+            except discord.Forbidden:
+                await interaction.response.send_message("I do not have permission to remove this role.", ephemeral=True)
+            except discord.HTTPException:
+                await interaction.response.send_message(
+                    "Discord could not remove the role. Please try again or contact an administrator.", ephemeral=True
+                )
         else:
             await interaction.response.send_message("You don't have the taboo access role.", ephemeral=True)
 
@@ -89,18 +107,32 @@ class TabooAccessModal(discord.ui.Modal, title="Taboo Access Confirmation"):
             guild = interaction.guild
             member = interaction.user
             if guild is None or not isinstance(member, discord.Member):
+                await interaction.response.send_message(
+                    "This action can only be performed in a server.", ephemeral=True
+                )
                 return
             role_id = await self.cog.config.guild(guild).taboo_role_id()
             role = guild.get_role(role_id)
 
             if role:
+                error_msg = self.cog._preflight_role_edit(guild, role)
+                if error_msg:
+                    await interaction.response.send_message(error_msg, ephemeral=True)
+                    return
                 try:
                     await member.add_roles(role, reason="Accepted taboo access.")
                     await interaction.response.send_message(
                         "Thank you! You have been granted taboo content access.", ephemeral=True
                     )
-                except Exception as e:
-                    await interaction.response.send_message(f"Could not assign the role: {e}", ephemeral=True)
+                except discord.Forbidden:
+                    await interaction.response.send_message(
+                        "I do not have permission to assign this role.", ephemeral=True
+                    )
+                except discord.HTTPException:
+                    await interaction.response.send_message(
+                        "Discord could not assign the role. Please try again or contact an administrator.",
+                        ephemeral=True,
+                    )
             else:
                 await interaction.response.send_message("Role not found. Please contact an admin.", ephemeral=True)
         else:

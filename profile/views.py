@@ -2,48 +2,11 @@ import logging
 
 import discord
 from discord import ButtonStyle, Interaction, TextStyle
-from discord.ui import Button, Item, Modal, TextInput, View
+from discord.ui import Button, Modal, TextInput, View
 
 from .models import QUESTIONS, ProfileData
 
 log = logging.getLogger("red.kirin_cogs.profile.views")
-
-
-class SimpleAttachment:
-    def __init__(self, url, filename):
-        self.url = url
-        self.filename = filename
-
-
-class FileUpload(Item):
-    def __init__(self, custom_id: str, required: bool = True, min_values: int = 1, max_values: int = 1):
-        super().__init__()
-        self.custom_id = custom_id
-        self.required = required
-        self.min_values = min_values
-        self.max_values = max_values
-        self._uploaded_attachments = []
-
-    @property
-    def type(self) -> discord.ComponentType:
-        # 19 is Attachment
-        return discord.ComponentType(19)
-
-    def to_component_dict(self):
-        return {
-            "type": 19,
-            "custom_id": self.custom_id,
-            "required": self.required,
-            "min_values": self.min_values,
-            "max_values": self.max_values,
-        }
-
-    def refresh_component(self, component):
-        self._uploaded_attachments = component.values
-
-    @property
-    def values(self):
-        return self._uploaded_attachments
 
 
 class ProfileModal(Modal):
@@ -83,49 +46,24 @@ class PictureUploadModal(Modal):
     def __init__(self):
         super().__init__(title="Profile Picture")
         self.interaction = None
-        self.image = FileUpload(
+        self.value = None
+        self.image = discord.ui.FileUpload(
             custom_id="profile_picture_upload",
             required=True,
             min_values=1,
             max_values=1,
         )
-        # Wrap it in a Label (as seen in tickets reference)
-        try:
-            self.label = discord.ui.Label(
-                text="Upload your profile picture",
-                description="Please upload an image for your profile.",
-                component=self.image,
-            )
-            self.add_item(self.label)
-        except AttributeError:
-            # Fallback if Label is not available
-            self.add_item(self.image)
+        self.label = discord.ui.Label(
+            text="Upload your profile picture",
+            description="Please upload an image for your profile.",
+            component=self.image,
+        )
+        self.add_item(self.label)
 
     async def on_submit(self, interaction: Interaction):
-        attachments = []
-        if self.image.values:
-            attachments = self.image.values
-
-        # Fallback check interaction data directly
-        if (
-            not attachments
-            and interaction.data is not None
-            and "resolved" in interaction.data
-            and "attachments" in interaction.data["resolved"]  # pyright: ignore[reportOptionalSubscript]
-        ):
-            raw_attachments = interaction.data["resolved"]["attachments"]  # pyright: ignore[reportOptionalSubscript]
-            if raw_attachments:
-                for attachment_data in raw_attachments.values():
-                    attachments.append(
-                        SimpleAttachment(
-                            url=attachment_data.get("url"), filename=attachment_data.get("filename", "image.png")
-                        )
-                    )
-
-        if attachments:
-            self.value = attachments[0].url
-        else:
-            self.value = None
+        # discord.ui.FileUpload exposes uploaded Attachment objects directly.
+        attachments = list(self.image.values or [])
+        self.value = attachments[0].url if attachments else None
 
         self.interaction = interaction
         await interaction.response.defer()

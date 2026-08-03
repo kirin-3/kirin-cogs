@@ -17,6 +17,25 @@ class CustomEmoji(commands.Cog):
         }
         self.config.register_guild(**default_guild)
 
+    async def red_delete_data_for_user(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, *, requester, user_id: int
+    ) -> None:
+        """Delete per-user limits and emoji ownership records."""
+        user_key = str(user_id)
+        for guild_id, data in (await self.config.all_guilds()).items():
+            if not isinstance(data, dict):
+                continue
+            limits = data.get("user_limits", {})
+            ownership = data.get("emoji_ownership", {})
+            if not isinstance(limits, dict) or not isinstance(ownership, dict):
+                continue
+            limits.pop(user_key, None)
+            limits.pop(user_id, None)
+            ownership = {emoji_id: owner_id for emoji_id, owner_id in ownership.items() if str(owner_id) != user_key}
+            group = self.config.guild_from_id(guild_id)
+            await group.user_limits.set(limits)
+            await group.emoji_ownership.set(ownership)
+
     async def get_user_limit(self, guild: discord.Guild, user_id: int) -> int:
         """Get the emoji limit for a specific user."""
         limits = await self.config.guild(guild).user_limits()

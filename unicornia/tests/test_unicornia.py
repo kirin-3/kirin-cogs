@@ -134,6 +134,7 @@ async def test_red_get_data_for_user_collects_available_sections(cog: Unicornia)
     assert data["bank"] == {"balance": 2000}
     assert data["waifus"] == [{"waifu_id": 1}]
     assert data["transactions"] == [{"amount": 100}]
+    db.economy.get_currency_transactions.assert_awaited_once_with(42, limit=None)
 
 
 @pytest.mark.asyncio

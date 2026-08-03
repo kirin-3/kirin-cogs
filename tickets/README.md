@@ -74,3 +74,7 @@ Base support ticket settings. Alias: `[p]tset`
 
 ### Mod Commands
 - `[p]openfor <user>`: Open a ticket on behalf of another user.
+
+## Lifecycle recovery
+
+Ticket numbers and member limits are reserved under locks. Creation writes a `pending` record before creating the channel and startup reconciliation promotes records that contain a channel ID. Close failures remain tracked as `close_failed`; do not manually clear them until the channel is confirmed deleted. Slash-command closes defer before delayed confirmation waits.

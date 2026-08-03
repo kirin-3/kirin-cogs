@@ -38,7 +38,25 @@ class EventHandlers:
     def _create_task(self, coro: Coroutine[Any, Any, Any]) -> None:
         task = asyncio.create_task(coro)
         self._background_tasks.add(task)
-        task.add_done_callback(self._background_tasks.discard)
+        task.add_done_callback(self._on_task_done)
+
+    def _on_task_done(self, task: asyncio.Task[Any]) -> None:
+        """Release the task and retrieve/log any exception it raised."""
+        self._background_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            log.error("AntiNuke investigator task failed: %s", exc, exc_info=exc)
+
+    async def cancel_all_tasks(self) -> None:
+        """Cancel and gather every outstanding investigator task (unload path)."""
+        tasks = list(self._background_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._background_tasks.clear()
 
     async def is_enabled(self, guild: discord.Guild) -> bool:
         """Check if AntiNuke is enabled for the guild."""

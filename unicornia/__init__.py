@@ -4,7 +4,8 @@
 from .unicornia import Unicornia
 
 __red_end_user_data_statement__ = (
-    "This cog stores user level, XP, currency, and economy data in its own SQLite database."
+    "This cog stores user level, XP, currency, inventory, game, relationship, and financial history data "
+    "in SQLite. Deletion removes operational state and anonymizes retained accounting records."
 )
 
 

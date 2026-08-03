@@ -1,4 +1,18 @@
+from enum import StrEnum
+
+
+class TicketState(StrEnum):
+    """Durable ticket lifecycle states."""
+
+    PENDING = "pending"
+    ACTIVE = "active"
+    CLOSE_PENDING = "close_pending"
+    CLOSE_FAILED = "close_failed"
+
+
 DEFAULT_GUILD = {
+    # Schema version marker (see tickets/migrations.py); 0 = legacy unmigrated record
+    "schema_version": 0,
     # Core Settings
     "support_roles": [],  # Role ids that have access to all tickets
     "blacklist": [],  # User ids that cannot open any tickets
@@ -58,4 +72,7 @@ OPENED_TICKET_SCHEMA = {
     "has_response": bool,
     "message_id": "Message ID of first message in the ticket sent from the bot",
     "overview_msg": "Ticket overview message ID (Optional)",
+    "state": "TicketState string (pending, active, close_pending, close_failed)",
+    "channel_id": "Discord channel ID retained while creation is pending",
+    "reconcile_token": "Opaque channel topic token retained while creation is pending",
 }

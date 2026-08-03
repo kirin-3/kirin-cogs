@@ -11,6 +11,7 @@ from .actions import QuarantineActions
 from .audit import AuditLogHelper
 from .constants import CONFIG_IDENTIFIER, DEFAULT_GLOBAL, DEFAULT_GUILD
 from .events import EventHandlers
+from .migrations import migrate_guild_schemas
 from .utils import ActionCache
 
 log = logging.getLogger("red.kirin-cogs.antinuke")
@@ -66,11 +67,35 @@ class AntiNuke(
 
     async def cog_load(self) -> None:
         """Called when the cog is loaded."""
+        await migrate_guild_schemas(self.config)
         log.info("AntiNuke cog loaded")
 
     async def cog_unload(self) -> None:
         """Called when the cog is unloaded."""
+        await self.event_handlers.cancel_all_tasks()
+        await self.quarantine_actions.cancel_all_tasks()
         log.info("AntiNuke cog unloaded")
+
+    async def red_delete_data_for_user(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, *, requester, user_id: int
+    ) -> None:
+        """Remove trust and quarantine records linked to a Discord user ID."""
+        for guild_id, data in (await self.config.all_guilds()).items():
+            if not isinstance(data, dict):
+                continue
+            trusted = data.get("trusted_users", [])
+            quarantined = data.get("quarantined_users", {})
+            changed = False
+            if isinstance(trusted, list) and any(str(value) == str(user_id) for value in trusted):
+                trusted = [value for value in trusted if str(value) != str(user_id)]
+                changed = True
+            if isinstance(quarantined, dict) and str(user_id) in quarantined:
+                quarantined.pop(str(user_id), None)
+                changed = True
+            if changed:
+                group = self.config.guild_from_id(guild_id)
+                await group.trusted_users.set(trusted)
+                await group.quarantined_users.set(quarantined)
 
     # Expose config for command classes
     @property

@@ -2,15 +2,24 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
 import discord
 import gspread
 from redbot.core import Config, checks, commands
 
+from .migrations import migrate_guild_schemas
+
 log = logging.getLogger("red.kirin_cogs.patron")
 
 __red_end_user_data_statement__ = "This cog processes user IDs and usernames to sync roles and rewards. Data is stored in config only for tracking charge dates."
+
+#: Money is parsed and calculated with Decimal; rewards are whole currency
+#: units rounded half-up, and annual pledges are divided into a monthly
+#: equivalent quantized to cents before tier calculation.
+_CENT = Decimal("0.01")
+_UNIT = Decimal("1")
 
 
 class Patron(commands.Cog):
@@ -23,6 +32,7 @@ class Patron(commands.Cog):
         self.config = Config.get_conf(self, identifier=9562341, force_registration=True)
 
         default_guild = {
+            "schema_version": 0,  # marker for migrations.py; 0 = legacy unmigrated record
             "sheet_id": None,
             "role_active": None,
             "role_former": None,
@@ -32,12 +42,47 @@ class Patron(commands.Cog):
         }
 
         self.config.register_guild(**default_guild)
-        self.bg_task = self.bot.loop.create_task(self.sync_loop())
+        self.bg_task: asyncio.Task | None = None
         self.lock = asyncio.Lock()
+
+    async def cog_load(self) -> None:
+        await migrate_guild_schemas(self.config)
+        self.bg_task = asyncio.create_task(self.sync_loop())
+        self.bg_task.add_done_callback(self._on_bg_task_done)
+
+    def _on_bg_task_done(self, task: asyncio.Task) -> None:
+        """Retrieve and log background task exceptions instead of dropping them."""
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            log.error("Patron sync task failed: %s", exc, exc_info=exc)
 
     async def cog_unload(self) -> None:
         if self.bg_task:
             self.bg_task.cancel()
+            await asyncio.gather(self.bg_task, return_exceptions=True)
+            self.bg_task = None
+
+    async def red_delete_data_for_user(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, *, requester, user_id: int
+    ) -> None:
+        """Delete charge and annual-payment tracking keyed by Discord ID."""
+        user_key = str(user_id)
+        for guild_id, data in (await self.config.all_guilds()).items():
+            if not isinstance(data, dict):
+                continue
+            processed = data.get("processed_charges", {})
+            annual = data.get("annual_tracking", {})
+            if not isinstance(processed, dict) or not isinstance(annual, dict):
+                continue
+            processed.pop(user_key, None)
+            processed.pop(user_id, None)
+            annual.pop(user_key, None)
+            annual.pop(user_id, None)
+            group = self.config.guild_from_id(guild_id)
+            await group.processed_charges.set(processed)
+            await group.annual_tracking.set(annual)
 
     async def sync_loop(self):
         """Background loop to periodically sync with Google Sheets."""
@@ -85,6 +130,32 @@ class Patron(commands.Cog):
         async with self.lock:
             await self._process_sheet_logic(guild, sheet_id)
 
+    @staticmethod
+    def _resolve_member(guild: discord.Guild, identifier: str) -> tuple[discord.Member | None, bool]:
+        """Resolve a sheet identifier to a guild member.
+
+        Returns (member, used_legacy_username_match). Discord IDs are the
+        canonical identity; a non-numeric identifier falls back to the legacy
+        username match so historical rows keep working during the transition.
+        """
+        if identifier.isdigit():
+            member = guild.get_member(int(identifier))
+            if member is not None:
+                return member, False
+            return None, False
+        # Legacy username matching (fragile; rows are logged for reconciliation)
+        return discord.utils.get(guild.members, name=identifier), True
+
+    def _charge_key(self, member: discord.Member, username: str, charges: dict) -> str:
+        """Return the processed_charges key for reads: member ID preferred,
+        falling back to the legacy username key if only that exists."""
+        member_key = str(member.id)
+        if member_key in charges:
+            return member_key
+        if username and username in charges:
+            return username
+        return member_key
+
     async def _process_sheet_logic(self, guild: discord.Guild, sheet_id: str):
         records, error = await self.connect_to_sheet(sheet_id)
         if error or records is None:
@@ -98,10 +169,16 @@ class Patron(commands.Cog):
         role_former = guild.get_role(role_former_id) if role_former_id else None
 
         processed_charges = await self.config.guild(guild).processed_charges()
+        if not isinstance(processed_charges, dict):
+            processed_charges = {}
         annual_tracking = await self.config.guild(guild).annual_tracking()
+        if not isinstance(annual_tracking, dict):
+            annual_tracking = {}
 
-        # Track usernames found in sheet with "Active" status
+        # Track sheet rows with "Active" status for reverse sync
+        active_member_ids_in_sheet = set()
         active_usernames_in_sheet = set()
+        legacy_rows = 0
 
         for i, row in enumerate(records):
             # Throttle to avoid rate limits
@@ -110,21 +187,30 @@ class Patron(commands.Cog):
 
             username = ""
             try:
-                username = str(row.get("Discord", "")).strip()
-                if not username:
+                identifier = str(row.get("Discord", "")).strip()
+                if not identifier:
                     continue
 
                 status = str(row.get("Patron Status", "")).lower()
-                if status == "active patron":
-                    active_usernames_in_sheet.add(username)
 
-                # Resolve User
-                # Try to find by name or discriminator
-                # This is "best effort" mapping by name
-                member = discord.utils.get(guild.members, name=username)
-                # Try global lookup if not found (though we need guild member for roles)
+                # Resolve member: Discord ID first, legacy username as fallback
+                member, legacy_match = self._resolve_member(guild, identifier)
+                if legacy_match:
+                    legacy_rows += 1
+                    log.info(
+                        "Patron row matched by legacy username; migrate the sheet to Discord IDs for reconciliation."
+                    )
+                username = identifier if legacy_match else (member.name if member else identifier)
+
+                if status == "active patron":
+                    if member:
+                        active_member_ids_in_sheet.add(member.id)
+                    if legacy_match:
+                        active_usernames_in_sheet.add(identifier)
+
                 if not member:
-                    # Try partial match or discriminator logic if needed, but keeping it strict for now
+                    # Unresolved rows (unknown ID or unmatched legacy username)
+                    # are preserved for administrator reconciliation.
                     continue
 
                 # --- Role Logic ---
@@ -163,29 +249,39 @@ class Patron(commands.Cog):
                 charge_freq = str(row.get("Charge Frequency", "")).lower()
                 is_annual = "annual" in charge_freq
 
-                # Parse Amount
+                # Parse Amount (exact Decimal arithmetic)
                 amount = self.parse_amount(pledge_amount_str)
                 if amount <= 0:
                     continue
 
                 # Calculate Monthly Equivalent for Reward
                 # If Annual, the pledge amount in sheet is typically the Total Paid for the year.
-                # We divide by 12 to get the "Tier Value" for rewards.
-                reward_base_amount = amount / 12 if is_annual else amount
+                # We divide by 12 to get the "Tier Value" for rewards, quantized to cents.
+                reward_base_amount = (amount / 12).quantize(_CENT, rounding=ROUND_HALF_UP) if is_annual else amount
                 reward_value = self.calculate_reward(reward_base_amount)
 
-                # Check for New Charge
-                stored_charge_date = processed_charges.get(username)
+                member_key = str(member.id)
+                charge_key = self._charge_key(member, username, processed_charges)
+                track_key = self._charge_key(member, username, annual_tracking)
+                stored_charge_date = processed_charges.get(charge_key)
 
                 if last_charge_date != stored_charge_date:
-                    # NEW CHARGE DETECTED
-                    await self.award_currency(guild, member, reward_value, "New Charge Processed")
+                    # NEW CHARGE DETECTED — payment identity is the idempotency key
+                    operation_key = f"patron:{guild.id}:{member.id}:{last_charge_date}"
+                    awarded = await self.award_currency(
+                        guild, member, reward_value, "New Charge Processed", operation_key=operation_key
+                    )
+                    if not awarded:
+                        # Unicornia did not settle: leave the charge unprocessed
+                        # so the next sync retries the operation.
+                        continue
 
-                    processed_charges[username] = last_charge_date
+                    # Advance only after a settled (or previously settled) result
+                    processed_charges[member_key] = last_charge_date
 
                     # Setup Annual Tracking
                     if is_annual:
-                        annual_tracking[username] = {
+                        annual_tracking[member_key] = {
                             "anchor_date": datetime.utcnow().isoformat(),  # Use current time as anchor for bot distribution cycle
                             "months_paid": 1,
                             "last_award": datetime.utcnow().isoformat(),
@@ -197,8 +293,8 @@ class Patron(commands.Cog):
 
                 else:
                     # SAME CHARGE - Check for Annual Recurring
-                    if is_annual and username in annual_tracking:
-                        track_data = annual_tracking[username]
+                    if is_annual and track_key in annual_tracking:
+                        track_data = annual_tracking[track_key]
                         months_paid = track_data.get("months_paid", 0)
                         anchor_iso = track_data.get("anchor_date")
                         last_award_iso = track_data.get("last_award")
@@ -218,16 +314,36 @@ class Patron(commands.Cog):
                                     safe_to_award = False
 
                             if safe_to_award and datetime.utcnow() >= next_due:
-                                await self.award_currency(
-                                    guild, member, reward_value, f"Annual Pledge Month {months_paid + 1}/12"
+                                month_number = months_paid + 1
+                                operation_key = f"patron:{guild.id}:{member.id}:{last_charge_date}:m{month_number}"
+                                awarded = await self.award_currency(
+                                    guild,
+                                    member,
+                                    reward_value,
+                                    f"Annual Pledge Month {month_number}/12",
+                                    operation_key=operation_key,
                                 )
+                                if not awarded:
+                                    continue
+
                                 track_data["months_paid"] += 1
                                 track_data["last_award"] = datetime.utcnow().isoformat()
+                                if track_key != member_key:
+                                    # Adopt tracking under the canonical member-ID key
+                                    annual_tracking[member_key] = track_data
 
                                 # Save immediately
                                 await self.config.guild(guild).annual_tracking.set(annual_tracking)
             except Exception as e:
                 log.error(f"Error processing row for {username}: {e}")
+
+        if legacy_rows:
+            log.warning(
+                "Patron sync for guild %s resolved %d row(s) by legacy username; "
+                "update the sheet with Discord IDs and review `[p]patronset unreconciled`.",
+                guild.name,
+                legacy_rows,
+            )
 
         # --- Reverse Sync (Cleanup) ---
         # If a user has the Active Role but is NOT in the "Active" list from the sheet, downgrade them.
@@ -238,21 +354,25 @@ class Patron(commands.Cog):
                     await asyncio.sleep(2)
 
                 try:
-                    # Warning: Matching by name is fragile, but it's the only link we have.
-                    # If the user changed their name, they might be downgraded accidentally.
-                    if member.name not in active_usernames_in_sheet:
+                    # Discord IDs are authoritative; legacy usernames still count
+                    # so unresolved legacy rows are not downgraded by accident.
+                    if member.id not in active_member_ids_in_sheet and member.name not in active_usernames_in_sheet:
                         log.info(f"Downgrading {member.name} (Not found in Active list)")
                         await member.remove_roles(role_active, reason="Patron Sync: Not in Active list")
                         await member.add_roles(role_former, reason="Patron Sync: Not in Active list")
                 except Exception as e:
                     log.error(f"Error in reverse sync for {member.name}: {e}")
 
-    def parse_amount(self, amount_str: str) -> float:
-        """Strips currency symbols and returns float. Handles '1.000,00' and '1,000.00'."""
+    def parse_amount(self, amount_str: str) -> Decimal:
+        """Parse a localized monetary string into an exact Decimal.
+
+        Handles "$5.00", "€5,00", "1,000.00" (US) and "1.000,00" (European)
+        without ever using binary floating-point arithmetic.
+        """
         # 1. Remove currency symbols and spaces
         clean = re.sub(r"[^\d.,]", "", amount_str)
         if not clean:
-            return 0.0
+            return Decimal("0")
 
         # 2. Handle specific European case: "1.234,56" -> "1234.56"
         # If both . and , exist:
@@ -275,40 +395,58 @@ class Patron(commands.Cog):
             clean = clean.replace(",", ".")
 
         try:
-            return float(clean)
-        except ValueError:
-            return 0.0
+            return Decimal(clean)
+        except InvalidOperation:
+            return Decimal("0")
 
-    def calculate_reward(self, amount: float) -> int:
+    def calculate_reward(self, amount: Decimal) -> int:
         """
         Calculates reward based on rules:
         - 3000 per 1 unit (15000 per 5).
         - Bonus: 5+: 5%, 10+: 10%, 20+: 15%, 40+: 20%
+
+        The result is rounded half-up to whole currency units.
         """
         base = amount * 3000
 
-        bonus = 1.0
+        bonus = Decimal("1.0")
         if amount >= 40:
-            bonus = 1.20
+            bonus = Decimal("1.20")
         elif amount >= 20:
-            bonus = 1.15
+            bonus = Decimal("1.15")
         elif amount >= 10:
-            bonus = 1.10
+            bonus = Decimal("1.10")
         elif amount >= 5:
-            bonus = 1.05
+            bonus = Decimal("1.05")
 
-        return int(base * bonus)
+        return int((base * bonus).quantize(_UNIT, rounding=ROUND_HALF_UP))
 
-    async def award_currency(self, guild, member, amount, reason):
-        """Awards currency using Unicornia cog."""
+    async def award_currency(self, guild, member, amount, reason, *, operation_key: str) -> bool:
+        """Award currency through Unicornia's idempotent operation API.
+
+        Returns True only when the operation is durably settled (now or by a
+        previous attempt), meaning callers may safely advance their own state.
+        """
         unicornia = self.bot.get_cog("Unicornia")
         if not unicornia:
             log.warning("Unicornia cog not found. Cannot award currency.")
-            return
+            return False
 
         try:
-            success = await unicornia.add_balance(member.id, amount, reason=f"Patreon: {reason}", source="patron")
-            if success:
+            outcome = await unicornia.apply_operation(
+                key=operation_key,
+                user_id=member.id,
+                amount=amount,
+                direction="credit",
+                source="patron",
+                guild_id=guild.id,
+                reason=f"Patreon: {reason}",
+            )
+            if outcome is None:
+                log.error("Unicornia systems not ready; cannot award to %s", member.name)
+                return False
+
+            if outcome.state == "settled":
                 log.info(f"Awarded {amount} to {member.name} ({reason})")
 
                 # Log to channel if configured
@@ -319,8 +457,19 @@ class Patron(commands.Cog):
                         await channel.send(
                             f"🏆 **Patreon Reward:** Awarded {amount} currency to {member.mention}.\n*Reason: {reason}*"
                         )
+                return True
+
+            if outcome.state == "duplicate":
+                # Previously settled (e.g. crash after commit): safe to advance,
+                # but do not announce the award a second time.
+                log.info("Patron operation %s already settled; advancing without re-award.", operation_key)
+                return True
+
+            log.error("Unexpected operation state %s awarding %s", outcome.state, member.name)
+            return False
         except Exception as e:
             log.error(f"Failed to award currency to {member.name}: {e}")
+            return False
 
     @commands.group()  # pyright: ignore[reportArgumentType]
     @checks.is_owner()
@@ -361,6 +510,28 @@ class Patron(commands.Cog):
         async with ctx.typing():
             await self.process_sheet(ctx.guild, sheet_id)
         await ctx.send("Sync complete.")
+
+    @patronset.command(name="unreconciled")
+    async def list_unreconciled(self, ctx):
+        """List legacy username-keyed charge records awaiting reconciliation.
+
+        New payments are tracked by Discord ID. Entries shown here predate
+        that policy and are preserved so an administrator can map them to
+        Discord IDs manually (or remove them once resolved).
+        """
+        processed_charges = await self.config.guild(ctx.guild).processed_charges()
+        if not isinstance(processed_charges, dict):
+            processed_charges = {}
+
+        legacy_entries = [(key, value) for key, value in processed_charges.items() if not str(key).isdigit()]
+        if not legacy_entries:
+            return await ctx.send("No unreconciled legacy records. All charges are keyed by Discord ID.")
+
+        lines = [f"`{name}` — last processed charge: {date}" for name, date in legacy_entries[:20]]
+        summary = f"**{len(legacy_entries)} legacy username-keyed record(s):**\n" + "\n".join(lines)
+        if len(legacy_entries) > 20:
+            summary += f"\n… and {len(legacy_entries) - 20} more."
+        await ctx.send(summary)
 
     @patronset.command(name="creds")
     async def upload_creds(self, ctx):

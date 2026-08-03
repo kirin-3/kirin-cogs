@@ -96,6 +96,52 @@ class CustomRoleColor(commands.Cog):
         default_guild = {"assignments": {}}
         self.config.register_guild(**default_guild)
 
+    async def red_delete_data_for_user(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, *, requester, user_id: int
+    ) -> None:
+        """Remove management-role associations for a Discord user ID."""
+        for guild_id, data in (await self.config.all_guilds()).items():
+            if not isinstance(data, dict):
+                continue
+            assignments = data.get("assignments", {})
+            if isinstance(assignments, dict):
+                removed = assignments.pop(str(user_id), None)
+                removed = assignments.pop(user_id, removed)
+                if removed is not None:
+                    await self.config.guild_from_id(guild_id).assignments.set(assignments)
+
+    def _preflight_role_edit(self, guild, role):
+        if not guild.me.guild_permissions.manage_roles:
+            return "I do not have the Manage Roles permission."
+        if role.managed is True or role.is_default() is True:
+            return "This role cannot be assigned or edited because it is a managed or default role."
+        if role >= guild.me.top_role:
+            return "I can't manage that role (it's higher than or equal to my top role)."
+        return None
+
+    async def _get_assigned_role(self, ctx, purpose: str) -> discord.Role | None:
+        assignments = await self.config.guild(ctx.guild).assignments()
+        if not isinstance(assignments, dict):
+            assignments = {}
+        role_id = assignments.get(str(ctx.author.id))
+        if not isinstance(role_id, int):
+            await ctx.send(f"You don't have a role assigned for {purpose} management.")
+            return None
+
+        role = ctx.guild.get_role(role_id)
+        if role is None:
+            await ctx.send("The assigned role no longer exists.")
+            return None
+        if ctx.author.get_role(role.id) is None:
+            await ctx.send("You no longer have the role assigned for management.")
+            return None
+
+        error_msg = self._preflight_role_edit(ctx.guild, role)
+        if error_msg:
+            await ctx.send(error_msg)
+            return None
+        return role
+
     @commands.command()  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
     @checks.admin_or_permissions(manage_roles=True)
@@ -104,9 +150,20 @@ class CustomRoleColor(commands.Cog):
         Assign a role to a user for color, name, and icon management.
         Usage: [p]assignrole @user @role
         """
-        if role >= ctx.guild.me.top_role:
-            await ctx.send("I can't manage that role (it's higher than my top role).")
+        error_msg = self._preflight_role_edit(ctx.guild, role)
+        if error_msg:
+            await ctx.send(error_msg)
             return
+
+        if role not in member.roles:
+            try:
+                await member.add_roles(role, reason=f"Assigned via customrolecolor by {ctx.author}")
+            except discord.Forbidden:
+                await ctx.send("I don't have permission to add that role to the member.")
+                return
+            except discord.HTTPException as e:
+                await ctx.send(f"An error occurred while adding the role: {e}")
+                return
 
         await self.config.guild(ctx.guild).assignments.set_raw(str(member.id), value=role.id)  # type: ignore[reportAttributeAccessIssue]
         await ctx.send(f"{member.mention} can now manage the color, name, and icon of {role.mention}.")
@@ -123,19 +180,8 @@ class CustomRoleColor(commands.Cog):
         [p]myrolecolor #ff0000 #00ff00     (Gradient color)
         [p]myrolecolor holographic         (Holographic style)
         """
-        assignments = await self.config.guild(ctx.guild).assignments()
-        role_id = assignments.get(str(ctx.author.id))
-        if not role_id:
-            await ctx.send("You don't have a role assigned for color management.")
-            return
-
-        role = ctx.guild.get_role(role_id)
-        if not role:
-            await ctx.send("The assigned role no longer exists.")
-            return
-
-        if role >= ctx.guild.me.top_role:
-            await ctx.send("I can't edit that role (it's higher than my top role).")
+        role = await self._get_assigned_role(ctx, "color")
+        if role is None:
             return
 
         # Check for holographic preset
@@ -150,7 +196,7 @@ class CustomRoleColor(commands.Cog):
                 await ctx.send(f"Changed color of {role.mention} to holographic.")
             except discord.Forbidden:
                 await ctx.send("I don't have permission to edit that role.")
-            except Exception as e:
+            except discord.HTTPException as e:
                 await ctx.send(f"An error occurred: {e}")
             return
 
@@ -204,19 +250,8 @@ class CustomRoleColor(commands.Cog):
         Change the name of your assigned role.
         Usage: [p]myrolename New Role Name
         """
-        assignments = await self.config.guild(ctx.guild).assignments()
-        role_id = assignments.get(str(ctx.author.id))
-        if not role_id:
-            await ctx.send("You don't have a role assigned for name management.")
-            return
-
-        role = ctx.guild.get_role(role_id)
-        if not role:
-            await ctx.send("The assigned role no longer exists.")
-            return
-
-        if role >= ctx.guild.me.top_role:
-            await ctx.send("I can't edit that role (it's higher than my top role).")
+        role = await self._get_assigned_role(ctx, "name")
+        if role is None:
             return
 
         if not (1 <= len(new_name) <= 100):
@@ -241,19 +276,8 @@ class CustomRoleColor(commands.Cog):
           [p]myroleicon :emoji:         (set icon to a unicode emoji)
           [p]myroleicon                 (attach a PNG or JPEG image)
         """
-        assignments = await self.config.guild(ctx.guild).assignments()
-        role_id = assignments.get(str(ctx.author.id))
-        if not role_id:
-            await ctx.send("You don't have a role assigned for icon management.")
-            return
-
-        role = ctx.guild.get_role(role_id)
-        if not role:
-            await ctx.send("The assigned role no longer exists.")
-            return
-
-        if role >= ctx.guild.me.top_role:
-            await ctx.send("I can't edit that role (it's higher than my top role).")
+        role = await self._get_assigned_role(ctx, "icon")
+        if role is None:
             return
 
         if "ROLE_ICONS" not in ctx.guild.features:
@@ -278,8 +302,6 @@ class CustomRoleColor(commands.Cog):
                 await ctx.send("I don't have permission to edit that role.")
             except discord.HTTPException as e:
                 await ctx.send(f"Failed to set icon: {e}")
-            except Exception as e:
-                await ctx.send(f"An error occurred: {e}")
             return
 
         # Otherwise, check for an image attachment
@@ -314,19 +336,8 @@ class CustomRoleColor(commands.Cog):
         Usage: [p]myrolementionable on
                [p]myrolementionable off
         """
-        assignments = await self.config.guild(ctx.guild).assignments()
-        role_id = assignments.get(str(ctx.author.id))
-        if not role_id:
-            await ctx.send("You don't have a role assigned for mention management.")
-            return
-
-        role = ctx.guild.get_role(role_id)
-        if not role:
-            await ctx.send("The assigned role no longer exists.")
-            return
-
-        if role >= ctx.guild.me.top_role:
-            await ctx.send("I can't edit that role (it's higher than my top role).")
+        role = await self._get_assigned_role(ctx, "mention")
+        if role is None:
             return
 
         state = state.lower()

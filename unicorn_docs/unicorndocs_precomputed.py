@@ -1,12 +1,10 @@
-import json
+import asyncio
 import logging
-import pickle
 from pathlib import Path
 from typing import Any
 
+import aiohttp
 import discord
-import numpy as np
-import requests
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 
@@ -15,10 +13,10 @@ log = logging.getLogger("red.kirin_cogs.unicorn_docs")
 
 class UnicornDocsPrecomputed(commands.Cog):
     """
-    Unicorn Documentation Q&A System (Pre-computed Vectors)
+    Unicorn documentation Q&A system.
 
     AI-powered documentation question and answer system for the moderation team.
-    Uses pre-computed embeddings and OpenRouter for chat generation.
+    Uses deterministic keyword retrieval and OpenRouter for chat generation.
     """
 
     def __init__(self, bot: Red):
@@ -27,7 +25,7 @@ class UnicornDocsPrecomputed(commands.Cog):
 
         # Hardcoded configuration - use absolute path based on cog location
         cog_dir = Path(__file__).parent
-        self.VECTORS_PATH = str(cog_dir / "vectors")
+        self.DOCS_PATH = str(cog_dir / "docs")
         self.MODERATION_ROLES = [696020813299580940, 898586656842600549]
         self.CHAT_MODEL = "tngtech/deepseek-r1t2-chimera:free"
         self.MAX_CHUNKS = 8  # Increased for more context
@@ -37,109 +35,87 @@ class UnicornDocsPrecomputed(commands.Cog):
 
         self.config.register_global(**default_global)
 
-        # Pre-computed data
-        self._embeddings = []
+        # In-memory keyword index built from Markdown documents.
         self._metadata = []
         self._config = {}
         self._loaded = False
 
-    def _load_data_sync(self, vectors_path: Path):
-        """Synchronous helper to load data from disk."""
-        config_file = vectors_path / "config.json"
-        embeddings_file = vectors_path / "embeddings.pkl"
-        metadata_file = vectors_path / "metadata.pkl"
+    @staticmethod
+    def _chunk_markdown(text: str, max_chars: int = 2000) -> list[str]:
+        """Split Markdown into bounded, paragraph-aligned keyword-search chunks."""
+        chunks: list[str] = []
+        current: list[str] = []
+        current_size = 0
+        for paragraph in (part.strip() for part in text.split("\n\n")):
+            if not paragraph:
+                continue
+            if current and current_size + len(paragraph) + 2 > max_chars:
+                chunks.append("\n\n".join(current))
+                current = []
+                current_size = 0
+            if len(paragraph) > max_chars:
+                if current:
+                    chunks.append("\n\n".join(current))
+                    current = []
+                    current_size = 0
+                chunks.extend(paragraph[i : i + max_chars] for i in range(0, len(paragraph), max_chars))
+                continue
+            current.append(paragraph)
+            current_size += len(paragraph) + 2
+        if current:
+            chunks.append("\n\n".join(current))
+        return chunks
 
-        config = {}
-        embeddings = []
-        metadata = []
+    def _load_data_sync(self, docs_path: Path) -> tuple[dict[str, Any], list[dict[str, str]]]:
+        """Build a keyword index directly from trusted Markdown files."""
+        if not docs_path.is_dir():
+            raise FileNotFoundError(f"Documentation directory not found: {docs_path.absolute()}")
 
-        # Load configuration
-        if config_file.exists():
-            with open(config_file) as f:
-                config = json.load(f)
+        files = sorted(docs_path.rglob("*.md"))
+        if not files:
+            raise FileNotFoundError(f"No Markdown documentation found in: {docs_path.absolute()}")
 
-        # Check for essential files
-        if not embeddings_file.exists():
-            raise FileNotFoundError(f"Embeddings file not found at: {embeddings_file.absolute()}")
+        metadata: list[dict[str, str]] = []
+        for path in files:
+            text = path.read_text(encoding="utf-8")
+            metadata.extend(
+                {"original_text": chunk, "source_file": str(path.relative_to(docs_path))}
+                for chunk in self._chunk_markdown(text)
+            )
 
-        if not metadata_file.exists():
-            raise FileNotFoundError(f"Metadata file not found at: {metadata_file.absolute()}")
+        config: dict[str, Any] = {"retrieval": "keyword", "total_files": len(files)}
+        return config, metadata
 
-        # Load data
-        with open(embeddings_file, "rb") as f:
-            embeddings = pickle.load(f)
-
-        with open(metadata_file, "rb") as f:
-            metadata = pickle.load(f)
-
-        return config, embeddings, metadata
-
-    async def load_vectors(self):
-        """Load pre-computed vectors from the vectors directory."""
+    async def load_vectors(self) -> None:
+        """Load the Markdown keyword index (legacy method name retained for compatibility)."""
         if self._loaded:
             return
 
         try:
-            vectors_path = Path(self.VECTORS_PATH)
-            log.info(f"Looking for vectors in: {vectors_path.absolute()}")
+            docs_path = Path(self.DOCS_PATH)
+            log.info("Building documentation index from %s", docs_path.absolute())
 
-            # Offload blocking I/O to executor
-            config, embeddings, metadata = await self.bot.loop.run_in_executor(None, self._load_data_sync, vectors_path)
+            config, metadata = await asyncio.to_thread(self._load_data_sync, docs_path)
 
             self._config = config
-            self._embeddings = embeddings
             self._metadata = metadata
 
             log.info(f"Loaded config: {self._config}")
-            log.info(f"Loaded {len(self._embeddings)} embeddings")
             log.info(f"Loaded {len(self._metadata)} metadata entries")
 
             self._loaded = True
-            log.info("Pre-computed vectors loaded successfully")
+            log.info("Documentation keyword index loaded successfully")
 
         except FileNotFoundError as e:
             log.warning(str(e))
             # Don't set loaded=True so we can retry if files appear later
-        except Exception as e:
-            log.error(f"Failed to load vectors: {e}")
+        except Exception:
+            log.exception("Failed to load documentation index")
             self._loaded = True  # Don't retry on other errors
 
-    async def cog_load(self):
+    async def cog_load(self) -> None:
         """Called when the cog is loaded."""
         await self.load_vectors()
-
-    async def get_embedding(self, text: str) -> list[float] | None:
-        """Get text embedding using the same model that was used for indexing."""
-        try:
-            # For now, we'll use a simple approach since we don't have the model loaded
-            # In a production setup, you might want to load the same model
-            # or use a different approach for query embedding
-
-            # This is a placeholder - in practice, you'd need to load the same
-            # sentence-transformers model that was used for indexing
-            log.warning("Query embedding not implemented - using fallback search")
-            return None
-
-        except Exception as e:
-            log.error(f"Error getting embedding: {e}")
-            return None
-
-    def cosine_similarity(self, a: list[float], b: list[float]) -> float:
-        """Calculate cosine similarity between two vectors."""
-        try:
-            a_np = np.array(a)
-            b_np = np.array(b)
-
-            dot_product = np.dot(a_np, b_np)
-            norm_a = np.linalg.norm(a_np)
-            norm_b = np.linalg.norm(b_np)
-
-            if norm_a == 0 or norm_b == 0:
-                return 0
-
-            return dot_product / (norm_a * norm_b)
-        except Exception:
-            return 0
 
     def simple_text_search(self, query: str, max_chunks: int = 8) -> list[dict[str, Any]]:
         """Enhanced text-based search with better scoring."""
@@ -193,7 +169,7 @@ class UnicornDocsPrecomputed(commands.Cog):
         """Query the database for relevant document chunks."""
         await self.load_vectors()
 
-        if not self._loaded or not self._embeddings:
+        if not self._loaded:
             log.warning("No vectors loaded, using text search fallback")
             return self.simple_text_search(question, max_chunks or self.MAX_CHUNKS)
 
@@ -262,35 +238,40 @@ Question: {question}
 
 Please provide a helpful answer based on the context above."""
 
-            response = requests.post(
+            session: Any = getattr(self.bot, "session", None)
+            if not isinstance(session, aiohttp.ClientSession) and not hasattr(session, "post"):
+                raise RuntimeError("The bot HTTP session is unavailable")
+            timeout = aiohttp.ClientTimeout(total=60)
+            async with session.post(
                 url="https://openrouter.ai/api/v1/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                data=json.dumps(
-                    {
-                        "model": model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        "max_tokens": 1000,
-                        "temperature": 0.3,  # Lower temperature for more focused, consistent responses
-                    }
-                ),
-                timeout=60,
-            )
-            response.raise_for_status()
-
-            result = response.json()
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "max_tokens": 1000,
+                    "temperature": 0.3,  # Lower temperature for more focused, consistent responses
+                },
+                timeout=timeout,
+            ) as response:
+                response.raise_for_status()
+                result = await response.json()
             return result["choices"][0]["message"]["content"].strip()
 
-        except requests.exceptions.RequestException as e:
+        except aiohttp.ClientError as e:
             log.error(f"Error generating answer: {e}")
             # Fallback to context-only response
             context = "\n\n".join([chunk["text"] for chunk in context_chunks])
             return f"Based on the documentation:\n\n{context[:500]}{'...' if len(context) > 500 else ''}\n\n*Note: Error generating AI response.*"
-        except Exception as e:
-            log.error(f"Unexpected error generating answer: {e}")
-            return f"Unexpected error: {e}"
+        except TimeoutError:
+            log.error("Timeout generating answer")
+            context = "\n\n".join([chunk["text"] for chunk in context_chunks])
+            return f"Based on the documentation:\n\n{context[:500]}{'...' if len(context) > 500 else ''}\n\n*Note: AI response timed out.*"
+        except Exception:
+            log.exception("Unexpected error generating documentation answer")
+            return "An unexpected error occurred while generating the answer. Please try again later."
 
     @commands.group(name="docs")
     @commands.guild_only()
@@ -342,9 +323,9 @@ Please provide a helpful answer based on the context above."""
 
             await msg.edit(content=None, embed=embed)
 
-        except Exception as e:
-            log.error(f"Error in ask_question: {e}")
-            await msg.edit(content=f"❌ An error occurred: {e}")
+        except Exception:
+            log.exception("Documentation question failed")
+            await msg.edit(content="❌ The documentation request failed. Please try again later.")
 
     @docs_group.command(name="search")
     @commands.has_any_role(696020813299580940, 898586656842600549)
@@ -384,9 +365,9 @@ Please provide a helpful answer based on the context above."""
 
             await msg.edit(content=None, embed=embed)
 
-        except Exception as e:
-            log.error(f"Error in search_docs: {e}")
-            await msg.edit(content=f"❌ An error occurred: {e}")
+        except Exception:
+            log.exception("Documentation search failed")
+            await msg.edit(content="❌ The documentation search failed. Please try again later.")
 
     @docs_group.command(name="stats")
     @commands.has_any_role(696020813299580940, 898586656842600549)
@@ -398,20 +379,19 @@ Please provide a helpful answer based on the context above."""
 
             embed = discord.Embed(title="📊 Database Statistics", color=0x00FF00)
 
-            embed.add_field(name="Total Chunks", value=str(len(self._embeddings)), inline=True)
-            embed.add_field(name="Vectors Path", value=self.VECTORS_PATH, inline=False)
+            embed.add_field(name="Total Chunks", value=str(len(self._metadata)), inline=True)
+            embed.add_field(name="Documents Path", value=self.DOCS_PATH, inline=False)
             embed.add_field(name="Chat Model", value=self.CHAT_MODEL, inline=True)
-            embed.add_field(name="Embedding Type", value="Pre-computed", inline=True)
+            embed.add_field(name="Retrieval", value="Keyword", inline=True)
 
             if self._config:
-                embed.add_field(name="Indexed Model", value=self._config.get("embedding_model", "Unknown"), inline=True)
                 embed.add_field(name="Total Files", value=str(self._config.get("total_files", "Unknown")), inline=True)
 
             await ctx.send(embed=embed)
 
-        except Exception as e:
-            log.error(f"Error in database_stats: {e}")
-            await ctx.send(f"❌ An error occurred: {e}")
+        except Exception:
+            log.exception("Documentation statistics failed")
+            await ctx.send("❌ Documentation statistics are temporarily unavailable.")
 
     @docs_group.group(name="config")
     @commands.is_owner()
@@ -429,7 +409,7 @@ Please provide a helpful answer based on the context above."""
     async def show_config(self, ctx: commands.Context):
         """Show current configuration."""
         config = {
-            "Vectors Path": self.VECTORS_PATH,
+            "Documents Path": self.DOCS_PATH,
             "Chat Model": self.CHAT_MODEL,
             "Max Chunks": self.MAX_CHUNKS,
             "Moderation Roles": [f"<@&{role_id}>" for role_id in self.MODERATION_ROLES],

@@ -212,3 +212,7 @@ Add channels to the whitelist: `[p]unimod whitelist #channel-name`
 ## License
 
 MIT License
+
+## Runtime and diagnostics
+
+NLTK resource checks run asynchronously during cog loading. Changing the configured buffer size immediately resizes existing guild buffers while retaining the newest messages. Background AI tasks are cancelled and gathered on unload. `[p]unimod config diagnostic` retains only a redacted response for at most one hour; the file is removed on expiry, unload, or restart.

@@ -670,3 +670,7 @@ This cog is provided under the same license as the kirin-cogs repository.
 - Inspired by WickBot's AntiNuke system
 - Built for Red-DiscordBot
 - Uses Discord.py's event system and audit log API
+
+## Recovery and retention
+
+Quarantine changes are serialized per guild/member. The first role snapshot is retained until Discord confirms the edit, and failed operations remain retryable. Unloading the cog cancels and inspects investigator/quarantine tasks. Trusted IDs and quarantine snapshots are removed through Red's user-data deletion hook.

@@ -42,9 +42,7 @@ class MockResponse:
 @patch("aiohttp.ClientSession.post")
 async def test_generate_response_payload_mapping(post_mock: MagicMock, client: OpenAIClient) -> None:
     # Setup mock return data
-    post_mock.return_value = MockResponse(
-        status=200, json_data={"choices": [{"message": {"content": "Hello human"}}]}
-    )
+    post_mock.return_value = MockResponse(status=200, json_data={"choices": [{"message": {"content": "Hello human"}}]})
 
     history = [
         {"role": "user", "parts": [{"text": "Hi"}]},
@@ -88,9 +86,7 @@ async def test_generate_response_payload_mapping(post_mock: MagicMock, client: O
 async def test_generate_response_error_status(post_mock: MagicMock, client: OpenAIClient) -> None:
     post_mock.return_value = MockResponse(status=401, text_data="Invalid API Key")
 
-    result = await client.generate_response(
-        endpoint="", api_key="", model="", system_instruction="", history=[]
-    )
+    result = await client.generate_response(endpoint="", api_key="", model="", system_instruction="", history=[])
 
     assert result == "Error 401: Invalid API Key"
 
@@ -100,8 +96,6 @@ async def test_generate_response_error_status(post_mock: MagicMock, client: Open
 async def test_generate_response_missing_choices(post_mock: MagicMock, client: OpenAIClient) -> None:
     post_mock.return_value = MockResponse(status=200, json_data={})
 
-    result = await client.generate_response(
-        endpoint="", api_key="", model="", system_instruction="", history=[]
-    )
+    result = await client.generate_response(endpoint="", api_key="", model="", system_instruction="", history=[])
 
     assert result is None

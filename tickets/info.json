@@ -5,7 +5,7 @@
     "short": "Advanced support ticket system",
     "description": "Multi-Panel Discord support ticket system with buttons!",
     "install_msg": "Thank you for installing Tickets! type `[p]tickets setuphelp` to get started!",
-    "end_user_data_statement": "This cog does not persistently store data about users.",
+    "end_user_data_statement": "This cog stores ticket owner Discord IDs, questionnaire answers, channel/message IDs, avatar URLs, timestamps, and lifecycle state. Red data-deletion requests remove that user's tracking and blacklist records.",
     "min_bot_version": "3.5.0",
     "min_python_version": [
         3,

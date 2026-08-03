@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
 
 from unimod.unimod import BufferedMessage, UniMod
 
@@ -24,7 +25,9 @@ def _make_msg(content: str, msg_id: int = 1) -> BufferedMessage:
 def cog() -> UniMod:
     bot = MagicMock()
     with patch("unimod.unimod.Config.get_conf"), patch("discord.ext.tasks.Loop.start"):
-        return UniMod(bot)  # type: ignore[arg-type]
+        instance = UniMod(bot)  # type: ignore[arg-type]
+    instance.vader_analyzer = SentimentIntensityAnalyzer()
+    return instance
 
 
 # --- _vader_check_single ---

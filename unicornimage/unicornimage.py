@@ -28,6 +28,7 @@ class UnicornImage(commands.Cog):
             "horde_api_key": "0000000000",
             "modal_app_name": "text2image",
             "modal_prompt": DEFAULT_MODAL_PROMPT,
+            "generation_limit": 1,
         }
 
         default_guild = {"premium_role_id": None}
@@ -39,6 +40,17 @@ class UnicornImage(commands.Cog):
         self._modal_client: ModalClient | None = None
         self._session: aiohttp.ClientSession | None = None
         self._init_lock = asyncio.Lock()
+
+        # Global semaphore for concurrency, configurable default 1
+        self._generation_semaphore = asyncio.Semaphore(1)
+        self._active_generations = 0
+
+    async def cog_load(self) -> None:
+        raw_limit = await self.config.generation_limit()
+        limit = raw_limit if isinstance(raw_limit, int) and 1 <= raw_limit <= 4 else 1
+        if limit != raw_limit:
+            await self.config.generation_limit.set(limit)
+        self._generation_semaphore = asyncio.Semaphore(limit)
 
     async def cog_unload(self) -> None:
         if self._session:
@@ -168,15 +180,27 @@ class UnicornImage(commands.Cog):
         """
         await ctx.defer()
 
+        if len(prompt.encode("utf-8")) > 1500:
+            ctx.command.reset_cooldown(ctx)
+            return await ctx.send("❌ Prompt exceeds 1500 byte limit.", allowed_mentions=discord.AllowedMentions.none())
+
         # Parse and Validate styles
         raw_styles = [s for s in [style, style2, style3] if s]
         lora_configs, error = self._parse_styles(raw_styles, max_count=3, required_base="Pony", allow_hidden=False)
         if error:
-            return await ctx.send(error)
+            ctx.command.reset_cooldown(ctx)
+            return await ctx.send(error, allowed_mentions=discord.AllowedMentions.none())
+
+        if self._generation_semaphore.locked():
+            ctx.command.reset_cooldown(ctx)
+            await ctx.send(
+                "⏳ The generation queue is full. Please wait a moment...",
+                allowed_mentions=discord.AllowedMentions.none(),
+                ephemeral=True,
+            )
+            return
 
         try:
-            client = await self.get_horde_client()
-
             full_prompt = self._build_full_prompt(prompt, HORDE_POSITIVE_PROMPT, lora_configs)
 
             horde_loras = []
@@ -196,26 +220,41 @@ class UnicornImage(commands.Cog):
             # Use API key from config directly in case it changed
             api_key = await self.config.horde_api_key()
 
-            images = await client.generate(
-                prompt=full_prompt,
-                negative_prompt=negative_prompt or "",
-                nsfw=False,  # Free is always SFW
-                loras=horde_loras,
-                api_key=api_key,
-            )
+            async with self._generation_semaphore:
+                self._active_generations += 1
+                try:
+                    client = await self.get_horde_client()
+                    images = await client.generate(
+                        prompt=full_prompt,
+                        negative_prompt=negative_prompt or "",
+                        nsfw=False,  # Free is always SFW
+                        loras=horde_loras,
+                        api_key=api_key,
+                    )
+                finally:
+                    self._active_generations -= 1
 
             if not images:
-                return await ctx.send("Failed to generate image.")
+                ctx.command.reset_cooldown(ctx)
+                return await ctx.send("Failed to generate image.", allowed_mentions=discord.AllowedMentions.none())
+
+            if len(images[0]) > 10 * 1024 * 1024:
+                raise ValueError("Generated image exceeds the 10 MiB safety limit")
 
             with io.BytesIO(images[0]) as fp:
                 raw_styles_str = ", ".join([s for s in [style, style2, style3] if s])
                 await ctx.send(
                     content=f"🎨 **Prompt:** {prompt}" + (f" | **Styles:** {raw_styles_str}" if raw_styles_str else ""),
                     file=discord.File(fp, filename="generation.png"),
+                    allowed_mentions=discord.AllowedMentions.none(),
                 )
 
-        except Exception as e:
-            await ctx.send(f"An error occurred: {e!s}")
+        except Exception:
+            ctx.command.reset_cooldown(ctx)
+            await ctx.send(
+                "The image backend failed. Your cooldown was restored; please try again later.",
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
 
     @staticmethod
     def _gen_premium_cooldown(ctx: commands.Context) -> commands.Cooldown | None:  # type: ignore[override]
@@ -253,10 +292,18 @@ class UnicornImage(commands.Cog):
         Premium generation using Modal.
         """
         if not await self.is_premium(ctx):
+            ctx.command.reset_cooldown(ctx)
             msg = "🔒 This command is a for Supporters only."
             if ctx.interaction:
                 return await ctx.send(msg, ephemeral=True)
             return await ctx.send(msg)
+
+        if len(prompt.encode("utf-8")) > 1500:
+            ctx.command.reset_cooldown(ctx)
+            msg = "❌ Prompt exceeds 1500 byte limit."
+            if ctx.interaction:
+                return await ctx.send(msg, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+            return await ctx.send(msg, allowed_mentions=discord.AllowedMentions.none())
 
         await ctx.defer()
         raw_styles = [s for s in [style, style2, style3, style4, style5] if s]
@@ -293,6 +340,10 @@ class UnicornImage(commands.Cog):
         """
         Owner test generation using Modal with seed support.
         """
+        if len(prompt.encode("utf-8")) > 1500:
+            await ctx.send("❌ Prompt exceeds 1500 byte limit.", allowed_mentions=discord.AllowedMentions.none())
+            return
+
         await ctx.defer()
         raw_styles = [s for s in [style, style2, style3, style4, style5] if s]
         await self._run_modal_gen(ctx, prompt, model, raw_styles, negative_prompt, batch_size, seed=seed)
@@ -309,17 +360,30 @@ class UnicornImage(commands.Cog):
     ):
         # Validate Model
         if model_alias not in MODELS:
-            return await ctx.send(f"❌ Model `{model_alias}` not found. Available: {', '.join(MODELS.keys())}")
+            ctx.command.reset_cooldown(ctx)
+            return await ctx.send(
+                f"❌ Model `{model_alias}` not found. Available: {', '.join(MODELS.keys())}",
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
 
         model_config = MODELS[model_alias]
 
         # Parse and Validate styles
         lora_configs, error = self._parse_styles(raw_styles, max_count=5, required_base=model_config["base"])
         if error:
-            return await ctx.send(error)
+            ctx.command.reset_cooldown(ctx)
+            return await ctx.send(error, allowed_mentions=discord.AllowedMentions.none())
+
+        if self._generation_semaphore.locked():
+            ctx.command.reset_cooldown(ctx)
+            await ctx.send(
+                "⏳ The generation queue is full. Please wait a moment...",
+                allowed_mentions=discord.AllowedMentions.none(),
+                ephemeral=True,
+            )
+            return
 
         try:
-            client = await self.get_modal_client()
             modal_prompt = await self.config.modal_prompt()
 
             full_prompt = self._build_full_prompt(prompt, modal_prompt, lora_configs)
@@ -328,34 +392,47 @@ class UnicornImage(commands.Cog):
             for config in lora_configs:
                 modal_loras.append({"model_id": config["model_id"], "weight": config.get("strength", 1.0)})
 
-            images = await client.generate(
-                prompt=full_prompt,
-                negative_prompt=negative_prompt or "",
-                model_id=model_config["id"],
-                loras=modal_loras,
-                batch_size=batch_size,
-                seed=seed,
-                width=model_config.get("width", 1024),
-                height=model_config.get("height", 1024),
-                steps=model_config.get("steps", 30),
-                guidance_scale=model_config.get("cfg", 7.5),
-                clip_skip=model_config.get("clip_skip"),
-                scheduler=model_config.get("sampler"),
-            )
+            async with self._generation_semaphore:
+                self._active_generations += 1
+                try:
+                    client = await self.get_modal_client()
+                    images = await client.generate(
+                        prompt=full_prompt,
+                        negative_prompt=negative_prompt or "",
+                        model_id=model_config["id"],
+                        loras=modal_loras,
+                        batch_size=batch_size,
+                        seed=seed,
+                        width=model_config.get("width", 1024),
+                        height=model_config.get("height", 1024),
+                        steps=model_config.get("steps", 30),
+                        guidance_scale=model_config.get("cfg", 7.5),
+                        clip_skip=model_config.get("clip_skip"),
+                        scheduler=model_config.get("sampler"),
+                    )
+                finally:
+                    self._active_generations -= 1
 
             if not images:
-                return await ctx.send("Failed to generate image.")
+                ctx.command.reset_cooldown(ctx)
+                return await ctx.send("Failed to generate image.", allowed_mentions=discord.AllowedMentions.none())
 
             files = []
             for i, img_bytes in enumerate(images):
+                if len(img_bytes) > 10 * 1024 * 1024:
+                    raise ValueError("Generated image exceeds the 10 MiB safety limit")
                 files.append(discord.File(io.BytesIO(img_bytes), filename=f"generation_{i}.png"))
 
             styles_str = ", ".join(raw_styles)
             content = f"🎨 **Prompt:** {prompt}" + (f" | **Styles:** {styles_str}" if styles_str else "")
-            await ctx.send(content=content, files=files)
+            await ctx.send(content=content, files=files, allowed_mentions=discord.AllowedMentions.none())
 
-        except Exception as e:
-            await ctx.send(f"An error occurred: {e!s}")
+        except Exception:
+            ctx.command.reset_cooldown(ctx)
+            await ctx.send(
+                "The image backend failed. Your cooldown was restored; please try again later.",
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
 
     @commands.hybrid_command(name="loras", description="Preview available styles")
     async def list_loras(self, ctx: commands.Context):
@@ -452,3 +529,14 @@ class UnicornImage(commands.Cog):
         """Set the default positive prompt appended to Modal requests."""
         await self.config.modal_prompt.set(prompt)
         await ctx.send("Modal prompt updated.")
+
+    @unicorn_config.command(name="concurrency")
+    @commands.is_owner()
+    async def set_concurrency(self, ctx: commands.Context, limit: commands.Range[int, 1, 4]) -> None:
+        """Set the process-wide image generation concurrency limit."""
+        if self._active_generations:
+            await ctx.send("Wait for active generations to finish before changing this limit.")
+            return
+        await self.config.generation_limit.set(limit)
+        self._generation_semaphore = asyncio.Semaphore(limit)
+        await ctx.send(f"Global image generation concurrency set to {limit}.")

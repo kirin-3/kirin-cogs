@@ -100,7 +100,9 @@ If `Charge Frequency` contains "Annual", the bot divides the amount by 12. It th
 
 ## Troubleshooting
 
-- **Bot not updating roles?** Check if the username in the `Discord` column matches exactly.
+- **Bot not updating roles?** Ensure the sheet contains the member's immutable Discord ID; unresolved legacy username rows are reported for manual reconciliation.
 - **"Service account not found"?** Ensure `service_account.json` is in the correct folder.
 - **Race conditions?** The bot uses a lock to prevent manual syncs from interfering with background syncs.
 - **Credential setup?** Use `[p]patronset creds` to see where to place your `service_account.json` file.
+
+Rewards use payment-derived idempotency keys and are recorded only after Unicornia settles the transaction. Amounts are parsed with `Decimal`; retrying the same payment cannot credit it twice.

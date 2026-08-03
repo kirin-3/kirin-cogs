@@ -1,7 +1,10 @@
-from datetime import datetime
+import logging
+from datetime import UTC, datetime
 
 import discord
 from redbot.core import Config, commands
+
+log = logging.getLogger("red.cogs.rulesaccept")
 
 
 class RulesAccept(commands.Cog):
@@ -13,6 +16,15 @@ class RulesAccept(commands.Cog):
         self.config = Config.get_conf(self, identifier=862735937)
         default_guild = {"rules_channel_id": 684360255798509582, "member_role_id": 686098839651876908}
         self.config.register_guild(**default_guild)
+
+    def _preflight_role_edit(self, guild, role):
+        if not guild.me.guild_permissions.manage_roles:
+            return "I do not have the Manage Roles permission."
+        if role.managed is True or role.is_default() is True:
+            return "This role cannot be assigned because it is a managed or default role."
+        if role >= guild.me.top_role:
+            return "I can't assign that role (it's higher than or equal to my top role)."
+        return None
 
     async def cog_load(self):
         self.bot.add_view(rulesacceptView(self))
@@ -72,18 +84,18 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
             typed_text = self.answer.value
 
             # Create a rich embed for logging
-            embed = discord.Embed(title="Rule Acceptance Log", color=discord.Color.blue(), timestamp=datetime.utcnow())
+            embed = discord.Embed(title="Rule Acceptance Log", color=discord.Color.blue(), timestamp=datetime.now(UTC))
             embed.add_field(name="Member", value=f"{member.mention} (`{member.id}`)", inline=False)
             embed.add_field(name="What they typed", value=f"```{typed_text}```", inline=False)
 
             try:
                 await log_channel.send(embed=embed)
             except discord.Forbidden:
-                print(f"I don't have permissions to send messages in the log channel: {log_channel_id}")
-            except Exception as e:
-                print(f"Failed to send log message: {e}")
+                log.warning(f"I don't have permissions to send messages in the log channel: {log_channel_id}")
+            except discord.HTTPException:
+                log.exception("Failed to send the rule-acceptance log message")
         else:
-            print(f"Could not find the log channel with ID: {log_channel_id}")
+            log.warning(f"Could not find the log channel with ID: {log_channel_id}")
         # --- End of new logging code ---
 
         valid_responses = ["I agree to the rules.", "I Agree To The Rules."]
@@ -91,10 +103,17 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
             guild = interaction.guild
             member = interaction.user
             if guild is None or not isinstance(member, discord.Member):
+                await interaction.response.send_message(
+                    "This action can only be performed in a server.", ephemeral=True
+                )
                 return
             role_id = await self.cog.config.guild(guild).member_role_id()
             role = guild.get_role(role_id)
             if role:
+                error_msg = self.cog._preflight_role_edit(guild, role)
+                if error_msg:
+                    await interaction.response.send_message(error_msg, ephemeral=True)
+                    return
                 try:
                     await member.add_roles(role, reason="Accepted the rules.")
                     await interaction.response.send_message(
@@ -105,8 +124,21 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
                         "You will need a role from <#708066544688562196> channel as well for full access.",
                         ephemeral=True,
                     )
-                except Exception as e:
-                    await interaction.response.send_message(f"Could not assign the role: {e}", ephemeral=True)
+                except discord.Forbidden:
+                    await interaction.response.send_message(
+                        "I do not have permission to assign this role.", ephemeral=True
+                    )
+                except discord.HTTPException:
+                    log.exception("Failed to grant the rules-acceptance role")
+                    await interaction.response.send_message(
+                        "Discord could not assign the role. Please try again or contact an administrator.",
+                        ephemeral=True,
+                    )
+                except Exception:
+                    log.exception("Unexpected failure while granting the rules-acceptance role")
+                    await interaction.response.send_message(
+                        "The role could not be assigned. Please contact an administrator.", ephemeral=True
+                    )
             else:
                 await interaction.response.send_message("Role not found. Please contact an admin.", ephemeral=True)
         else:

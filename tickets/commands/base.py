@@ -118,6 +118,8 @@ class BaseCommands(MixinMeta):
         """
         assert ctx.guild is not None
         assert isinstance(ctx.author, discord.Member)
+        if ctx.interaction:
+            await ctx.defer(ephemeral=True)
         conf = await self.config.guild(ctx.guild).all()
         owner_id = get_ticket_owner(conf["opened"], str(ctx.channel.id))
         if not owner_id:
@@ -167,7 +169,7 @@ class BaseCommands(MixinMeta):
                     return
 
         if ctx.interaction:
-            await ctx.interaction.response.send_message("Closing...", ephemeral=True, delete_after=4)
+            await ctx.send("Closing...", ephemeral=True, delete_after=4)
         await close_ticket(
             bot=self.bot,
             member=owner,

@@ -132,8 +132,21 @@ class HordeClient:
             if img_url:
                 async with self.session.get(img_url) as img_resp:
                     if img_resp.status == 200:
-                        content = await img_resp.read()
-                        images_bytes.append(content)
+                        content_type = img_resp.headers.get("Content-Type", "")
+                        if not content_type.startswith("image/"):
+                            log.warning(f"Invalid content type {content_type} from {img_url}")
+                            continue
+
+                        content = bytearray()
+                        too_large = False
+                        async for chunk in img_resp.content.iter_chunked(1024 * 1024):
+                            content.extend(chunk)
+                            if len(content) > 10 * 1024 * 1024:  # 10MB limit
+                                log.warning(f"Image from {img_url} exceeded 10MB limit")
+                                too_large = True
+                                break
+                        if not too_large:
+                            images_bytes.append(bytes(content))
                     else:
                         log.warning(f"Failed to download image from {img_url}")
 

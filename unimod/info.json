@@ -6,7 +6,7 @@
     "short": "AI-Powered Auto Moderation",
     "description": "Intelligent auto-moderation using VADER sentiment analysis and GLM5 AI for accurate rule violation detection. Monitors whitelisted channels and alerts moderators to potential violations.",
     "install_msg": "UniMod loaded! Use `[p]set api openai YOUR_API_KEY` to set your API key, then `[p]unimod whitelist` to add channels to monitor.",
-    "end_user_data_statement": "This cog stores message content temporarily for AI analysis. No personal user data is permanently stored.",
+    "end_user_data_statement": "This cog buffers message content and user IDs in memory for moderation analysis. Owner-enabled diagnostic mode may retain a redacted AI response for at most one hour; the file is removed on expiry or unload.",
     "min_bot_version": "3.5.0",
     "min_python_version": [
         3,

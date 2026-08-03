@@ -1,3 +1,1 @@
-requests>=2.25.0
-python-dotenv>=0.19.0
-numpy>=1.21.0
+# No additional runtime dependencies. Red supplies aiohttp.

@@ -12,6 +12,15 @@ from redbot.core.commands import Context
 from tabooaccess.tabooaccess import LetMeInButton, LetMeOutButton, TabooAccess, TabooAccessModal, TabooAccessView
 
 
+def _manageable_role(role_id: int = 123456789) -> MagicMock:
+    role = MagicMock(spec=discord.Role)
+    role.id = role_id
+    role.managed = False
+    role.is_default.return_value = False
+    role.__ge__.return_value = False
+    return role
+
+
 @pytest.fixture
 def bot_mock() -> MagicMock:
     bot = MagicMock(spec=Red)
@@ -55,6 +64,9 @@ def interaction_mock() -> MagicMock:
     interaction.response.send_modal = AsyncMock()
     interaction.response.send_message = AsyncMock()
     interaction.guild = MagicMock(spec=discord.Guild)
+    interaction.guild.me = MagicMock(spec=discord.Member)
+    interaction.guild.me.guild_permissions.manage_roles = True
+    interaction.guild.me.top_role = MagicMock(spec=discord.Role)
     interaction.user = MagicMock(spec=discord.Member)
     return interaction
 
@@ -112,8 +124,7 @@ async def test_let_me_in_button_callback(cog: TabooAccess, interaction_mock: Mag
 async def test_let_me_out_button_callback_success(
     cog: TabooAccess, interaction_mock: MagicMock, config_mock: MagicMock
 ) -> None:
-    role = MagicMock(spec=discord.Role)
-    role.id = 123456789
+    role = _manageable_role()
     interaction_mock.user.roles = [role]
     interaction_mock.user.remove_roles = AsyncMock()
 
@@ -132,8 +143,7 @@ async def test_let_me_out_button_callback_success(
 async def test_let_me_out_button_callback_no_role(
     cog: TabooAccess, interaction_mock: MagicMock, config_mock: MagicMock
 ) -> None:
-    role = MagicMock(spec=discord.Role)
-    role.id = 123456789
+    role = _manageable_role()
     interaction_mock.user.roles = []  # User doesn't have the role
     interaction_mock.guild.get_role.return_value = role
 
@@ -149,8 +159,7 @@ async def test_let_me_out_button_callback_no_role(
 async def test_let_me_out_button_callback_exception(
     cog: TabooAccess, interaction_mock: MagicMock, config_mock: MagicMock
 ) -> None:
-    role = MagicMock(spec=discord.Role)
-    role.id = 123456789
+    role = _manageable_role()
     interaction_mock.user.roles = [role]
     error = discord.Forbidden(MagicMock(), "no perms")
     interaction_mock.user.remove_roles = AsyncMock(side_effect=error)
@@ -160,7 +169,7 @@ async def test_let_me_out_button_callback_exception(
     await button.callback(interaction_mock)
 
     interaction_mock.response.send_message.assert_called_once_with(
-        f"Could not remove the role: {error}", ephemeral=True
+        "I do not have permission to remove this role.", ephemeral=True
     )
 
 
@@ -176,8 +185,7 @@ async def test_taboo_access_modal_on_submit_success(
     modal.answer = MagicMock()
     modal.answer.value = valid_answer
 
-    role = MagicMock(spec=discord.Role)
-    role.id = 123456789
+    role = _manageable_role()
     interaction_mock.guild.get_role.return_value = role
     interaction_mock.user.add_roles = AsyncMock()
 
@@ -227,7 +235,7 @@ async def test_taboo_access_modal_on_submit_exception(cog: TabooAccess, interact
     modal.answer = MagicMock()
     modal.answer.value = "yes"
 
-    role = MagicMock(spec=discord.Role)
+    role = _manageable_role()
     interaction_mock.guild.get_role.return_value = role
 
     error = discord.Forbidden(MagicMock(), "no perms")
@@ -236,5 +244,5 @@ async def test_taboo_access_modal_on_submit_exception(cog: TabooAccess, interact
     await modal.on_submit(interaction_mock)
 
     interaction_mock.response.send_message.assert_called_once_with(
-        f"Could not assign the role: {error}", ephemeral=True
+        "I do not have permission to assign this role.", ephemeral=True
     )

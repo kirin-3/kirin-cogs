@@ -2,6 +2,7 @@
 Gambling system for Unicornia
 """
 
+import asyncio
 import contextlib
 import secrets
 from typing import Any, TypeAlias
@@ -11,13 +12,19 @@ from discord import ui
 from redbot.core import commands
 
 from ..database import DatabaseManager
+from ..db.economy import OUTCOME_INSUFFICIENT_FUNDS
 from ..views import MinesView
 
 _GamblingResult: TypeAlias = dict[str, Any]
 
 
+def _new_game_key(game: str, user_id: int) -> str:
+    """Stable, unique operation key for one game invocation."""
+    return f"{game}:{user_id}:{secrets.token_hex(8)}"
+
+
 class BlackjackView(ui.View):
-    def __init__(self, ctx, system, user_id, amount, user_hand, dealer_hand, deck, currency_symbol):
+    def __init__(self, ctx, system, user_id, amount, user_hand, dealer_hand, deck, currency_symbol, operation_key: str):
         super().__init__(timeout=60)
         self.ctx = ctx
         self.system = system
@@ -27,9 +34,19 @@ class BlackjackView(ui.View):
         self.dealer_hand = dealer_hand
         self.deck = deck
         self.currency_symbol = currency_symbol
+        self.operation_key = operation_key
         self.message: discord.Message | None = None
         self.finished = False
+        self._settle_lock = asyncio.Lock()
         self.end_time = discord.utils.utcnow().timestamp() + 60
+
+    async def _try_begin_finalize(self) -> bool:
+        """Claim the right to finalize this game exactly once."""
+        async with self._settle_lock:
+            if self.finished:
+                return False
+            self.finished = True
+            return True
 
     def calculate_hand(self, hand):
         total = sum(hand)
@@ -59,18 +76,18 @@ class BlackjackView(ui.View):
         return embed
 
     async def on_timeout(self):
-        if not self.finished:
-            self.finished = True
-            for child in self.children:
-                child.disabled = True  # type: ignore[attr-defined]
+        if not await self._try_begin_finalize():
+            return
+        for child in self.children:
+            child.disabled = True  # type: ignore[attr-defined]
 
-            embed = self.get_embed("Timed out. You stand.", discord.Color.red())
-            try:
-                if self.message:
-                    await self.message.edit(embed=embed, view=self)
-            except discord.HTTPException:
-                pass
-            await self.do_stand_logic()
+        embed = self.get_embed("Timed out. You stand.", discord.Color.red())
+        try:
+            if self.message:
+                await self.message.edit(embed=embed, view=self)
+        except discord.HTTPException:
+            pass
+        await self.do_stand_logic()
 
     @ui.button(label="Hit", style=discord.ButtonStyle.primary, row=0)
     async def hit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -78,16 +95,29 @@ class BlackjackView(ui.View):
             await interaction.response.send_message("This is not your game!", ephemeral=True)
             return
 
+        if self.finished:
+            await interaction.response.send_message("This game is already over.", ephemeral=True)
+            return
+
         self.user_hand.append(self.deck.pop())
         user_total = self.calculate_hand(self.user_hand)
 
         if user_total > 21:
             # Bust
-            self.finished = True
+            if not await self._try_begin_finalize():
+                await interaction.response.send_message("This game is already over.", ephemeral=True)
+                return
             for child in self.children:
                 child.disabled = True  # type: ignore[attr-defined]
 
-            await self.system._log_gambling_result(self.user_id, "blackjack", self.amount, False)
+            await self.system.db.economy.settle_stake(
+                key=self.operation_key,
+                payout=0,
+                transaction_type="blackjack",
+                note="Blackjack bust",
+                result={"result": "bust", "user_total": user_total},
+            )
+            await self.system._record_gambling_stats(self.user_id, "blackjack", self.amount, False)
             embed = self.get_embed(
                 f"Busted with {user_total}! You lost {self.currency_symbol}{self.amount:,}.", discord.Color.red()
             )
@@ -105,11 +135,16 @@ class BlackjackView(ui.View):
             await interaction.response.send_message("This is not your game!", ephemeral=True)
             return
 
+        if self.finished:
+            await interaction.response.send_message("This game is already over.", ephemeral=True)
+            return
+
         await interaction.response.defer()
+        if not await self._try_begin_finalize():
+            return
         await self.do_stand_logic()
 
     async def do_stand_logic(self):
-        self.finished = True
         for child in self.children:
             child.disabled = True  # type: ignore[attr-defined]
 
@@ -142,18 +177,33 @@ class BlackjackView(ui.View):
 
         if win:
             win_amount = self.amount * 2
-            await self.system.db.economy.add_currency(
-                self.user_id, win_amount, "blackjack", "win", note="Blackjack Win"
+            await self.system.db.economy.settle_stake(
+                key=self.operation_key,
+                payout=win_amount,
+                transaction_type="blackjack",
+                note="Blackjack Win",
+                result={"result": "win", "win_amount": win_amount},
             )
-            await self.system._log_gambling_result(self.user_id, "blackjack", self.amount, True, win_amount)
+            await self.system._record_gambling_stats(self.user_id, "blackjack", self.amount, True, win_amount)
             result_text += f"\nYou won {self.currency_symbol}{win_amount:,}!"
         elif tie:
-            await self.system.db.economy.add_currency(
-                self.user_id, self.amount, "blackjack", "tie", note="Blackjack Push"
+            await self.system.db.economy.settle_stake(
+                key=self.operation_key,
+                payout=self.amount,
+                transaction_type="blackjack",
+                note="Blackjack Push",
+                result={"result": "push"},
             )
             result_text += "\nYour bet was returned."
         else:
-            await self.system._log_gambling_result(self.user_id, "blackjack", self.amount, False)
+            await self.system.db.economy.settle_stake(
+                key=self.operation_key,
+                payout=0,
+                transaction_type="blackjack",
+                note="Blackjack loss",
+                result={"result": "loss"},
+            )
+            await self.system._record_gambling_stats(self.user_id, "blackjack", self.amount, False)
             result_text += f"\nYou lost {self.currency_symbol}{self.amount:,}."
 
         embed = self.get_embed(result_text, color)
@@ -171,17 +221,19 @@ class GamblingSystem:
         self.config = config
         self.bot = bot
 
-    async def _log_gambling_result(self, user_id: int, game: str, bet_amount: int, won: bool, win_amount: int = 0):
-        """Log gambling result and update statistics"""
+    async def _record_gambling_stats(self, user_id: int, game: str, bet_amount: int, won: bool, win_amount: int = 0):
+        """Record gambling statistics and rakeback for a settled game.
+
+        Balance effects and their canonical transaction-log rows are produced
+        exclusively by reserve_stake/settle_stake; this method never writes
+        CurrencyTransactions rows.
+        """
         if won:
-            net_gain = win_amount - bet_amount
             await self.db.economy.update_gambling_stats(game, bet_amount, win_amount, 0)
             await self.db.economy.update_user_bet_stats(user_id, game, bet_amount, win_amount, 0, win_amount)
-            await self.db.economy.log_currency_transaction(user_id, "gambling_win", net_gain, f"{game} win")
         else:
             await self.db.economy.update_gambling_stats(game, bet_amount, 0, bet_amount)
             await self.db.economy.update_user_bet_stats(user_id, game, bet_amount, 0, bet_amount, 0)
-            await self.db.economy.log_currency_transaction(user_id, "gambling_loss", -bet_amount, f"{game} loss")
 
             # Add to rakeback (5% of losses)
             rakeback_amount = int(bet_amount * 0.05)
@@ -214,10 +266,11 @@ class GamblingSystem:
         if limit_error:
             return False, {"error": limit_error}
 
-        # Check if user has enough currency
-        balance = await self.db.economy.get_user_currency(user_id)
-        if balance < amount:
-            return False, {"error": "insufficient_funds", "balance": balance}
+        # Reserve the stake atomically before producing the outcome
+        key = _new_game_key("betroll", user_id)
+        reserved = await self.db.economy.reserve_stake(key=key, user_id=user_id, amount=amount, game="betroll")
+        if reserved.state == OUTCOME_INSUFFICIENT_FUNDS:
+            return False, {"error": "insufficient_funds", "balance": reserved.new_balance}
 
         # Roll dice
         roll = secrets.randbelow(100) + 1
@@ -226,8 +279,13 @@ class GamblingSystem:
         if roll >= threshold:
             # Win
             win_amount = amount * 2
-            await self.db.economy.add_currency(
-                user_id, win_amount - amount, "betroll", f"roll_{roll}", note=f"Betroll win: {roll} >= {threshold}"
+            await self.db.economy.settle_stake(
+                key=key,
+                payout=win_amount,
+                transaction_type="betroll",
+                extra=f"roll_{roll}",
+                note=f"Betroll win: {roll} >= {threshold}",
+                result={"won": True, "roll": roll, "threshold": threshold},
             )
             return True, {
                 "won": True,
@@ -238,10 +296,14 @@ class GamblingSystem:
             }
         else:
             # Lose
-            if amount > 0:
-                await self.db.economy.remove_currency(
-                    user_id, amount, "betroll", f"roll_{roll}", note=f"Betroll loss: {roll} < {threshold}"
-                )
+            await self.db.economy.settle_stake(
+                key=key,
+                payout=0,
+                transaction_type="betroll",
+                extra=f"roll_{roll}",
+                note=f"Betroll loss: {roll} < {threshold}",
+                result={"won": False, "roll": roll, "threshold": threshold},
+            )
             return True, {"won": False, "roll": roll, "threshold": threshold, "loss_amount": amount}
 
     async def rock_paper_scissors(self, user_id: int, choice: str, amount: int = 0) -> tuple[bool, _GamblingResult]:
@@ -259,16 +321,18 @@ class GamblingSystem:
         if choice not in ["rock", "paper", "scissors", "r", "p", "s"]:
             return False, {"error": "invalid_choice"}
 
+        key: str | None = None
         if amount > 0:
             # Check limits
             limit_error = await self._check_limits(amount)
             if limit_error:
                 return False, {"error": limit_error}
 
-            # Check if user has enough currency
-            balance = await self.db.economy.get_user_currency(user_id)
-            if balance < amount:
-                return False, {"error": "insufficient_funds", "balance": balance}
+            # Reserve the stake atomically before producing the outcome
+            key = _new_game_key("rps", user_id)
+            reserved = await self.db.economy.reserve_stake(key=key, user_id=user_id, amount=amount, game="rps")
+            if reserved.state == OUTCOME_INSUFFICIENT_FUNDS:
+                return False, {"error": "insufficient_funds", "balance": reserved.new_balance}
 
         # Convert to number
         choice_map = {"rock": 0, "r": 0, "paper": 1, "p": 1, "scissors": 2, "s": 2}
@@ -286,15 +350,16 @@ class GamblingSystem:
         else:
             result = "lose"
 
-        if amount > 0:
+        if amount > 0 and key is not None:
             if result == "win":
                 win_amount = amount * 2
-                await self.db.economy.add_currency(
-                    user_id,
-                    win_amount - amount,
-                    "rps",
-                    f"win_{user_choice}_{bot_choice}",
+                await self.db.economy.settle_stake(
+                    key=key,
+                    payout=win_amount,
+                    transaction_type="rps",
+                    extra=f"win_{user_choice}_{bot_choice}",
                     note=f"RPS win: {choices[user_choice]} vs {choices[bot_choice]}",
+                    result={"result": result},
                 )
                 return True, {
                     "result": result,
@@ -304,14 +369,14 @@ class GamblingSystem:
                     "profit": win_amount - amount,
                 }
             elif result == "lose":
-                if amount > 0:
-                    await self.db.economy.remove_currency(
-                        user_id,
-                        amount,
-                        "rps",
-                        f"loss_{user_choice}_{bot_choice}",
-                        note=f"RPS loss: {choices[user_choice]} vs {choices[bot_choice]}",
-                    )
+                await self.db.economy.settle_stake(
+                    key=key,
+                    payout=0,
+                    transaction_type="rps",
+                    extra=f"loss_{user_choice}_{bot_choice}",
+                    note=f"RPS loss: {choices[user_choice]} vs {choices[bot_choice]}",
+                    result={"result": result},
+                )
                 return True, {
                     "result": result,
                     "user_choice": choices[user_choice],
@@ -319,6 +384,15 @@ class GamblingSystem:
                     "loss_amount": amount,
                 }
             else:
+                # Draw: the reserved stake is refunded in full.
+                await self.db.economy.settle_stake(
+                    key=key,
+                    payout=amount,
+                    transaction_type="rps",
+                    extra=f"draw_{user_choice}_{bot_choice}",
+                    note=f"RPS draw: {choices[user_choice]} vs {choices[bot_choice]}",
+                    result={"result": result},
+                )
                 return True, {"result": result, "user_choice": choices[user_choice], "bot_choice": choices[bot_choice]}
         else:
             return True, {"result": result, "user_choice": choices[user_choice], "bot_choice": choices[bot_choice]}
@@ -338,10 +412,11 @@ class GamblingSystem:
         if limit_error:
             return False, {"error": limit_error}
 
-        # Check if user has enough currency
-        balance = await self.db.economy.get_user_currency(user_id)
-        if balance < amount:
-            return False, {"error": "insufficient_funds", "balance": balance}
+        # Reserve the stake atomically before producing the outcome
+        key = _new_game_key("slots", user_id)
+        reserved = await self.db.economy.reserve_stake(key=key, user_id=user_id, amount=amount, game="slots")
+        if reserved.state == OUTCOME_INSUFFICIENT_FUNDS:
+            return False, {"error": "insufficient_funds", "balance": reserved.new_balance}
 
         # Generate slot results
         rolls = [secrets.randbelow(10) for _ in range(3)]
@@ -363,15 +438,14 @@ class GamblingSystem:
             won_amount = int(amount * 1.2)
             win_type = "single_joker"
 
-        profit = won_amount - amount
-        if profit > 0:
-            await self.db.economy.add_currency(
-                user_id, profit, "slots", f"rolls_{rolls[0]}{rolls[1]}{rolls[2]}", note=f"Slots {win_type}: {rolls}"
-            )
-        elif profit < 0:
-            await self.db.economy.remove_currency(
-                user_id, -profit, "slots", f"rolls_{rolls[0]}{rolls[1]}{rolls[2]}", note=f"Slots loss: {rolls}"
-            )
+        await self.db.economy.settle_stake(
+            key=key,
+            payout=won_amount,
+            transaction_type="slots",
+            extra=f"rolls_{rolls[0]}{rolls[1]}{rolls[2]}",
+            note=f"Slots {win_type}: {rolls}",
+            result={"win_type": win_type, "rolls": rolls, "won_amount": won_amount},
+        )
 
         return True, {
             "rolls": rolls,
@@ -391,19 +465,16 @@ class GamblingSystem:
             await ctx.send(f"<a:zz_NoTick:729318761655435355> {limit_error}")
             return
 
-        # Check balance
-        balance = await self.db.economy.get_user_currency(user_id)
         currency_symbol = await self.config.currency_symbol()
 
-        if balance < amount:
+        # Reserve the stake atomically before producing the outcome
+        key = _new_game_key("blackjack", user_id)
+        reserved = await self.db.economy.reserve_stake(key=key, user_id=user_id, amount=amount, game="blackjack")
+        if reserved.state == OUTCOME_INSUFFICIENT_FUNDS:
             await ctx.send(
-                f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol}currency. You have {currency_symbol}{balance:,}."
+                f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol}currency. You have {currency_symbol}{reserved.new_balance:,}."
             )
             return
-
-        # Deduct bet immediately
-        if amount > 0:
-            await self.db.economy.remove_currency(user_id, amount, "blackjack", "start", note="Blackjack start")
 
         # Deck logic
         deck = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 4  # 11 is Ace
@@ -432,8 +503,14 @@ class GamblingSystem:
         if user_total == 21:
             # Instant win 2.5x
             win_amount = int(amount * 2.5)
-            await self.db.economy.add_currency(user_id, win_amount, "blackjack", "win", note="Blackjack Natural")
-            await self._log_gambling_result(user_id, "blackjack", amount, True, win_amount)
+            await self.db.economy.settle_stake(
+                key=key,
+                payout=win_amount,
+                transaction_type="blackjack",
+                note="Blackjack Natural",
+                result={"result": "natural", "win_amount": win_amount},
+            )
+            await self._record_gambling_stats(user_id, "blackjack", amount, True, win_amount)
 
             embed = discord.Embed(
                 title="🃏 Blackjack!",
@@ -446,7 +523,7 @@ class GamblingSystem:
             return
 
         # Create View
-        view = BlackjackView(ctx, self, user_id, amount, user_hand, dealer_hand, deck, currency_symbol)
+        view = BlackjackView(ctx, self, user_id, amount, user_hand, dealer_hand, deck, currency_symbol, key)
         embed = view.get_embed()
         view.message = await ctx.send(embed=embed, view=view)
 
@@ -477,10 +554,11 @@ class GamblingSystem:
         else:
             return False, {"error": "invalid_guess"}
 
-        # Check if user has enough currency
-        balance = await self.db.economy.get_user_currency(user_id)
-        if balance < amount:
-            return False, {"error": "insufficient_funds", "balance": balance}
+        # Reserve the stake atomically before producing the outcome
+        key = _new_game_key("betflip", user_id)
+        reserved = await self.db.economy.reserve_stake(key=key, user_id=user_id, amount=amount, game="betflip")
+        if reserved.state == OUTCOME_INSUFFICIENT_FUNDS:
+            return False, {"error": "insufficient_funds", "balance": reserved.new_balance}
 
         # Flip coin
         result_val = secrets.randbelow(2)
@@ -494,16 +572,15 @@ class GamblingSystem:
             win_amount = int(amount * 1.95)
             profit = win_amount - amount
 
-            if profit > 0:
-                await self.db.economy.add_currency(
-                    user_id,
-                    profit,
-                    "betflip",
-                    f"{guess_str}_{result_str}",
-                    note=f"Betflip win: {guess_str} == {result_str}",
-                )
-
-            await self._log_gambling_result(user_id, "betflip", amount, True, win_amount)
+            await self.db.economy.settle_stake(
+                key=key,
+                payout=win_amount,
+                transaction_type="betflip",
+                extra=f"{guess_str}_{result_str}",
+                note=f"Betflip win: {guess_str} == {result_str}",
+                result={"won": True, "result": result_str, "guess": guess_str},
+            )
+            await self._record_gambling_stats(user_id, "betflip", amount, True, win_amount)
 
             return True, {
                 "won": True,
@@ -513,15 +590,15 @@ class GamblingSystem:
                 "profit": profit,
             }
         else:
-            if amount > 0:
-                await self.db.economy.remove_currency(
-                    user_id,
-                    amount,
-                    "betflip",
-                    f"{guess_str}_{result_str}",
-                    note=f"Betflip loss: {guess_str} != {result_str}",
-                )
-            await self._log_gambling_result(user_id, "betflip", amount, False)
+            await self.db.economy.settle_stake(
+                key=key,
+                payout=0,
+                transaction_type="betflip",
+                extra=f"{guess_str}_{result_str}",
+                note=f"Betflip loss: {guess_str} != {result_str}",
+                result={"won": False, "result": result_str, "guess": guess_str},
+            )
+            await self._record_gambling_stats(user_id, "betflip", amount, False)
 
             return True, {"won": False, "result": result_str, "guess": guess_str, "loss_amount": amount}
 
@@ -540,10 +617,11 @@ class GamblingSystem:
         if limit_error:
             return False, {"error": limit_error}
 
-        # Check if user has enough currency
-        balance = await self.db.economy.get_user_currency(user_id)
-        if balance < amount:
-            return False, {"error": "insufficient_funds", "balance": balance}
+        # Reserve the stake atomically before producing the outcome
+        key = _new_game_key("lucky_ladder", user_id)
+        reserved = await self.db.economy.reserve_stake(key=key, user_id=user_id, amount=amount, game="lucky_ladder")
+        if reserved.state == OUTCOME_INSUFFICIENT_FUNDS:
+            return False, {"error": "insufficient_funds", "balance": reserved.new_balance}
 
         # Lucky ladder has 8 rungs with different multipliers
         multipliers = [2.4, 1.7, 1.5, 1.1, 0.5, 0.3, 0.2, 0.1]
@@ -552,15 +630,14 @@ class GamblingSystem:
 
         won_amount = int(amount * multiplier)
 
-        profit = won_amount - amount
-        if profit > 0:
-            await self.db.economy.add_currency(
-                user_id, profit, "lucky_ladder", f"rung_{rung}", note=f"Lucky ladder rung {rung + 1}: {multiplier}x"
-            )
-        elif profit < 0:
-            await self.db.economy.remove_currency(
-                user_id, -profit, "lucky_ladder", f"rung_{rung}", note=f"Lucky ladder rung {rung + 1}: {multiplier}x"
-            )
+        await self.db.economy.settle_stake(
+            key=key,
+            payout=won_amount,
+            transaction_type="lucky_ladder",
+            extra=f"rung_{rung}",
+            note=f"Lucky ladder rung {rung + 1}: {multiplier}x",
+            result={"rung": rung + 1, "multiplier": multiplier, "won_amount": won_amount},
+        )
 
         return True, {
             "rung": rung + 1,
@@ -585,18 +662,16 @@ class GamblingSystem:
             await ctx.send("<a:zz_NoTick:729318761655435355> Number of mines must be between 1 and 19.")
             return
 
-        # Check balance
-        balance = await self.db.economy.get_user_currency(user_id)
         currency_symbol = await self.config.currency_symbol()
 
-        if balance < amount:
+        # Reserve the stake atomically before producing the outcome
+        key = _new_game_key("mines", user_id)
+        reserved = await self.db.economy.reserve_stake(key=key, user_id=user_id, amount=amount, game="mines")
+        if reserved.state == OUTCOME_INSUFFICIENT_FUNDS:
             await ctx.send(
-                f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol}currency. You have {currency_symbol}{balance:,}."
+                f"<a:zz_NoTick:729318761655435355> You don't have enough {currency_symbol}currency. You have {currency_symbol}{reserved.new_balance:,}."
             )
             return
-
-        # Deduct bet immediately
-        await self.db.economy.remove_currency(user_id, amount, "mines", "start", note="Mines start")
 
         # Generate mines
         # 20 cells, indices 0-19. We need unique indices.
@@ -605,7 +680,7 @@ class GamblingSystem:
             mines_indices.add(secrets.randbelow(20))
 
         # Create View
-        view = MinesView(ctx, self, user_id, amount, mines_indices, 20, currency_symbol)
+        view = MinesView(ctx, self, user_id, amount, mines_indices, 20, currency_symbol, key)
 
         # Send message
         timer_str = f"<t:{int(view.end_time)}:R>"

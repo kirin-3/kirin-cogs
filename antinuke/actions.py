@@ -3,7 +3,9 @@
 import asyncio
 import datetime
 import logging
-from collections.abc import Coroutine
+from collections.abc import AsyncGenerator, Coroutine
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any
 
 import discord
@@ -17,6 +19,14 @@ from .utils import is_above_in_hierarchy
 log = logging.getLogger("red.kirin-cogs.antinuke.actions")
 
 
+@dataclass
+class _LockEntry:
+    """A keyed asyncio lock plus the number of coroutines holding or awaiting it."""
+
+    lock: asyncio.Lock
+    holders: int = 0
+
+
 class QuarantineActions:
     """Handles quarantine, restore, and notification actions."""
 
@@ -24,11 +34,53 @@ class QuarantineActions:
         self.bot = bot
         self.config = config
         self._background_tasks: set[asyncio.Task[Any]] = set()
+        # Per-(guild, member) quarantine locks; idle entries are removed.
+        self._quarantine_locks: dict[tuple[int, int], _LockEntry] = {}
+
+    @asynccontextmanager
+    async def _quarantine_lock(self, guild_id: int, user_id: int) -> AsyncGenerator[asyncio.Lock, None]:
+        """Serialize quarantine operations for one guild member.
+
+        Registry entries are removed once no coroutine holds or awaits them,
+        so the registry cannot grow unboundedly.
+        """
+        key = (guild_id, user_id)
+        entry = self._quarantine_locks.get(key)
+        if entry is None:
+            entry = _LockEntry(asyncio.Lock())
+            self._quarantine_locks[key] = entry
+        entry.holders += 1
+        try:
+            async with entry.lock:
+                yield entry.lock
+        finally:
+            entry.holders -= 1
+            if entry.holders == 0 and self._quarantine_locks.get(key) is entry:
+                del self._quarantine_locks[key]
 
     def _create_task(self, coro: Coroutine[Any, Any, Any]) -> None:
         task = asyncio.create_task(coro)
         self._background_tasks.add(task)
-        task.add_done_callback(self._background_tasks.discard)
+        task.add_done_callback(self._on_task_done)
+
+    def _on_task_done(self, task: asyncio.Task[Any]) -> None:
+        """Release the task and retrieve/log any exception it raised."""
+        self._background_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            log.error("AntiNuke action task failed: %s", exc, exc_info=exc)
+
+    async def cancel_all_tasks(self) -> None:
+        """Cancel and gather every outstanding background task (unload path)."""
+        tasks = list(self._background_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._background_tasks.clear()
+        self._quarantine_locks.clear()
 
     async def execute_quarantine(
         self,
@@ -39,6 +91,13 @@ class QuarantineActions:
     ) -> bool:
         """
         Atomically quarantine a user with a single API call.
+
+        Quarantine transitions are serialized per guild member and modeled as
+        explicit states: the original-role snapshot is persisted as ``pending``
+        before the Discord edit, marked ``completed`` only after the edit
+        succeeds, and marked ``failed`` (retaining the snapshot for a safe
+        retry) when Discord rejects the edit. The first valid snapshot is
+        never replaced by quarantine-state roles.
 
         Parameters
         ----------
@@ -54,7 +113,7 @@ class QuarantineActions:
         Returns
         -------
         bool
-            True if successful, False if hierarchy prevents action.
+            True if successful (or already quarantined), False otherwise.
         """
         # Get bot's member object
         bot_member = guild.me
@@ -80,44 +139,91 @@ class QuarantineActions:
             log.warning(f"Quarantine role is above bot's top role in guild {guild.id}")
             return False
 
-        # Store current roles BEFORE stripping (for restoration later)
-        role_ids = [role.id for role in user.roles if role != guild.default_role]
+        async with self._quarantine_lock(guild.id, user.id):
+            existing_users = await self.config.guild(guild).quarantined_users()
+            existing = existing_users.get(str(user.id)) if isinstance(existing_users, dict) else None
 
-        quarantine_data = {
-            "roles": role_ids,
-            "reason": f"AntiNuke triggered: {trigger_action}",
-            "quarantined_by": "anti-nuke",
-            "quarantined_at": datetime.datetime.now(datetime.UTC).isoformat(),
-            "trigger_action": trigger_action,
-        }
+            if isinstance(existing, dict):
+                # Records without a state predate the state model: those users
+                # are already quarantined, so preserve the first snapshot.
+                state = existing.get("state", "completed")
+                if state == "completed":
+                    log.debug(f"User {user.id} in guild {guild.id} is already quarantined")
+                    return True
+                # pending/failed: safe retry reusing the FIRST snapshot — never
+                # re-capture roles from a member already wearing quarantine.
+                role_ids = [rid for rid in existing.get("roles", []) if isinstance(rid, int)]
+            else:
+                # First quarantine: capture the original manageable roles now.
+                role_ids = [role.id for role in user.roles if role != guild.default_role]
 
-        # Store in Config (this is persistent data we need to keep)
-        async with self.config.guild(guild).quarantined_users() as q_users:
-            q_users[str(user.id)] = quarantine_data
+            now_iso = datetime.datetime.now(datetime.UTC).isoformat()
+            quarantine_data = {
+                "roles": role_ids,
+                "reason": f"AntiNuke triggered: {trigger_action}",
+                "quarantined_by": "anti-nuke",
+                "quarantined_at": now_iso,
+                "trigger_action": trigger_action,
+                "state": "pending",
+            }
 
-        try:
-            # SINGLE API CALL - Atomic role replacement
-            await user.edit(
-                roles=[quarantine_role],
-                reason=f"AntiNuke: {ACTION_NAMES.get(trigger_action, trigger_action)} threshold exceeded",
-            )
+            # Persist the pending transition BEFORE the Discord effect.
+            async with self.config.guild(guild).quarantined_users() as q_users:
+                q_users[str(user.id)] = quarantine_data
+
+            try:
+                # SINGLE API CALL - Atomic role replacement
+                await user.edit(
+                    roles=[quarantine_role],
+                    reason=f"AntiNuke: {ACTION_NAMES.get(trigger_action, trigger_action)} threshold exceeded",
+                )
+            except discord.Forbidden:
+                await self._mark_quarantine_failed(guild, user.id, "forbidden")
+                # Still notify owner even after hierarchy check (race condition)
+                await self.notify_owner_hierarchy_issue(guild, user, trigger_action)
+                return False
+            except discord.HTTPException as e:
+                await self._mark_quarantine_failed(guild, user.id, str(e)[:200])
+                log.error(f"Failed to quarantine user {user.id} in guild {guild.id}: {e}")
+                return False
+
+            # Finalize only after Discord success.
+            async with self.config.guild(guild).quarantined_users() as q_users:
+                record = q_users.get(str(user.id))
+                if isinstance(record, dict):
+                    record["state"] = "completed"
+                    record["completed_at"] = datetime.datetime.now(datetime.UTC).isoformat()
+                    q_users[str(user.id)] = record
 
             # Clear action cache for this user
             if action_cache:
                 action_cache.clear_user(guild.id, user.id)
 
-            # Log the action (non-blocking)
-            self._create_task(self.log_quarantine(guild, user, trigger_action))
+            # Log the action (non-blocking), counting roles stripped from the
+            # preserved pre-edit snapshot that the bot can actually manage.
+            stripped_count = self._stripped_count(guild, bot_member, role_ids)
+            self._create_task(self.log_quarantine(guild, user, trigger_action, stripped_count))
 
             return True
 
-        except discord.Forbidden:
-            # Still notify owner even after hierarchy check (race condition)
-            await self.notify_owner_hierarchy_issue(guild, user, trigger_action)
-            return False
-        except discord.HTTPException as e:
-            log.error(f"Failed to quarantine user {user.id} in guild {guild.id}: {e}")
-            return False
+    @staticmethod
+    def _stripped_count(guild: discord.Guild, bot_member: discord.Member, role_ids: list[int]) -> int:
+        """Count preserved snapshot roles the bot could actually strip."""
+        count = 0
+        for role_id in role_ids:
+            role = guild.get_role(role_id)
+            if role is not None and bot_member.top_role > role:
+                count += 1
+        return count
+
+    async def _mark_quarantine_failed(self, guild: discord.Guild, user_id: int, error: str) -> None:
+        """Mark a pending quarantine as failed, retaining its snapshot for retry."""
+        async with self.config.guild(guild).quarantined_users() as q_users:
+            record = q_users.get(str(user_id))
+            if isinstance(record, dict):
+                record["state"] = "failed"
+                record["last_error"] = error
+                q_users[str(user_id)] = record
 
     async def restore_user(self, guild: discord.Guild, user: discord.Member, restored_by: str = "manual") -> bool:
         """
@@ -229,6 +335,7 @@ class QuarantineActions:
         guild: discord.Guild,
         user: discord.Member,
         trigger_action: str,
+        stripped_count: int | None = None,
     ) -> None:
         """
         Log a quarantine action to the designated log channel.
@@ -241,6 +348,9 @@ class QuarantineActions:
             The user who was quarantined.
         trigger_action : str
             The action that triggered the quarantine.
+        stripped_count : Optional[int]
+            Number of roles stripped, calculated from the preserved pre-edit
+            role set. Falls back to the member's current roles when omitted.
         """
         log_channel_id = await self.config.guild(guild).log_channel()
         if not log_channel_id:
@@ -263,7 +373,7 @@ class QuarantineActions:
         embed.add_field(name="Trigger", value=bold(action_name), inline=True)
         embed.add_field(
             name="Roles Stripped",
-            value=str(len(user.roles) - 1),  # -1 for @everyone
+            value=str(stripped_count if stripped_count is not None else len(user.roles) - 1),
             inline=True,
         )
 

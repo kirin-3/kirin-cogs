@@ -75,6 +75,69 @@ async def test_gen_free_sends_file_on_success() -> None:
     ctx.send.assert_called_once()
     call_kwargs = ctx.send.call_args[1]
     assert "file" in call_kwargs
+    assert "allowed_mentions" in call_kwargs
+
+
+@pytest.mark.asyncio
+async def test_gen_free_prompt_byte_limit() -> None:
+    """genfree rejects prompt exceeding byte limit and resets cooldown."""
+    cog = make_cog()
+    ctx = make_ctx()
+    ctx.command = MagicMock()
+    ctx.command.reset_cooldown = MagicMock()
+
+    long_prompt = "a" * 1600
+    await cog.gen_free.callback(
+        cog,  # pyright: ignore[reportArgumentType]
+        ctx,
+        prompt=long_prompt,
+        style=None,
+        style2=None,
+        style3=None,
+        negative_prompt=None,
+    )
+
+    ctx.send.assert_called_once()
+    assert "byte limit" in ctx.send.call_args[0][0]
+    ctx.command.reset_cooldown.assert_called_once_with(ctx)
+
+
+@pytest.mark.asyncio
+async def test_gen_free_semaphore_feedback() -> None:
+    """genfree gives feedback when generation semaphore is locked."""
+    cog = make_cog()
+    ctx = make_ctx()
+    ctx.command = MagicMock()
+
+    mock_client = MagicMock()
+    mock_client.generate = AsyncMock(return_value=[b"\x00"])
+    cog.get_horde_client = AsyncMock(return_value=mock_client)
+
+    import asyncio
+
+    # Lock the semaphore beforehand
+    await cog._generation_semaphore.acquire()
+
+    # We run in a task because it will block
+    task = asyncio.create_task(
+        cog.gen_free.callback(
+            cog,  # pyright: ignore[reportArgumentType]
+            ctx,
+            prompt="test",
+            style=None,
+            style2=None,
+            style3=None,
+            negative_prompt=None,
+        )
+    )
+    await asyncio.sleep(0)
+
+    # Check that feedback was sent
+    ctx.send.assert_called_once()
+    assert "queue is full" in ctx.send.call_args[0][0]
+
+    cog._generation_semaphore.release()
+    await task
 
 
 @pytest.mark.asyncio
@@ -91,6 +154,23 @@ async def test_gen_free_handles_empty_response() -> None:
 
     ctx.send.assert_called()
     assert "Failed" in ctx.send.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_gen_free_backend_error_restores_cooldown() -> None:
+    cog = make_cog()
+    ctx = make_ctx()
+    ctx.command = MagicMock()
+    mock_client = MagicMock()
+    mock_client.generate = AsyncMock(side_effect=RuntimeError("private backend detail"))
+    cog.get_horde_client = AsyncMock(return_value=mock_client)
+
+    await cog.gen_free.callback(cog, ctx, prompt="a dog", style=None, style2=None, style3=None, negative_prompt=None)  # type: ignore[attr-defined]
+
+    ctx.command.reset_cooldown.assert_called_once_with(ctx)
+    message = ctx.send.call_args.args[0]
+    assert "private backend detail" not in message
+    assert ctx.send.call_args.kwargs["allowed_mentions"].everyone is False
 
 
 # --- premium gate for gen command ---
@@ -118,6 +198,7 @@ async def test_gen_premium_denied_without_role() -> None:
 
     ctx.send.assert_called_once()
     sent_text: str = ctx.send.call_args[0][0]
+    ctx.command.reset_cooldown.assert_called_once_with(ctx)
     assert "Supporters" in sent_text or "PREMIUM" in sent_text.upper() or "🔒" in sent_text
 
 

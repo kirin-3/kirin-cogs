@@ -41,6 +41,21 @@ def _make_interaction(*, member: MagicMock, guild: discord.Guild | None) -> Magi
     return interaction
 
 
+def _manageable_role(role_id: int = 42) -> MagicMock:
+    role = MagicMock(spec=discord.Role)
+    role.id = role_id
+    role.managed = False
+    role.is_default.return_value = False
+    role.__ge__.return_value = False
+    return role
+
+
+def _configure_role_permissions(guild: MagicMock) -> None:
+    guild.me = MagicMock(spec=discord.Member)
+    guild.me.guild_permissions.manage_roles = True
+    guild.me.top_role = MagicMock(spec=discord.Role)
+
+
 @pytest.fixture
 def bot_mock() -> MagicMock:
     bot = MagicMock()
@@ -91,8 +106,7 @@ async def test_setrole_updates_config(cog: RulesAccept, config_mock: MagicMock) 
     ctx.guild = MagicMock(spec=discord.Guild)
     ctx.send = AsyncMock()
 
-    role = MagicMock(spec=discord.Role)
-    role.id = 42
+    role = _manageable_role()
     role.name = "Members"
 
     await cog.setrole.callback(cog, ctx, role)  # type: ignore[arg-type]
@@ -140,10 +154,10 @@ async def test_modal_submit_valid_assigns_role_and_sends_followup(cog: RulesAcce
     modal = rulesacceptModal(cog)
     modal.answer._value = "I agree to the rules."
 
-    role = MagicMock(spec=discord.Role)
-    role.id = 42
+    role = _manageable_role()
 
     guild = MagicMock(spec=discord.Guild)
+    _configure_role_permissions(guild)
     guild.get_role.return_value = role
 
     member = MagicMock(spec=discord.Member)
@@ -199,10 +213,10 @@ async def test_modal_submit_valid_role_assign_error(cog: RulesAccept, config_moc
     modal = rulesacceptModal(cog)
     modal.answer._value = "I Agree To The Rules."
 
-    role = MagicMock(spec=discord.Role)
-    role.id = 42
+    role = _manageable_role()
 
     guild = MagicMock(spec=discord.Guild)
+    _configure_role_permissions(guild)
     guild.get_role.return_value = role
 
     member = MagicMock(spec=discord.Member)
@@ -215,7 +229,9 @@ async def test_modal_submit_valid_role_assign_error(cog: RulesAccept, config_moc
 
     await modal.on_submit(interaction)
 
-    interaction.response.send_message.assert_awaited_once_with("Could not assign the role: failed", ephemeral=True)
+    interaction.response.send_message.assert_awaited_once_with(
+        "The role could not be assigned. Please contact an administrator.", ephemeral=True
+    )
 
 
 @pytest.mark.asyncio
@@ -231,7 +247,9 @@ async def test_modal_submit_valid_with_no_guild_returns_silently(cog: RulesAccep
 
     await modal.on_submit(interaction)
 
-    interaction.response.send_message.assert_not_called()
+    interaction.response.send_message.assert_awaited_once_with(
+        "This action can only be performed in a server.", ephemeral=True
+    )
     interaction.followup.send.assert_not_called()
 
 

@@ -149,7 +149,7 @@ async def test_assignrole_role_too_high(cog: CustomRoleColor, bot_mock: MagicMoc
     ctx.guild.me.top_role.position = 100
 
     await cog.assignrole.callback(cog, ctx, ctx.author, role)  # pyright: ignore[reportArgumentType]
-    ctx.send.assert_called_once_with("I can't manage that role (it's higher than my top role).")
+    ctx.send.assert_called_once_with("I can't manage that role (it's higher than or equal to my top role).")
 
 
 @pytest.mark.asyncio
@@ -199,6 +199,38 @@ async def test_myrolecolor_role_not_found(cog: CustomRoleColor, bot_mock: MagicM
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("command_name", "args", "kwargs"),
+    [
+        ("myrolecolor", ("#ff0000",), {}),
+        ("myrolename", (), {"new_name": "New Name"}),
+        ("myroleicon", ("🎉",), {}),
+        ("myrolementionable", ("on",), {}),
+    ],
+)
+async def test_management_rejects_member_who_lost_assigned_role(
+    cog: CustomRoleColor,
+    bot_mock: MagicMock,
+    config_mock: MagicMock,
+    command_name: str,
+    args: tuple,
+    kwargs: dict,
+) -> None:
+    ctx = _make_ctx(bot_mock, author_id=500, guild_features=["ROLE_ICONS"])
+    config_mock.guild.return_value.assignments = AsyncMock(return_value={"500": 999})
+    role = _make_role(position=50)
+    role.id = 999
+    ctx.guild.get_role = MagicMock(return_value=role)
+    ctx.author.get_role = MagicMock(return_value=None)
+
+    command = getattr(cog, command_name)
+    await command.callback(cog, ctx, *args, **kwargs)
+
+    ctx.send.assert_called_once_with("You no longer have the role assigned for management.")
+    role.edit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_myrolecolor_role_too_high(cog: CustomRoleColor, bot_mock: MagicMock, config_mock: MagicMock) -> None:
     ctx = _make_ctx(bot_mock, author_id=500)
     config_mock.guild.return_value.assignments = AsyncMock(return_value={"500": 999})
@@ -208,7 +240,7 @@ async def test_myrolecolor_role_too_high(cog: CustomRoleColor, bot_mock: MagicMo
     ctx.guild.get_role = MagicMock(return_value=role)
 
     await cog.myrolecolor.callback(cog, ctx, "#ff0000")  # pyright: ignore[reportArgumentType]
-    ctx.send.assert_called_once_with("I can't edit that role (it's higher than my top role).")
+    ctx.send.assert_called_once_with("I can't manage that role (it's higher than or equal to my top role).")
 
 
 @pytest.mark.asyncio

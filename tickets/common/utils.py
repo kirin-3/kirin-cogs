@@ -11,6 +11,8 @@ from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import pagify, text_to_file
 from redbot.core.utils.mod import is_admin_or_superior
 
+from .constants import TicketState
+
 log = logging.getLogger("red.kirin_cogs.tickets.utils")
 
 
@@ -158,15 +160,36 @@ async def close_ticket(
                 except Exception as e:
                     log.warning(f"Failed to send fallback notification: {e}")
 
-    # Delete/close ticket channel
+    # Record intent before the Discord side effect. A restart can safely retry any
+    # close that does not reach the final Config removal below.
+    async with config.guild(guild).opened() as stored_opened:
+        stored_ticket = stored_opened.get(uid, {}).get(cid)
+        if stored_ticket is None:
+            return
+        stored_ticket["state"] = TicketState.CLOSE_PENDING
+
+    # Delete/close ticket channel.
+    deletion_error: Exception | None = None
     try:
         await channel.delete()
-    except discord.DiscordServerError:
+    except discord.DiscordServerError as exc:
+        deletion_error = exc
         await asyncio.sleep(3)
         try:
             await channel.delete()
-        except Exception as e:
-            log.error("Failed to delete ticket channel", exc_info=e)
+            deletion_error = None
+        except Exception as exc:
+            deletion_error = exc
+    except Exception as exc:
+        deletion_error = exc
+
+    if deletion_error is not None:
+        log.error("Failed to delete ticket channel", exc_info=deletion_error)
+        async with config.guild(guild).opened() as stored_opened:
+            stored_ticket = stored_opened.get(uid, {}).get(cid)
+            if stored_ticket is not None:
+                stored_ticket["state"] = TicketState.CLOSE_FAILED
+        return
 
     async with config.guild(guild).all() as conf:
         tickets = conf["opened"]

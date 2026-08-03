@@ -1,295 +1,191 @@
-"""Tests for the VerifyUser cog."""
+"""Tests for the hybrid Member-based VerifyUser command."""
 
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
-import pytest_asyncio
 from redbot.core.bot import Red
 from redbot.core.commands import Context
 
 from verifyuser.verifyuser import VerifyUser
 
-# Role constants from the cog
-AUTHORIZED_ROLE_ID = 898586656842600549
-VERIFICATION_ROLE_ID = 1267157222530748439
+
+def _role(role_id: int, *, above_bot: bool = False) -> MagicMock:
+    role = MagicMock(spec=discord.Role)
+    role.id = role_id
+    role.managed = False
+    role.is_default.return_value = False
+    role.__ge__.return_value = above_bot
+    return role
 
 
 @pytest.fixture
-def bot_mock() -> MagicMock:
-    bot = MagicMock(spec=Red)
-    return bot
-
-
-@pytest_asyncio.fixture
-async def cog(bot_mock: MagicMock) -> VerifyUser:
-    return VerifyUser(bot_mock)
+def cog() -> VerifyUser:
+    return VerifyUser(MagicMock(spec=Red))
 
 
 @pytest.fixture
-def ctx_mock() -> Context:
+def setup_objects() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
     ctx = MagicMock(spec=Context)
-    ctx.guild = MagicMock(spec=discord.Guild)
-    ctx.author = MagicMock(spec=discord.Member)
-    ctx.guild.me = MagicMock(spec=discord.Member)
+    guild = MagicMock(spec=discord.Guild)
+    actor = MagicMock(spec=discord.Member)
+    target = MagicMock(spec=discord.Member)
+    bot_member = MagicMock(spec=discord.Member)
+    bot_top = _role(900)
+    actor_top = _role(800)
+    target_top = _role(100)
+    actor_top.__ge__.return_value = True
+    target_top.__ge__.return_value = False
+    guild.me = bot_member
+    guild.me.id = 999
+    guild.me.guild_permissions.manage_roles = True
+    guild.me.top_role = bot_top
+    guild.owner_id = 1
+    guild.id = 55
+    actor.id = 10
+    actor.top_role = actor_top
+    target.id = 20
+    target.bot = False
+    target.top_role = target_top
+    target.roles = []
+    target.mention = "@target"
+    target.add_roles = AsyncMock()
+    ctx.guild = guild
+    ctx.author = actor
     ctx.send = AsyncMock()
-    return ctx
+    return ctx, guild, actor, target
 
 
 @pytest.mark.asyncio
-async def test_verifyuser_no_authorized_role(cog: VerifyUser, ctx_mock: MagicMock) -> None:
-    # Setup: The authorized role doesn't exist in the guild at all
-    ctx_mock.guild.get_role.return_value = None
+async def test_requires_authorized_role(cog: VerifyUser, setup_objects) -> None:
+    ctx, guild, actor, target = setup_objects
+    guild.get_role.return_value = None
+    actor.roles = []
 
-    await getattr(cog.verifyuser, "callback")(cog, ctx_mock, 12345)  # noqa: B009
+    await cog.verifyuser.callback(cog, ctx, target)  # pyright: ignore[reportArgumentType]
 
-    ctx_mock.guild.get_role.assert_called_once_with(AUTHORIZED_ROLE_ID)
-    ctx_mock.send.assert_called_once_with("You don't have permission to use this command.")
-
-
-@pytest.mark.asyncio
-async def test_verifyuser_author_missing_authorized_role(cog: VerifyUser, ctx_mock: MagicMock) -> None:
-    # Setup: The authorized role exists, but author doesn't have it
-    authorized_role = MagicMock(spec=discord.Role)
-    ctx_mock.guild.get_role.return_value = authorized_role
-    ctx_mock.author.roles = []
-
-    await getattr(cog.verifyuser, "callback")(cog, ctx_mock, 12345)  # noqa: B009
-
-    ctx_mock.send.assert_called_once_with("You don't have permission to use this command.")
+    ctx.send.assert_awaited_once_with("You don't have permission to use this command.", ephemeral=True)
 
 
 @pytest.mark.asyncio
-async def test_verifyuser_verification_role_missing(cog: VerifyUser, ctx_mock: MagicMock) -> None:
-    # Setup: Author has authorized role, but verification role doesn't exist
-    authorized_role = MagicMock(spec=discord.Role)
-    ctx_mock.author.roles = [authorized_role]
+async def test_rejects_unmanageable_verification_role(cog: VerifyUser, setup_objects) -> None:
+    ctx, guild, actor, target = setup_objects
+    authorized = _role(cog.AUTHORIZED_ROLE_ID)
+    verification = _role(cog.VERIFICATION_ROLE_ID, above_bot=True)
+    actor.roles = [authorized]
+    guild.get_role.side_effect = lambda role_id: authorized if role_id == authorized.id else verification
 
-    def mock_get_role(role_id):
-        if role_id == AUTHORIZED_ROLE_ID:
-            return authorized_role
-        if role_id == VERIFICATION_ROLE_ID:
-            return None
-        return None
+    await cog.verifyuser.callback(cog, ctx, target)  # pyright: ignore[reportArgumentType]
 
-    ctx_mock.guild.get_role.side_effect = mock_get_role
-
-    await getattr(cog.verifyuser, "callback")(cog, ctx_mock, 12345)  # noqa: B009
-
-    ctx_mock.send.assert_called_once_with("The verification role could not be found.")
+    ctx.send.assert_awaited_once_with(
+        "I can't assign that role (it's higher than or equal to my top role).", ephemeral=True
+    )
+    target.add_roles.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_verifyuser_target_not_found(cog: VerifyUser, ctx_mock: MagicMock) -> None:
-    # Setup roles correctly
-    authorized_role = MagicMock(spec=discord.Role)
-    verification_role = MagicMock(spec=discord.Role)
-    ctx_mock.author.roles = [authorized_role]
+async def test_verifyuser_success(cog: VerifyUser, setup_objects) -> None:
+    ctx, guild, actor, target = setup_objects
+    authorized = _role(cog.AUTHORIZED_ROLE_ID)
+    verification = _role(cog.VERIFICATION_ROLE_ID)
+    actor.roles = [authorized]
+    guild.get_role.side_effect = lambda role_id: authorized if role_id == authorized.id else verification
+    actor.__str__.return_value = "Moderator"
 
-    def mock_get_role(role_id):
-        if role_id == AUTHORIZED_ROLE_ID:
-            return authorized_role
-        if role_id == VERIFICATION_ROLE_ID:
-            return verification_role
-        return None
+    await cog.verifyuser.callback(cog, ctx, target)  # pyright: ignore[reportArgumentType]
 
-    ctx_mock.guild.get_role.side_effect = mock_get_role
-
-    # Target fetch fails with NotFound
-    ctx_mock.guild.fetch_member.side_effect = discord.NotFound(MagicMock(), "not found")
-
-    await getattr(cog.verifyuser, "callback")(cog, ctx_mock, 12345)  # noqa: B009
-
-    ctx_mock.send.assert_called_once_with("User with ID `12345` not found in this server.")
+    target.add_roles.assert_awaited_once_with(verification, reason="Verified by Moderator")
+    ctx.send.assert_awaited_once_with("Successfully verified @target!")
 
 
 @pytest.mark.asyncio
-async def test_verifyuser_fetch_http_exception(cog: VerifyUser, ctx_mock: MagicMock) -> None:
-    authorized_role = MagicMock(spec=discord.Role)
-    verification_role = MagicMock(spec=discord.Role)
-    ctx_mock.author.roles = [authorized_role]
+async def test_verifyuser_http_error_is_safe(cog: VerifyUser, setup_objects) -> None:
+    ctx, guild, actor, target = setup_objects
+    authorized = _role(cog.AUTHORIZED_ROLE_ID)
+    verification = _role(cog.VERIFICATION_ROLE_ID)
+    actor.roles = [authorized]
+    guild.get_role.side_effect = lambda role_id: authorized if role_id == authorized.id else verification
+    target.add_roles.side_effect = discord.HTTPException(MagicMock(), "private raw Discord failure")
 
-    def mock_get_role(role_id):
-        if role_id == AUTHORIZED_ROLE_ID:
-            return authorized_role
-        if role_id == VERIFICATION_ROLE_ID:
-            return verification_role
-        return None
+    await cog.verifyuser.callback(cog, ctx, target)  # pyright: ignore[reportArgumentType]
 
-    ctx_mock.guild.get_role.side_effect = mock_get_role
-
-    # Target fetch fails with HTTPException
-    ctx_mock.guild.fetch_member.side_effect = discord.HTTPException(MagicMock(), "http fail")
-
-    await getattr(cog.verifyuser, "callback")(cog, ctx_mock, 12345)  # noqa: B009
-
-    ctx_mock.send.assert_called_once_with("An error occurred while fetching the user.")
+    message = ctx.send.await_args.args[0]
+    assert "private raw Discord failure" not in message
+    assert ctx.send.await_args.kwargs["ephemeral"] is True
 
 
 @pytest.mark.asyncio
-async def test_verifyuser_target_already_verified(cog: VerifyUser, ctx_mock: MagicMock) -> None:
-    authorized_role = MagicMock(spec=discord.Role)
-    verification_role = MagicMock(spec=discord.Role)
-    ctx_mock.author.roles = [authorized_role]
+async def test_verifyuser_self_target_rejected(cog: VerifyUser, setup_objects) -> None:
+    ctx, guild, actor, target = setup_objects
+    authorized = _role(cog.AUTHORIZED_ROLE_ID)
+    verification = _role(cog.VERIFICATION_ROLE_ID)
+    actor.roles = [authorized]
+    target.id = actor.id
+    guild.get_role.side_effect = lambda role_id: authorized if role_id == authorized.id else verification
 
-    def mock_get_role(role_id):
-        if role_id == AUTHORIZED_ROLE_ID:
-            return authorized_role
-        if role_id == VERIFICATION_ROLE_ID:
-            return verification_role
-        return None
+    await cog.verifyuser.callback(cog, ctx, target)  # pyright: ignore[reportArgumentType]
 
-    ctx_mock.guild.get_role.side_effect = mock_get_role
-
-    target_user = MagicMock(spec=discord.Member)
-    target_user.roles = [verification_role]
-    target_user.mention = "@user"
-    ctx_mock.guild.fetch_member.return_value = target_user
-
-    await getattr(cog.verifyuser, "callback")(cog, ctx_mock, 12345)  # noqa: B009
-
-    ctx_mock.send.assert_called_once_with("@user is already verified.")
+    ctx.send.assert_awaited_once_with("You cannot use this command on yourself.", ephemeral=True)
 
 
-@pytest.mark.asyncio
-async def test_verifyuser_role_hierarchy_error(cog: VerifyUser, ctx_mock: MagicMock) -> None:
-    authorized_role = MagicMock(spec=discord.Role)
-    verification_role = MagicMock(spec=discord.Role)
+@pytest.mark.parametrize(
+    ("mutate", "expected"),
+    [
+        (
+            lambda guild, actor, target, role: setattr(guild.me.guild_permissions, "manage_roles", False),
+            "I do not have the Manage Roles permission.",
+        ),
+        (
+            lambda guild, actor, target, role: setattr(role, "managed", True),
+            "This role cannot be assigned because it is a managed or default role.",
+        ),
+        (
+            lambda guild, actor, target, role: role.is_default.configure_mock(return_value=True),
+            "This role cannot be assigned because it is a managed or default role.",
+        ),
+        (
+            lambda guild, actor, target, role: setattr(target, "id", guild.me.id),
+            "I cannot verify myself.",
+        ),
+        (
+            lambda guild, actor, target, role: setattr(target, "bot", True),
+            "Bot accounts cannot be verified.",
+        ),
+        (
+            lambda guild, actor, target, role: setattr(target, "id", guild.owner_id),
+            "The server owner cannot be managed with this command.",
+        ),
+        (
+            lambda guild, actor, target, role: target.top_role.__ge__.configure_mock(return_value=True),
+            "I cannot manage that member because their top role is too high.",
+        ),
+    ],
+)
+def test_preflight_permission_matrix(cog: VerifyUser, setup_objects, mutate, expected: str) -> None:
+    _ctx, guild, actor, target = setup_objects
+    role = _role(cog.VERIFICATION_ROLE_ID)
+    mutate(guild, actor, target, role)
+    assert cog._preflight_role_edit(guild, actor, target, role) == expected
 
-    # Roles are compared. The test simulates verification_role is higher than bot's top role
-    verification_role.__ge__ = MagicMock(return_value=True)
 
-    ctx_mock.author.roles = [authorized_role]
-
-    def mock_get_role(role_id):
-        if role_id == AUTHORIZED_ROLE_ID:
-            return authorized_role
-        if role_id == VERIFICATION_ROLE_ID:
-            return verification_role
-        return None
-
-    ctx_mock.guild.get_role.side_effect = mock_get_role
-
-    target_user = MagicMock(spec=discord.Member)
-    target_user.roles = []
-    target_user.mention = "@user"
-    ctx_mock.guild.fetch_member.return_value = target_user
-
-    await getattr(cog.verifyuser, "callback")(cog, ctx_mock, 12345)  # noqa: B009
-
-    ctx_mock.send.assert_called_once_with("I can't assign that role (it's higher than my top role).")
-
-
-@pytest.mark.asyncio
-async def test_verifyuser_success(cog: VerifyUser, ctx_mock: MagicMock) -> None:
-    authorized_role = MagicMock(spec=discord.Role)
-    verification_role = MagicMock(spec=discord.Role)
-
-    # Needs to be lower than bot's top role
-    verification_role.__ge__ = MagicMock(return_value=False)
-
-    ctx_mock.author.roles = [authorized_role]
-
-    def mock_get_role(role_id):
-        if role_id == AUTHORIZED_ROLE_ID:
-            return authorized_role
-        if role_id == VERIFICATION_ROLE_ID:
-            return verification_role
-        return None
-
-    ctx_mock.guild.get_role.side_effect = mock_get_role
-
-    target_user = MagicMock(spec=discord.Member)
-    target_user.roles = []
-    target_user.mention = "@user"
-    target_user.add_roles = AsyncMock()
-    ctx_mock.guild.fetch_member.return_value = target_user
-    ctx_mock.author.__str__ = MagicMock(return_value="AdminUser#1234")
-
-    await getattr(cog.verifyuser, "callback")(cog, ctx_mock, 12345)  # noqa: B009
-
-    target_user.add_roles.assert_called_once_with(verification_role, reason="Verified by AdminUser#1234")
-    ctx_mock.send.assert_called_once_with("Successfully verified @user!")
+def test_preflight_enforces_caller_hierarchy(cog: VerifyUser, setup_objects) -> None:
+    _ctx, guild, actor, target = setup_objects
+    role = _role(cog.VERIFICATION_ROLE_ID)
+    target.top_role.__ge__.side_effect = lambda other: other is actor.top_role
+    assert cog._preflight_role_edit(guild, actor, target, role) == (
+        "You cannot manage a member with an equal or higher top role."
+    )
 
 
 @pytest.mark.asyncio
-async def test_verifyuser_add_roles_forbidden(cog: VerifyUser, ctx_mock: MagicMock) -> None:
-    authorized_role = MagicMock(spec=discord.Role)
-    verification_role = MagicMock(spec=discord.Role)
-    verification_role.__ge__ = MagicMock(return_value=False)
+async def test_verifyuser_forbidden_is_safe(cog: VerifyUser, setup_objects) -> None:
+    ctx, guild, actor, target = setup_objects
+    authorized = _role(cog.AUTHORIZED_ROLE_ID)
+    verification = _role(cog.VERIFICATION_ROLE_ID)
+    actor.roles = [authorized]
+    guild.get_role.side_effect = lambda role_id: authorized if role_id == authorized.id else verification
+    target.add_roles.side_effect = discord.Forbidden(MagicMock(), "private forbidden detail")
 
-    ctx_mock.author.roles = [authorized_role]
+    await cog.verifyuser.callback(cog, ctx, target)  # pyright: ignore[reportArgumentType]
 
-    def mock_get_role(role_id):
-        if role_id == AUTHORIZED_ROLE_ID:
-            return authorized_role
-        if role_id == VERIFICATION_ROLE_ID:
-            return verification_role
-        return None
-
-    ctx_mock.guild.get_role.side_effect = mock_get_role
-
-    target_user = MagicMock(spec=discord.Member)
-    target_user.roles = []
-    target_user.add_roles.side_effect = discord.Forbidden(MagicMock(), "no perms")
-    ctx_mock.guild.fetch_member.return_value = target_user
-
-    await getattr(cog.verifyuser, "callback")(cog, ctx_mock, 12345)  # noqa: B009
-
-    ctx_mock.send.assert_called_once_with("I don't have permission to assign roles.")
-
-
-@pytest.mark.asyncio
-async def test_verifyuser_add_roles_http_exception(cog: VerifyUser, ctx_mock: MagicMock) -> None:
-    authorized_role = MagicMock(spec=discord.Role)
-    verification_role = MagicMock(spec=discord.Role)
-    verification_role.__ge__ = MagicMock(return_value=False)
-
-    ctx_mock.author.roles = [authorized_role]
-
-    def mock_get_role(role_id):
-        if role_id == AUTHORIZED_ROLE_ID:
-            return authorized_role
-        if role_id == VERIFICATION_ROLE_ID:
-            return verification_role
-        return None
-
-    ctx_mock.guild.get_role.side_effect = mock_get_role
-
-    target_user = MagicMock(spec=discord.Member)
-    target_user.roles = []
-    http_error = discord.HTTPException(MagicMock(), "intermittent error")
-    target_user.add_roles.side_effect = http_error
-    ctx_mock.guild.fetch_member.return_value = target_user
-
-    await getattr(cog.verifyuser, "callback")(cog, ctx_mock, 12345)  # noqa: B009
-
-    ctx_mock.send.assert_called_once_with(f"An error occurred while assigning the role: {http_error}")
-
-
-@pytest.mark.asyncio
-async def test_verifyuser_add_roles_generic_exception(cog: VerifyUser, ctx_mock: MagicMock) -> None:
-    authorized_role = MagicMock(spec=discord.Role)
-    verification_role = MagicMock(spec=discord.Role)
-    verification_role.__ge__ = MagicMock(return_value=False)
-
-    ctx_mock.author.roles = [authorized_role]
-
-    def mock_get_role(role_id):
-        if role_id == AUTHORIZED_ROLE_ID:
-            return authorized_role
-        if role_id == VERIFICATION_ROLE_ID:
-            return verification_role
-        return None
-
-    ctx_mock.guild.get_role.side_effect = mock_get_role
-
-    target_user = MagicMock(spec=discord.Member)
-    target_user.roles = []
-    error = Exception("db crash")
-    target_user.add_roles.side_effect = error
-    ctx_mock.guild.fetch_member.return_value = target_user
-
-    await getattr(cog.verifyuser, "callback")(cog, ctx_mock, 12345)  # noqa: B009
-
-    ctx_mock.send.assert_called_once_with(f"An unexpected error occurred: {error}")
+    ctx.send.assert_awaited_once_with("I don't have permission to assign roles.", ephemeral=True)

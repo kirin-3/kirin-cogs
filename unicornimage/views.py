@@ -1,11 +1,15 @@
 import asyncio
 import io
+import logging
 import os
 from typing import Any
 
 import aiohttp
 import discord
 from discord import ui
+
+log = logging.getLogger("red.kirin-cogs.unicornimage.views")
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
 class LoraListView(ui.LayoutView):
@@ -56,8 +60,8 @@ class LoraListView(ui.LayoutView):
                             filenames_map[key] = attach_filename
                             image_found = True
                             break
-                        except Exception as e:
-                            print(f"Error loading local image {local_filename}: {e}")
+                        except Exception:
+                            log.exception("Failed to load local LoRA preview %s", local_filename)
 
             if image_found:
                 continue
@@ -66,9 +70,25 @@ class LoraListView(ui.LayoutView):
             url = data.get("image_url")
             if url:
                 try:
-                    async with self.session.get(url, headers={"User-Agent": "UnicornImage/1.0"}) as resp:
+                    timeout = aiohttp.ClientTimeout(total=20)
+                    async with self.session.get(
+                        url,
+                        headers={"User-Agent": "UnicornImage/1.0"},
+                        timeout=timeout,
+                    ) as resp:
                         if resp.status == 200:
-                            data_bytes = await resp.read()
+                            content_type = resp.headers.get("Content-Type", "").lower()
+                            if not content_type.startswith("image/"):
+                                log.warning("Rejected non-image LoRA preview for %s: %s", key, content_type)
+                                continue
+                            chunks: list[bytes] = []
+                            downloaded = 0
+                            async for chunk in resp.content.iter_chunked(64 * 1024):
+                                downloaded += len(chunk)
+                                if downloaded > MAX_IMAGE_BYTES:
+                                    raise ValueError("LoRA preview exceeds the 10 MiB limit")
+                                chunks.append(chunk)
+                            data_bytes = b"".join(chunks)
                             # Determine extension
                             ext = "png"
                             if "jpeg" in url.lower() or "jpg" in url.lower():
@@ -81,9 +101,8 @@ class LoraListView(ui.LayoutView):
 
                             files.append(discord.File(io.BytesIO(data_bytes), filename=filename))
                             filenames_map[key] = filename
-                except Exception as e:
-                    print(f"Failed to load image for {key}: {e}")
-                    pass
+                except Exception:
+                    log.exception("Failed to load remote LoRA preview for %s", key)
         return files, filenames_map
 
     def build_layout(self, page_items, filenames_map, total_pages):

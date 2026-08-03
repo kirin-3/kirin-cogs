@@ -1,11 +1,15 @@
 import asyncio
 import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import discord
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 
+from .migrations import migrate_global_schema
 from .views import StickyView
 
 log = logging.getLogger("red.kirin_cogs.suggest")
@@ -13,6 +17,36 @@ log = logging.getLogger("red.kirin_cogs.suggest")
 SUGGEST_CHANNEL_ID = 998190508847403060
 UP_EMOJI_ID = 729330852747542568
 DOWN_EMOJI_ID = 729330876114141215
+
+UP_EMOJI_FALLBACK = "✅"
+DOWN_EMOJI_FALLBACK = "❌"
+
+
+def vote_emoji_kind(emoji: object) -> str | None:
+    """Classify a vote reaction emoji as "up"/"down"/None.
+
+    Recognizes both the configured custom emojis and the Unicode fallbacks
+    used when the custom emojis are unavailable.
+    """
+    if isinstance(emoji, (discord.Emoji, discord.PartialEmoji)):
+        if emoji.id == UP_EMOJI_ID:
+            return "up"
+        if emoji.id == DOWN_EMOJI_ID:
+            return "down"
+    elif isinstance(emoji, str):
+        if emoji == UP_EMOJI_FALLBACK:
+            return "up"
+        if emoji == DOWN_EMOJI_FALLBACK:
+            return "down"
+    return None
+
+
+@dataclass
+class _LockEntry:
+    """A keyed asyncio lock plus the number of coroutines holding or awaiting it."""
+
+    lock: asyncio.Lock
+    holders: int = 0
 
 
 class Suggest(commands.Cog):
@@ -25,6 +59,7 @@ class Suggest(commands.Cog):
         self.config = Config.get_conf(self, identifier=2115656421364, force_registration=True)
 
         default_global = {
+            "schema_version": 0,  # marker for migrations.py; 0 = legacy unmigrated record
             "next_id": 132,
             "sticky_message_id": None,
         }
@@ -42,12 +77,46 @@ class Suggest(commands.Cog):
 
         self.locked_channels: set[discord.TextChannel] = set()
         self._channel_cvs: dict[discord.TextChannel, asyncio.Condition] = {}
+        # Per-guild identifier-allocation locks; idle entries are removed.
+        self._id_locks: dict[int, _LockEntry] = {}
         self.bot.add_view(StickyView(self))
 
+    async def red_delete_data_for_user(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, *, requester, user_id: int
+    ) -> None:
+        """Delete stored suggestions authored by a Discord user ID."""
+        suggestions = await self.config.custom("SUGGESTION").all()
+        if not isinstance(suggestions, dict):
+            return
+        for suggestion_id, data in suggestions.items():
+            if isinstance(data, dict) and str(data.get("author_id")) == str(user_id):
+                await self.config.custom("SUGGESTION", str(suggestion_id)).clear()
+
+    @asynccontextmanager
+    async def _id_lock(self, guild_id: int) -> AsyncGenerator[asyncio.Lock, None]:
+        """Serialize suggestion identifier allocation within one guild.
+
+        Registry entries are removed once no coroutine holds or awaits them,
+        so the registry cannot grow unboundedly.
+        """
+        entry = self._id_locks.get(guild_id)
+        if entry is None:
+            entry = _LockEntry(asyncio.Lock())
+            self._id_locks[guild_id] = entry
+        entry.holders += 1
+        try:
+            async with entry.lock:
+                yield entry.lock
+        finally:
+            entry.holders -= 1
+            if entry.holders == 0 and self._id_locks.get(guild_id) is entry:
+                del self._id_locks[guild_id]
+
     async def cog_load(self):
+        await migrate_global_schema(self.config)
         # Ensure sticky message logic runs on reload if needed
         current_id = await self.config.next_id()
-        if current_id < 132:
+        if not isinstance(current_id, int) or isinstance(current_id, bool) or current_id < 132:
             await self.config.next_id.set(132)
 
     async def get_suggestion_channel(self) -> discord.TextChannel | None:
@@ -59,8 +128,14 @@ class Suggest(commands.Cog):
         if not channel:
             return await interaction.response.send_message("Suggestion channel not found.", ephemeral=True)
 
-        s_id = await self.config.next_id()
-        await self.config.next_id.set(s_id + 1)
+        # Allocate the identifier atomically per guild so concurrent
+        # submissions can never share or overwrite an identifier.
+        guild_id = channel.guild.id if channel.guild else 0
+        async with self._id_lock(guild_id):
+            s_id = await self.config.next_id()
+            if not isinstance(s_id, int) or isinstance(s_id, bool) or s_id < 132:
+                s_id = 132
+            await self.config.next_id.set(s_id + 1)
 
         embed = discord.Embed(
             title=f"Suggestion #{s_id}", description=content, color=await self.bot.get_embed_color(channel)
@@ -75,8 +150,8 @@ class Suggest(commands.Cog):
 
         # Add reactions
         try:
-            up_emoji = self.bot.get_emoji(UP_EMOJI_ID) or "✅"
-            down_emoji = self.bot.get_emoji(DOWN_EMOJI_ID) or "❌"
+            up_emoji = self.bot.get_emoji(UP_EMOJI_ID) or UP_EMOJI_FALLBACK
+            down_emoji = self.bot.get_emoji(DOWN_EMOJI_ID) or DOWN_EMOJI_FALLBACK
             await msg.add_reaction(up_emoji)
             await msg.add_reaction(down_emoji)
         except Exception as e:
@@ -105,20 +180,35 @@ class Suggest(commands.Cog):
 
     async def _resolve_suggestion(self, ctx, suggestion_id: int, status: str, reason: str | None):
         data = await self.config.custom("SUGGESTION", str(suggestion_id)).all()
-        if not data["msg_id"]:
+        if not isinstance(data, dict):
             return await ctx.send("Suggestion not found.")
 
-        if data["status"] != "pending":
-            return await ctx.send(f"Suggestion is already {data['status']}.")
+        # Validate the persisted shape before touching Discord state so
+        # malformed or partial records fail safely and stay untouched.
+        msg_id = data.get("msg_id")
+        if not isinstance(msg_id, int) or isinstance(msg_id, bool) or not msg_id:
+            return await ctx.send("Suggestion not found.")
+
+        current_status = data.get("status")
+        if not isinstance(current_status, str):
+            return await ctx.send("Suggestion record is malformed; please ask an admin to review it.")
+
+        if current_status != "pending":
+            return await ctx.send(f"Suggestion is already {current_status}.")
 
         channel = await self.get_suggestion_channel()
         if not channel:
             return await ctx.send("Suggestion channel not found.")
 
         try:
-            msg = await channel.fetch_message(data["msg_id"])
+            msg = await channel.fetch_message(msg_id)
         except discord.NotFound:
             return await ctx.send("Suggestion message not found.")
+
+        if not msg.embeds:
+            return await ctx.send(
+                "The suggestion message is missing its embed; cannot resolve it safely. The record was left unchanged."
+            )
 
         embed = msg.embeds[0]
         color = discord.Color.green() if status == "approved" else discord.Color.red()
@@ -131,16 +221,17 @@ class Suggest(commands.Cog):
             embed.add_field(name="Reason", value=reason, inline=False)
 
         # Add result stats
-        up_emoji = self.bot.get_emoji(UP_EMOJI_ID) or "✅"
-        down_emoji = self.bot.get_emoji(DOWN_EMOJI_ID) or "❌"
+        up_emoji = self.bot.get_emoji(UP_EMOJI_ID) or UP_EMOJI_FALLBACK
+        down_emoji = self.bot.get_emoji(DOWN_EMOJI_ID) or DOWN_EMOJI_FALLBACK
 
         up_count = 0
         down_count = 0
 
         for reaction in msg.reactions:
-            if str(reaction.emoji) == str(up_emoji):
+            kind = vote_emoji_kind(reaction.emoji)
+            if kind == "up":
                 up_count = reaction.count - 1 if reaction.me else reaction.count
-            elif str(reaction.emoji) == str(down_emoji):
+            elif kind == "down":
                 down_count = reaction.count - 1 if reaction.me else reaction.count
 
         embed.add_field(name="Results", value=f"{up_emoji} {up_count} - {down_count} {down_emoji}", inline=False)
@@ -156,11 +247,13 @@ class Suggest(commands.Cog):
 
         # Notify user
         try:
-            user = await self.bot.fetch_user(data["author_id"])
-            if user:
-                await user.send(
-                    f"Your suggestion #{suggestion_id} has been {status}!\nReason: {reason or 'No reason provided.'}"
-                )
+            author_id = data.get("author_id")
+            if isinstance(author_id, int):
+                user = await self.bot.fetch_user(author_id)
+                if user:
+                    await user.send(
+                        f"Your suggestion #{suggestion_id} has been {status}!\nReason: {reason or 'No reason provided.'}"
+                    )
         except Exception:
             pass
 
@@ -171,11 +264,9 @@ class Suggest(commands.Cog):
         if reaction.message.channel.id != SUGGEST_CHANNEL_ID:
             return
 
-        # Check if it's one of our custom emojis
-        if not isinstance(reaction.emoji, (discord.Emoji, discord.PartialEmoji)):
-            return
-
-        if reaction.emoji.id not in (UP_EMOJI_ID, DOWN_EMOJI_ID):
+        # Only voting reactions matter (custom emojis or Unicode fallbacks)
+        added_kind = vote_emoji_kind(reaction.emoji)
+        if added_kind is None:
             return
 
         # Ensure mutually exclusive
@@ -184,11 +275,8 @@ class Suggest(commands.Cog):
             if r.emoji == reaction.emoji:
                 continue
 
-            # Check if this other reaction is one of our voting emojis
-            if isinstance(r.emoji, (discord.Emoji, discord.PartialEmoji)) and r.emoji.id in (
-                UP_EMOJI_ID,
-                DOWN_EMOJI_ID,
-            ):
+            # Check if this other reaction is a voting emoji too
+            if vote_emoji_kind(r.emoji) is not None:
                 # Check if user reacted to this one too
                 async for u in r.users():
                     if u.id == user.id:

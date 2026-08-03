@@ -6,7 +6,7 @@
     "short": "Server protection against rogue administrators.",
     "description": "AntiNuke monitors server events and automatically quarantines users who perform potentially destructive actions beyond configured thresholds. Features include channel/role monitoring, ban/kick detection, webhook monitoring, dangerous permission detection, vanity URL protection, guild prune detection, and bot addition detection with auto-kick option.",
     "install_msg": "Thanks for installing the antinuke cog!",
-    "end_user_data_statement": "This cog does not persistently store data or metadata about users.",
+    "end_user_data_statement": "This cog stores trusted user IDs and quarantine records containing user IDs, prior role IDs, reasons, and timestamps per guild. Red data-deletion requests remove those records.",
     "min_bot_version": "3.5.0",
     "min_python_version": [
         3,

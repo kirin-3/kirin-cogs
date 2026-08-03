@@ -33,8 +33,10 @@ class UnicornModeration(commands.Cog):
         requester: Literal["discord_deleted_user", "owner", "user", "user_strict"],
         user_id: int,
     ) -> None:
-        """No data to delete"""
-        return
+        """Delete all guild-scoped warning records for the user."""
+        for guild_id, members in (await self.config.all_members()).items():
+            if isinstance(members, dict) and (user_id in members or str(user_id) in members):
+                await self.config.member_from_ids(guild_id, user_id).clear()
 
     def __init__(self, bot: Red):
         self.bot: Red = bot

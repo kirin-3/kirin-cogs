@@ -17,6 +17,7 @@ from antinuke.antinuke import AntiNuke
 @pytest.fixture
 def config_mock() -> MagicMock:
     config = MagicMock(spec=Config)
+    config.all_guilds = AsyncMock(return_value={})
 
     config_dict = {
         "enabled": True,

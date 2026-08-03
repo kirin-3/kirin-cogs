@@ -97,10 +97,50 @@ def test_parse_ai_response_string_message_id_coerced(cog: UniMod) -> None:
 
 
 def test_parse_ai_response_invalid_severity_defaulted(cog: UniMod) -> None:
-    """Unrecognized severity on a violation defaults to 'low'."""
+    """Unrecognized severity is rejected by schema normalization."""
     raw = (
         '{"is_violation": true, "confidence": 0.9, "violated_rules": ["1.0"], '
         '"severity": "extreme", "explanation": "Bad.", "primary_message_id": null}'
     )
     result = cog.parse_ai_response(raw)
-    assert result.severity == "low"
+    assert result.severity is None
+
+
+def test_parse_ai_response_confidence_bounds(cog: UniMod) -> None:
+    """Confidence should be clamped between 0.0 and 1.0."""
+    raw_high = '{"is_violation": true, "confidence": 1.5, "violated_rules": [], "severity": null, "explanation": "", "primary_message_id": null}'
+    result_high = cog.parse_ai_response(raw_high)
+    assert result_high.confidence == 1.0
+
+    raw_low = '{"is_violation": false, "confidence": -0.5, "violated_rules": [], "severity": null, "explanation": "", "primary_message_id": null}'
+    result_low = cog.parse_ai_response(raw_low)
+    assert result_low.confidence == 0.0
+
+
+def test_parse_ai_response_explanation_length(cog: UniMod) -> None:
+    """Explanation should be clamped to 2000 chars."""
+    long_expl = "A" * 2500
+    raw = f'{{"is_violation": false, "confidence": 0.5, "violated_rules": [], "severity": null, "explanation": "{long_expl}", "primary_message_id": null}}'
+    result = cog.parse_ai_response(raw)
+    assert len(result.explanation) <= 2000
+    assert result.explanation.endswith("...")
+
+
+def test_parse_ai_response_rules_format(cog: UniMod) -> None:
+    """Rules should be list of strings."""
+    raw = '{"is_violation": true, "confidence": 0.5, "violated_rules": [1, 2.5, "3.1"], "severity": null, "explanation": "A", "primary_message_id": null}'
+    result = cog.parse_ai_response(raw)
+    assert result.violated_rules == ["1", "2.5", "3.1"]
+
+
+def test_parse_ai_response_rules_are_bounded(cog: UniMod) -> None:
+    rules = ["x" * 200, *range(20)]
+    raw = (
+        '{"is_violation": true, "confidence": 0.5, "violated_rules": '
+        + str(rules).replace("'", '"')
+        + ', "severity": "high", "explanation": "A", "primary_message_id": null}'
+    )
+    result = cog.parse_ai_response(raw)
+    assert len(result.violated_rules) == 10
+    assert all(0 < len(rule) <= 80 for rule in result.violated_rules)
+    assert len(", ".join(result.violated_rules)) <= 1024

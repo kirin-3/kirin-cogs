@@ -1,5 +1,6 @@
 """Unit and integration tests for the Suggest cog."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -31,6 +32,8 @@ async def cog(bot_mock: MagicMock) -> Suggest:
 
     # Mock config
     config_mock = MagicMock()
+    config_mock.schema_version = AsyncMock(return_value=0)
+    config_mock.schema_version.set = AsyncMock()
     config_mock.next_id = AsyncMock(return_value=132)
     config_mock.next_id.set = AsyncMock()
     config_mock.sticky_message_id = AsyncMock(return_value=None)
@@ -79,6 +82,7 @@ async def cog(bot_mock: MagicMock) -> Suggest:
                     def __await__(self):
                         async def _get():
                             return self._dict_data.copy()
+
                         return _get().__await__()
 
                     async def __aenter__(self):
@@ -145,7 +149,9 @@ async def test_get_suggestion_channel_not_text(cog: Suggest, bot_mock: MagicMock
 
 
 @pytest.mark.asyncio
-async def test_process_new_suggestion_no_channel(cog: Suggest, bot_mock: MagicMock, interaction_mock: MagicMock) -> None:
+async def test_process_new_suggestion_no_channel(
+    cog: Suggest, bot_mock: MagicMock, interaction_mock: MagicMock
+) -> None:
     bot_mock.get_channel.return_value = None
 
     await cog.process_new_suggestion(interaction_mock, "Make the bot cooler")
@@ -209,7 +215,9 @@ async def test_approve_suggestion_already_approved(cog: Suggest, ctx_mock: Magic
                 def __await__(self):
                     async def _get():
                         return custom_data
+
                     return _get().__await__()
+
             return AllWrapper()
 
     cog.config.custom = MagicMock(return_value=ConfigWrapper())
@@ -229,7 +237,9 @@ async def test_approve_suggestion_missing_channel(cog: Suggest, ctx_mock: MagicM
                 def __await__(self):
                     async def _get():
                         return custom_data
+
                     return _get().__await__()
+
             return AllWrapper()
 
     cog.config.custom = MagicMock(return_value=ConfigWrapper())
@@ -254,6 +264,7 @@ async def test_approve_suggestion_success(cog: Suggest, ctx_mock: MagicMock, bot
                 def __await__(self):
                     async def _get():
                         return self.data.copy()
+
                     return _get().__await__()
 
                 async def __aenter__(self):
@@ -261,6 +272,7 @@ async def test_approve_suggestion_success(cog: Suggest, ctx_mock: MagicMock, bot
 
                 async def __aexit__(self, exc_type, exc_val, exc_tb):
                     pass
+
             return AllWrapper()
 
     cog.config.custom = MagicMock(return_value=ConfigWrapper())
@@ -277,16 +289,14 @@ async def test_approve_suggestion_success(cog: Suggest, ctx_mock: MagicMock, bot
 
     # Mock reactions
     r1 = MagicMock(spec=discord.Reaction)
-    r1.emoji = MagicMock()
-    r1.emoji.__str__.return_value = str(UP_EMOJI_ID)
+    r1.emoji = discord.PartialEmoji(name="up", id=UP_EMOJI_ID)
     r1.count = 3
     r1.me = True  # Bot voted, subtract 1
 
     r2 = MagicMock(spec=discord.Reaction)
-    r2.emoji = MagicMock()
-    r2.emoji.__str__.return_value = str(DOWN_EMOJI_ID)
+    r2.emoji = discord.PartialEmoji(name="down", id=DOWN_EMOJI_ID)
     r2.count = 5
-    r2.me = False # Bot didn't vote (somehow), don't subtract
+    r2.me = False  # Bot didn't vote (somehow), don't subtract
 
     msg_mock.reactions = [r1, r2]
 
@@ -349,7 +359,7 @@ async def test_on_reaction_add_wrong_channel(cog: Suggest) -> None:
 
     # It should return early instead of checking emoji or looping
     # To test this, we ensure no further accesses were made
-    assert 'emoji' not in [c[0] for c in reaction_mock.mock_calls]
+    assert "emoji" not in [c[0] for c in reaction_mock.mock_calls]
 
 
 @pytest.mark.asyncio
@@ -376,6 +386,7 @@ async def test_on_reaction_add_mutually_exclusive(cog: Suggest) -> None:
     # Setup users for the DOWN reaction to include our user
     async def _async_gen():
         yield user_mock
+
     down_reaction.users = MagicMock(return_value=_async_gen())
 
     msg_mock.reactions = [reaction_mock, down_reaction]
@@ -413,3 +424,169 @@ async def test_sticky_view_button(cog: Suggest, interaction_mock: MagicMock) -> 
     interaction_mock.response.send_modal.assert_called_once()
     args, _ = interaction_mock.response.send_modal.call_args
     assert isinstance(args[0], SuggestionModal)
+
+
+# ---------------------------------------------------------------------------
+# 6.5 — identifier serialization, shape validation, Unicode fallbacks
+# ---------------------------------------------------------------------------
+
+
+def _custom_wrapper(custom_data: dict):
+    class ConfigWrapper:
+        def all(self):
+            class AllWrapper:
+                def __await__(self):
+                    async def _get():
+                        return custom_data.copy()
+
+                    return _get().__await__()
+
+                async def __aenter__(self):
+                    return custom_data
+
+                async def __aexit__(self, exc_type, exc_val, exc_tb):
+                    pass
+
+            return AllWrapper()
+
+    return ConfigWrapper()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_suggestions_get_distinct_ids(cog: Suggest, bot_mock: MagicMock) -> None:
+    """Two concurrent submissions receive distinct monotonically allocated IDs."""
+    channel_mock = MagicMock(spec=discord.TextChannel)
+    channel_mock.guild = MagicMock(spec=discord.Guild)
+    channel_mock.guild.id = 1
+
+    sent_embeds = []
+
+    async def _send(**kwargs):
+        sent_embeds.append(kwargs["embed"])
+        msg = MagicMock(spec=discord.Message)
+        msg.id = 900000 + len(sent_embeds)
+        msg.add_reaction = AsyncMock()
+        return msg
+
+    channel_mock.send = _send
+    bot_mock.get_channel.return_value = channel_mock
+    cog._maybe_repost_sticky = AsyncMock()  # type: ignore[method-assign]
+
+    # Stateful next_id emulating Config persistence under the allocation lock
+    state = {"next": 132}
+    next_id_mock = AsyncMock(side_effect=lambda: state["next"])
+    next_id_mock.set = AsyncMock(side_effect=lambda v: state.__setitem__("next", v))
+    cog.config.next_id = next_id_mock  # type: ignore[attr-defined]
+
+    def _interaction(user_id: int) -> MagicMock:
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = user_id
+        interaction.user.display_name = f"User{user_id}"
+        interaction.user.display_avatar = MagicMock()
+        interaction.user.display_avatar.url = "http://example.com/a.png"
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+        return interaction
+
+    await asyncio.gather(
+        cog.process_new_suggestion(_interaction(1), "first"),
+        cog.process_new_suggestion(_interaction(2), "second"),
+    )
+
+    assert len(sent_embeds) == 2
+    titles = sorted(e.title for e in sent_embeds)
+    assert titles == ["Suggestion #132", "Suggestion #133"]
+    # next_id advanced exactly twice
+    assert next_id_mock.set.call_count == 2
+    # Idle lock registry entry cleaned up
+    assert cog._id_locks == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_msg_id", [None, 0, "junk", True], ids=repr)
+async def test_resolve_malformed_msg_id_is_safe(cog: Suggest, ctx_mock: MagicMock, bad_msg_id: object) -> None:
+    """Malformed persisted msg_id yields a safe 'not found' response."""
+    custom_data = {"msg_id": bad_msg_id, "status": "pending"}
+    cog.config.custom = MagicMock(return_value=_custom_wrapper(custom_data))
+
+    await getattr(cog.approve, "callback")(cog, ctx_mock, 132)  # noqa: B009
+
+    ctx_mock.send.assert_called_once_with("Suggestion not found.")
+
+
+@pytest.mark.asyncio
+async def test_resolve_malformed_status_is_safe(cog: Suggest, ctx_mock: MagicMock) -> None:
+    """A non-string persisted status is reported as malformed, record untouched."""
+    custom_data = {"msg_id": 888, "status": 42}
+    cog.config.custom = MagicMock(return_value=_custom_wrapper(custom_data))
+
+    await getattr(cog.approve, "callback")(cog, ctx_mock, 132)  # noqa: B009
+
+    assert "malformed" in ctx_mock.send.call_args[0][0]
+    assert custom_data["status"] == 42  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_resolve_message_without_embed_is_safe(cog: Suggest, ctx_mock: MagicMock, bot_mock: MagicMock) -> None:
+    """A suggestion message missing its embed fails safely, record unchanged."""
+    custom_data = {"msg_id": 888, "status": "pending", "author_id": 1}
+    cog.config.custom = MagicMock(return_value=_custom_wrapper(custom_data))
+
+    channel_mock = AsyncMock(spec=discord.TextChannel)
+    bot_mock.get_channel.return_value = channel_mock
+
+    msg_mock = AsyncMock(spec=discord.Message)
+    msg_mock.embeds = []
+    channel_mock.fetch_message.return_value = msg_mock
+
+    await getattr(cog.approve, "callback")(cog, ctx_mock, 132)  # noqa: B009
+
+    assert "missing its embed" in ctx_mock.send.call_args[0][0]
+    assert custom_data["status"] == "pending"  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_on_reaction_add_unicode_fallback_mutually_exclusive(cog: Suggest) -> None:
+    """Unicode fallback reactions enforce the same mutual-exclusion behavior."""
+    reaction_mock = MagicMock(spec=discord.Reaction)
+    reaction_mock.emoji = "✅"  # Unicode fallback up-vote
+
+    user_mock = MagicMock(spec=discord.Member)
+    user_mock.bot = False
+    user_mock.id = 555
+
+    msg_mock = MagicMock(spec=discord.Message)
+    msg_mock.channel.id = SUGGEST_CHANNEL_ID
+    reaction_mock.message = msg_mock
+
+    down_reaction = AsyncMock(spec=discord.Reaction)
+    down_reaction.emoji = "❌"  # Unicode fallback down-vote
+
+    async def _async_gen():
+        yield user_mock
+
+    down_reaction.users = MagicMock(return_value=_async_gen())
+    msg_mock.reactions = [reaction_mock, down_reaction]
+
+    await cog.on_reaction_add(reaction_mock, user_mock)
+
+    down_reaction.remove.assert_called_once_with(user_mock)
+
+
+@pytest.mark.parametrize(
+    "emoji, expected",
+    [
+        (discord.PartialEmoji(name="up", id=UP_EMOJI_ID), "up"),
+        (discord.PartialEmoji(name="down", id=DOWN_EMOJI_ID), "down"),
+        ("✅", "up"),
+        ("❌", "down"),
+        ("🍕", None),
+        (discord.PartialEmoji(name="other", id=1), None),
+    ],
+    ids=["custom_up", "custom_down", "unicode_up", "unicode_down", "unicode_other", "custom_other"],
+)
+def test_vote_emoji_kind(emoji: object, expected: str | None) -> None:
+    from suggest.suggest import vote_emoji_kind
+
+    assert vote_emoji_kind(emoji) == expected

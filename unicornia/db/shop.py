@@ -292,9 +292,18 @@ class ShopRepository:
                     await db.execute("ROLLBACK")
                     return False, "Shop item not found"
 
-                entry_id, _index, price, name, _author_id, entry_type, _role_name, _role_id, _role_requirement, _command = (
-                    entry
-                )
+                (
+                    entry_id,
+                    _index,
+                    price,
+                    name,
+                    _author_id,
+                    entry_type,
+                    _role_name,
+                    _role_id,
+                    _role_requirement,
+                    _command,
+                ) = entry
 
                 # Check if user has enough currency
                 user_balance = await self.db.economy._get_user_currency(user_id, db)

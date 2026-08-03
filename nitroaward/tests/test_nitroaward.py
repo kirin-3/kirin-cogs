@@ -8,6 +8,7 @@ dispatched through a real bot event loop.
 import asyncio
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -19,18 +20,37 @@ from redbot.core import Config
 
 from nitroaward.nitroaward import AWARD_AMOUNT, NitroAward
 
+GUILD_ID = 1234
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_config_mock(last_boost_timestamp: float | None = None) -> MagicMock:
-    """Return a Config mock whose user group returns ``last_boost_timestamp``."""
+def _make_config_mock(
+    last_boost_timestamp: float | None = None,
+    legacy_records: dict | None = None,
+) -> MagicMock:
+    """Return a Config mock with member scope and global legacy records."""
     config = MagicMock(spec=Config)
-    user_group = MagicMock()
-    user_group.last_boost_timestamp = AsyncMock(return_value=last_boost_timestamp)
-    user_group.last_boost_timestamp.set = AsyncMock()
-    config.user.return_value = user_group
+
+    member_group = MagicMock()
+    member_group.last_boost_timestamp = AsyncMock(return_value=last_boost_timestamp)
+    member_group.last_boost_timestamp.set = AsyncMock()
+    config.member.return_value = member_group
+
+    config.schema_version = AsyncMock(return_value=2)
+    config.schema_version.set = AsyncMock()
+    config.all_users = AsyncMock(return_value={})
+    config.legacy_boost_records = AsyncMock(return_value=dict(legacy_records or {}))
+    config.legacy_boost_records.set = AsyncMock()
+    config.all_members = AsyncMock(return_value={GUILD_ID: {1: {"last_boost_timestamp": 1.0}}})
+    member_from_ids = MagicMock()
+    member_from_ids.clear = AsyncMock()
+    config.member_from_ids.return_value = member_from_ids
+    legacy_user = MagicMock()
+    legacy_user.clear = AsyncMock()
+    config.user_from_id.return_value = legacy_user
     return config
 
 
@@ -38,12 +58,41 @@ def _make_member(
     user_id: int = 1,
     premium_since: datetime | None = None,
     display_name: str = "TestUser",
+    guild_id: int = GUILD_ID,
 ) -> MagicMock:
     member = MagicMock(spec=discord.Member)
     member.id = user_id
     member.display_name = display_name
     member.premium_since = premium_since
+    guild = MagicMock(spec=discord.Guild)
+    guild.id = guild_id
+    member.guild = guild
     return member
+
+
+def _make_cog(bot: MagicMock | None = None, config: MagicMock | None = None) -> NitroAward:
+    bot = bot or MagicMock()
+    cog = NitroAward.__new__(NitroAward)
+    cog.bot = bot
+    cog.processing_members = set()
+    cog.config = config or _make_config_mock()
+    return cog
+
+
+def _outcome(state: str = "settled") -> SimpleNamespace:
+    return SimpleNamespace(state=state, new_balance=AWARD_AMOUNT, amount=AWARD_AMOUNT, result={})
+
+
+@pytest.mark.asyncio
+async def test_deletion_clears_member_migration_copy_and_original_user_scope() -> None:
+    config = _make_config_mock(legacy_records={"1": 1.0})
+    cog = _make_cog(config=config)
+
+    await cog.red_delete_data_for_user(requester="user", user_id=1)
+
+    config.member_from_ids(GUILD_ID, 1).clear.assert_awaited_once()
+    config.legacy_boost_records.set.assert_awaited_once_with({})
+    config.user_from_id(1).clear.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -53,76 +102,125 @@ def _make_member(
 
 @pytest.mark.asyncio
 async def test_process_boost_reward_awards_currency_on_first_boost() -> None:
-    """Currency is awarded when premium_since is new (no prior timestamp stored)."""
+    """Currency is awarded through the idempotent operation API with a stable key."""
     bot = MagicMock()
-    cog = NitroAward.__new__(NitroAward)
-    cog.bot = bot
-    cog.processing_users = set()
+    config = _make_config_mock(last_boost_timestamp=None)
+    cog = _make_cog(bot, config)
 
     ts = datetime(2024, 1, 1, tzinfo=UTC)
     member = _make_member(premium_since=ts)
 
-    config = _make_config_mock(last_boost_timestamp=None)
-    cog.config = config
-
     unicornia = MagicMock()
-    unicornia.add_balance = AsyncMock(return_value=True)
+    unicornia.apply_operation = AsyncMock(return_value=_outcome("settled"))
     bot.get_cog.return_value = unicornia
 
     await cog.process_boost_reward(member)
 
-    unicornia.add_balance.assert_awaited_once_with(
+    expected_key = f"nitro:{GUILD_ID}:{member.id}:{ts.timestamp()}"
+    unicornia.apply_operation.assert_awaited_once_with(
+        key=expected_key,
         user_id=member.id,
         amount=AWARD_AMOUNT,
+        direction="credit",
+        source="nitroaward",
+        guild_id=GUILD_ID,
         reason="Nitro Boost Reward",
-        source="NitroAward",
     )
-    config.user(member).last_boost_timestamp.set.assert_awaited_once_with(ts.timestamp())
+    config.member(member).last_boost_timestamp.set.assert_awaited_once_with(ts.timestamp())
 
 
 @pytest.mark.asyncio
 async def test_process_boost_reward_skips_duplicate_boost() -> None:
-    """Currency is NOT awarded when the stored timestamp matches the current boost."""
+    """Currency is NOT awarded when the stored member timestamp matches."""
     bot = MagicMock()
-    cog = NitroAward.__new__(NitroAward)
-    cog.bot = bot
-    cog.processing_users = set()
-
     ts = datetime(2024, 1, 1, tzinfo=UTC)
+    config = _make_config_mock(last_boost_timestamp=ts.timestamp())
+    cog = _make_cog(bot, config)
+
     member = _make_member(premium_since=ts)
 
-    # Stored timestamp matches current — already awarded
-    config = _make_config_mock(last_boost_timestamp=ts.timestamp())
-    cog.config = config
-
     unicornia = MagicMock()
-    unicornia.add_balance = AsyncMock(return_value=True)
+    unicornia.apply_operation = AsyncMock(return_value=_outcome("settled"))
     bot.get_cog.return_value = unicornia
 
     await cog.process_boost_reward(member)
 
-    unicornia.add_balance.assert_not_awaited()
+    unicornia.apply_operation.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_boost_reward_duplicate_outcome_marks_completion() -> None:
+    """Crash-window retry: a duplicate settlement still records local completion."""
+    bot = MagicMock()
+    config = _make_config_mock(last_boost_timestamp=None)
+    cog = _make_cog(bot, config)
+
+    ts = datetime(2024, 2, 1, tzinfo=UTC)
+    member = _make_member(premium_since=ts)
+
+    unicornia = MagicMock()
+    # Unicornia committed earlier, our Config write was lost to a crash.
+    unicornia.apply_operation = AsyncMock(return_value=_outcome("duplicate"))
+    bot.get_cog.return_value = unicornia
+
+    await cog.process_boost_reward(member)
+
+    config.member(member).last_boost_timestamp.set.assert_awaited_once_with(ts.timestamp())
+
+
+@pytest.mark.asyncio
+async def test_process_boost_reward_legacy_record_suppresses_exact_event() -> None:
+    """A legacy global record for the same boost event suppresses re-award and is adopted."""
+    bot = MagicMock()
+    ts = datetime(2024, 3, 1, tzinfo=UTC)
+    member = _make_member(premium_since=ts)
+    config = _make_config_mock(last_boost_timestamp=None, legacy_records={str(member.id): ts.timestamp()})
+    cog = _make_cog(bot, config)
+
+    unicornia = MagicMock()
+    unicornia.apply_operation = AsyncMock(return_value=_outcome("settled"))
+    bot.get_cog.return_value = unicornia
+
+    await cog.process_boost_reward(member)
+
+    unicornia.apply_operation.assert_not_awaited()
+    # Adopted into guild/member scope so the legacy record is consulted once.
+    config.member(member).last_boost_timestamp.set.assert_awaited_once_with(ts.timestamp())
+
+
+@pytest.mark.asyncio
+async def test_process_boost_reward_legacy_record_does_not_suppress_new_event() -> None:
+    """A legacy record for a *different* boost event must not suppress a new boost."""
+    bot = MagicMock()
+    member = _make_member(premium_since=datetime(2024, 5, 1, tzinfo=UTC))
+    old_ts = datetime(2023, 5, 1, tzinfo=UTC).timestamp()
+    config = _make_config_mock(last_boost_timestamp=None, legacy_records={str(member.id): old_ts})
+    cog = _make_cog(bot, config)
+
+    unicornia = MagicMock()
+    unicornia.apply_operation = AsyncMock(return_value=_outcome("settled"))
+    bot.get_cog.return_value = unicornia
+
+    await cog.process_boost_reward(member)
+
+    unicornia.apply_operation.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_process_boost_reward_skips_when_premium_since_none() -> None:
     """If premium_since is None (boost revoked by the time we check), do nothing."""
     bot = MagicMock()
-    cog = NitroAward.__new__(NitroAward)
-    cog.bot = bot
-    cog.processing_users = set()
+    cog = _make_cog(bot)
 
     member = _make_member(premium_since=None)
-    config = _make_config_mock(last_boost_timestamp=None)
-    cog.config = config
 
     unicornia = MagicMock()
-    unicornia.add_balance = AsyncMock(return_value=True)
+    unicornia.apply_operation = AsyncMock(return_value=_outcome("settled"))
     bot.get_cog.return_value = unicornia
 
     await cog.process_boost_reward(member)
 
-    unicornia.add_balance.assert_not_awaited()
+    unicornia.apply_operation.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -130,59 +228,67 @@ async def test_process_boost_reward_logs_warning_when_unicornia_missing() -> Non
     """If Unicornia cog is absent, no exception is raised and nothing is awarded."""
     bot = MagicMock()
     bot.get_cog.return_value = None  # Unicornia not loaded
-
-    cog = NitroAward.__new__(NitroAward)
-    cog.bot = bot
-    cog.processing_users = set()
+    config = _make_config_mock(last_boost_timestamp=None)
+    cog = _make_cog(bot, config)
 
     ts = datetime(2024, 3, 1, tzinfo=UTC)
     member = _make_member(premium_since=ts)
-    config = _make_config_mock(last_boost_timestamp=None)
-    cog.config = config
 
     # Should complete without raising
     await cog.process_boost_reward(member)
 
-    config.user(member).last_boost_timestamp.set.assert_not_awaited()
+    config.member(member).last_boost_timestamp.set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_process_boost_reward_handles_add_balance_failure() -> None:
-    """If add_balance returns False, the timestamp is NOT persisted."""
+async def test_process_boost_reward_handles_not_ready_unicornia() -> None:
+    """If Unicornia is not ready (None outcome), the timestamp is NOT persisted."""
     bot = MagicMock()
-    cog = NitroAward.__new__(NitroAward)
-    cog.bot = bot
-    cog.processing_users = set()
+    config = _make_config_mock(last_boost_timestamp=None)
+    cog = _make_cog(bot, config)
 
     ts = datetime(2024, 6, 1, tzinfo=UTC)
     member = _make_member(premium_since=ts)
-    config = _make_config_mock(last_boost_timestamp=None)
-    cog.config = config
 
     unicornia = MagicMock()
-    unicornia.add_balance = AsyncMock(return_value=False)
+    unicornia.apply_operation = AsyncMock(return_value=None)
     bot.get_cog.return_value = unicornia
 
     await cog.process_boost_reward(member)
 
-    config.user(member).last_boost_timestamp.set.assert_not_awaited()
+    config.member(member).last_boost_timestamp.set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_boost_reward_handles_unexpected_state() -> None:
+    """An unexpected operation state does not mark completion."""
+    bot = MagicMock()
+    config = _make_config_mock(last_boost_timestamp=None)
+    cog = _make_cog(bot, config)
+
+    ts = datetime(2024, 6, 1, tzinfo=UTC)
+    member = _make_member(premium_since=ts)
+
+    unicornia = MagicMock()
+    unicornia.apply_operation = AsyncMock(return_value=_outcome("insufficient_funds"))
+    bot.get_cog.return_value = unicornia
+
+    await cog.process_boost_reward(member)
+
+    config.member(member).last_boost_timestamp.set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_process_boost_reward_handles_exception_from_unicornia() -> None:
-    """Exceptions raised by add_balance are caught and do not propagate."""
+    """Exceptions raised by apply_operation are caught and do not propagate."""
     bot = MagicMock()
-    cog = NitroAward.__new__(NitroAward)
-    cog.bot = bot
-    cog.processing_users = set()
+    cog = _make_cog(bot)
 
     ts = datetime(2024, 9, 1, tzinfo=UTC)
     member = _make_member(premium_since=ts)
-    config = _make_config_mock(last_boost_timestamp=None)
-    cog.config = config
 
     unicornia = MagicMock()
-    unicornia.add_balance = AsyncMock(side_effect=RuntimeError("DB error"))
+    unicornia.apply_operation = AsyncMock(side_effect=RuntimeError("DB error"))
     bot.get_cog.return_value = unicornia
 
     # Must not raise
@@ -197,11 +303,7 @@ async def test_process_boost_reward_handles_exception_from_unicornia() -> None:
 @pytest.mark.asyncio
 async def test_on_member_update_ignores_non_boost_changes() -> None:
     """on_member_update does nothing when premium_since didn't change from None."""
-    bot = MagicMock()
-    cog = NitroAward.__new__(NitroAward)
-    cog.bot = bot
-    cog.processing_users = set()
-    cog.config = _make_config_mock()
+    cog = _make_cog()
     cog.process_boost_reward = AsyncMock()
 
     ts = datetime(2024, 1, 1, tzinfo=UTC)
@@ -216,11 +318,7 @@ async def test_on_member_update_ignores_non_boost_changes() -> None:
 @pytest.mark.asyncio
 async def test_on_member_update_ignores_boost_end() -> None:
     """on_member_update does nothing when a boost is removed (after.premium_since is None)."""
-    bot = MagicMock()
-    cog = NitroAward.__new__(NitroAward)
-    cog.bot = bot
-    cog.processing_users = set()
-    cog.config = _make_config_mock()
+    cog = _make_cog()
     cog.process_boost_reward = AsyncMock()
 
     ts = datetime(2024, 1, 1, tzinfo=UTC)
@@ -235,11 +333,7 @@ async def test_on_member_update_ignores_boost_end() -> None:
 @pytest.mark.asyncio
 async def test_on_member_update_triggers_reward_on_new_boost() -> None:
     """on_member_update calls process_boost_reward when before=None, after=boosting."""
-    bot = MagicMock()
-    cog = NitroAward.__new__(NitroAward)
-    cog.bot = bot
-    cog.processing_users = set()
-    cog.config = _make_config_mock()
+    cog = _make_cog()
     cog.process_boost_reward = AsyncMock()
 
     ts = datetime(2024, 1, 1, tzinfo=UTC)
@@ -253,24 +347,38 @@ async def test_on_member_update_triggers_reward_on_new_boost() -> None:
 
 @pytest.mark.asyncio
 async def test_on_member_update_prevents_concurrent_processing() -> None:
-    """A second concurrent on_member_update for the same user is silently dropped."""
-    bot = MagicMock()
-    cog = NitroAward.__new__(NitroAward)
-    cog.bot = bot
-    cog.processing_users = set()
-    cog.config = _make_config_mock()
+    """A second concurrent on_member_update for the same guild/member is dropped."""
+    cog = _make_cog()
     cog.process_boost_reward = AsyncMock()
 
     ts = datetime(2024, 1, 1, tzinfo=UTC)
     before = _make_member(user_id=42, premium_since=None)
     after = _make_member(user_id=42, premium_since=ts)
 
-    # Simulate the user already being processed
-    cog.processing_users.add(after.id)
+    # Simulate the guild/member pair already being processed
+    cog.processing_members.add((GUILD_ID, after.id))
 
     await cog.on_member_update(before, after)
 
     cog.process_boost_reward.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_on_member_update_same_user_other_guild_not_suppressed() -> None:
+    """Processing in one guild does not suppress the same user's boost in another."""
+    cog = _make_cog()
+    cog.process_boost_reward = AsyncMock()
+
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
+    before = _make_member(user_id=42, premium_since=None, guild_id=999)
+    after = _make_member(user_id=42, premium_since=ts, guild_id=999)
+
+    # The same user is mid-processing in a *different* guild
+    cog.processing_members.add((GUILD_ID, after.id))
+
+    await cog.on_member_update(before, after)
+
+    cog.process_boost_reward.assert_awaited_once_with(after)
 
 
 # ---------------------------------------------------------------------------
@@ -311,11 +419,13 @@ async def test_dpytest_member_update_new_boost_calls_process_reward(
     before = MagicMock(spec=discord.Member)
     before.premium_since = None
     before.id = member.id
+    before.guild = guild
 
     ts = datetime(2024, 1, 1, tzinfo=UTC)
     after = MagicMock(spec=discord.Member)
     after.premium_since = ts
     after.id = member.id
+    after.guild = guild
 
     bot.dispatch("member_update", before, after)
     await dpytest.run_all_events()
@@ -340,14 +450,17 @@ async def test_dpytest_member_update_no_boost_does_not_call_process_reward(
     await bot.add_cog(cog)
 
     ts = datetime(2024, 1, 1, tzinfo=UTC)
+    guild = dpytest.get_config().guilds[0]
 
     before = MagicMock(spec=discord.Member)
     before.premium_since = ts
     before.id = 99
+    before.guild = guild
 
     after = MagicMock(spec=discord.Member)
     after.premium_since = ts  # unchanged — no new boost
     after.id = 99
+    after.guild = guild
 
     bot.dispatch("member_update", before, after)
     await dpytest.run_all_events()

@@ -49,10 +49,7 @@ Safely adds currency to a user's wallet. This operation is atomic and logs the t
 **Example:**
 ```python
 success = await unicornia.add_balance(
-    user_id=ctx.author.id,
-    amount=1000,
-    reason="Winner of the trivia event",
-    source="TriviaCog"
+    user_id=ctx.author.id, amount=1000, reason="Winner of the trivia event", source="TriviaCog"
 )
 if success:
     await ctx.send("Prize awarded!")
@@ -76,10 +73,7 @@ Safely removes currency from a user's wallet. This operation is atomic and check
 **Example:**
 ```python
 success = await unicornia.remove_balance(
-    user_id=ctx.author.id,
-    amount=500,
-    reason="Purchase of special item",
-    source="ShopCog"
+    user_id=ctx.author.id, amount=500, reason="Purchase of special item", source="ShopCog"
 )
 
 if success:

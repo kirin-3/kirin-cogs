@@ -10,7 +10,36 @@ from redbot.core.bot import Red
 from redbot.core.commands import Context
 
 from unicorn_ai.persona import Persona
-from unicorn_ai.unicorn_ai import UnicornAI
+from unicorn_ai.unicorn_ai import UnicornAI, normalize_channel_settings, normalize_global_settings
+
+
+@pytest.mark.parametrize("malformed", [None, [], "bad", 5])
+def test_normalize_channel_settings_handles_malformed_shapes(malformed: object) -> None:
+    assert normalize_channel_settings(malformed) == {
+        "enabled": False,
+        "interval": 300,
+        "active_persona": None,
+        "last_run": 0.0,
+    }
+
+
+def test_normalize_channel_settings_uses_strict_bool_and_bounds() -> None:
+    settings = normalize_channel_settings(
+        {"enabled": "false", "interval": 999999, "active_persona": [], "last_run": "nan"}
+    )
+    assert settings == {
+        "enabled": False,
+        "interval": 86400,
+        "active_persona": None,
+        "last_run": 0.0,
+    }
+
+
+def test_normalize_global_settings_bounds_history_and_fills_defaults() -> None:
+    settings = normalize_global_settings({"history_limit": 9999, "provider": [], "model": None})
+    assert settings["history_limit"] == 200
+    assert settings["provider"] == "vertex"
+    assert settings["model"] == "gemini-3-pro-preview"
 
 
 @pytest.fixture
@@ -70,7 +99,9 @@ async def cog(bot_mock: MagicMock, persona_mock: Persona) -> UnicornAI:
                 def __await__(self):
                     async def _get():
                         return channel_data.copy()
+
                     return _get().__await__()
+
             return AllWrapper()
 
     config_mock.channel = MagicMock(side_effect=lambda c: ChannelConfigWrapper(c.id))
@@ -79,6 +110,7 @@ async def cog(bot_mock: MagicMock, persona_mock: Persona) -> UnicornAI:
         def __await__(self):
             async def _get():
                 return {888888: channel_data.copy()}
+
             return _get().__await__()
 
     config_mock.all_channels = MagicMock(return_value=AllChannelsWrapper())
@@ -94,6 +126,7 @@ async def cog(bot_mock: MagicMock, persona_mock: Persona) -> UnicornAI:
         def __await__(self):
             async def _get():
                 return global_data.copy()
+
             return _get().__await__()
 
     config_mock.all = MagicMock(return_value=GlobalAllWrapper())
@@ -104,8 +137,10 @@ async def cog(bot_mock: MagicMock, persona_mock: Persona) -> UnicornAI:
             class OptOutWrapper:
                 def __await__(self):
                     async def _get():
-                        return False # default false
+                        return False  # default false
+
                     return _get().__await__()
+
             return OptOutWrapper()
 
     config_mock.user = MagicMock(return_value=UserConfigWrapper())
@@ -146,11 +181,16 @@ async def test_auto_message_loop(cog: UnicornAI, bot_mock: MagicMock) -> None:
     channel_mock = MagicMock(spec=discord.TextChannel)
     bot_mock.get_channel.return_value = channel_mock
 
-    # Mock trigger logic
+    # Mock trigger logic with a real coroutine so task tracking is exercised.
+    import asyncio
+
     cog._trigger_ai = AsyncMock()
 
     # Call the inner coroutine of the loop manually
     await cog.auto_message_loop.coro(cog)
+
+    # Allow create_task to schedule and run
+    await asyncio.sleep(0)
 
     # Verify trigger_ai was called because last_run=0 and now > interval(300)
     cog._trigger_ai.assert_called_once_with(channel=channel_mock)
@@ -173,8 +213,68 @@ async def test_auto_message_loop_skips_if_not_interval(cog: UnicornAI, bot_mock:
     cog._trigger_ai = AsyncMock()
 
     await cog.auto_message_loop.coro(cog)
+    import asyncio
+
+    await asyncio.sleep(0)
 
     cog._trigger_ai.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("malformed", [None, [], "bad"])
+async def test_auto_message_loop_survives_malformed_config_root(cog: UnicornAI, malformed: object) -> None:
+    cog.config.all_channels = AsyncMock(return_value=malformed)
+    cog._trigger_ai = AsyncMock()
+
+    await cog.auto_message_loop.coro(cog)
+
+    cog._trigger_ai.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_auto_message_loop_does_not_treat_false_string_as_enabled(cog: UnicornAI) -> None:
+    cog.config.all_channels = AsyncMock(return_value={888888: {"enabled": "false", "interval": 300, "last_run": 0}})
+    cog._trigger_ai = AsyncMock()
+
+    await cog.auto_message_loop.coro(cog)
+
+    cog._trigger_ai.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_scheduled_manual_overlap(cog: UnicornAI, bot_mock: MagicMock, ctx_mock: MagicMock) -> None:
+    import asyncio
+
+    # Duplicate work for one channel is rejected rather than queued.
+    event = asyncio.Event()
+    call_count = 0
+
+    async def fake_do_generate(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        await event.wait()
+
+    cog._do_generate_and_send = fake_do_generate
+
+    async def empty_history(*args, **kwargs):
+        if False:
+            yield None
+
+    ctx_mock.channel.history = empty_history
+
+    task1 = asyncio.create_task(cog._trigger_ai(channel=ctx_mock.channel))
+    task2 = asyncio.create_task(cog._trigger_ai(ctx=ctx_mock))
+
+    await asyncio.sleep(0.1)
+
+    # Only 1 call should have progressed into the protected section
+    assert call_count == 1
+
+    event.set()
+    await asyncio.gather(task1, task2)
+
+    assert call_count == 1
+    ctx_mock.send.assert_any_await("An AI response is already being generated for this channel.", ephemeral=True)
 
 
 @pytest.mark.asyncio
@@ -223,9 +323,7 @@ async def test_trigger_ai_vertex(
 
 @pytest.mark.asyncio
 @patch("unicorn_ai.unicorn_ai.UnicornAI._send_response")
-async def test_trigger_ai_openai(
-    send_mock: AsyncMock, cog: UnicornAI, ctx_mock: MagicMock
-) -> None:
+async def test_trigger_ai_openai(send_mock: AsyncMock, cog: UnicornAI, ctx_mock: MagicMock) -> None:
     # Switch global settings to use OpenAI
     async def _get_global():
         return {"history_limit": 50, "provider": "openai", "openai_model": "gpt-4"}
@@ -271,12 +369,13 @@ async def test_send_response_webhook(cog: UnicornAI) -> None:
 
     await cog._send_response(channel_mock, "Test msg", persona)
 
-    webhook_mock.send.assert_called_once_with(
-        content="Test msg",
-        username="Webhoo",
-        avatar_url="http://w.com",
-        thread=discord.utils.MISSING
-    )
+    webhook_mock.send.assert_awaited_once()
+    kwargs = webhook_mock.send.await_args.kwargs
+    assert kwargs["content"] == "Test msg"
+    assert kwargs["username"] == "Webhoo"
+    assert kwargs["allowed_mentions"].everyone is False
+    assert kwargs["allowed_mentions"].roles is False
+    assert kwargs["allowed_mentions"].users is False
     channel_mock.send.assert_not_called()
 
 
@@ -292,7 +391,12 @@ async def test_send_response_no_perms(cog: UnicornAI) -> None:
 
     await cog._send_response(channel_mock, "Test fallback", MagicMock())
 
-    channel_mock.send.assert_called_once_with("Test fallback")
+    channel_mock.send.assert_awaited_once()
+    assert channel_mock.send.await_args.args == ("Test fallback",)
+    allowed_mentions = channel_mock.send.await_args.kwargs["allowed_mentions"]
+    assert allowed_mentions.everyone is False
+    assert allowed_mentions.roles is False
+    assert allowed_mentions.users is False
 
 
 @pytest.mark.asyncio

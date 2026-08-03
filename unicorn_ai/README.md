@@ -183,3 +183,5 @@ To use a different OpenAI-compatible provider (like OpenRouter), you can modify 
   - Supports autocomplete to show available summonable personas.
 - `[p]aioptout`: Toggle your opt-out status for the AI. If opted out, your messages will not be included in the AI context.
   - Use `[p]aioptout` again to opt back in.
+
+Only one AI request may be in flight per channel, with two generations globally by default. Overlapping scheduled/manual requests in the same channel are rejected, malformed interval/history values are bounded, and all model output is sent with mentions disabled.

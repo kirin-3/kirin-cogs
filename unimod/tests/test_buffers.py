@@ -4,7 +4,9 @@ import asyncio
 from collections import deque
 from unittest.mock import MagicMock, patch
 
-from unimod.unimod import UniMod
+import pytest
+
+from unimod.unimod import BufferedMessage, UniMod
 
 
 def make_cog() -> UniMod:
@@ -58,3 +60,38 @@ def test_get_lock_different_channels_have_separate_locks() -> None:
     lock1 = cog._get_lock(channel_id=1)
     lock2 = cog._get_lock(channel_id=2)
     assert lock1 is not lock2
+
+
+def test_buffer_resize() -> None:
+    cog = make_cog()
+    buf = cog._get_buffer(channel_id=999)
+    for i in range(25):
+        buf.append(i)
+    assert len(buf) == 20
+    assert buf[0] == 5
+    new_buf = deque(buf, maxlen=10)
+    assert len(new_buf) == 10
+    assert new_buf[0] == 15
+
+
+@pytest.mark.asyncio
+async def test_user_deletion_removes_only_matching_buffer_messages() -> None:
+    cog = make_cog()
+    buffer = cog._get_buffer(channel_id=999)
+    for message_id, author_id in ((1, 42), (2, 99), (3, 42)):
+        buffer.append(
+            BufferedMessage(
+                id=message_id,
+                author_id=author_id,
+                author_name="User",
+                content="content",
+                timestamp="now",
+                channel_id=999,
+                channel_name="test",
+                guild_id=1,
+            )
+        )
+
+    await cog.red_delete_data_for_user(requester="user", user_id=42)
+
+    assert [message.author_id for message in cog.channel_buffers[999]] == [99]

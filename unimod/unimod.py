@@ -7,6 +7,7 @@ system prompt, leveraging the model's large context window.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
@@ -25,12 +26,6 @@ from redbot.core import Config, commands
 from redbot.core.bot import Red
 
 log = logging.getLogger("red.kirin_cogs.unimod")
-
-# Ensure VADER lexicon is downloaded
-try:
-    nltk.data.find("sentiment/vader_lexicon.zip")
-except LookupError:
-    nltk.download("vader_lexicon", quiet=True)
 
 
 @dataclass
@@ -129,8 +124,8 @@ Analyze this conversation against the server rules, paying close attention to ch
         # Load server rules from file
         self.rules = self._load_rules()
 
-        # Initialize VADER analyzer
-        self.vader_analyzer = SentimentIntensityAnalyzer()
+        # Initialize VADER analyzer later in cog_load
+        self.vader_analyzer = None
 
         # Per-channel message buffers
         self.channel_buffers: dict[int, deque] = {}
@@ -193,7 +188,7 @@ Analyze this conversation against the server rules, paying close attention to ch
         Returns:
             tuple: (should_trigger, score, is_extreme)
         """
-        if not msg.content.strip():
+        if not msg.content.strip() or self.vader_analyzer is None:
             return False, 0.0, False
 
         scores = self.vader_analyzer.polarity_scores(msg.content)
@@ -222,6 +217,8 @@ Analyze this conversation against the server rules, paying close attention to ch
 
         for msg in messages:
             if not msg.content.strip():
+                continue
+            if self.vader_analyzer is None:
                 continue
             scores = self.vader_analyzer.polarity_scores(msg.content)
             compound = scores["compound"]
@@ -292,18 +289,45 @@ Analyze this conversation against the server rules, paying close attention to ch
             except (ValueError, TypeError):
                 primary_msg_id = None
 
-        # Safe severity extraction (default to None if no violation)
-        is_violation = data.get("is_violation", False)
-        severity = data.get("severity") if is_violation else None
-        if severity not in ("low", "medium", "high"):
-            severity = "low" if is_violation else None
+        try:
+            confidence = float(data.get("confidence", 0.0))
+        except (ValueError, TypeError):
+            confidence = 0.0
+        confidence = max(0.0, min(1.0, confidence))
+
+        explanation = str(data.get("explanation", ""))
+        if len(explanation) > 2000:
+            explanation = explanation[:1997] + "..."
+
+        violated_rules = data.get("violated_rules", [])
+        if not isinstance(violated_rules, list):
+            violated_rules = []
+        normalized_rules: list[str] = []
+        for rule in violated_rules:
+            if not isinstance(rule, (str, int, float)) or isinstance(rule, bool):
+                continue
+            normalized = str(rule).strip()
+            if not normalized:
+                continue
+            normalized_rules.append(normalized[:80])
+            if len(normalized_rules) == 10:
+                break
+        violated_rules = normalized_rules
+
+        raw_violation = data.get("is_violation", False)
+        is_violation = raw_violation if isinstance(raw_violation, bool) else False
+
+        raw_severity = data.get("severity")
+        severity = raw_severity if raw_severity in {"low", "medium", "high"} else None
+        if not is_violation:
+            severity = None
 
         return AIAnalysisResult(
             is_violation=is_violation,
-            confidence=float(data.get("confidence", 0.0)),
-            violated_rules=data.get("violated_rules", []) or [],
+            confidence=confidence,
+            violated_rules=violated_rules,
             severity=severity,
-            explanation=data.get("explanation", "") or "",
+            explanation=explanation,
             primary_message_id=primary_msg_id,
         )
 
@@ -411,19 +435,34 @@ Analyze this conversation against the server rules, paying close attention to ch
             raise
 
     def _save_last_response(self, content: str):
-        """Save the last AI response to a file for debugging."""
+        """Save a redacted AI response while time-limited diagnostics are enabled."""
+        if not getattr(self, "diagnostic_mode", False):
+            return
+
+        if time.time() > getattr(self, "diagnostic_expiry", 0):
+            self.diagnostic_mode = False
+            self._remove_diagnostic_log()
+            return
+
         try:
             log_path = Path(__file__).parent / "last.log"
+            redacted = re.sub(r"(?<!\d)\d{15,22}(?!\d)", "[discord-id]", content)
             with open(log_path, "w", encoding="utf-8") as f:
                 f.write("=== UniMod Last AI Response ===\n")
                 f.write(f"Timestamp: {datetime.now(UTC).isoformat()}\n")
                 f.write(f"Model: {self.NANOGPT_MODEL}\n")
-                f.write(f"Length: {len(content)} characters\n")
+                f.write(f"Length: {len(redacted)} characters\n")
                 f.write(f"\n{'=' * 50}\n\n")
-                f.write(content)
+                f.write(redacted)
             log.debug(f"Saved last response to {log_path}")
         except Exception as e:
             log.warning(f"Could not save last response: {e}")
+
+    @staticmethod
+    def _remove_diagnostic_log() -> None:
+        log_path = Path(__file__).parent / "last.log"
+        with contextlib.suppress(OSError):
+            log_path.unlink()
 
     async def _process_buffer(
         self,
@@ -663,7 +702,7 @@ Analyze this conversation against the server rules, paying close attention to ch
         if should_process:
             task = asyncio.create_task(self._process_buffer(message.guild, channel, messages_snapshot, threshold))
             self._background_tasks.add(task)
-            task.add_done_callback(self._background_tasks.discard)
+            task.add_done_callback(self._task_done_callback)
 
     @tasks.loop(minutes=2)
     async def idle_buffer_check(self):
@@ -712,21 +751,65 @@ Analyze this conversation against the server rules, paying close attention to ch
                                 self._process_buffer(guild, channel_obj, messages_snapshot, threshold)
                             )
                             self._background_tasks.add(task)
-                            task.add_done_callback(self._background_tasks.discard)
+                            task.add_done_callback(self._task_done_callback)
 
     @idle_buffer_check.before_loop
     async def before_idle_check(self):
         await self.bot.wait_until_ready()
 
+    def _task_done_callback(self, task: asyncio.Task):
+        self._background_tasks.discard(task)
+        if not task.cancelled() and task.exception():
+            log.error(f"Background task failed: {task.exception()}")
+
+    def _download_nltk_data(self):
+        try:
+            nltk.data.find("sentiment/vader_lexicon.zip")
+        except LookupError:
+            nltk.download("vader_lexicon", quiet=True)
+
     async def cog_load(self):
         """Called when the cog is loaded."""
+        # Diagnostic expiry is intentionally not persisted across restarts.
+        self._remove_diagnostic_log()
+        try:
+            await asyncio.to_thread(self._download_nltk_data)
+            self.vader_analyzer = SentimentIntensityAnalyzer()
+        except Exception as e:
+            log.error(f"Failed to load NLTK data: {e}. VADER analysis will be unavailable.")
+
         self.idle_buffer_check.start()
         log.info("UniMod cog loaded and idle buffer check started")
 
     async def cog_unload(self):
         """Called when the cog is unloaded."""
-        self.idle_buffer_check.cancel()
+        if self.idle_buffer_check.is_running():
+            self.idle_buffer_check.cancel()
+
+        for task in self._background_tasks:
+            if not task.done():
+                task.cancel()
+        if self._background_tasks:
+            with contextlib.suppress(Exception):
+                await asyncio.wait(self._background_tasks, timeout=5)
+
+        self._remove_diagnostic_log()
+
         log.info("UniMod cog unloaded")
+
+    async def red_delete_data_for_user(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, *, requester, user_id: int
+    ) -> None:
+        """Remove attributable messages from live buffers and discard diagnostics."""
+        for channel_id, buffer in list(self.channel_buffers.items()):
+            self.channel_buffers[channel_id] = deque(
+                (message for message in buffer if message.author_id != user_id),
+                maxlen=buffer.maxlen,
+            )
+        self._last_ai_response = None
+        self._last_ai_error = None
+        self.diagnostic_mode = False
+        self._remove_diagnostic_log()
 
     # ==================== COMMANDS ====================
 
@@ -887,7 +970,22 @@ Analyze this conversation against the server rules, paying close attention to ch
             await ctx.send("❌ Buffer size must be between 10 and 50")
             return
         await self.config.guild(ctx.guild).buffer_size.set(size)
-        await ctx.send(f"✅ Buffer size set to {size}")
+
+        # Resize live buffers
+        for channel_id, buffer in list(self.channel_buffers.items()):
+            channel = self.bot.get_channel(channel_id)
+            if isinstance(channel, (discord.TextChannel, discord.Thread)) and channel.guild.id == ctx.guild.id:
+                new_buffer = deque(buffer, maxlen=size)
+                self.channel_buffers[channel_id] = new_buffer
+
+        await ctx.send(f"✅ Buffer size set to {size} and active buffers resized.")
+
+    @config_group.command(name="diagnostic")
+    async def set_diagnostic(self, ctx: commands.Context):
+        """Enable diagnostic mode for one hour to record redacted AI responses."""
+        self.diagnostic_mode = True
+        self.diagnostic_expiry = time.time() + 3600
+        await ctx.send("✅ Diagnostic mode enabled for 1 hour. Redacted AI responses will be logged.")
 
     @config_group.command(name="show")
     async def show_config(self, ctx: commands.Context):
@@ -937,7 +1035,11 @@ Analyze this conversation against the server rules, paying close attention to ch
         log_path = Path(__file__).parent / "last.log"
         content = None
 
-        if log_path.exists():
+        diagnostic_active = self.diagnostic_mode and time.time() <= self.diagnostic_expiry
+        if not diagnostic_active:
+            self.diagnostic_mode = False
+            self._remove_diagnostic_log()
+        if diagnostic_active and log_path.exists():
             try:
                 with open(log_path, encoding="utf-8") as f:
                     content = f.read()

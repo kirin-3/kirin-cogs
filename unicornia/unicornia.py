@@ -9,7 +9,7 @@ import asyncio
 import contextlib
 import logging
 import os
-from typing import Literal
+from typing import Any, Literal
 
 from redbot.core import Config, commands
 from redbot.core.bot import Red
@@ -27,6 +27,7 @@ from .commands import (
     WaifuCommands,
 )
 from .database import DatabaseManager
+from .db.economy import OperationDirection, OperationOutcome
 from .errors import SystemNotReadyError, UnicorniaError
 from .market_views import StockDashboardView
 from .systems import (
@@ -229,7 +230,7 @@ class Unicornia(
                 data["waifus"] = waifus
 
             # Transaction history
-            transactions = await self.db.economy.get_currency_transactions(user_id, limit=100)
+            transactions = await self.db.economy.get_currency_transactions(user_id, limit=None)
             if transactions:
                 data["transactions"] = transactions
 
@@ -263,6 +264,51 @@ class Unicornia(
     # -------------------------------------------------------------------------
     # Public API for other cogs
     # -------------------------------------------------------------------------
+
+    async def apply_operation(
+        self,
+        *,
+        key: str,
+        user_id: int,
+        amount: int,
+        direction: OperationDirection,
+        source: str,
+        guild_id: int | None = None,
+        reason: str = "",
+    ) -> OperationOutcome | None:
+        """Apply a balance effect exactly once, keyed by a caller-supplied
+        idempotency key.
+
+        Repeating a settled key returns the original result without changing
+        the balance or writing another transaction-log row. Other cogs SHOULD
+        prefer this over :meth:`add_balance`/:meth:`remove_balance` whenever a
+        stable operation identity exists.
+
+        Args:
+            key: Unique idempotency key (e.g. "nitro:<guild>:<member>:<ts>").
+            user_id: The ID of the user whose wallet is mutated.
+            amount: Absolute amount to apply.
+            direction: "credit" to add, "debit" to remove.
+            source: Calling cog/system identity.
+            guild_id: Optional guild context for the operation.
+            reason: Human readable reason for the transaction-log row.
+
+        Returns:
+            The OperationOutcome, or None if systems are not ready.
+        """
+        if not self._check_systems_ready():
+            return None
+        return await self.db.economy.apply_operation(
+            key=key,
+            user_id=user_id,
+            amount=amount,
+            direction=direction,
+            source=source,
+            transaction_type="api_operation",
+            guild_id=guild_id,
+            extra=source,
+            note=reason,
+        )
 
     async def get_balance(self, user_id: int) -> tuple[int, int]:
         """
@@ -342,7 +388,7 @@ class Unicornia(
 
         # 1. Check Command Whitelist (Specific Rule Overrides General)
         command_whitelist = await self.config.guild(ctx.guild).command_whitelist()
-        to_check = ctx.command
+        to_check: Any = ctx.command
         while to_check:
             if to_check.qualified_name in command_whitelist:
                 # Rule exists for this command

@@ -6,7 +6,7 @@
     "short": "Custom Command",
     "description": "Allows users with a specific role to create a single custom command.",
     "install_msg": "Thanks for installing the customcommand cog!",
-    "end_user_data_statement": "This cog does not persistently store data or metadata about users.",
+    "end_user_data_statement": "This cog stores user IDs for per-user limits and ownership of custom command triggers and responses. Red data-deletion requests remove owned commands and limits.",
     "min_bot_version": "3.5.0",
     "min_python_version": [
         3,

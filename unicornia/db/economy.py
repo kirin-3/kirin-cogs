@@ -1,4 +1,45 @@
+import json
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any, Literal
+
+# Economy operation states
+OP_STATE_RESERVED = "reserved"
+OP_STATE_SETTLED = "settled"
+
+# Economy operation directions
+DIRECTION_CREDIT = "credit"
+DIRECTION_DEBIT = "debit"
+
+OperationDirection = Literal["credit", "debit"]
+
+# OperationOutcome.state values
+OUTCOME_SETTLED = "settled"
+OUTCOME_RESERVED = "reserved"
+OUTCOME_DUPLICATE = "duplicate"
+OUTCOME_INSUFFICIENT_FUNDS = "insufficient_funds"
+OUTCOME_NOT_FOUND = "not_found"
+
+
+@dataclass(frozen=True)
+class OperationOutcome:
+    """Result of an idempotent economy operation.
+
+    Attributes:
+        key: The caller-supplied idempotency key.
+        state: What happened for this call — see OUTCOME_* constants.
+        new_balance: Wallet balance after the call (None if not applicable).
+        amount: Amount applied by this call (payout for settlements, 0 otherwise).
+        result: Caller-supplied result payload (from the original call on duplicates).
+        existing_state: For duplicates, the state of the stored operation row.
+    """
+
+    key: str
+    state: str
+    new_balance: int | None
+    amount: int
+    result: dict[str, Any] = field(default_factory=dict)
+    existing_state: str | None = None
 
 
 class EconomyRepository:
@@ -636,7 +677,7 @@ class EconomyRepository:
             )
             await db.commit()
 
-    async def get_currency_transactions(self, user_id: int, limit: int = 50) -> list[tuple]:
+    async def get_currency_transactions(self, user_id: int, limit: int | None = 50) -> list[tuple]:
         """Get recent currency transactions for a user.
 
         Args:
@@ -647,13 +688,22 @@ class EconomyRepository:
             List of transaction tuples.
         """
         async with self.db._get_connection() as db:
-            cursor = await db.execute(
-                """
-                SELECT Type, Amount, Reason, DateAdded FROM CurrencyTransactions
-                WHERE UserId = ? ORDER BY DateAdded DESC LIMIT ?
-            """,
-                (user_id, limit),
-            )
+            if limit is None:
+                cursor = await db.execute(
+                    """
+                    SELECT Type, Amount, Reason, DateAdded FROM CurrencyTransactions
+                    WHERE UserId = ? ORDER BY DateAdded DESC
+                    """,
+                    (user_id,),
+                )
+            else:
+                cursor = await db.execute(
+                    """
+                    SELECT Type, Amount, Reason, DateAdded FROM CurrencyTransactions
+                    WHERE UserId = ? ORDER BY DateAdded DESC LIMIT ?
+                    """,
+                    (user_id, limit),
+                )
             return await cursor.fetchall()
 
     # Gambling Stats Methods
@@ -882,3 +932,358 @@ class EconomyRepository:
                 (guild_id, channel_id),
             )
             await db.commit()
+
+    # ------------------------------------------------------------------
+    # Idempotent economy operations
+    # ------------------------------------------------------------------
+
+    async def _get_operation_row(self, key: str, db) -> dict[str, Any] | None:
+        """Fetch an operation row by idempotency key (internal)."""
+        cursor = await db.execute(
+            """
+            SELECT OperationKey, GuildId, UserId, Source, Direction, Amount, State, Result, CreatedAt, SettledAt
+            FROM EconomyOperations WHERE OperationKey = ?
+        """,
+            (key,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "OperationKey": row[0],
+            "GuildId": row[1],
+            "UserId": row[2],
+            "Source": row[3],
+            "Direction": row[4],
+            "Amount": row[5],
+            "State": row[6],
+            "Result": row[7],
+            "CreatedAt": row[8],
+            "SettledAt": row[9],
+        }
+
+    async def get_operation(self, key: str) -> dict[str, Any] | None:
+        """Fetch a stored economy operation by idempotency key.
+
+        Returns:
+            The operation row as a dict, or None if the key was never used
+            (or its transaction rolled back).
+        """
+        async with self.db._get_connection() as db:
+            return await self._get_operation_row(key, db)
+
+    @staticmethod
+    def _decode_result(raw: str | None) -> dict[str, Any]:
+        if not raw:
+            return {}
+        try:
+            decoded = json.loads(raw)
+        except (ValueError, TypeError):
+            return {}
+        return decoded if isinstance(decoded, dict) else {}
+
+    async def _duplicate_outcome(self, key: str, user_id: int, db) -> OperationOutcome:
+        """Build the outcome for an already-existing operation key."""
+        existing = await self._get_operation_row(key, db)
+        if existing is None:
+            # Row vanished between conflict and read; treat as not found.
+            return OperationOutcome(key=key, state=OUTCOME_NOT_FOUND, new_balance=None, amount=0)
+        return OperationOutcome(
+            key=key,
+            state=OUTCOME_DUPLICATE,
+            new_balance=await self._get_user_currency(user_id, db),
+            amount=0,
+            result=self._decode_result(existing["Result"]),
+            existing_state=existing["State"],
+        )
+
+    async def apply_operation(
+        self,
+        *,
+        key: str,
+        user_id: int,
+        amount: int,
+        direction: OperationDirection,
+        source: str,
+        transaction_type: str,
+        guild_id: int | None = None,
+        extra: str = "",
+        note: str = "",
+        result: dict[str, Any] | None = None,
+    ) -> OperationOutcome:
+        """Apply a balance effect and its transaction log entry atomically.
+
+        One database transaction: claim the idempotency key, mutate the
+        balance, write exactly one transaction-log row, and mark the operation
+        settled. Repeating a settled key returns the original result without
+        changing the balance or writing another log row. Any step failing
+        rolls back all steps, leaving the operation safe to retry.
+
+        Args:
+            key: Unique idempotency key supplied by the caller.
+            user_id: Discord user ID whose wallet is mutated.
+            amount: Absolute amount to apply.
+            direction: "credit" to add, "debit" to remove.
+            source: Subsystem identity (e.g. "patron", "nitroaward", "gambling").
+            transaction_type: CurrencyTransactions type for the canonical row.
+            guild_id: Optional guild context for the operation.
+            extra: CurrencyTransactions extra metadata.
+            note: Human readable reason for the log row.
+            result: Optional payload stored and returned on duplicate retries.
+
+        Returns:
+            OperationOutcome with state "settled", "duplicate", or
+            "insufficient_funds".
+        """
+        if amount <= 0:
+            raise ValueError("Amount must be a positive integer.")
+        if direction not in (DIRECTION_CREDIT, DIRECTION_DEBIT):
+            raise ValueError("Direction must be 'credit' or 'debit'.")
+
+        payload = json.dumps(result or {})
+        async with self.db._get_connection() as db:
+            await db.execute("BEGIN")
+            try:
+                cursor = await db.execute(
+                    """
+                    INSERT INTO EconomyOperations
+                        (OperationKey, GuildId, UserId, Source, Direction, Amount, State, Result, CreatedAt, SettledAt)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                    ON CONFLICT(OperationKey) DO NOTHING
+                """,
+                    (key, guild_id, user_id, source, direction, amount, OP_STATE_SETTLED, payload),
+                )
+
+                if cursor.rowcount == 0:
+                    await db.execute("ROLLBACK")
+                    return await self._duplicate_outcome(key, user_id, db)
+
+                if direction == DIRECTION_CREDIT:
+                    await db.execute(
+                        """
+                        INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
+                        ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount + ?
+                    """,
+                        (user_id, amount, amount),
+                    )
+                else:
+                    debit_cursor = await db.execute(
+                        """
+                        UPDATE DiscordUser
+                        SET CurrencyAmount = CurrencyAmount - ?
+                        WHERE UserId = ? AND CurrencyAmount >= ?
+                    """,
+                        (amount, user_id, amount),
+                    )
+                    if debit_cursor.rowcount == 0:
+                        # Insufficient funds: roll back the key claim as well,
+                        # so the operation stays safe to retry after funding.
+                        await db.execute("ROLLBACK")
+                        return OperationOutcome(
+                            key=key,
+                            state=OUTCOME_INSUFFICIENT_FUNDS,
+                            new_balance=await self._get_user_currency(user_id, db),
+                            amount=0,
+                        )
+
+                signed = amount if direction == DIRECTION_CREDIT else -amount
+                await db.execute(
+                    """
+                    INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+                    VALUES (?, ?, ?, ?, NULL, ?, datetime('now'))
+                """,
+                    (user_id, signed, transaction_type, extra, note),
+                )
+
+                await db.commit()
+                return OperationOutcome(
+                    key=key,
+                    state=OUTCOME_SETTLED,
+                    new_balance=await self._get_user_currency(user_id, db),
+                    amount=amount,
+                    result=result or {},
+                )
+            except Exception:
+                await db.execute("ROLLBACK")
+                raise
+
+    async def reserve_stake(
+        self,
+        *,
+        key: str,
+        user_id: int,
+        amount: int,
+        game: str,
+        guild_id: int | None = None,
+        source: str = "gambling",
+        note: str = "",
+    ) -> OperationOutcome:
+        """Reserve an affordable stake atomically before producing an outcome.
+
+        The stake is deducted and logged in the same transaction that claims
+        the idempotency key with state "reserved". Only affordable
+        reservations succeed; a failed reservation claims nothing and can
+        never produce winnings.
+
+        Args:
+            key: Unique idempotency key for the game operation.
+            user_id: Discord user ID.
+            amount: Stake to reserve.
+            game: Game identifier used for the transaction-log type.
+            guild_id: Optional guild context.
+            source: Subsystem identity (default "gambling").
+            note: Human readable reason for the log row.
+
+        Returns:
+            OperationOutcome with state "reserved", "duplicate", or
+            "insufficient_funds".
+        """
+        if amount <= 0:
+            raise ValueError("Stake must be a positive integer.")
+
+        async with self.db._get_connection() as db:
+            await db.execute("BEGIN")
+            try:
+                cursor = await db.execute(
+                    """
+                    INSERT INTO EconomyOperations
+                        (OperationKey, GuildId, UserId, Source, Direction, Amount, State, Result, CreatedAt)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, '{}', datetime('now'))
+                    ON CONFLICT(OperationKey) DO NOTHING
+                """,
+                    (key, guild_id, user_id, source, DIRECTION_DEBIT, amount, OP_STATE_RESERVED),
+                )
+
+                if cursor.rowcount == 0:
+                    await db.execute("ROLLBACK")
+                    return await self._duplicate_outcome(key, user_id, db)
+
+                debit_cursor = await db.execute(
+                    """
+                    UPDATE DiscordUser
+                    SET CurrencyAmount = CurrencyAmount - ?
+                    WHERE UserId = ? AND CurrencyAmount >= ?
+                """,
+                    (amount, user_id, amount),
+                )
+                if debit_cursor.rowcount == 0:
+                    await db.execute("ROLLBACK")
+                    return OperationOutcome(
+                        key=key,
+                        state=OUTCOME_INSUFFICIENT_FUNDS,
+                        new_balance=await self._get_user_currency(user_id, db),
+                        amount=0,
+                    )
+
+                await db.execute(
+                    """
+                    INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+                    VALUES (?, ?, ?, ?, NULL, ?, datetime('now'))
+                """,
+                    (user_id, -amount, game, "stake", note or f"{game} stake"),
+                )
+
+                await db.commit()
+                return OperationOutcome(
+                    key=key,
+                    state=OUTCOME_RESERVED,
+                    new_balance=await self._get_user_currency(user_id, db),
+                    amount=amount,
+                )
+            except Exception:
+                await db.execute("ROLLBACK")
+                raise
+
+    async def settle_stake(
+        self,
+        *,
+        key: str,
+        payout: int,
+        transaction_type: str,
+        extra: str = "",
+        note: str = "",
+        result: dict[str, Any] | None = None,
+    ) -> OperationOutcome:
+        """Settle a reserved game operation at most once.
+
+        Atomically transitions the operation from "reserved" to "settled" and,
+        when payout > 0, credits the payout and writes one transaction-log row.
+        A payout of 0 records a lost stake (the reservation already logged the
+        deduction). Settling with the full reserved amount refunds the stake.
+        Repeating a settled key returns the original result without further
+        balance changes.
+
+        Args:
+            key: Idempotency key used at reservation time.
+            payout: Amount to credit back (0 for a loss).
+            transaction_type: CurrencyTransactions type for the payout row.
+            extra: CurrencyTransactions extra metadata.
+            note: Human readable reason for the log row.
+            result: Optional payload stored and returned on duplicate retries.
+
+        Returns:
+            OperationOutcome with state "settled", "duplicate", or
+            "not_found".
+        """
+        if payout < 0:
+            raise ValueError("Payout must be a non-negative integer.")
+
+        payload = json.dumps(result or {})
+        async with self.db._get_connection() as db:
+            await db.execute("BEGIN")
+            try:
+                # Claim the reservation atomically; only one settler wins.
+                cursor = await db.execute(
+                    """
+                    UPDATE EconomyOperations
+                    SET State = ?, SettledAt = datetime('now'), Result = ?
+                    WHERE OperationKey = ? AND State = ?
+                """,
+                    (OP_STATE_SETTLED, payload, key, OP_STATE_RESERVED),
+                )
+
+                if cursor.rowcount == 0:
+                    existing = await self._get_operation_row(key, db)
+                    await db.execute("ROLLBACK")
+                    if existing is None:
+                        return OperationOutcome(key=key, state=OUTCOME_NOT_FOUND, new_balance=None, amount=0)
+                    return OperationOutcome(
+                        key=key,
+                        state=OUTCOME_DUPLICATE,
+                        new_balance=await self._get_user_currency(existing["UserId"], db),
+                        amount=0,
+                        result=self._decode_result(existing["Result"]),
+                        existing_state=existing["State"],
+                    )
+
+                operation = await self._get_operation_row(key, db)
+                assert operation is not None, "reserved operation vanished during settlement"
+                user_id: int = operation["UserId"]
+
+                if payout > 0:
+                    await db.execute(
+                        """
+                        INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
+                        ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount + ?
+                    """,
+                        (user_id, payout, payout),
+                    )
+                    await db.execute(
+                        """
+                        INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+                        VALUES (?, ?, ?, ?, NULL, ?, datetime('now'))
+                    """,
+                        (user_id, payout, transaction_type, extra, note),
+                    )
+
+                await db.commit()
+                return OperationOutcome(
+                    key=key,
+                    state=OUTCOME_SETTLED,
+                    new_balance=await self._get_user_currency(user_id, db),
+                    amount=payout,
+                    result=result or {},
+                )
+            except Exception:
+                await db.execute("ROLLBACK")
+                raise

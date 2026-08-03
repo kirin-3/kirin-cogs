@@ -47,7 +47,11 @@ async def test_on_guild_channel_delete_below_threshold(
     # Return count = 1 (below default threshold of 2)
     cast(MagicMock, event_handlers.action_cache).record_action.return_value = 1
 
-    with patch("antinuke.events.asyncio.create_task") as mock_create_task:
+    def close_scheduled(coroutine):
+        coroutine.close()
+        return MagicMock()
+
+    with patch("antinuke.events.asyncio.create_task", side_effect=close_scheduled) as mock_create_task:
         await event_handlers.on_guild_channel_delete(channel)
         cast(MagicMock, mock_create_task).assert_not_called()
 
@@ -67,7 +71,11 @@ async def test_on_guild_channel_delete_above_threshold(
     # Return count = 2 (hits default threshold of 2)
     cast(MagicMock, event_handlers.action_cache).record_action.return_value = 2
 
-    with patch("antinuke.events.asyncio.create_task") as mock_create_task:
+    def close_scheduled(coroutine):
+        coroutine.close()
+        return MagicMock()
+
+    with patch("antinuke.events.asyncio.create_task", side_effect=close_scheduled) as mock_create_task:
         await event_handlers.on_guild_channel_delete(channel)
         # A task must have been scheduled for the investigation coroutine
         cast(MagicMock, mock_create_task).assert_called_once()
@@ -97,7 +105,11 @@ async def test_investigate_channel_deletion_quarantines_culprit(
 
     config = {"threshold": 2, "timeframe": 60}
 
-    with patch("antinuke.events.asyncio.create_task") as mock_create_task:
+    def close_scheduled(coroutine):
+        coroutine.close()
+        return MagicMock()
+
+    with patch("antinuke.events.asyncio.create_task", side_effect=close_scheduled) as mock_create_task:
         await event_handlers._investigate_channel_deletion(guild, config)
 
     audit_mock.get_channel_delete_culprit.assert_called_once_with(guild, 60, 2)

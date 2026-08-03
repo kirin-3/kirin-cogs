@@ -5,6 +5,7 @@ from io import StringIO
 import discord
 
 from ..abc import MixinMeta
+from ..common.constants import TicketState
 from ..common.utils import update_active_overview
 
 log = logging.getLogger("red.kirin_cogs.tickets.functions")
@@ -14,6 +15,25 @@ class Functions(MixinMeta):
     # @commands.Cog.listener()
     # async def on_assistant_cog_add(self, cog: commands.Cog):
     #     pass
+
+    async def _finalize_ticket_creation(
+        self,
+        guild: discord.Guild,
+        uid: str,
+        pending_key: str,
+        channel_id: int,
+        ticket: dict,
+    ) -> None:
+        """Promote a pending ticket while retaining the full guild config shape."""
+        async with self.config.guild(guild).all() as data:
+            opened_data = data.setdefault("opened", {})
+            user_tickets = opened_data.setdefault(uid, {})
+            user_tickets.pop(pending_key, None)
+            user_tickets[str(channel_id)] = ticket
+
+            new_id = await update_active_overview(guild, data)
+            if new_id:
+                data["overview_msg"] = new_id
 
     async def get_ticket_info(self, user: discord.Member, *args, **kwargs) -> str:
         """Fetch available ticket requirements that the user can open.
@@ -87,19 +107,66 @@ class Functions(MixinMeta):
         if not channel:
             return "The channel required for this ticket panel is missing!"
 
-        # Check if the member has already reached the maximum number of open tickets allowed
-        max_tickets = conf["max_tickets"]
-        opened = conf["opened"]
-        uid = str(user.id)
-        if uid in opened and max_tickets <= len(opened[uid]):
-            return "This user has reached the maximum number of open tickets allowed!"
+        # Serialize reservations for this member while allowing different members
+        # to create tickets concurrently.
+        async with self._creation_lock(guild.id, user.id):  # pyright: ignore[reportAttributeAccessIssue]
+            # Re-read config under lock to get accurate state
+            conf = await self.config.guild(guild).all()
 
-        # Verify that the member has the required roles to open a ticket from the specified panel
-        required_roles = conf.get("required_roles", [])
-        if required_roles and not any(role.id in required_roles for role in user.roles):
-            return "This user does not have the required roles to open this ticket."
+            # Check if the member has already reached the maximum number of open tickets allowed
+            max_tickets = conf["max_tickets"]
+            opened = conf["opened"]
+            uid = str(user.id)
+            # Pending tickets reserve a slot so overlapping requests cannot
+            # both pass the limit while Discord channel creation is in flight.
+            if uid in opened:
+                active_count = len(opened[uid])
+                if max_tickets <= active_count:
+                    return "This user has reached the maximum number of open tickets allowed!"
 
-        answers = {}
+            # Verify that the member has the required roles to open a ticket from the specified panel
+            required_roles = conf.get("required_roles", [])
+            if required_roles and not any(role.id in required_roles for role in user.roles):
+                return "This user does not have the required roles to open this ticket."
+
+            # Allocate ticket_num under lock
+            async with self._num_lock(guild.id):  # pyright: ignore[reportAttributeAccessIssue]
+                num = (await self.config.guild(guild).ticket_num()) or 1
+                await self.config.guild(guild).ticket_num.set(num + 1)
+
+            now = datetime.now().astimezone()
+            name_fmt = conf["ticket_name"]
+            params = {
+                "num": str(num),
+                "user": user.name,
+                "displayname": user.display_name,
+                "id": str(user.id),
+                "shortdate": now.strftime("%m-%d"),
+                "longdate": now.strftime("%m-%d-%Y"),
+                "time": now.strftime("%I-%M-%p"),
+            }
+            channel_name = name_fmt.format(**params) if name_fmt else user.name
+            reconcile_token = f"kirin-ticket:{guild.id}:{user.id}:{num}"
+
+            # 7.3: Persist PENDING record BEFORE Discord channel effect
+            pending_key = f"pending-{num}"
+            async with self.config.guild(guild).opened() as opened_data:
+                if uid not in opened_data:
+                    opened_data[uid] = {}
+                opened_data[uid][pending_key] = {
+                    "opened": now.isoformat(),
+                    "pfp": str(user.display_avatar.url) if user.avatar else None,
+                    "logmsg": None,
+                    "answers": {},
+                    "has_response": False,
+                    "message_id": 0,
+                    "channel_id": None,
+                    "reconcile_token": reconcile_token,
+                    "state": TicketState.PENDING,
+                }
+
+        # Now create the Discord channel (outside creation lock for shorter hold time)
+        answers: dict = {}
         discord.Embed()
 
         can_read_send = discord.PermissionOverwrite(
@@ -137,39 +204,47 @@ class Functions(MixinMeta):
         for role in support_roles:
             overwrite[role] = can_read_send
 
-        num = conf["ticket_num"]
-        now = datetime.now().astimezone()
-        name_fmt = conf["ticket_name"]
-        params = {
-            "num": str(num),
-            "user": user.name,
-            "displayname": user.display_name,
-            "id": str(user.id),
-            "shortdate": now.strftime("%m-%d"),
-            "longdate": now.strftime("%m-%d-%Y"),
-            "time": now.strftime("%I-%M-%p"),
-        }
-        channel_name = name_fmt.format(**params) if name_fmt else user.name
         default_channel_name = f"ticket-{num}"
         try:
             try:
                 channel_or_thread: discord.TextChannel = await category.create_text_channel(
-                    channel_name, overwrites=overwrite
+                    channel_name, overwrites=overwrite, topic=reconcile_token
                 )
             except Exception as e:
                 if "Contains words not allowed" in str(e):
-                    channel_or_thread = await category.create_text_channel(default_channel_name, overwrites=overwrite)
+                    channel_or_thread = await category.create_text_channel(
+                        default_channel_name, overwrites=overwrite, topic=reconcile_token
+                    )
                     await channel_or_thread.send(
                         f"I was not able to name the ticket properly due to Discord's filter!\nIntended name: {channel_name}"
                     )
                 else:
                     raise e
         except discord.Forbidden:
+            # Clean up the pending record
+            async with self.config.guild(guild).opened() as opened_data:
+                if uid in opened_data and pending_key in opened_data[uid]:
+                    del opened_data[uid][pending_key]
+                    if not opened_data[uid]:
+                        del opened_data[uid]
             return "Missing requried permissions to create the ticket!"
 
         except Exception as e:
             log.error("Error creating ticket channel", exc_info=e)
+            # Clean up the pending record
+            async with self.config.guild(guild).opened() as opened_data:
+                if uid in opened_data and pending_key in opened_data[uid]:
+                    del opened_data[uid][pending_key]
+                    if not opened_data[uid]:
+                        del opened_data[uid]
             return f"ERROR: {e}"
+
+        # Persist the Discord side effect immediately. If later message/log writes
+        # fail or the process exits, startup reconciliation can recover this channel.
+        async with self.config.guild(guild).opened() as opened_data:
+            pending = opened_data.get(uid, {}).get(pending_key)
+            if pending is not None:
+                pending["channel_id"] = channel_or_thread.id
 
         prefix = (await self.bot.get_valid_prefixes(guild))[0]
         default_message = "Welcome to your ticket channel " + f"{user.display_name}!"
@@ -267,22 +342,22 @@ class Functions(MixinMeta):
         else:
             log_message = None
 
-        async with self.config.guild(guild).all() as data:
-            data["ticket_num"] += 1
-            if uid not in data["opened"]:
-                data["opened"][uid] = {}
-            data["opened"][uid][str(channel_or_thread.id)] = {
+        # 7.3: Promote PENDING -> ACTIVE with final channel ID as the key
+        await self._finalize_ticket_creation(
+            guild,
+            uid,
+            pending_key,
+            channel_or_thread.id,
+            {
                 "opened": now.isoformat(),
                 "pfp": str(user.display_avatar.url) if user.avatar else None,
                 "logmsg": log_message.id if log_message else None,
                 "answers": answers,
                 "has_response": bool(answers),
                 "message_id": msg.id,
-            }
-
-            new_id = await update_active_overview(guild, data)
-            if new_id:
-                data["overview_msg"] = new_id
+                "state": TicketState.ACTIVE,
+            },
+        )
 
         txt = f"Ticket has been created!\nChannel mention: {channel_or_thread.mention}"
 

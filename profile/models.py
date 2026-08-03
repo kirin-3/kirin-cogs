@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import Any, TypedDict, cast
 
 
 class ProfileData(TypedDict, total=False):
@@ -89,7 +89,7 @@ QUESTIONS = [
         "style": "long",
     },
     {
-        "id": "picture",
+        "id": "picture_url",
         "label": "Picture",
         "question": "Upload a picture of yourself.",
         "required": False,
@@ -99,3 +99,18 @@ QUESTIONS = [
 
 PROFILE_CHANNEL_ID = 686091267012296714
 UNIQUE_ID = 0x6AFE8001
+
+
+def canonicalize_profile_data(data: dict) -> ProfileData:
+    """Return a copy of profile data using only canonical field names.
+
+    Legacy ``picture`` values are mapped to ``picture_url`` (never
+    overwriting an existing canonical value) so old records display and
+    migrate without user action.
+    """
+    canonical: dict[str, Any] = dict(data)
+    legacy = canonical.get("picture")
+    if isinstance(legacy, str) and legacy and not canonical.get("picture_url"):
+        canonical["picture_url"] = legacy
+    canonical.pop("picture", None)
+    return cast(ProfileData, canonical)

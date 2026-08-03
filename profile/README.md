@@ -141,3 +141,5 @@ The cog uses the following default settings:
 **Button not responding?**
 - The interaction may have expired (buttons work for 10 minutes after the message is sent)
 - Wait for the sticky message to refresh or use `[p]profileset fix`
+
+Profile settings are guild-scoped and answers are stored per guild/member. Legacy global/user records are adopted lazily without deleting the source, so rollback remains possible. Uploaded pictures use the canonical `picture_url` field.

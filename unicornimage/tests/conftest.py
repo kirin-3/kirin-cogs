@@ -23,6 +23,8 @@ def config_mock() -> MagicMock:
     config.modal_app_name.set = AsyncMock()
     config.modal_prompt = AsyncMock(return_value="high quality")
     config.modal_prompt.set = AsyncMock()
+    config.generation_limit = AsyncMock(return_value=1)
+    config.generation_limit.set = AsyncMock()
 
     def _guild(*args: object, **kwargs: object) -> object:
         class _Group:
