@@ -20,10 +20,17 @@ log = logging.getLogger("red.kirin_cogs.unicornia.database")
 class CoreDB:
     """Core database functionality"""
 
-    def __init__(self, db_path: str, nadeko_db_path: str | None = None):
+    def __init__(
+        self,
+        db_path: str,
+        nadeko_db_path: str | None = None,
+        *,
+        reconcile_reserved_on_initialize: bool = True,
+    ):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.nadeko_db_path = nadeko_db_path
+        self.reconcile_reserved_on_initialize = reconcile_reserved_on_initialize
         self._conn: aiosqlite.Connection | None = None
         self._lock = asyncio.Lock()
 
@@ -202,7 +209,75 @@ class CoreDB:
                 Feature TEXT PRIMARY KEY,
                 BetAmount INTEGER NOT NULL DEFAULT 0,
                 WinAmount INTEGER NOT NULL DEFAULT 0,
-                LossAmount INTEGER NOT NULL DEFAULT 0
+                LossAmount INTEGER NOT NULL DEFAULT 0,
+                Rounds INTEGER NOT NULL DEFAULT 0,
+                StakedSinceEpoch INTEGER NOT NULL DEFAULT 0,
+                PaidOut INTEGER NOT NULL DEFAULT 0,
+                RakebackPaid INTEGER NOT NULL DEFAULT 0,
+                EpochStart TEXT
+            )
+            """)
+
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS YieldPool (
+                Id INTEGER PRIMARY KEY CHECK (Id = 1),
+                Balance INTEGER NOT NULL DEFAULT 0,
+                LifetimeHouseBanked INTEGER NOT NULL DEFAULT 0,
+                LifetimePooled INTEGER NOT NULL DEFAULT 0,
+                LifetimeTradeTax INTEGER NOT NULL DEFAULT 0,
+                NextDistributionAt TEXT,
+                UpdatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            await db.execute("""
+                INSERT OR IGNORE INTO YieldPool
+                    (Id, Balance, LifetimeHouseBanked, LifetimePooled, LifetimeTradeTax)
+                VALUES (1, 0, 0, 0, 0)
+            """)
+
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS DividendRuns (
+                PeriodEnd TEXT PRIMARY KEY,
+                Distributed INTEGER NOT NULL,
+                Recipients INTEGER NOT NULL,
+                CompletedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS DividendPayouts (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                PeriodEnd TEXT NOT NULL,
+                UserId INTEGER NOT NULL,
+                Symbol TEXT NOT NULL,
+                Weight REAL NOT NULL,
+                Amount INTEGER NOT NULL,
+                DateAdded TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_dividend_payouts_user_period ON DividendPayouts(UserId, PeriodEnd)"
+            )
+
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS SpectatorMarkets (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                HandKey TEXT NOT NULL UNIQUE,
+                State TEXT NOT NULL,
+                OpenedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ClosedAt TEXT,
+                Outcome TEXT
+            )
+            """)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS SpectatorBets (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                MarketId INTEGER NOT NULL,
+                UserId INTEGER NOT NULL,
+                Side TEXT NOT NULL,
+                Amount INTEGER NOT NULL,
+                StakeKey TEXT NOT NULL UNIQUE,
+                UNIQUE(MarketId, UserId),
+                FOREIGN KEY (MarketId) REFERENCES SpectatorMarkets(Id) ON DELETE CASCADE
             )
             """)
 
@@ -422,6 +497,7 @@ class CoreDB:
                 [
                     ("LastMarketTick", None, "Timestamp of last completed market tick"),
                     ("StockLedgerBackfilled", "0", "Whether legacy stock transactions were imported"),
+                    ("DividendAccumulationStart", None, "Start of the retained dividend usage window"),
                 ],
             )
 
@@ -466,6 +542,7 @@ class CoreDB:
                     TotalShares INTEGER DEFAULT 0,
                     ShareReserve REAL DEFAULT 100000,
                     SmoothedUsage REAL DEFAULT 0,
+                    PeriodUsage INTEGER NOT NULL DEFAULT 0,
                     Volatility REAL DEFAULT 1.0,
                     Hidden INTEGER DEFAULT 0
                 )
@@ -508,7 +585,11 @@ class CoreDB:
 
             # Run schema updates for existing databases
             await self._update_database_schema(db)
-            await self._reconcile_reserved_economy_operations(db)
+            if self.reconcile_reserved_on_initialize:
+                # Compatibility for direct DatabaseManager consumers. The live
+                # cog disables this and runs the configurable age-aware sweeper
+                # through EconomyRepository instead.
+                await self._reconcile_reserved_economy_operations(db)
 
     async def _reconcile_reserved_economy_operations(self, db: aiosqlite.Connection) -> int:
         """Refund stake reservations that cannot be resumed after a restart."""
@@ -582,6 +663,20 @@ class CoreDB:
                 await db.execute("ALTER TABLE Stocks ADD COLUMN ShareReserve REAL DEFAULT 100000")
             if "SmoothedUsage" not in stock_columns:
                 await db.execute("ALTER TABLE Stocks ADD COLUMN SmoothedUsage REAL DEFAULT 0")
+            if "PeriodUsage" not in stock_columns:
+                await db.execute("ALTER TABLE Stocks ADD COLUMN PeriodUsage INTEGER NOT NULL DEFAULT 0")
+
+            cursor = await db.execute("PRAGMA table_info(GamblingStats)")
+            gambling_columns = {row[1] for row in await cursor.fetchall()}
+            for column_name, declaration in (
+                ("Rounds", "INTEGER NOT NULL DEFAULT 0"),
+                ("StakedSinceEpoch", "INTEGER NOT NULL DEFAULT 0"),
+                ("PaidOut", "INTEGER NOT NULL DEFAULT 0"),
+                ("RakebackPaid", "INTEGER NOT NULL DEFAULT 0"),
+                ("EpochStart", "TEXT"),
+            ):
+                if column_name not in gambling_columns:
+                    await db.execute(f"ALTER TABLE GamblingStats ADD COLUMN {column_name} {declaration}")
 
             cursor = await db.execute("PRAGMA table_info(StockTransactions)")
             transaction_columns = {row[1] for row in await cursor.fetchall()}
@@ -1231,8 +1326,12 @@ class CoreDB:
                     async with self._get_connection() as db:
                         await db.execute(
                             """
-                            INSERT OR REPLACE INTO GamblingStats (Feature, BetAmount, WinAmount, LossAmount)
+                            INSERT INTO GamblingStats (Feature, BetAmount, WinAmount, LossAmount)
                             VALUES (?, ?, ?, ?)
+                            ON CONFLICT(Feature) DO UPDATE SET
+                                BetAmount = excluded.BetAmount,
+                                WinAmount = excluded.WinAmount,
+                                LossAmount = excluded.LossAmount
                         """,
                             row,
                         )
@@ -1322,6 +1421,8 @@ class CoreDB:
             )
             with suppress(aiosqlite.OperationalError):
                 await db.execute("UPDATE StockTransactions SET UserId = 0 WHERE UserId = ?", (user_id,))
+            with suppress(aiosqlite.OperationalError):
+                await db.execute("UPDATE DividendPayouts SET UserId = 0 WHERE UserId = ?", (user_id,))
 
             # Remove direct identifiers from retained shared records.
             with suppress(aiosqlite.OperationalError):
@@ -1358,6 +1459,7 @@ class CoreDB:
                 "TimelyCooldown",
                 "UserInventory",
                 "StockHoldings",
+                "SpectatorBets",
             ):
                 with suppress(aiosqlite.OperationalError):
                     await db.execute(f"DELETE FROM {table} WHERE UserId = ?", (user_id,))

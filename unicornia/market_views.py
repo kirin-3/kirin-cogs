@@ -267,13 +267,21 @@ class StockSellSelectView(ui.View):
 class StockPortfolioView(ui.LayoutView):
     """V2 Paginated Portfolio View with Transaction History."""
 
-    def __init__(self, market_system, user_id: int, holdings: list, transactions: dict):
+    def __init__(
+        self,
+        market_system,
+        user_id: int,
+        holdings: list,
+        transactions: dict,
+        latest_dividends: dict[str, int] | None = None,
+    ):
         super().__init__(timeout=180)
         self.market_system = market_system
         self.user_id = user_id
         # Sort by Value Descending
         self.holdings = sorted(holdings, key=lambda h: h["amount"] * h["current_price"], reverse=True)
         self.transactions = transactions
+        self.latest_dividends = latest_dividends or {}
         self.current_page = 0
         self.items_per_page = 5
         self.update_components()
@@ -323,6 +331,8 @@ class StockPortfolioView(ui.LayoutView):
 
             stock_info = f"{emoji} **{symbol}**: {amount:,} shares\n"
             stock_info += f"Value: {value:,.0f} {currency} | Avg: {avg_cost:,.1f} {currency} | {arrow} P/L: {profit:,.0f} {currency} ({profit_pct:+.1f}%)"
+            if symbol in self.latest_dividends:
+                stock_info += f"\nLast dividend: {self.latest_dividends[symbol]:,} {currency}"
 
             # History
             txs = self.transactions.get(symbol, [])

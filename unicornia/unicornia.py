@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 import logging
 import os
+from datetime import datetime
 from typing import Any, Literal
 
 from redbot.core import Config, commands
@@ -41,6 +42,7 @@ from .systems import (
     ShopSystem,
     WaifuSystem,
     XPSystem,
+    YieldSystem,
 )
 
 log = logging.getLogger("red.kirin_cogs.unicornia")
@@ -107,6 +109,8 @@ class Unicornia(
             # Gambling limits
             "gambling_min_bet": 50,
             "gambling_max_bet": 1000000,
+            "reservation_recovery_seconds": 300,
+            "dividend_period_hours": 168,
             # Migration
             "nadeko_db_path": None,
         }
@@ -133,8 +137,11 @@ class Unicornia(
         self.currency_decay = None  # type: ignore[assignment]
         self.nitro_system = None  # type: ignore[assignment]
         self.market_system = None  # type: ignore[assignment]
+        self.yield_system = None  # type: ignore[assignment]
         self.wal_task = None
         self.market_task = None
+        self.yield_task = None
+        self.reservation_recovery_task = None
         self._whitelist_cache: dict[int, tuple[dict[str, list[int]], dict[str, list[int]]]] = {}
 
     async def cog_load(self):
@@ -147,7 +154,11 @@ class Unicornia(
 
             nadeko_db_path = await self.config.nadeko_db_path()
 
-            self.db = DatabaseManager(db_path, nadeko_db_path)
+            self.db = DatabaseManager(
+                db_path,
+                nadeko_db_path,
+                reconcile_reserved_on_initialize=False,
+            )
             await self.db.connect()  # Establish persistent connection
             await self.db.initialize()
 
@@ -162,7 +173,33 @@ class Unicornia(
             self.waifu_system = WaifuSystem(self.db, self.config, self.bot)
             self.nitro_system = NitroSystem(self.config, self.bot, self.economy_system)
             self.market_system = MarketSystem(self.db, self.config, self.bot, self.economy_system)
+            self.yield_system = YieldSystem(self.db, self.config)
             await self.market_system.initialize()
+
+            raw_recovery_age = await self.config.reservation_recovery_seconds()
+            try:
+                recovery_age = max(0, int(raw_recovery_age))
+            except (TypeError, ValueError):
+                recovery_age = 300
+                log.warning(
+                    "Invalid reservation_recovery_seconds value %r; using %s seconds",
+                    raw_recovery_age,
+                    recovery_age,
+                )
+            recovered_count, recovered_total = await self.db.economy.refund_stale_reservations(recovery_age)
+            log.info(
+                "Orphan reservation startup sweep: %s reservation(s), %s currency refunded",
+                recovered_count,
+                recovered_total,
+            )
+            pending_startup_reservations = await self.db.economy.get_stale_reservations(0)
+            if pending_startup_reservations:
+                self.reservation_recovery_task = asyncio.create_task(
+                    self._recover_startup_reservations_after_grace(
+                        pending_startup_reservations,
+                        recovery_age,
+                    )
+                )
 
             # Register Persistent Views
             self.bot.add_view(StockDashboardView(self.market_system))
@@ -173,6 +210,7 @@ class Unicornia(
             # Start WAL maintenance task
             self.wal_task = asyncio.create_task(self._wal_maintenance_loop())
             self.market_task = asyncio.create_task(self.market_loop())
+            self.yield_task = asyncio.create_task(self.yield_loop())
 
             log.info("Unicornia: All systems initialized successfully")
         except Exception as e:
@@ -191,6 +229,16 @@ class Unicornia(
                 self.market_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await self.market_task
+
+            if self.yield_task:
+                self.yield_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self.yield_task
+
+            if self.reservation_recovery_task:
+                self.reservation_recovery_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self.reservation_recovery_task
 
             if self.currency_decay:
                 await self.currency_decay.stop_decay_loop()
@@ -477,6 +525,63 @@ class Unicornia(
                 break
             except Exception as e:
                 log.error(f"Error in market loop: {e}")
+                await asyncio.sleep(60)
+
+    async def _recover_startup_reservations_after_grace(
+        self,
+        reservations: list[dict[str, Any]],
+        threshold_seconds: int,
+    ) -> None:
+        """Recover startup orphans that were initially younger than the grace period."""
+        try:
+            delay = float(max(0, threshold_seconds))
+            try:
+                newest_created_at = max(
+                    datetime.fromisoformat(str(reservation["created_at"]).replace("Z", "+00:00")).replace(tzinfo=None)
+                    for reservation in reservations
+                )
+                newest_age = max(0.0, (datetime.utcnow() - newest_created_at).total_seconds())
+                delay = max(0.0, threshold_seconds - newest_age)
+            except (KeyError, TypeError, ValueError):
+                # These rows existed before this process started and cannot be
+                # live views. A malformed timestamp must not strand them.
+                delay = 0.0
+            await asyncio.sleep(delay + 1)
+            if not self.db:
+                return
+            count, total = await self.db.economy.refund_reservations(reservations)
+            log.info(
+                "Deferred startup reservation sweep: %s reservation(s), %s currency refunded",
+                count,
+                total,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            log.error("Deferred startup reservation sweep failed: %s", error)
+
+    async def yield_loop(self):
+        """Run dividends on their persisted restart-safe cadence."""
+        await self.bot.wait_until_ready()
+        while True:
+            try:
+                if not self.yield_system:
+                    await asyncio.sleep(60)
+                    continue
+                delay, outcome = await self.yield_system.run_scheduled_distribution()
+                if outcome is not None:
+                    log.info(
+                        "Dividend period %s: state=%s distributed=%s recipients=%s",
+                        outcome.period_end,
+                        outcome.state,
+                        outcome.distributed,
+                        outcome.recipients,
+                    )
+                await asyncio.sleep(max(1.0, delay))
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                log.error("Error in dividend loop: %s", e)
                 await asyncio.sleep(60)
 
     async def _wal_maintenance_loop(self):

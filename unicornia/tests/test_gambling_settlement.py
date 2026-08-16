@@ -17,7 +17,7 @@ import pytest_asyncio
 from redbot.core import Config
 
 from unicornia.database import DatabaseManager
-from unicornia.systems.gambling_system import BlackjackView, GamblingSystem
+from unicornia.systems.gambling_system import BlackjackView, DuelChallengeView, DuelThrowView, GamblingSystem
 from unicornia.views import MinesView
 
 USER = 2002
@@ -56,6 +56,15 @@ def _interaction(user_id: int = USER) -> MagicMock:
     interaction.response.edit_message = AsyncMock()
     interaction.response.is_done = MagicMock(return_value=False)
     return interaction
+
+
+def _duel_context(challenger_id: int) -> MagicMock:
+    ctx = MagicMock()
+    ctx.author.id = challenger_id
+    ctx.author.mention = f"<@{challenger_id}>"
+    ctx.guild.id = 123
+    ctx.send = AsyncMock()
+    return ctx
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +156,92 @@ async def test_betflip_win_records_stats_and_single_rows(db: DatabaseManager, sy
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
+async def test_duel_challenge_send_failure_releases_user_locks(system: GamblingSystem) -> None:
+    ctx = _duel_context(USER)
+    ctx.send.side_effect = RuntimeError("Discord send failed")
+    opponent = MagicMock()
+    opponent.id = USER + 1
+    opponent.bot = False
+    opponent.mention = f"<@{opponent.id}>"
+
+    with pytest.raises(RuntimeError, match="Discord send failed"):
+        await system.challenge_duel(ctx, opponent, 100)
+
+    assert await system.claim_duel_users(USER, opponent.id)
+    await system.release_duel_users(USER, opponent.id)
+
+
+@pytest.mark.asyncio
+async def test_duel_publish_failure_refunds_both_reserved_stakes(db: DatabaseManager, system: GamblingSystem) -> None:
+    opponent_id = USER + 1
+    await db.economy.add_currency(USER, 500, "test", "test")
+    await db.economy.add_currency(opponent_id, 500, "test", "test")
+    ctx = _duel_context(USER)
+    opponent = MagicMock()
+    opponent.id = opponent_id
+    opponent.mention = f"<@{opponent_id}>"
+    assert await system.claim_duel_users(USER, opponent_id)
+
+    view = DuelChallengeView(ctx, system, opponent, 100)
+    interaction = _interaction(opponent_id)
+    interaction.message = MagicMock()
+    interaction.response.edit_message.side_effect = RuntimeError("Discord edit failed")
+
+    with pytest.raises(RuntimeError, match="Discord edit failed"):
+        await view.accept.callback(interaction)
+
+    assert await db.economy.get_user_currency(USER) == 500
+    assert await db.economy.get_user_currency(opponent_id) == 500
+    assert (await db.economy.get_yield_pool())["balance"] == 0
+    async with db._get_connection() as connection:
+        states = await (
+            await connection.execute(
+                "SELECT State FROM EconomyOperations WHERE OperationKey LIKE 'duel:%' AND UserId != 0"
+            )
+        ).fetchall()
+    assert states == [("settled",), ("settled",)]
+    assert await system.claim_duel_users(USER, opponent_id)
+    await system.release_duel_users(USER, opponent_id)
+
+
+@pytest.mark.asyncio
+async def test_duel_settlement_failure_falls_back_to_full_refund(db: DatabaseManager, system: GamblingSystem) -> None:
+    opponent_id = USER + 1
+    await db.economy.add_currency(USER, 500, "test", "test")
+    await db.economy.add_currency(opponent_id, 500, "test", "test")
+    stakes = {"duel:failure:a": "challenger", "duel:failure:b": "opponent"}
+    await db.economy.reserve_stakes(
+        stakes=(("duel:failure:a", USER, 100), ("duel:failure:b", opponent_id, 100)),
+        game="duel",
+    )
+    challenger = MagicMock(id=USER, mention=f"<@{USER}>")
+    opponent = MagicMock(id=opponent_id, mention=f"<@{opponent_id}>")
+    view = DuelThrowView(system, "failure", challenger, opponent, 100, stakes)
+    assert await system.claim_duel_users(USER, opponent_id)
+
+    original_settle = db.economy.settle_pool
+    calls = 0
+
+    async def fail_once(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("transient settlement failure")
+        return await original_settle(**kwargs)
+
+    with patch.object(db.economy, "settle_pool", side_effect=fail_once):
+        with pytest.raises(RuntimeError, match="transient settlement failure"):
+            await view._settle("challenger", "unused")
+
+    assert calls == 2
+    assert await db.economy.get_user_currency(USER) == 500
+    assert await db.economy.get_user_currency(opponent_id) == 500
+    assert (await db.economy.get_yield_pool())["balance"] == 0
+    assert await system.claim_duel_users(USER, opponent_id)
+    await system.release_duel_users(USER, opponent_id)
+
+
 def _blackjack_view(system: GamblingSystem, key: str, deck: list[int]) -> BlackjackView:
     return BlackjackView(
         ctx=MagicMock(),
@@ -210,6 +305,21 @@ async def test_blackjack_bust_settles_loss_once(db: DatabaseManager, system: Gam
     # A late timeout cannot double-settle.
     await view.on_timeout()
     assert await db.economy.get_user_currency(USER) == 400
+
+
+@pytest.mark.asyncio
+async def test_blackjack_view_error_refunds_unsettled_main_stake(db: DatabaseManager, system: GamblingSystem) -> None:
+    await db.economy.add_currency(USER, 500, "test", "test")
+    await db.economy.reserve_stake(key="bj:error", user_id=USER, amount=100, game="blackjack")
+    view = _blackjack_view(system, "bj:error", deck=[10] * 40)
+
+    with patch("discord.ui.View.on_error", new=AsyncMock()):
+        await view.on_error(_interaction(), RuntimeError("callback failed"), view.hit_button)
+
+    assert await db.economy.get_user_currency(USER) == 500
+    assert (await db.economy.get_operation("bj:error"))["State"] == "settled"  # type: ignore[index]
+    assert (await db.economy.get_yield_pool())["balance"] == 0
+    assert view.is_finished()
 
 
 @pytest.mark.asyncio
