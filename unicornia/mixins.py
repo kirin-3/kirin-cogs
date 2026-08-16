@@ -49,3 +49,5 @@ class UnicorniaMixinBase:
         waifu_system: WaifuSystem
         nitro_system: NitroSystem
         market_system: MarketSystem
+
+        def invalidate_whitelist_cache(self, guild_id: int) -> None: ...

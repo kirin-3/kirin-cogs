@@ -343,10 +343,11 @@ class CurrencyDecay:
     async def _process_decay(self, execution_time: int):
         """Process currency decay for all users (Batch optimized) including bank"""
         decay_percent = await self.config.decay_percent()
+        bank_decay_percent = await self.config.bank_decay_percent()
         max_decay = await self.config.decay_max_amount()
         min_threshold = await self.config.decay_min_threshold()
 
-        if decay_percent <= 0:
+        if decay_percent <= 0 and bank_decay_percent <= 0:
             return
 
         async with self.db._get_connection() as db:
@@ -372,12 +373,13 @@ class CurrencyDecay:
             )
             wallet_users = await cursor.fetchall()
 
-            # Get bank balances
-            cursor = await db.execute("""
-                SELECT UserId, Balance FROM BankUsers
-                WHERE Balance > 0
-            """)
-            bank_users = await cursor.fetchall()
+            bank_users = []
+            if bank_decay_percent > 0:
+                cursor = await db.execute("""
+                    SELECT UserId, Balance FROM BankUsers
+                    WHERE Balance > 0
+                """)
+                bank_users = await cursor.fetchall()
 
             # Combine into a map {user_id: {'wallet': 0, 'bank': 0}}
             user_balances = {}
@@ -402,19 +404,11 @@ class CurrencyDecay:
                 if total_wealth < min_threshold:
                     continue
 
-                # Calculate decay based on total wealth
-                total_decay = int(total_wealth * decay_percent)
-
-                # Cap max decay
+                wallet_decay = int(balances["wallet"] * decay_percent) if decay_percent > 0 else 0
+                bank_decay = int(balances["bank"] * bank_decay_percent) if bank_decay_percent > 0 else 0
                 if max_decay > 0:
-                    total_decay = min(total_decay, max_decay)
-
-                if total_decay <= 0:
-                    continue
-
-                # Decay from wallet first, then bank
-                wallet_decay = min(balances["wallet"], total_decay)
-                bank_decay = total_decay - wallet_decay
+                    wallet_decay = min(wallet_decay, max_decay)
+                    bank_decay = min(bank_decay, max(0, max_decay - wallet_decay))
 
                 if wallet_decay > 0:
                     wallet_updates.append((wallet_decay, user_id))
@@ -424,7 +418,9 @@ class CurrencyDecay:
 
                 if bank_decay > 0:
                     bank_updates.append((bank_decay, user_id))
-                    transactions.append((user_id, -bank_decay, "decay", "system", f"Bank decay: {decay_percent:.1%}"))
+                    transactions.append(
+                        (user_id, -bank_decay, "decay", "system", f"Bank decay: {bank_decay_percent:.1%}")
+                    )
 
             if wallet_updates:
                 await db.executemany(
@@ -461,9 +457,7 @@ class CurrencyDecay:
                     formatted_transactions,
                 )
 
-            if wallet_updates or bank_updates:
-                await db.commit()
-                # print(f"Processed decay for {len(wallet_updates) + len(bank_updates)} balances")
+            await db.commit()
 
     async def get_decay_stats(self) -> DecayStats:
         """Get decay statistics.

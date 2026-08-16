@@ -7,6 +7,55 @@ from ..market_views import (
     StockPortfolioView,
 )
 from ..mixins import UnicorniaMixinBase
+from ..stock_market import UnwindOutcome
+
+
+def format_unwind_outcome(outcome: UnwindOutcome, *, confirmed: bool) -> str:
+    """Render the same complete unwind plan for dry runs and executions."""
+    plan = outcome.plan
+    if outcome.aborted:
+        heading = "## Stock Unwind Aborted"
+        status = "Nothing was changed because one or more holdings have no resolvable cost basis."
+    elif outcome.executed:
+        heading = "## Stock Unwind Complete"
+        status = "All planned refunds were paid and the market was reset."
+    elif confirmed and not plan.refunds and not plan.unresolvable:
+        heading = "## Stock Unwind — No Changes Needed"
+        status = "The market has no positions to refund. Nothing was changed."
+    else:
+        heading = "## Stock Unwind Dry Run"
+        status = "Nothing was changed. Use `[p]stock unwind confirm` to execute this exact operation."
+
+    lines = [
+        heading,
+        status,
+        f"Users affected: **{plan.users_affected:,}**",
+        f"Holdings to clear: **{len(plan.refunds):,}**",
+        f"Total refund: **{plan.total_refund:,}**",
+        f"Unresolvable holdings: **{len(plan.unresolvable):,}**",
+    ]
+    if not plan.refunds and not plan.unresolvable:
+        lines.append("There is nothing to refund.")
+    if plan.unresolvable:
+        lines.append("\nUnresolvable positions (repair `AverageCost` before confirmation):")
+        lines.extend(
+            f"- User `{item.user_id}` — `{item.symbol}` — {item.shares:,} shares" for item in plan.unresolvable
+        )
+    if confirmed and outcome.aborted:
+        lines.append("\nNo run identifier was created and no refund was attempted.")
+    return "\n".join(lines)
+
+
+async def send_in_chunks(ctx, content: str) -> None:
+    """Send an audit report without exceeding Discord's message limit."""
+    chunk = ""
+    for line in content.splitlines(keepends=True):
+        if chunk and len(chunk) + len(line) > 1900:
+            await ctx.send(chunk)
+            chunk = ""
+        chunk += line
+    if chunk:
+        await ctx.send(chunk)
 
 
 class StockCommands(UnicorniaMixinBase):
@@ -94,6 +143,19 @@ class StockCommands(UnicorniaMixinBase):
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {msg}")
         else:
             await ctx.send(f"❌ {msg}")
+
+    @stock_group.command(name="unwind")
+    @checks.is_owner()
+    async def stock_unwind(self, ctx, confirmation: str | None = None):
+        """Dry-run or confirm the owner-only market position unwind.
+
+        **Syntax**
+        `[p]stock unwind`
+        `[p]stock unwind confirm`
+        """
+        confirmed = (confirmation or "").strip().lower() == "confirm"
+        outcome = await self.market_system.unwind_market(confirm=confirmed)
+        await send_in_chunks(ctx, format_unwind_outcome(outcome, confirmed=confirmed))
 
     @stock_group.command(name="portfolio", aliases=["holdings"])
     async def stock_portfolio(self, ctx, user: discord.Member | None = None):

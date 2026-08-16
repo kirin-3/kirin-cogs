@@ -99,6 +99,7 @@ class Unicornia(
             "generation_channels": [],  # List of channel IDs (Global)
             # Currency decay
             "decay_percent": 0.01,  # 1% (0 to disable)
+            "bank_decay_percent": 0.001,  # 0.1% (0 to disable)
             "decay_max_amount": 5000,  # Max amount to decay
             "decay_min_threshold": 15000,  # Minimum wealth to trigger decay
             "decay_hour_interval": 48,
@@ -134,9 +135,11 @@ class Unicornia(
         self.market_system = None  # type: ignore[assignment]
         self.wal_task = None
         self.market_task = None
+        self._whitelist_cache: dict[int, tuple[dict[str, list[int]], dict[str, list[int]]]] = {}
 
     async def cog_load(self):
         """Called when the cog is loaded - proper async initialization"""
+        self._whitelist_cache.clear()
         try:
             # Initialize database first
             cog_dir = os.path.dirname(os.path.abspath(__file__))
@@ -386,8 +389,9 @@ class Unicornia(
             if ctx.channel.id in gen_channels:
                 return True
 
+        command_whitelist, system_whitelist = await self._get_cached_whitelists(ctx.guild)
+
         # 1. Check Command Whitelist (Specific Rule Overrides General)
-        command_whitelist = await self.config.guild(ctx.guild).command_whitelist()
         to_check: Any = ctx.command
         while to_check:
             if to_check.qualified_name in command_whitelist:
@@ -410,12 +414,39 @@ class Unicornia(
         except Exception:
             system_name = "unknown"
 
-        system_whitelist = await self.config.guild(ctx.guild).system_whitelist()
         if system_name in system_whitelist:
             return ctx.channel.id in system_whitelist[system_name]
 
         # 3. Default Allow (No rules matched)
         return True
+
+    @staticmethod
+    def _normalize_whitelist(raw: Any) -> dict[str, list[int]]:
+        if not isinstance(raw, dict):
+            return {}
+        normalized: dict[str, list[int]] = {}
+        for name, channel_ids in raw.items():
+            if not isinstance(name, str) or not isinstance(channel_ids, list):
+                continue
+            normalized[name] = [channel_id for channel_id in channel_ids if isinstance(channel_id, int)]
+        return normalized
+
+    async def _get_cached_whitelists(self, guild) -> tuple[dict[str, list[int]], dict[str, list[int]]]:
+        cached = self._whitelist_cache.get(guild.id)
+        if cached is not None:
+            return cached
+
+        guild_config = self.config.guild(guild)
+        command_raw, system_raw = await asyncio.gather(
+            guild_config.command_whitelist(), guild_config.system_whitelist()
+        )
+        cached = (self._normalize_whitelist(command_raw), self._normalize_whitelist(system_raw))
+        self._whitelist_cache[guild.id] = cached
+        return cached
+
+    def invalidate_whitelist_cache(self, guild_id: int) -> None:
+        """Discard one guild's cached command-gate configuration."""
+        self._whitelist_cache.pop(guild_id, None)
 
     def _check_systems_ready(self) -> bool:
         """Check if all systems are properly initialized"""
@@ -433,13 +464,15 @@ class Unicornia(
         )
 
     async def market_loop(self):
-        """Hourly market update loop"""
+        """Run the market on a restart-safe persisted cadence."""
         await self.bot.wait_until_ready()
         while True:
             try:
-                await asyncio.sleep(3600)  # Run every hour
-                if self.market_system:
-                    await self.market_system.market_tick()
+                if not self.market_system:
+                    await asyncio.sleep(60)
+                    continue
+                delay = await self.market_system.run_scheduled_tick()
+                await asyncio.sleep(max(1.0, delay))
             except asyncio.CancelledError:
                 break
             except Exception as e:

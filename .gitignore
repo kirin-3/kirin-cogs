@@ -47,6 +47,7 @@ node_modules/
 .kilocode/
 .serena/
 .codex/
+.claude/
 *.sublime-project
 *.sublime-workspace
 .project

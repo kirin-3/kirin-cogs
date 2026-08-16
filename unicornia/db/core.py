@@ -414,6 +414,17 @@ class CoreDB:
                 )
             """)
 
+            await db.executemany(
+                """
+                INSERT OR IGNORE INTO BotConfig (Key, Value, Description)
+                VALUES (?, ?, ?)
+                """,
+                [
+                    ("LastMarketTick", None, "Timestamp of last completed market tick"),
+                    ("StockLedgerBackfilled", "0", "Whether legacy stock transactions were imported"),
+                ],
+            )
+
             # User Inventory table (New for v2 - converting Command items)
             await db.execute("""
             CREATE TABLE IF NOT EXISTS UserInventory (
@@ -453,6 +464,8 @@ class CoreDB:
                     CurrentPrice INTEGER,
                     PreviousPrice INTEGER,
                     TotalShares INTEGER DEFAULT 0,
+                    ShareReserve REAL DEFAULT 100000,
+                    SmoothedUsage REAL DEFAULT 0,
                     Volatility REAL DEFAULT 1.0,
                     Hidden INTEGER DEFAULT 0
                 )
@@ -468,6 +481,28 @@ class CoreDB:
                     FOREIGN KEY (Symbol) REFERENCES Stocks(Symbol) ON DELETE CASCADE
                 )
             """)
+
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS StockTransactions (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    UserId INTEGER NOT NULL,
+                    Symbol TEXT NOT NULL,
+                    Side TEXT NOT NULL CHECK (Side IN ('buy', 'sell')),
+                    Kind TEXT NOT NULL DEFAULT 'trade',
+                    Shares INTEGER NOT NULL,
+                    ExecPrice REAL NOT NULL,
+                    Tax INTEGER NOT NULL,
+                    TotalAmount INTEGER NOT NULL,
+                    IsImported INTEGER NOT NULL DEFAULT 0,
+                    DateAdded TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_stock_transactions_user_symbol ON StockTransactions(UserId, Symbol)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_stock_transactions_symbol_date ON StockTransactions(Symbol, DateAdded)"
+            )
 
             await db.commit()
 
@@ -540,6 +575,19 @@ class CoreDB:
                 await db.execute("ALTER TABLE XpShopOwnedItem ADD COLUMN IsUsing BOOLEAN DEFAULT FALSE")
                 await db.commit()
                 log.info("Successfully added IsUsing column")
+
+            cursor = await db.execute("PRAGMA table_info(Stocks)")
+            stock_columns = {row[1] for row in await cursor.fetchall()}
+            if "ShareReserve" not in stock_columns:
+                await db.execute("ALTER TABLE Stocks ADD COLUMN ShareReserve REAL DEFAULT 100000")
+            if "SmoothedUsage" not in stock_columns:
+                await db.execute("ALTER TABLE Stocks ADD COLUMN SmoothedUsage REAL DEFAULT 0")
+
+            cursor = await db.execute("PRAGMA table_info(StockTransactions)")
+            transaction_columns = {row[1] for row in await cursor.fetchall()}
+            if "Kind" not in transaction_columns:
+                await db.execute("ALTER TABLE StockTransactions ADD COLUMN Kind TEXT NOT NULL DEFAULT 'trade'")
+            await db.commit()
 
             # Create UserInventory table if it doesn't exist (for existing DBs that missed init)
             await db.execute("""
@@ -1272,6 +1320,8 @@ class CoreDB:
                 """,
                 (user_id,),
             )
+            with suppress(aiosqlite.OperationalError):
+                await db.execute("UPDATE StockTransactions SET UserId = 0 WHERE UserId = ?", (user_id,))
 
             # Remove direct identifiers from retained shared records.
             with suppress(aiosqlite.OperationalError):

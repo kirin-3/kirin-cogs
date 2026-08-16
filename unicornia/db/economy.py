@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
+from ..gambling import RAKEBACK_RATE
+
 # Economy operation states
 OP_STATE_RESERVED = "reserved"
 OP_STATE_SETTLED = "settled"
@@ -647,6 +649,72 @@ class EconomyRepository:
             )
             return await cursor.fetchall()
 
+    @staticmethod
+    async def _populate_eligible_leaderboard_users(db, user_ids: list[int]) -> None:
+        await db.execute("CREATE TEMP TABLE IF NOT EXISTS EligibleLeaderboardUsers (UserId INTEGER PRIMARY KEY)")
+        await db.execute("DELETE FROM EligibleLeaderboardUsers")
+        if user_ids:
+            await db.executemany(
+                "INSERT OR IGNORE INTO EligibleLeaderboardUsers (UserId) VALUES (?)",
+                ((user_id,) for user_id in user_ids),
+            )
+
+    async def get_total_currency_page(self, user_ids: list[int], limit: int, offset: int) -> list[tuple[int, int]]:
+        """Return one stable wallet-plus-bank leaderboard page."""
+        if limit <= 0 or offset < 0:
+            raise ValueError("Limit must be positive and offset cannot be negative.")
+        async with self.db._get_connection() as db:
+            await self._populate_eligible_leaderboard_users(db, user_ids)
+            cursor = await db.execute(
+                """
+                SELECT u.UserId, u.CurrencyAmount + COALESCE(b.Balance, 0) AS Total
+                FROM EligibleLeaderboardUsers e
+                JOIN DiscordUser u ON u.UserId = e.UserId
+                LEFT JOIN BankUsers b ON b.UserId = u.UserId
+                ORDER BY Total DESC, u.UserId ASC
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            )
+            return [(int(row[0]), int(row[1])) for row in await cursor.fetchall()]
+
+    async def count_total_currency_users(self, user_ids: list[int]) -> int:
+        """Count eligible leaderboard users."""
+        async with self.db._get_connection() as db:
+            await self._populate_eligible_leaderboard_users(db, user_ids)
+            row = await (
+                await db.execute(
+                    """
+                    SELECT COUNT(*) FROM EligibleLeaderboardUsers e
+                    JOIN DiscordUser u ON u.UserId = e.UserId
+                    """
+                )
+            ).fetchone()
+            return int(row[0]) if row else 0
+
+    async def get_total_currency_rank(self, user_ids: list[int], user_id: int) -> int | None:
+        """Return a zero-based stable rank for an eligible user."""
+        async with self.db._get_connection() as db:
+            await self._populate_eligible_leaderboard_users(db, user_ids)
+            row = await (
+                await db.execute(
+                    """
+                    WITH Ranked AS (
+                        SELECT u.UserId,
+                               ROW_NUMBER() OVER (
+                                   ORDER BY u.CurrencyAmount + COALESCE(b.Balance, 0) DESC, u.UserId ASC
+                               ) - 1 AS Rank
+                        FROM EligibleLeaderboardUsers e
+                        JOIN DiscordUser u ON u.UserId = e.UserId
+                        LEFT JOIN BankUsers b ON b.UserId = u.UserId
+                    )
+                    SELECT Rank FROM Ranked WHERE UserId = ?
+                    """,
+                    (user_id,),
+                )
+            ).fetchone()
+            return int(row[0]) if row else None
+
     # Currency Transaction Methods
     async def log_currency_transaction(
         self,
@@ -1148,10 +1216,19 @@ class EconomyRepository:
                     """
                     INSERT INTO EconomyOperations
                         (OperationKey, GuildId, UserId, Source, Direction, Amount, State, Result, CreatedAt)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, '{}', datetime('now'))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                     ON CONFLICT(OperationKey) DO NOTHING
                 """,
-                    (key, guild_id, user_id, source, DIRECTION_DEBIT, amount, OP_STATE_RESERVED),
+                    (
+                        key,
+                        guild_id,
+                        user_id,
+                        source,
+                        DIRECTION_DEBIT,
+                        amount,
+                        OP_STATE_RESERVED,
+                        json.dumps({"game": game}),
+                    ),
                 )
 
                 if cursor.rowcount == 0:
@@ -1232,6 +1309,7 @@ class EconomyRepository:
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
             try:
+                reserved_operation = await self._get_operation_row(key, db)
                 # Claim the reservation atomically; only one settler wins.
                 cursor = await db.execute(
                     """
@@ -1256,9 +1334,13 @@ class EconomyRepository:
                         existing_state=existing["State"],
                     )
 
-                operation = await self._get_operation_row(key, db)
-                assert operation is not None, "reserved operation vanished during settlement"
-                user_id: int = operation["UserId"]
+                assert reserved_operation is not None, "reserved operation vanished during settlement"
+                user_id: int = reserved_operation["UserId"]
+                stake: int = reserved_operation["Amount"]
+                reservation_result = self._decode_result(reserved_operation["Result"])
+                game = str(reservation_result.get("game") or transaction_type)
+                loss = max(0, stake - payout)
+                win_amount = payout if payout > stake else 0
 
                 if payout > 0:
                     await db.execute(
@@ -1275,6 +1357,42 @@ class EconomyRepository:
                     """,
                         (user_id, payout, transaction_type, extra, note),
                     )
+
+                rakeback_amount = int(loss * RAKEBACK_RATE)
+                if rakeback_amount > 0:
+                    await db.execute(
+                        """
+                        INSERT INTO Rakeback (UserId, RakebackBalance)
+                        VALUES (?, ?)
+                        ON CONFLICT(UserId) DO UPDATE SET
+                            RakebackBalance = RakebackBalance + excluded.RakebackBalance
+                        """,
+                        (user_id, rakeback_amount),
+                    )
+
+                await db.execute(
+                    """
+                    INSERT INTO GamblingStats (Feature, BetAmount, WinAmount, LossAmount)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(Feature) DO UPDATE SET
+                        BetAmount = BetAmount + excluded.BetAmount,
+                        WinAmount = WinAmount + excluded.WinAmount,
+                        LossAmount = LossAmount + excluded.LossAmount
+                    """,
+                    (game, stake, win_amount, loss),
+                )
+                await db.execute(
+                    """
+                    INSERT INTO UserBetStats (UserId, Game, BetAmount, WinAmount, LossAmount, MaxWin)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(UserId, Game) DO UPDATE SET
+                        BetAmount = BetAmount + excluded.BetAmount,
+                        WinAmount = WinAmount + excluded.WinAmount,
+                        LossAmount = LossAmount + excluded.LossAmount,
+                        MaxWin = MAX(MaxWin, excluded.MaxWin)
+                    """,
+                    (user_id, game, stake, win_amount, loss, win_amount),
+                )
 
                 await db.commit()
                 return OperationOutcome(

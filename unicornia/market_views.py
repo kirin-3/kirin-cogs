@@ -6,6 +6,11 @@ import discord
 from discord import ui
 
 
+def format_stock_price(value: float) -> str:
+    """Round an exact stored price only when presenting it to a user."""
+    return f"{float(value):,.2f}"
+
+
 # --- Step 3: Final Transaction Modal (Amount Only) ---
 class StockAmountModal(ui.Modal):
     def __init__(self, market_system, transaction_type: str, symbol: str):
@@ -127,7 +132,7 @@ class StockBuySelectView(ui.View):
         for s in page_stocks:
             options.append(
                 discord.SelectOption(
-                    label=f"{s['symbol']} - {s['price']:,}",
+                    label=f"{s['symbol']} - {format_stock_price(s['price'])}",
                     value=s["symbol"],
                     emoji=s["emoji"],
                     description=s["name"][:100],
@@ -207,7 +212,7 @@ class StockSellSelectView(ui.View):
                     label=f"{h['symbol']} (Owned: {h['amount']:,})",
                     value=h["symbol"],
                     emoji=h["emoji"],
-                    description=f"Current Price: {h['current_price']:,}",
+                    description=f"Current Price: {format_stock_price(h['current_price'])}",
                 )
             )
 
@@ -326,8 +331,9 @@ class StockPortfolioView(ui.LayoutView):
                 recent_txs = txs[:5]
                 for t in recent_txs:
                     action_emoji = "Buy" if "bought" in t["action"].lower() else "Sell"
-                    price_display = f"{t['price']:,}" if t["price"] > 0 else "?"
-                    stock_info += f"- {action_emoji} {t['shares']} @ {price_display} {currency}\n"
+                    price_display = format_stock_price(t["price"]) if t["price"] > 0 else "?"
+                    approximate = " *(approx.)*" if t.get("imported") else ""
+                    stock_info += f"- {action_emoji} {t['shares']} @ {price_display} {currency}{approximate}\n"
 
             container.add_item(ui.TextDisplay(content=stock_info))
             container.add_item(ui.Separator())
@@ -407,7 +413,7 @@ class StockListView(ui.LayoutView):
             held = s.get("held_shares", 0)
 
             # Format: Emoji Ticker: Price (Change) | Circ: Amount
-            line = f"{s['emoji']} **{s['symbol']}**: {price:,} {self.market_system.currency_symbol} {arrow} ({change_pct:+.1f}%) | Circ: {held:,}\n"
+            line = f"{s['emoji']} **{s['symbol']}**: {format_stock_price(price)} {self.market_system.currency_symbol} {arrow} ({change_pct:+.1f}%) | Circ: {held:,}\n"
             current_text += line
 
         if not current_text:
@@ -484,7 +490,7 @@ class StockDashboardView(ui.LayoutView):
 
                 # Format: Emoji Symbol: Price Arrow (Change%) | Metric
                 extra_info = metric_func(s)
-                line = f"{s['emoji']} **{s['symbol']}**: {price:,} {self.market_system.currency_symbol} {arrow} ({change_pct:+.1f}%) {extra_info}\n"
+                line = f"{s['emoji']} **{s['symbol']}**: {format_stock_price(price)} {self.market_system.currency_symbol} {arrow} ({change_pct:+.1f}%) {extra_info}\n"
                 text += line
             return text if text else "None"
 

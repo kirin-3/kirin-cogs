@@ -66,17 +66,17 @@ def _interaction(user_id: int = USER) -> MagicMock:
 @pytest.mark.asyncio
 async def test_betroll_win_net_effect(db: DatabaseManager, system: GamblingSystem) -> None:
     await db.economy.add_currency(USER, 500, "test", "test")
-    with patch("unicornia.systems.gambling_system.secrets.randbelow", side_effect=[99, 0]):
+    with patch("unicornia.systems.gambling_system.secrets.randbelow", return_value=99):
         success, result = await system.betroll(USER, 100)
     assert success and result["won"] is True
-    # -100 stake, +200 payout
-    assert await db.economy.get_user_currency(USER) == 600
+    # -100 stake, +1000 payout at the top tier
+    assert await db.economy.get_user_currency(USER) == 1400
 
 
 @pytest.mark.asyncio
 async def test_betroll_loss_net_effect(db: DatabaseManager, system: GamblingSystem) -> None:
     await db.economy.add_currency(USER, 500, "test", "test")
-    with patch("unicornia.systems.gambling_system.secrets.randbelow", side_effect=[0, 99]):
+    with patch("unicornia.systems.gambling_system.secrets.randbelow", return_value=0):
         success, result = await system.betroll(USER, 100)
     assert success and result["won"] is False
     assert await db.economy.get_user_currency(USER) == 400
@@ -97,8 +97,8 @@ async def test_slots_triple_joker_payout(db: DatabaseManager, system: GamblingSy
     with patch("unicornia.systems.gambling_system.secrets.randbelow", return_value=9):
         success, result = await system.slots(USER, 100)
     assert success and result["win_type"] == "triple_joker"
-    # -100 stake, +1000 payout
-    assert await db.economy.get_user_currency(USER) == 1900
+    # -100 stake, +15000 payout
+    assert await db.economy.get_user_currency(USER) == 15900
 
 
 @pytest.mark.asyncio
@@ -108,6 +108,28 @@ async def test_rps_draw_refunds_stake(db: DatabaseManager, system: GamblingSyste
         success, result = await system.rock_paper_scissors(USER, "rock", 100)
     assert success and result["result"] == "draw"
     assert await db.economy.get_user_currency(USER) == 500
+
+
+@pytest.mark.asyncio
+async def test_settlement_retry_does_not_duplicate_rakeback_or_stats(db: DatabaseManager) -> None:
+    await db.economy.add_currency(USER, 500, "test", "test")
+    await db.economy.reserve_stake(key="slots:retry", user_id=USER, amount=100, game="slots")
+
+    first = await db.economy.settle_stake(key="slots:retry", payout=0, transaction_type="slots")
+    retry = await db.economy.settle_stake(key="slots:retry", payout=0, transaction_type="slots")
+
+    assert first.state == "settled"
+    assert retry.state == "duplicate"
+    assert await db.economy.get_rakeback_balance(USER) == 5
+    assert await db.economy.get_user_bet_stats(USER) == [("slots", 100, 0, 100, 0)]
+
+    async with db._get_connection() as connection:
+        row = await (
+            await connection.execute(
+                "SELECT BetAmount, WinAmount, LossAmount FROM GamblingStats WHERE Feature = 'slots'"
+            )
+        ).fetchone()
+    assert row == (100, 0, 100)
 
 
 @pytest.mark.asyncio
@@ -191,6 +213,18 @@ async def test_blackjack_bust_settles_loss_once(db: DatabaseManager, system: Gam
 
 
 @pytest.mark.asyncio
+async def test_blackjack_equal_totals_pushes(db: DatabaseManager, system: GamblingSystem) -> None:
+    await db.economy.add_currency(USER, 500, "test", "test")
+    await db.economy.reserve_stake(key="bj:push", user_id=USER, amount=100, game="blackjack")
+    view = _blackjack_view(system, "bj:push", deck=[10] * 40)
+    view.dealer_hand = [10, 9]
+
+    await view.stand_button.callback(_interaction())
+
+    assert await db.economy.get_user_currency(USER) == 500
+
+
+@pytest.mark.asyncio
 async def test_mines_double_cashout_settles_once(db: DatabaseManager, system: GamblingSystem) -> None:
     await db.economy.add_currency(USER, 500, "test", "test")
     await db.economy.reserve_stake(key="mines:test", user_id=USER, amount=100, game="mines")
@@ -205,6 +239,19 @@ async def test_mines_double_cashout_settles_once(db: DatabaseManager, system: Ga
 
     await view.game_over(interaction, True)
     assert await db.economy.get_user_currency(USER) == balance_after_win
+
+
+@pytest.mark.asyncio
+async def test_mines_full_clear_uses_final_multiplier(db: DatabaseManager, system: GamblingSystem) -> None:
+    await db.economy.add_currency(USER, 500, "test", "test")
+    await db.economy.reserve_stake(key="mines:clear", user_id=USER, amount=100, game="mines")
+    view = MinesView(MagicMock(), system, USER, 100, {0}, 2, "$", "mines:clear")
+    view.revealed_indices.add(1)
+
+    await view.update_game_state(_interaction())
+
+    assert view.current_multiplier == pytest.approx(1.85)
+    assert await db.economy.get_user_currency(USER) == 585
 
 
 @pytest.mark.asyncio

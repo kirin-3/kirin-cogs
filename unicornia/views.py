@@ -6,6 +6,7 @@ from discord import ui
 from redbot.core.utils.chat_formatting import humanize_number
 from redbot.core.utils.views import ConfirmView
 
+from .gambling import mines_multiplier
 from .help_content import HELP_CONTENT
 
 
@@ -485,6 +486,9 @@ class LeaderboardView(ui.View):
         currency_symbol: str = "$",
         title: str | None = None,
         formatter=None,
+        *,
+        page_loader=None,
+        total_entries: int | None = None,
     ):
         super().__init__(timeout=60)
         self.ctx = ctx
@@ -493,6 +497,8 @@ class LeaderboardView(ui.View):
         self.currency_symbol = currency_symbol
         self.title = title or f"{self.currency_symbol} Economy Leaderboard"
         self.formatter = formatter
+        self.page_loader = page_loader
+        self.total_entries = len(entries) if total_entries is None else total_entries
 
         self.current_page = 0
         self.items_per_page = 10
@@ -520,15 +526,17 @@ class LeaderboardView(ui.View):
                 await self.message.edit(view=self)
         self.stop()
 
-    def get_current_page_entries(self):
+    async def get_current_page_entries(self):
         start = self.current_page * self.items_per_page
+        if self.page_loader is not None:
+            return await self.page_loader(self.items_per_page, start), start
         end = start + self.items_per_page
         return self.entries[start:end], start
 
     async def get_embed(self):
         embed = discord.Embed(title=self.title, color=discord.Color.gold())
 
-        page_entries, start_index = self.get_current_page_entries()
+        page_entries, start_index = await self.get_current_page_entries()
 
         description = ""
         for i, (user_id, balance) in enumerate(page_entries):
@@ -557,8 +565,8 @@ class LeaderboardView(ui.View):
 
         embed.description = description
 
-        total_pages = (len(self.entries) - 1) // self.items_per_page + 1
-        embed.set_footer(text=f"Page {self.current_page + 1}/{total_pages} • Total: {len(self.entries)}")
+        total_pages = max(1, (self.total_entries - 1) // self.items_per_page + 1)
+        embed.set_footer(text=f"Page {self.current_page + 1}/{total_pages} • Total: {self.total_entries}")
 
         if self.user_position is not None:
             embed.set_footer(text=f"{embed.footer.text} • You are #{self.user_position + 1}")
@@ -568,7 +576,7 @@ class LeaderboardView(ui.View):
     def update_components(self):
         self.clear_items()
 
-        total_pages = (len(self.entries) - 1) // self.items_per_page + 1
+        total_pages = max(1, (self.total_entries - 1) // self.items_per_page + 1)
 
         # Navigation
         prev_btn = ui.Button(label="◀️", style=discord.ButtonStyle.secondary, disabled=(self.current_page == 0))
@@ -872,21 +880,32 @@ class TransferView(ui.View):
 
         try:
             # Logic from economy_leaderboard
-            top_users = await self.cog.economy_system.get_filtered_leaderboard(self.ctx.guild)
+            top_users = await self.cog.economy_system.get_filtered_leaderboard(self.ctx.guild, limit=10, offset=0)
 
             if not top_users:
                 await interaction.followup.send("No economy data found for this server.", ephemeral=True)
                 return
 
-            user_position = None
-            for i, (uid, _) in enumerate(top_users):
-                if uid == self.ctx.author.id:
-                    user_position = i
-                    break
+            total_entries = await self.cog.economy_system.get_filtered_leaderboard_count(self.ctx.guild)
+            user_position = await self.cog.economy_system.get_filtered_leaderboard_rank(
+                self.ctx.guild, self.ctx.author.id
+            )
 
             currency_symbol = await self.cog.config.currency_symbol()
 
-            view = LeaderboardView(self.ctx, top_users, user_position, currency_symbol)
+            async def load_page(limit: int, offset: int):
+                return await self.cog.economy_system.get_filtered_leaderboard(
+                    self.ctx.guild, limit=limit, offset=offset
+                )
+
+            view = LeaderboardView(
+                self.ctx,
+                top_users,
+                user_position,
+                currency_symbol,
+                page_loader=load_page,
+                total_entries=total_entries,
+            )
             embed = await view.get_embed()
             view.message = await interaction.followup.send(embed=embed, view=view)
 
@@ -978,7 +997,6 @@ class MinesView(ui.View):
                     note="Mines timeout",
                     result={"result": "timeout"},
                 )
-                await self.system._record_gambling_stats(self.user_id, "mines", self.amount, False)
             for child in self.children:
                 child.disabled = True  # type: ignore[attr-defined]
             if self.message:
@@ -1010,26 +1028,12 @@ class MinesView(ui.View):
 
         mines_count = len(self.mines_indices)
         revealed_count = len(self.revealed_indices)
+        self.current_multiplier = mines_multiplier(self.total_cells, mines_count, revealed_count)
 
         # Check if all safes revealed
         if revealed_count == (self.total_cells - mines_count):
             await self.game_over(interaction, True)
             return
-
-        # Calculate Multiplier
-        # Recalculate from scratch to avoid float drift
-        mult = 1.0
-        for i in range(revealed_count):
-            # Step i (0 to revealed-1)
-            # Available cells: Total - i
-            # Safe cells: (Total - Mines) - i
-            # Prob = Safe / Available
-            # Mult_step = Available / Safe
-            available = self.total_cells - i
-            safe = (self.total_cells - mines_count) - i
-            mult *= available / safe
-
-        self.current_multiplier = mult
 
         # Update Button Visuals
         for item in self.children:
@@ -1101,7 +1105,6 @@ class MinesView(ui.View):
                     note=f"Mines Win {len(self.revealed_indices)} steps",
                     result={"result": "win", "payout": payout, "steps": len(self.revealed_indices)},
                 )
-            await self.system._record_gambling_stats(self.user_id, "mines", self.amount, True, payout)
 
             msg = f"🎉 **Cash Out!** You won **{self.currency_symbol}{payout:,}**! (Profit: {self.currency_symbol}{profit:,})"
         else:
@@ -1114,7 +1117,6 @@ class MinesView(ui.View):
                     note="Mines loss",
                     result={"result": "loss", "mine_index": hit_mine_index},
                 )
-            await self.system._record_gambling_stats(self.user_id, "mines", self.amount, False)
             msg = f"💥 **BOOM!** You hit a mine and lost **{self.currency_symbol}{self.amount:,}**."
 
         await interaction.response.edit_message(content=msg, view=self)

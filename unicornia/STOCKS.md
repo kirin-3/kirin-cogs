@@ -9,12 +9,12 @@ The **Unicornia Stock Exchange** is a dynamic, server-wide stock market system f
 The market simulates a living economy where:
 *   **Stocks** represent concepts or entities tied to specific Emojis (e.g., `:rocket:`, `:joy:`).
 *   **Demand** is measured by how often these emojis are used in chat.
-*   **Supply/Price** is influenced by user trading (Buying/Selling).
+*   **Price** follows relative emoji activity and is also moved by buying and selling along a bounded curve.
 
 The system is designed to be **passive yet engaging**:
 *   Users "pump" their bags by using the associated emoji in conversations.
 *   Market prices update every hour ("Tick").
-*   Random events (Crashes, Bull Runs) keep the market unpredictable.
+*   Occasional market events create temporary shocks that fade as prices return toward fair value.
 
 ---
 
@@ -27,22 +27,34 @@ The bot monitors every message sent in the server. It counts occurrences of emoj
 
 ### 2. Price Movement (The Tick)
 Every hour, the **Market Tick** processes the accumulated usage data:
-*   **Growth**: Prices increase based on usage volume relative to volatility.
-*   **Decay**: All stocks suffer a small natural decay (2%) to prevent infinite inflation if unused.
-*   **Formula**: `NewPrice = CurrentPrice * (1 + Growth - Decay + RandomNoise)`
+*   Each stock keeps an exponential moving average of its usage: `smoothed = 0.9 × old + 0.1 × current`.
+*   Fair value depends on the stock's share of market-wide smoothed usage, not its raw count. Scaling every emoji's usage equally therefore leaves prices unchanged.
+*   A proportional floor keeps unused stocks from collapsing: `w = (smoothed + 0.5 × total / N) / (1.5 × total)`. When total usage is zero, every stock receives `w = 1/N`.
+*   Fair value is `100 × (w × N)^0.7`.
+*   Price mean-reverts in log space: `log(price) += 0.08 × (log(fair) − log(price)) + 0.02 × noise`.
+*   A single hourly tick is limited to a 15% log move, and prices remain between 1 and 1,000,000.
+
+Prices are stored with their fractional precision. Commands and dashboards round them to two decimal places only for display.
 
 ### 3. Market Events
-Each tick has a **5% chance** to trigger a global event:
-*   **🐂 Bull Run**: All prices skyrocket by **30%**.
-*   **📉 Market Crash**: All prices plummet by **30%**.
+Each tick has a **2% chance** to trigger a global event:
+*   **🐂 Bull Run**: a temporary **+12%** shock.
+*   **📉 Market Crash**: a temporary **−12%** shock.
+
+The regular movement clamp still applies, and mean reversion pulls prices back toward fair value afterward.
 
 ### 4. Trading & Slippage
 Users can Buy and Sell stocks using their Unicornia currency (Slut points).
-To simulate real market liquidity, **Slippage** is applied:
+To simulate real market liquidity, each stock has a mutable **share reserve** initially set to 100,000 shares:
 *   **Buying** drives the price **UP**.
 *   **Selling** drives the price **DOWN**.
-*   **Impact**: 0.05% per share traded.
-    *   *Example*: Buying 1,000 shares increases the price by 50% immediately. This prevents infinite arbitrage and encourages strategic small trades.
+*   A buy removes shares from the reserve; a sell returns them. The next share receives a worse rate than the previous one, so larger orders have increasing impact.
+*   The displayed execution rate is the average along the entire curve, not the starting or ending quote.
+*   One trade cannot move price outside the configured impact band of 0.9× through 1/0.9×. At the initial reserve, the largest buy is 10,000 shares and moves spot about +11.11%.
+*   Sell limits are calculated against the post-sale reserve, allowing even a maximum-size buy to be sold back immediately.
+*   Buying and immediately selling the same quantity restores both price and reserve exactly before fees. The trader loses only the 1% tax charged on each leg.
+
+Splitting an order does not avoid curve cost: the closed-form path integral produces the same gross total across consecutive pieces, apart from whole-currency rounding and taxes.
 
 ---
 
@@ -61,7 +73,17 @@ To simulate real market liquidity, **Slippage** is applied:
 | :--- | :--- | :--- |
 | `[p]stock ipo <symbol> <price> <emoji> <name>` | Owner | Launch a new stock. |
 | `[p]stock delist <symbol>` | Owner | Remove a stock permanently. |
+| `[p]stock unwind` | Owner | Preview a cost-basis refund and full market reset. Dry-run by default. |
+| `[p]stock unwind confirm` | Owner | Execute the previously previewed unwind after validating every holding. |
 | `[p]stock dashboard [channel]` | Admin | Create a real-time auto-updating market board. |
+
+### Owner-only position unwind
+
+`[p]stock unwind` reports how many users and holdings would be affected, the total currency refund, and any holding whose purchase cost cannot be reconstructed. It changes nothing.
+
+`[p]stock unwind confirm` refunds each remaining position at its recorded average purchase cost, records both currency and stock-ledger audit rows, removes all holdings, and resets prices to 100 with the initial share reserve. It does not use current market prices and does not claw back gains from shares already sold.
+
+The confirmed operation fails closed if even one holding lacks a resolvable cost basis: no run identifier is created and no balance, holding, reserve, or price changes. Repair every position named by the dry-run report before confirming. Refund keys are persisted per run, so an interrupted operation resumes without paying any holding twice.
 
 ---
 
@@ -100,6 +122,8 @@ The bot will post an embed with **Interactive Buttons** (Buy, Sell, Portfolio) t
 *   `Symbol` (PK): Ticker.
 *   `CurrentPrice`, `PreviousPrice`: Price tracking.
 *   `TotalShares`: Global volume.
+*   `ShareReserve`: Mutable pricing reserve (Default 100,000).
+*   `SmoothedUsage`: Persisted emoji-usage EMA.
 *   `Volatility`: Multiplier for price swings (Default 1.0).
 
 **Table `StockHoldings`**:
@@ -109,5 +133,7 @@ The bot will post an embed with **Interactive Buttons** (Buy, Sell, Portfolio) t
 
 ### Safety Features
 *   **Async Locking**: Prevents race conditions between hourly ticks and user trades.
-*   **Transaction Limits**: Max 100,000 shares per trade.
+*   **Impact Limits**: Per-side share caps keep every trade inside the configured price-impact band.
+*   **Fail-closed Unwind**: Confirmation aborts before any mutation if a cost basis cannot be resolved.
+*   **Idempotent Refunds**: Persisted operation keys make interrupted unwinds safe to resume.
 *   **Input Validation**: Strict type checking and negative number prevention.

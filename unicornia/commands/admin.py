@@ -183,6 +183,7 @@ class AdminCommands(UnicorniaMixinBase):
             "generation_max_amount",
             "generation_has_password",
             "decay_percent",
+            "bank_decay_percent",
             "decay_max_amount",
             "decay_min_threshold",
             "decay_hour_interval",
@@ -227,6 +228,7 @@ class AdminCommands(UnicorniaMixinBase):
 
             settings_display.append("\n[Economy Decay]")
             settings_display.append(f"Decay Percent:       {await get_val('decay_percent')}")
+            settings_display.append(f"Bank Decay Percent:  {await get_val('bank_decay_percent')}")
             settings_display.append(f"Max Decay Amount:    {await get_val('decay_max_amount')}")
             settings_display.append(f"Min Threshold:       {await get_val('decay_min_threshold')}")
             settings_display.append(f"Interval:            {await get_val('decay_hour_interval')}h")
@@ -290,7 +292,7 @@ class AdminCommands(UnicorniaMixinBase):
                     return
                 await getattr(self.config, setting).set(chance)
                 await ctx.send(f"✅ {setting} updated to {chance}")
-            elif setting == "decay_percent":
+            elif setting in {"decay_percent", "bank_decay_percent"}:
                 percent = float(value)
                 if not 0 <= percent <= 1:
                     await ctx.send("❌ Decay percent must be between 0 and 1.")
@@ -654,6 +656,7 @@ class AdminCommands(UnicorniaMixinBase):
                 await ctx.send(f"✅ Command `{full_name}` is now allowed in {channel.mention}.")
             else:
                 await ctx.send(f"❌ Command `{full_name}` is already allowed in {channel.mention}.")
+        self.invalidate_whitelist_cache(ctx.guild.id)
 
     @wl_command_group.command(name="remove", aliases=["rm", "del"])
     async def wl_command_remove(self, ctx, command_name: str, channel: discord.TextChannel | None = None):
@@ -683,6 +686,7 @@ class AdminCommands(UnicorniaMixinBase):
                     await ctx.send(f"✅ Command `{full_name}` is no longer allowed in {channel.mention}.")
             else:
                 await ctx.send(f"❌ Command `{full_name}` is not whitelisted in {channel.mention}.")
+        self.invalidate_whitelist_cache(ctx.guild.id)
 
     @wl_command_group.command(name="list")
     async def wl_command_list(self, ctx):
@@ -756,6 +760,7 @@ class AdminCommands(UnicorniaMixinBase):
                 await ctx.send(f"✅ System `{system}` is now allowed in {channel.mention}.")
             else:
                 await ctx.send(f"❌ System `{system}` is already allowed in {channel.mention}.")
+        self.invalidate_whitelist_cache(ctx.guild.id)
 
     @wl_system_group.command(name="remove", aliases=["rm", "del"])
     async def wl_system_remove(self, ctx, system: str, channel: discord.TextChannel | None = None):
@@ -782,6 +787,7 @@ class AdminCommands(UnicorniaMixinBase):
                     await ctx.send(f"✅ System `{system}` is no longer allowed in {channel.mention}.")
             else:
                 await ctx.send(f"❌ System `{system}` is not whitelisted in {channel.mention}.")
+        self.invalidate_whitelist_cache(ctx.guild.id)
 
     @wl_system_group.command(name="list")
     async def wl_system_list(self, ctx):

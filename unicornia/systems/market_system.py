@@ -4,18 +4,30 @@ Market System for Unicornia Stock Exchange
 
 import asyncio
 import logging
-import math
 import random
 import re
+import time
 from collections import Counter
+from uuid import uuid4
 
 import discord
 
 from ..database import DatabaseManager
 from ..market_views import StockDashboardView
+from ..stock_market import (
+    UnwindOutcome,
+    buy_quote,
+    fair_values,
+    market_price_step,
+    maximum_trade_size,
+    plan_stock_unwind,
+    sell_quote,
+    update_smoothed_usage,
+)
 from .economy_system import EconomySystem
 
 log = logging.getLogger("red.kirin_cogs.unicornia.market")
+MARKET_TICK_INTERVAL = 3600
 
 
 class MarketSystem:
@@ -49,6 +61,8 @@ class MarketSystem:
         self.stocks_cache = {s["symbol"]: s for s in stocks}
         self.emoji_map = {s["emoji"]: s["symbol"] for s in stocks}
         self._update_regex()
+
+        await self.db.stock.backfill_legacy_transactions()
 
         # Initial Dashboard Stats calculation
         await self._update_dashboard_stats()
@@ -91,58 +105,61 @@ class MarketSystem:
         """Hourly update of stock prices."""
         async with self.lock:
             if not self.stocks_cache:
+                await self.set_last_market_tick(int(time.time()))
                 return
 
             log.info(f"Market Tick: Processing {sum(self.emoji_buffer.values())} emoji interactions.")
 
-            updates = []
+            updates: list[tuple[str, float, float, float]] = []
 
             # Random Event
             event_multiplier = 1.0
             event_name: str | None = None
-            if random.random() < 0.05:  # 5% chance
+            if random.random() < 0.02:
                 if random.random() < 0.5:
-                    event_multiplier = 1.3  # Bull Run
+                    event_multiplier = 1.12
                     event_name = "BULL RUN! 🐂"
                 else:
-                    event_multiplier = 0.7  # Crash
+                    event_multiplier = 0.88
                     event_name = "MARKET CRASH! 📉"
 
-            for symbol, stock in self.stocks_cache.items():
+            stock_items = list(self.stocks_cache.items())
+            smoothed = [
+                update_smoothed_usage(float(stock.get("smoothed_usage", 0.0)), self.emoji_buffer[symbol])
+                for symbol, stock in stock_items
+            ]
+            targets = fair_values(smoothed)
+
+            for (symbol, stock), smoothed_usage, target in zip(stock_items, smoothed, targets, strict=True):
                 usage = self.emoji_buffer[symbol]
-                current_price = stock["price"]
-                volatility = stock["volatility"]
+                current_price = float(stock["price"])
+                new_price = market_price_step(
+                    current_price,
+                    target,
+                    noise=random.gauss(0.0, 1.0),
+                    event_multiplier=event_multiplier,
+                )
 
-                # Decay factor to force price down if no usage
-                decay = 0.0
-                if current_price > 100:
-                    decay = 0.001 * volatility  # 0.1% decay
-                elif current_price < 100:
-                    decay = -0.02 * volatility  # Strong upward drift to fight noise
+                updates.append((symbol, new_price, current_price, smoothed_usage))
+                log.debug(
+                    "Market tick %s: usage=%s smoothed=%.3f fair=%.3f price=%.3f",
+                    symbol,
+                    usage,
+                    smoothed_usage,
+                    target,
+                    new_price,
+                )
 
-                # Growth factor
-                growth = math.log1p(usage) * 0.04 * volatility
+            # Commit the economic state and completion timestamp atomically.
+            # Cache and usage remain untouched if persistence fails.
+            completed_at = int(time.time())
+            await self.db.stock.bulk_update_prices(updates, completed_at=completed_at)
 
-                change_percent = growth - decay
-
-                # Add random noise (-2% to +2%)
-                noise = random.uniform(-0.02, 0.02) * volatility
-
-                change_percent += noise
-
-                new_price = current_price * (1 + change_percent)
-                new_price *= event_multiplier
-
-                new_price = max(1, int(new_price))  # Min price 1
-
-                updates.append((symbol, new_price, current_price))  # Symbol, New, Old (becomes Previous)
-
-                # Update Cache
+            for symbol, new_price, current_price, smoothed_usage in updates:
+                stock = self.stocks_cache[symbol]
                 stock["price"] = new_price
                 stock["previous_price"] = current_price
-
-            # Flush to DB
-            await self.db.stock.bulk_update_prices(updates)
+                stock["smoothed_usage"] = smoothed_usage
 
             # Clear buffer
             self.emoji_buffer.clear()
@@ -153,6 +170,45 @@ class MarketSystem:
         # Trigger UI update (outside lock to avoid holding it during slow API calls)
         await self.update_dashboard(event_name)
         log.info(f"Market Tick Completed. Updated {len(updates)} stocks.")
+
+    async def get_last_market_tick(self) -> int | None:
+        """Return the last completed market tick, or ``None`` on first run."""
+        async with self.db._get_connection() as db:
+            row = await (await db.execute("SELECT Value FROM BotConfig WHERE Key = 'LastMarketTick'")).fetchone()
+        if not row or row[0] in (None, ""):
+            return None
+        try:
+            return int(row[0])
+        except (TypeError, ValueError):
+            return None
+
+    async def set_last_market_tick(self, timestamp: int) -> None:
+        """Persist the completion timestamp for a successful market tick."""
+        async with self.db._get_connection() as db:
+            await db.execute(
+                """
+                INSERT INTO BotConfig (Key, Value, Description)
+                VALUES ('LastMarketTick', ?, 'Timestamp of last completed market tick')
+                ON CONFLICT(Key) DO UPDATE SET Value = excluded.Value
+                """,
+                (str(timestamp),),
+            )
+            await db.commit()
+
+    async def run_scheduled_tick(self, now: int | None = None) -> float:
+        """Run one due/catch-up tick and return seconds until the next check."""
+        current_time = int(time.time()) if now is None else now
+        last_tick = await self.get_last_market_tick()
+        if last_tick is None:
+            await self.set_last_market_tick(current_time)
+            return float(MARKET_TICK_INTERVAL)
+
+        remaining = last_tick + MARKET_TICK_INTERVAL - current_time
+        if remaining > 0:
+            return float(remaining)
+
+        await self.market_tick()
+        return float(MARKET_TICK_INTERVAL)
 
     async def _update_dashboard_stats(self):
         """Calculate and cache leaderboard stats."""
@@ -226,8 +282,6 @@ class MarketSystem:
         """Buy stocks."""
         if amount <= 0:
             return False, "Amount must be positive."
-        if amount > 100000:
-            return False, "Transaction limit exceeded (Max 100,000 shares)."
 
         symbol = symbol.upper()
 
@@ -236,61 +290,45 @@ class MarketSystem:
                 return False, "Stock not found."
 
             stock = self.stocks_cache[symbol]
-            current_price = stock["price"]
+            current_price = float(stock["price"])
+            reserve = float(stock["share_reserve"])
+            maximum = maximum_trade_size(reserve, "buy")
+            if amount > maximum:
+                return False, f"Trade impact limit exceeded. Maximum buy: {maximum:,} shares."
+            quote = buy_quote(current_price, reserve, amount)
 
-            # Dynamic Costing (Slippage) & Tax
-            # Market Cap-Based Impact
-            liquidity_pool = max(stock["total_shares"], 10000)
-            impact_ratio = amount / liquidity_pool
-            impact = current_price * impact_ratio * 1.0
-
-            end_price = current_price + impact
-            avg_execution_price = (current_price + end_price) / 2
-
-            subtotal = avg_execution_price * amount
+            subtotal = quote.average_execution_price * amount
             tax = subtotal * 0.01
             total_cost = int(subtotal + tax)
 
-            # Check Balance
-            wallet, _bank = await self.economy.get_balance(user.id)
-            if wallet < total_cost:
+            executed = await self.db.stock.execute_buy(
+                user_id=user.id,
+                symbol=symbol,
+                shares=amount,
+                exec_price=quote.average_execution_price,
+                tax=int(tax),
+                total_cost=total_cost,
+                spot_after=quote.spot_after,
+                reserve_after=quote.reserve_after,
+            )
+            if not executed:
+                wallet = await self.db.economy.get_user_currency(user.id)
                 return False, f"Insufficient funds. You need {total_cost} but have {wallet}."
-
-            # Execute Transaction
-            # 1. Deduct Money
-            if not await self.economy.remove_currency(
-                user.id, total_cost, "stock_buy", f"Bought {amount} {symbol} (Tax: {int(tax)})"
-            ):
-                return False, "Transaction failed."
-
-            # 2. Add Shares & Update Average Cost
-            holding = await self.db.stock.get_holding(user.id, symbol)
-            current_holding_amt = holding["amount"] if holding else 0
-            current_avg = holding["average_cost"] if holding else 0.0
-
-            new_total_amt = current_holding_amt + amount
-            new_avg_cost = ((current_holding_amt * current_avg) + total_cost) / new_total_amt
-
-            await self.db.stock.update_holding(user.id, symbol, amount, new_avg_cost)
-
-            # 3. Update DB and Cache with Impact
-            await self.db.stock.update_shares_and_price(symbol, amount, impact)
 
             # Update Cache locally
             self.stocks_cache[symbol]["total_shares"] += amount
-            self.stocks_cache[symbol]["price"] = max(1, int(end_price))
+            self.stocks_cache[symbol]["price"] = quote.spot_after
+            self.stocks_cache[symbol]["share_reserve"] = quote.reserve_after
 
             return (
                 True,
-                f"Bought {amount} {symbol} @ ~{int(avg_execution_price)} {self.currency_symbol} (Total: {total_cost:,} {self.currency_symbol} incl. 1% tax).",
+                f"Bought {amount} {symbol} @ ~{quote.average_execution_price:,.2f} {self.currency_symbol} (Total: {total_cost:,} {self.currency_symbol} incl. 1% tax).",
             )
 
     async def sell_stock(self, user: discord.Member, symbol: str, amount: int) -> tuple[bool, str]:
         """Sell stocks."""
         if amount <= 0:
             return False, "Amount must be positive."
-        if amount > 100000:
-            return False, "Transaction limit exceeded (Max 100,000 shares)."
 
         symbol = symbol.upper()
 
@@ -299,91 +337,113 @@ class MarketSystem:
                 return False, "Stock not found."
 
             stock = self.stocks_cache[symbol]
-            current_price = stock["price"]
+            current_price = float(stock["price"])
+            reserve = float(stock["share_reserve"])
 
             # Check Holding
             holding = await self.db.stock.get_holding(user.id, symbol)
             if not holding or holding["amount"] < amount:
                 return False, f"You don't have enough shares. Owned: {holding['amount'] if holding else 0}"
 
-            # Dynamic Costing & Tax
-            # Market Cap-Based Impact
-            liquidity_pool = max(stock["total_shares"], 10000)
-            impact_ratio = amount / liquidity_pool
-            impact = current_price * impact_ratio * 1.0
+            maximum = maximum_trade_size(reserve, "sell")
+            if amount > maximum:
+                return False, f"Trade impact limit exceeded. Maximum sell: {maximum:,} shares."
+            quote = sell_quote(current_price, reserve, amount)
 
-            end_price = current_price - impact
-            avg_execution_price = (current_price + end_price) / 2
-
-            subtotal = avg_execution_price * amount
+            subtotal = quote.average_execution_price * amount
             tax = subtotal * 0.01
             total_payout = int(subtotal - tax)
 
-            # Execute Transaction
-            # 1. Update Holding
-            await self.db.stock.update_holding(
-                user.id, symbol, -amount, cost_basis_update=None
-            )  # Cost basis doesn't change on sell
-
-            # 2. Add Money
-            await self.economy.add_currency(
-                user.id, total_payout, "stock_sell", f"Sold {amount} {symbol} (Tax: {int(tax)})"
+            executed = await self.db.stock.execute_sell(
+                user_id=user.id,
+                symbol=symbol,
+                shares=amount,
+                exec_price=quote.average_execution_price,
+                tax=int(tax),
+                total_payout=total_payout,
+                spot_after=quote.spot_after,
+                reserve_after=quote.reserve_after,
             )
-
-            # 3. Slippage (Negative impact)
-            await self.db.stock.update_shares_and_price(symbol, -amount, -impact)
+            if not executed:
+                return False, "Transaction failed because the holding changed."
 
             # Update Cache
             self.stocks_cache[symbol]["total_shares"] -= amount
-            self.stocks_cache[symbol]["price"] = max(1, int(end_price))
+            self.stocks_cache[symbol]["price"] = quote.spot_after
+            self.stocks_cache[symbol]["share_reserve"] = quote.reserve_after
 
             return (
                 True,
-                f"Sold {amount} {symbol} @ ~{int(avg_execution_price)} {self.currency_symbol} (Total: {total_payout:,} {self.currency_symbol} after 1% tax).",
+                f"Sold {amount} {symbol} @ ~{quote.average_execution_price:,.2f} {self.currency_symbol} (Total: {total_payout:,} {self.currency_symbol} after 1% tax).",
             )
+
+    async def plan_unwind(self):
+        """Read and plan every current holding without mutating market state."""
+        holdings, ledger = await self.db.stock.get_unwind_records()
+        return plan_stock_unwind(holdings, ledger)
+
+    async def unwind_market(self, *, confirm: bool = False) -> UnwindOutcome:
+        """Dry-run or execute the owner-triggered, resumable market unwind."""
+        should_update_dashboard = False
+        async with self.lock:
+            plan = await self.plan_unwind()
+            if not confirm:
+                return UnwindOutcome(plan=plan)
+            if plan.unresolvable:
+                return UnwindOutcome(plan=plan, aborted=True)
+
+            run_id = await self.db.stock.get_unwind_run_id()
+            if not plan.refunds and run_id is None:
+                return UnwindOutcome(plan=plan)
+            if run_id is None:
+                run_id = uuid4().hex
+                await self.db.stock.set_unwind_run_id(run_id)
+
+            for item in plan.refunds:
+                await self.db.economy.apply_operation(
+                    key=f"stock_unwind:{run_id}:{item.user_id}:{item.symbol}",
+                    user_id=item.user_id,
+                    amount=item.refund,
+                    direction="credit",
+                    source="stock_market",
+                    transaction_type="stock_unwind",
+                    extra=item.symbol,
+                    note=f"Refunded {item.shares} {item.symbol} at recorded cost basis",
+                    result={"symbol": item.symbol, "shares": item.shares, "refund": item.refund},
+                )
+                closed = await self.db.stock.close_unwound_holding(
+                    user_id=item.user_id,
+                    symbol=item.symbol,
+                    shares=item.shares,
+                    per_share_cost=item.per_share_cost,
+                    refund=item.refund,
+                )
+                if not closed:
+                    raise RuntimeError(f"Holding changed during unwind: {item.user_id}/{item.symbol}")
+
+            # A resumed run may have closed its final holding before it was
+            # interrupted. Repeating finalization is safe and ensures that a
+            # persisted run identifier can never strand the market half-reset.
+            await self.db.stock.reset_market()
+            stocks = await self.db.stock.get_all_stocks(include_hidden=False)
+            self.stocks_cache = {stock["symbol"]: stock for stock in stocks}
+            await self._update_dashboard_stats()
+            await self.db.stock.clear_unwind_run_id()
+            should_update_dashboard = True
+
+        if should_update_dashboard:
+            await self.update_dashboard()
+        return UnwindOutcome(plan=plan, executed=True, run_id=run_id)
 
     async def get_portfolio_data(self, user_id: int):
         """Fetch portfolio and transaction history for a user."""
         holdings = await self.db.stock.get_user_holdings(user_id)
 
-        # Fetch generic currency transactions
-        # Increased limit to ensure we capture stock transactions even if user is active elsewhere
-        transactions = await self.economy.get_transaction_history(user_id, limit=1000)
-
-        # Parse and group by symbol
-        stock_txs = {}
-        # Robust Regex to match "Bought 10 LOL" or "Bought 10 LOL @ 50..."
-        # Matches: Action (Bought/Sold) | Space | Shares (digits) | Space | Symbol (non-whitespace until @ or end)
-        regex = re.compile(r"(Bought|Sold)\s+(\d+)\s+([^\s@]+)", re.IGNORECASE)
-
-        for t in transactions:
-            # t: (Type, Amount, Reason, DateAdded)
-            if len(t) < 4:
+        stock_txs: dict[str, list[dict]] = {}
+        for transaction in await self.db.stock.get_transactions(user_id):
+            if transaction.get("kind") != "trade":
                 continue
-            t_type, amount, reason, date = t
-
-            if t_type in ["stock_buy", "stock_sell"]:
-                match = regex.search(reason)
-                if match:
-                    action, shares, symbol = match.groups()
-                    symbol = symbol.upper().strip()  # Clean up symbol
-
-                    if symbol not in stock_txs:
-                        stock_txs[symbol] = []
-
-                    # Extract price if available (from new format)
-                    price_match = re.search(r"@\s+([\d.]+)", reason)
-                    price = float(price_match.group(1)) if price_match else 0
-
-                    stock_txs[symbol].append(
-                        {
-                            "action": action,
-                            "shares": int(shares),
-                            "price": price,
-                            "total": abs(amount),  # Currency amount is negative for buy, positive for sell
-                            "date": date,
-                        }
-                    )
+            stock_txs.setdefault(transaction["symbol"], []).append(transaction)
 
         return holdings, stock_txs
 

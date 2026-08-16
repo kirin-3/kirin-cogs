@@ -74,11 +74,13 @@ def _make_command(
     )
 
 
-def _make_ctx(*, command: Any, channel_id: int = 100, with_guild: bool = True) -> MagicMock:
+def _make_ctx(*, command: Any, channel_id: int = 100, guild_id: int = 1, with_guild: bool = True) -> MagicMock:
     ctx = MagicMock(spec=commands.Context)
     ctx.command = command
     ctx.author = MagicMock(spec=discord.Member)
     ctx.guild = MagicMock(spec=discord.Guild) if with_guild else None
+    if ctx.guild is not None:
+        ctx.guild.id = guild_id
     ctx.channel = MagicMock(spec=discord.TextChannel)
     ctx.channel.id = channel_id
     ctx.send = AsyncMock()
@@ -239,6 +241,53 @@ async def test_cog_check_honors_system_whitelist(cog: Unicornia, config_mock: Ma
     allowed = await cog.cog_check(ctx)
 
     assert allowed is False
+
+
+@pytest.mark.asyncio
+async def test_cog_check_reuses_cached_whitelists(cog: Unicornia, config_mock: MagicMock) -> None:
+    _mark_systems_ready(cog)
+    command = _make_command(name="balance", qualified_name="balance", module_name="unicornia.commands.economy")
+    ctx = _make_ctx(command=command)
+
+    assert await cog.cog_check(ctx) is True
+    assert await cog.cog_check(ctx) is True
+
+    guild_group = config_mock.guild.return_value
+    guild_group.command_whitelist.assert_awaited_once()
+    guild_group.system_whitelist.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_added_and_removed_restrictions_apply_after_invalidation(cog: Unicornia, config_mock: MagicMock) -> None:
+    _mark_systems_ready(cog)
+    guild_group = config_mock.guild.return_value
+    command = _make_command(name="balance", qualified_name="balance", module_name="unicornia.commands.economy")
+    ctx = _make_ctx(command=command, channel_id=100)
+
+    assert await cog.cog_check(ctx) is True
+    guild_group.command_whitelist = AsyncMock(return_value={"balance": [200]})
+    cog.invalidate_whitelist_cache(ctx.guild.id)
+    assert await cog.cog_check(ctx) is False
+
+    guild_group.command_whitelist = AsyncMock(return_value={})
+    cog.invalidate_whitelist_cache(ctx.guild.id)
+    assert await cog.cog_check(ctx) is True
+
+
+@pytest.mark.asyncio
+async def test_invalidating_one_guild_keeps_other_guild_cached(cog: Unicornia, config_mock: MagicMock) -> None:
+    _mark_systems_ready(cog)
+    command = _make_command(name="balance", qualified_name="balance", module_name="unicornia.commands.economy")
+    first = _make_ctx(command=command, guild_id=1)
+    second = _make_ctx(command=command, guild_id=2)
+
+    await cog.cog_check(first)
+    await cog.cog_check(second)
+    assert set(cog._whitelist_cache) == {1, 2}
+
+    cog.invalidate_whitelist_cache(1)
+
+    assert set(cog._whitelist_cache) == {2}
 
 
 @pytest.mark.asyncio

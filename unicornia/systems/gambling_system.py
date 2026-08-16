@@ -13,6 +13,16 @@ from redbot.core import commands
 
 from ..database import DatabaseManager
 from ..db.economy import OUTCOME_INSUFFICIENT_FUNDS
+from ..gambling import (
+    betflip_multiplier,
+    betroll_multiplier,
+    blackjack_natural_multiplier,
+    calculate_blackjack_hand,
+    lucky_ladder_multiplier,
+    rps_multiplier,
+    slots_multiplier,
+    slots_win_type,
+)
 from ..views import MinesView
 
 _GamblingResult: TypeAlias = dict[str, Any]
@@ -49,12 +59,7 @@ class BlackjackView(ui.View):
             return True
 
     def calculate_hand(self, hand):
-        total = sum(hand)
-        aces = hand.count(11)
-        while total > 21 and aces:
-            total -= 10
-            aces -= 1
-        return total
+        return calculate_blackjack_hand(hand)
 
     def get_embed(self, result_text=None, color=discord.Color.blue()):
         user_total = self.calculate_hand(self.user_hand)
@@ -117,7 +122,6 @@ class BlackjackView(ui.View):
                 note="Blackjack bust",
                 result={"result": "bust", "user_total": user_total},
             )
-            await self.system._record_gambling_stats(self.user_id, "blackjack", self.amount, False)
             embed = self.get_embed(
                 f"Busted with {user_total}! You lost {self.currency_symbol}{self.amount:,}.", discord.Color.red()
             )
@@ -184,7 +188,6 @@ class BlackjackView(ui.View):
                 note="Blackjack Win",
                 result={"result": "win", "win_amount": win_amount},
             )
-            await self.system._record_gambling_stats(self.user_id, "blackjack", self.amount, True, win_amount)
             result_text += f"\nYou won {self.currency_symbol}{win_amount:,}!"
         elif tie:
             await self.system.db.economy.settle_stake(
@@ -203,7 +206,6 @@ class BlackjackView(ui.View):
                 note="Blackjack loss",
                 result={"result": "loss"},
             )
-            await self.system._record_gambling_stats(self.user_id, "blackjack", self.amount, False)
             result_text += f"\nYou lost {self.currency_symbol}{self.amount:,}."
 
         embed = self.get_embed(result_text, color)
@@ -220,25 +222,6 @@ class GamblingSystem:
         self.db = db
         self.config = config
         self.bot = bot
-
-    async def _record_gambling_stats(self, user_id: int, game: str, bet_amount: int, won: bool, win_amount: int = 0):
-        """Record gambling statistics and rakeback for a settled game.
-
-        Balance effects and their canonical transaction-log rows are produced
-        exclusively by reserve_stake/settle_stake; this method never writes
-        CurrencyTransactions rows.
-        """
-        if won:
-            await self.db.economy.update_gambling_stats(game, bet_amount, win_amount, 0)
-            await self.db.economy.update_user_bet_stats(user_id, game, bet_amount, win_amount, 0, win_amount)
-        else:
-            await self.db.economy.update_gambling_stats(game, bet_amount, 0, bet_amount)
-            await self.db.economy.update_user_bet_stats(user_id, game, bet_amount, 0, bet_amount, 0)
-
-            # Add to rakeback (5% of losses)
-            rakeback_amount = int(bet_amount * 0.05)
-            if rakeback_amount > 0:
-                await self.db.economy.add_rakeback(user_id, rakeback_amount)
 
     async def _check_limits(self, amount: int) -> str | None:
         """Check if bet is within limits"""
@@ -274,23 +257,23 @@ class GamblingSystem:
 
         # Roll dice
         roll = secrets.randbelow(100) + 1
-        threshold = secrets.randbelow(100) + 1
+        multiplier = betroll_multiplier(roll)
 
-        if roll >= threshold:
+        if multiplier > 0:
             # Win
-            win_amount = amount * 2
+            win_amount = int(amount * multiplier)
             await self.db.economy.settle_stake(
                 key=key,
                 payout=win_amount,
                 transaction_type="betroll",
                 extra=f"roll_{roll}",
-                note=f"Betroll win: {roll} >= {threshold}",
-                result={"won": True, "roll": roll, "threshold": threshold},
+                note=f"Betroll tier win: {roll} ({multiplier:g}x)",
+                result={"won": True, "roll": roll, "multiplier": multiplier},
             )
             return True, {
                 "won": True,
                 "roll": roll,
-                "threshold": threshold,
+                "multiplier": multiplier,
                 "win_amount": win_amount,
                 "profit": win_amount - amount,
             }
@@ -301,10 +284,10 @@ class GamblingSystem:
                 payout=0,
                 transaction_type="betroll",
                 extra=f"roll_{roll}",
-                note=f"Betroll loss: {roll} < {threshold}",
-                result={"won": False, "roll": roll, "threshold": threshold},
+                note=f"Betroll loss: {roll}",
+                result={"won": False, "roll": roll, "multiplier": 0.0},
             )
-            return True, {"won": False, "roll": roll, "threshold": threshold, "loss_amount": amount}
+            return True, {"won": False, "roll": roll, "multiplier": 0.0, "loss_amount": amount}
 
     async def rock_paper_scissors(self, user_id: int, choice: str, amount: int = 0) -> tuple[bool, _GamblingResult]:
         """Play rock paper scissors.
@@ -352,7 +335,7 @@ class GamblingSystem:
 
         if amount > 0 and key is not None:
             if result == "win":
-                win_amount = amount * 2
+                win_amount = int(amount * rps_multiplier(result))
                 await self.db.economy.settle_stake(
                     key=key,
                     payout=win_amount,
@@ -421,22 +404,9 @@ class GamblingSystem:
         # Generate slot results
         rolls = [secrets.randbelow(10) for _ in range(3)]
 
-        # Calculate winnings based on Nadeko's slot logic
-        won_amount = 0
-        win_type = "lose"
-
-        if rolls[0] == rolls[1] == rolls[2] == 9:  # Triple joker
-            won_amount = int(amount * 10)
-            win_type = "triple_joker"
-        elif rolls[0] == rolls[1] == rolls[2]:  # Triple normal
-            won_amount = int(amount * 2)
-            win_type = "triple_normal"
-        elif rolls.count(9) == 2:  # Double joker
-            won_amount = int(amount * 1.5)
-            win_type = "double_joker"
-        elif rolls.count(9) == 1:  # Single joker
-            won_amount = int(amount * 1.2)
-            win_type = "single_joker"
+        multiplier = slots_multiplier(*rolls)
+        won_amount = int(amount * multiplier)
+        win_type = slots_win_type(*rolls)
 
         await self.db.economy.settle_stake(
             key=key,
@@ -485,37 +455,45 @@ class GamblingSystem:
             j = secrets.randbelow(i + 1)
             deck[i], deck[j] = deck[j], deck[i]
 
-        def calculate_hand(hand):
-            total = sum(hand)
-            aces = hand.count(11)
-            while total > 21 and aces:
-                total -= 10
-                aces -= 1
-            return total
-
         user_hand = [deck.pop(), deck.pop()]
         dealer_hand = [deck.pop(), deck.pop()]
 
-        user_total = calculate_hand(user_hand)
-        dealer_total = calculate_hand(dealer_hand)
+        user_total = calculate_blackjack_hand(user_hand)
+        dealer_total = calculate_blackjack_hand(dealer_hand)
 
         # Check for natural 21
-        if user_total == 21:
-            # Instant win 2.5x
-            win_amount = int(amount * 2.5)
+        natural_multiplier = blackjack_natural_multiplier(user_hand, dealer_hand)
+        if natural_multiplier is not None:
+            player_natural = user_total == 21
+            dealer_natural = dealer_total == 21
+            win_amount = int(amount * natural_multiplier)
             await self.db.economy.settle_stake(
                 key=key,
                 payout=win_amount,
                 transaction_type="blackjack",
-                note="Blackjack Natural",
-                result={"result": "natural", "win_amount": win_amount},
+                note=(
+                    "Blackjack natural push"
+                    if player_natural and dealer_natural
+                    else "Blackjack Natural"
+                    if player_natural
+                    else "Dealer blackjack natural"
+                ),
+                result={
+                    "result": "push" if player_natural and dealer_natural else "natural" if player_natural else "loss",
+                    "win_amount": win_amount,
+                },
             )
-            await self._record_gambling_stats(user_id, "blackjack", amount, True, win_amount)
 
             embed = discord.Embed(
                 title="🃏 Blackjack!",
-                description=f"**Natural 21!** You won {currency_symbol}{win_amount:,}!",
-                color=discord.Color.gold(),
+                description=(
+                    "**Both you and the dealer have natural 21. Push!** Your bet was returned."
+                    if player_natural and dealer_natural
+                    else f"**Natural 21!** You won {currency_symbol}{win_amount:,}!"
+                    if player_natural
+                    else f"**Dealer natural 21.** You lost {currency_symbol}{amount:,}."
+                ),
+                color=discord.Color.gold() if player_natural else discord.Color.red(),
             )
             embed.add_field(name="Your Hand", value=f"{user_hand} ({user_total})", inline=True)
             embed.add_field(name="Dealer Hand", value=f"{dealer_hand} ({dealer_total})", inline=True)
@@ -568,8 +546,7 @@ class GamblingSystem:
         won = guess_val == result_val
 
         if won:
-            # 1.95x multiplier (typical Nadeko default)
-            win_amount = int(amount * 1.95)
+            win_amount = int(amount * betflip_multiplier(True))
             profit = win_amount - amount
 
             await self.db.economy.settle_stake(
@@ -580,7 +557,6 @@ class GamblingSystem:
                 note=f"Betflip win: {guess_str} == {result_str}",
                 result={"won": True, "result": result_str, "guess": guess_str},
             )
-            await self._record_gambling_stats(user_id, "betflip", amount, True, win_amount)
 
             return True, {
                 "won": True,
@@ -598,7 +574,6 @@ class GamblingSystem:
                 note=f"Betflip loss: {guess_str} != {result_str}",
                 result={"won": False, "result": result_str, "guess": guess_str},
             )
-            await self._record_gambling_stats(user_id, "betflip", amount, False)
 
             return True, {"won": False, "result": result_str, "guess": guess_str, "loss_amount": amount}
 
@@ -623,10 +598,8 @@ class GamblingSystem:
         if reserved.state == OUTCOME_INSUFFICIENT_FUNDS:
             return False, {"error": "insufficient_funds", "balance": reserved.new_balance}
 
-        # Lucky ladder has 8 rungs with different multipliers
-        multipliers = [2.4, 1.7, 1.5, 1.1, 0.5, 0.3, 0.2, 0.1]
         rung = secrets.randbelow(8)
-        multiplier = multipliers[rung]
+        multiplier = lucky_ladder_multiplier(rung)
 
         won_amount = int(amount * multiplier)
 

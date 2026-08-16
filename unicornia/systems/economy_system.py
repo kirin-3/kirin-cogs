@@ -235,8 +235,14 @@ class EconomySystem:
         """
         return await self.db.economy.get_top_currency_users(limit, offset)
 
-    async def get_filtered_leaderboard(self, guild: discord.Guild) -> list[tuple]:
-        """Get filtered currency leaderboard for a guild (only current members).
+    @staticmethod
+    def _eligible_leaderboard_user_ids(guild: discord.Guild) -> list[int]:
+        return [member.id for member in guild.members if not member.bot]
+
+    async def get_filtered_leaderboard(
+        self, guild: discord.Guild, limit: int = 10, offset: int = 0
+    ) -> list[tuple[int, int]]:
+        """Get one filtered currency leaderboard page for a guild.
 
         Args:
             guild: Discord guild.
@@ -244,18 +250,13 @@ class EconomySystem:
         Returns:
             List of filtered leaderboard entries.
         """
-        # Fetch top 1000 global users to ensure we have enough for server leaderboard
-        # Calculates Total Wealth (Wallet + Bank)
-        all_users = await self.db.economy.get_top_total_currency(limit=1000)
+        return await self.db.economy.get_total_currency_page(self._eligible_leaderboard_user_ids(guild), limit, offset)
 
-        filtered_users = []
-        for user_id, balance in all_users:
-            member = guild.get_member(user_id)
-            if member and not member.bot:
-                filtered_users.append((user_id, balance))
+    async def get_filtered_leaderboard_count(self, guild: discord.Guild) -> int:
+        return await self.db.economy.count_total_currency_users(self._eligible_leaderboard_user_ids(guild))
 
-        # Limit to 30 pages (300 users)
-        return filtered_users[:300]
+    async def get_filtered_leaderboard_rank(self, guild: discord.Guild, user_id: int) -> int | None:
+        return await self.db.economy.get_total_currency_rank(self._eligible_leaderboard_user_ids(guild), user_id)
 
     async def get_transaction_history(self, user_id: int, limit: int = 50) -> list[tuple]:
         """Get user's transaction history.
@@ -268,15 +269,6 @@ class EconomySystem:
             List of transactions.
         """
         return await self.db.economy.get_currency_transactions(user_id, limit)
-
-    async def process_interest(self) -> None:
-        """Process bank interest for all users (background task)."""
-        try:
-            # This would be called periodically to award interest
-            # For now, we'll implement a simple version
-            pass
-        except Exception as e:
-            print(f"Error processing interest: {e}")
 
     async def get_gambling_stats(self, user_id: int | None = None) -> list[tuple]:
         """Get gambling statistics.

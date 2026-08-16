@@ -48,8 +48,7 @@ class GamblingCommands(UnicorniaMixinBase):
         """
         Roll a 100-sided die.
 
-        Roll 66 or higher to win.
-        Payout scales with the roll.
+        Roll above 66 to win. Higher tiers pay more.
 
         **Syntax**
         `[p]gambling betroll <amount>`
@@ -88,12 +87,12 @@ class GamblingCommands(UnicorniaMixinBase):
             currency_symbol = await self.config.currency_symbol()
             if result["won"]:
                 await ctx.reply(
-                    f"🎲 You rolled **{result['roll']}** (needed {result['threshold']}+) and won {currency_symbol}{result['win_amount']:,}!",
+                    f"🎲 You rolled **{result['roll']}** and reached the **{result['multiplier']:g}x tier**, winning {currency_symbol}{result['win_amount']:,}!",
                     mention_author=False,
                 )
             else:
                 await ctx.reply(
-                    f"🎲 You rolled **{result['roll']}** (needed {result['threshold']}+) and lost {currency_symbol}{result['loss_amount']:,}. Better luck next time!",
+                    f"🎲 You rolled **{result['roll']}** (needed 67+) and lost {currency_symbol}{result['loss_amount']:,}. Better luck next time!",
                     mention_author=False,
                 )
 

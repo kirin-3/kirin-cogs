@@ -490,22 +490,28 @@ class EconomyCommands(UnicorniaMixinBase):
 
         try:
             # Get filtered leaderboard (only members in server)
-            top_users = await self.economy_system.get_filtered_leaderboard(ctx.guild)
+            top_users = await self.economy_system.get_filtered_leaderboard(ctx.guild, limit=10, offset=0)
 
             if not top_users:
                 await ctx.send("No economy data found for this server.")
                 return
 
-            # Find user position
-            user_position = None
-            for i, (uid, _) in enumerate(top_users):
-                if uid == ctx.author.id:
-                    user_position = i
-                    break
+            total_entries = await self.economy_system.get_filtered_leaderboard_count(ctx.guild)
+            user_position = await self.economy_system.get_filtered_leaderboard_rank(ctx.guild, ctx.author.id)
 
             currency_symbol = await self.config.currency_symbol()
 
-            view = LeaderboardView(ctx, top_users, user_position, currency_symbol)
+            async def load_page(limit: int, offset: int):
+                return await self.economy_system.get_filtered_leaderboard(ctx.guild, limit=limit, offset=offset)
+
+            view = LeaderboardView(
+                ctx,
+                top_users,
+                user_position,
+                currency_symbol,
+                page_loader=load_page,
+                total_entries=total_entries,
+            )
             embed = await view.get_embed()
             view.message = await ctx.reply(embed=embed, view=view, mention_author=False)
 
