@@ -281,9 +281,7 @@ class EconomySystem:
         """
         if user_id:
             return await self.db.economy.get_user_bet_stats(user_id)
-        else:
-            # Return global stats - would need to implement in database
-            return []
+        return await self.db.economy.get_global_gambling_stats()
 
     async def get_rakeback_info(self, user_id: int) -> int:
         """Get user's rakeback balance.

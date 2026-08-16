@@ -110,7 +110,7 @@ class MarketSystem:
 
             log.info(f"Market Tick: Processing {sum(self.emoji_buffer.values())} emoji interactions.")
 
-            updates: list[tuple[str, float, float, float]] = []
+            updates: list[tuple[str, float, float, float, int]] = []
 
             # Random Event
             event_multiplier = 1.0
@@ -140,7 +140,7 @@ class MarketSystem:
                     event_multiplier=event_multiplier,
                 )
 
-                updates.append((symbol, new_price, current_price, smoothed_usage))
+                updates.append((symbol, new_price, current_price, smoothed_usage, usage))
                 log.debug(
                     "Market tick %s: usage=%s smoothed=%.3f fair=%.3f price=%.3f",
                     symbol,
@@ -155,11 +155,12 @@ class MarketSystem:
             completed_at = int(time.time())
             await self.db.stock.bulk_update_prices(updates, completed_at=completed_at)
 
-            for symbol, new_price, current_price, smoothed_usage in updates:
+            for symbol, new_price, current_price, smoothed_usage, usage in updates:
                 stock = self.stocks_cache[symbol]
                 stock["price"] = new_price
                 stock["previous_price"] = current_price
                 stock["smoothed_usage"] = smoothed_usage
+                stock["period_usage"] = int(stock.get("period_usage", 0)) + usage
 
             # Clear buffer
             self.emoji_buffer.clear()

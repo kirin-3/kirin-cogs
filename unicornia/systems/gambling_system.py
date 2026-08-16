@@ -12,7 +12,7 @@ from discord import ui
 from redbot.core import commands
 
 from ..database import DatabaseManager
-from ..db.economy import OUTCOME_INSUFFICIENT_FUNDS
+from ..db.economy import OUTCOME_INSUFFICIENT_FUNDS, OUTCOME_RESERVED
 from ..gambling import (
     betflip_multiplier,
     betroll_multiplier,
@@ -33,8 +33,40 @@ def _new_game_key(game: str, user_id: int) -> str:
     return f"{game}:{user_id}:{secrets.token_hex(8)}"
 
 
+class SpectatorWagerModal(ui.Modal):
+    """Collect one whole spectator stake for a fixed side."""
+
+    amount = ui.TextInput(label="Stake amount", placeholder="Enter a whole number", min_length=1, max_length=12)
+
+    def __init__(self, game_view: "BlackjackView", side: str):
+        super().__init__(title=f"Bet player {side}s")
+        self.game_view = game_view
+        self.side = side
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        try:
+            amount = int(str(self.amount.value).replace(",", ""))
+        except ValueError:
+            await interaction.response.send_message("Enter a valid whole-number stake.", ephemeral=True)
+            return
+        message = await self.game_view.place_spectator_wager(interaction, self.side, amount)
+        await interaction.response.send_message(message, ephemeral=True)
+
+
 class BlackjackView(ui.View):
-    def __init__(self, ctx, system, user_id, amount, user_hand, dealer_hand, deck, currency_symbol, operation_key: str):
+    def __init__(
+        self,
+        ctx,
+        system,
+        user_id,
+        amount,
+        user_hand,
+        dealer_hand,
+        deck,
+        currency_symbol,
+        operation_key: str,
+        market_id: int | None = None,
+    ):
         super().__init__(timeout=60)
         self.ctx = ctx
         self.system = system
@@ -45,6 +77,8 @@ class BlackjackView(ui.View):
         self.deck = deck
         self.currency_symbol = currency_symbol
         self.operation_key = operation_key
+        self.market_id = market_id
+        self.market_closed = market_id is None
         self.message: discord.Message | None = None
         self.finished = False
         self._settle_lock = asyncio.Lock()
@@ -86,6 +120,8 @@ class BlackjackView(ui.View):
         for child in self.children:
             child.disabled = True  # type: ignore[attr-defined]
 
+        await self.close_spectator_market()
+
         embed = self.get_embed("Timed out. You stand.", discord.Color.red())
         try:
             if self.message:
@@ -93,6 +129,71 @@ class BlackjackView(ui.View):
         except discord.HTTPException:
             pass
         await self.do_stand_logic()
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: ui.Item[Any]) -> None:
+        # Abandon the hand safely. Both settlement calls are idempotent, so a
+        # failure after either commit cannot turn a completed result into a
+        # refund, while a pre-commit failure cannot strand reserved currency.
+        self.finished = True
+        for child in self.children:
+            child.disabled = True  # type: ignore[attr-defined]
+        with contextlib.suppress(Exception):
+            await self.system.db.economy.settle_stake(
+                key=self.operation_key,
+                payout=self.amount,
+                transaction_type="gambling_refund",
+                extra="blackjack_error",
+                note="Refunded abandoned blackjack hand",
+                result={"result": "error_refund"},
+                exclude_from_rtp=True,
+            )
+        if self.market_id is not None:
+            with contextlib.suppress(Exception):
+                await self.system.db.economy.settle_spectator_market(self.market_id, None)
+        self.stop()
+        await super().on_error(interaction, error, item)
+
+    async def close_spectator_market(self) -> None:
+        if self.market_id is None or self.market_closed:
+            return
+        await self.system.db.economy.close_spectator_market(self.market_id)
+        self.market_closed = True
+
+    async def settle_spectator_market(self, winning_side: str | None) -> None:
+        if self.market_id is None:
+            return
+        await self.system.db.economy.settle_spectator_market(self.market_id, winning_side)
+
+    async def place_spectator_wager(self, interaction: discord.Interaction, side: str, amount: int) -> str:
+        if self.market_id is None or self.market_closed or self.finished:
+            return "This market is closed."
+        limit_error = await self.system._check_limits(amount)
+        if limit_error:
+            return limit_error
+        outcome = await self.system.db.economy.place_spectator_bet(
+            market_id=self.market_id,
+            player_id=self.user_id,
+            user_id=interaction.user.id,
+            side=side,
+            amount=amount,
+            market_cap=self.amount,
+            guild_id=self.ctx.guild.id if self.ctx.guild else None,
+        )
+        state = outcome["state"]
+        if state == OUTCOME_RESERVED:
+            return (
+                f"Wager accepted: {self.currency_symbol}{amount:,} on player {side}s. "
+                f"Your position is now {self.currency_symbol}{int(outcome['position']):,}."
+            )
+        if state == "full":
+            return "The spectator market is full; your wager was not accepted."
+        if state == "opposite_side":
+            return "You already hold the other side of this market."
+        if state == "player_forbidden":
+            return "You cannot wager on your own blackjack hand."
+        if state == OUTCOME_INSUFFICIENT_FUNDS:
+            return f"You cannot afford that wager. Your balance is {self.currency_symbol}{int(outcome['balance']):,}."
+        return "This market is closed."
 
     @ui.button(label="Hit", style=discord.ButtonStyle.primary, row=0)
     async def hit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -103,6 +204,8 @@ class BlackjackView(ui.View):
         if self.finished:
             await interaction.response.send_message("This game is already over.", ephemeral=True)
             return
+
+        await self.close_spectator_market()
 
         self.user_hand.append(self.deck.pop())
         user_total = self.calculate_hand(self.user_hand)
@@ -122,6 +225,7 @@ class BlackjackView(ui.View):
                 note="Blackjack bust",
                 result={"result": "bust", "user_total": user_total},
             )
+            await self.settle_spectator_market("lose")
             embed = self.get_embed(
                 f"Busted with {user_total}! You lost {self.currency_symbol}{self.amount:,}.", discord.Color.red()
             )
@@ -143,10 +247,31 @@ class BlackjackView(ui.View):
             await interaction.response.send_message("This game is already over.", ephemeral=True)
             return
 
+        await self.close_spectator_market()
         await interaction.response.defer()
         if not await self._try_begin_finalize():
             return
         await self.do_stand_logic()
+
+    @ui.button(label="Bet: Player Wins", style=discord.ButtonStyle.success, row=1)
+    async def wager_win(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        if interaction.user.id == self.user_id:
+            await interaction.response.send_message("You cannot wager on your own hand.", ephemeral=True)
+            return
+        if self.market_closed or self.finished:
+            await interaction.response.send_message("This market is closed.", ephemeral=True)
+            return
+        await interaction.response.send_modal(SpectatorWagerModal(self, "win"))
+
+    @ui.button(label="Bet: Player Loses", style=discord.ButtonStyle.danger, row=1)
+    async def wager_lose(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        if interaction.user.id == self.user_id:
+            await interaction.response.send_message("You cannot wager on your own hand.", ephemeral=True)
+            return
+        if self.market_closed or self.finished:
+            await interaction.response.send_message("This market is closed.", ephemeral=True)
+            return
+        await interaction.response.send_modal(SpectatorWagerModal(self, "lose"))
 
     async def do_stand_logic(self):
         for child in self.children:
@@ -189,6 +314,7 @@ class BlackjackView(ui.View):
                 result={"result": "win", "win_amount": win_amount},
             )
             result_text += f"\nYou won {self.currency_symbol}{win_amount:,}!"
+            spectator_side = "win"
         elif tie:
             await self.system.db.economy.settle_stake(
                 key=self.operation_key,
@@ -198,6 +324,7 @@ class BlackjackView(ui.View):
                 result={"result": "push"},
             )
             result_text += "\nYour bet was returned."
+            spectator_side = None
         else:
             await self.system.db.economy.settle_stake(
                 key=self.operation_key,
@@ -207,12 +334,243 @@ class BlackjackView(ui.View):
                 result={"result": "loss"},
             )
             result_text += f"\nYou lost {self.currency_symbol}{self.amount:,}."
+            spectator_side = "lose"
+
+        await self.settle_spectator_market(spectator_side)
 
         embed = self.get_embed(result_text, color)
         if self.message:
             with contextlib.suppress(discord.HTTPException):
                 await self.message.edit(embed=embed, view=self)
         self.stop()
+
+
+class DuelChallengeView(ui.View):
+    """Accept/decline gate for a named duel opponent."""
+
+    def __init__(self, ctx, system, opponent: discord.Member, amount: int):
+        super().__init__(timeout=60)
+        self.ctx = ctx
+        self.system = system
+        self.challenger = ctx.author
+        self.opponent = opponent
+        self.amount = amount
+        self.message: discord.Message | None = None
+        self.finished = False
+
+    async def _finish(self) -> bool:
+        if self.finished:
+            return False
+        self.finished = True
+        return True
+
+    async def on_timeout(self) -> None:
+        if not await self._finish():
+            return
+        await self.system.release_duel_users(self.challenger.id, self.opponent.id)
+        if self.message:
+            with contextlib.suppress(discord.HTTPException):
+                await self.message.edit(content="Duel challenge expired.", view=None)
+
+    @ui.button(label="Accept", style=discord.ButtonStyle.success)
+    async def accept(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        if interaction.user.id != self.opponent.id:
+            await interaction.response.send_message("Only the challenged player can accept.", ephemeral=True)
+            return
+        if not await self._finish():
+            await interaction.response.send_message("This challenge is no longer pending.", ephemeral=True)
+            return
+
+        duel_id = secrets.token_hex(8)
+        challenger_key = f"duel:{duel_id}:{self.challenger.id}"
+        opponent_key = f"duel:{duel_id}:{self.opponent.id}"
+        stakes = {challenger_key: "challenger", opponent_key: "opponent"}
+        stakes_reserved = False
+        try:
+            outcomes = await self.system.db.economy.reserve_stakes(
+                stakes=(
+                    (challenger_key, self.challenger.id, self.amount),
+                    (opponent_key, self.opponent.id, self.amount),
+                ),
+                game="duel",
+                guild_id=self.ctx.guild.id if self.ctx.guild else None,
+                note="PvP duel stake",
+            )
+            if len(outcomes) != 2 or any(outcome.state != OUTCOME_RESERVED for outcome in outcomes.values()):
+                failed = next(iter(outcomes.values()))
+                await self.system.release_duel_users(self.challenger.id, self.opponent.id)
+                await interaction.response.edit_message(
+                    content=(
+                        f"Duel cancelled: <@{failed.key.rsplit(':', 1)[-1]}> cannot fund the stake."
+                        if failed.state == OUTCOME_INSUFFICIENT_FUNDS
+                        else "Duel cancelled because its stakes could not be reserved."
+                    ),
+                    view=None,
+                )
+                self.stop()
+                return
+
+            stakes_reserved = True
+            duel = DuelThrowView(
+                self.system,
+                duel_id,
+                self.challenger,
+                self.opponent,
+                self.amount,
+                stakes,
+            )
+            duel.message = interaction.message
+            await interaction.response.edit_message(content=duel.prompt, view=duel)
+            self.stop()
+        except Exception:
+            if stakes_reserved:
+                # If publishing the throw controls fails after both debits
+                # commit, abandon the duel by refunding the whole pool now.
+                # The startup sweeper remains the final crash-recovery layer.
+                with contextlib.suppress(Exception):
+                    await self.system.db.economy.settle_pool(
+                        settlement_id=f"duel:{duel_id}",
+                        stakes=stakes,
+                        winning_side=None,
+                        game="duel",
+                        void=True,
+                        note="PvP duel setup failure refund",
+                    )
+            await self.system.release_duel_users(self.challenger.id, self.opponent.id)
+            self.stop()
+            raise
+
+    @ui.button(label="Decline", style=discord.ButtonStyle.danger)
+    async def decline(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        if interaction.user.id != self.opponent.id:
+            await interaction.response.send_message("Only the challenged player can decline.", ephemeral=True)
+            return
+        if not await self._finish():
+            await interaction.response.send_message("This challenge is no longer pending.", ephemeral=True)
+            return
+        await self.system.release_duel_users(self.challenger.id, self.opponent.id)
+        await interaction.response.edit_message(content="Duel declined.", view=None)
+        self.stop()
+
+
+class DuelThrowView(ui.View):
+    """Collect two concealed RPS throws and settle at most once."""
+
+    choices = ("rock", "paper", "scissors")
+
+    def __init__(
+        self,
+        system,
+        duel_id: str,
+        challenger: discord.Member,
+        opponent: discord.Member,
+        amount: int,
+        stakes: dict[str, str],
+    ):
+        super().__init__(timeout=30)
+        self.system = system
+        self.duel_id = duel_id
+        self.challenger = challenger
+        self.opponent = opponent
+        self.amount = amount
+        self.stakes = stakes
+        self.round = 1
+        self.throws: dict[int, str] = {}
+        self.message: discord.Message | None = None
+        self._lock = asyncio.Lock()
+        for choice, emoji in (("rock", "🪨"), ("paper", "📄"), ("scissors", "✂️")):
+            button = ui.Button(label=choice.title(), emoji=emoji, style=discord.ButtonStyle.primary)
+            button.callback = self._choice_callback(choice)
+            self.add_item(button)
+
+    @property
+    def prompt(self) -> str:
+        return (
+            f"Round {self.round}/3 — {self.challenger.mention} vs {self.opponent.mention}. "
+            "Choose privately; throws are revealed only after both commit."
+        )
+
+    def _choice_callback(self, choice: str):
+        async def callback(interaction: discord.Interaction) -> None:
+            if interaction.user.id not in {self.challenger.id, self.opponent.id}:
+                await interaction.response.send_message("You are not a player in this duel.", ephemeral=True)
+                return
+            async with self._lock:
+                if interaction.user.id in self.throws:
+                    await interaction.response.send_message("Your throw is already locked in.", ephemeral=True)
+                    return
+                self.throws[interaction.user.id] = choice
+                await interaction.response.send_message(f"Locked in: **{choice}**.", ephemeral=True)
+                if len(self.throws) == 2:
+                    await self._resolve_round()
+
+        return callback
+
+    @staticmethod
+    def _winner(first: str, second: str) -> int:
+        if first == second:
+            return 0
+        return 1 if (first, second) in {("rock", "scissors"), ("paper", "rock"), ("scissors", "paper")} else 2
+
+    async def _resolve_round(self) -> None:
+        challenger_throw = self.throws[self.challenger.id]
+        opponent_throw = self.throws[self.opponent.id]
+        winner = self._winner(challenger_throw, opponent_throw)
+        reveal = f"{self.challenger.mention}: **{challenger_throw}** — {self.opponent.mention}: **{opponent_throw}**"
+        if winner == 0 and self.round < 3:
+            self.round += 1
+            self.throws.clear()
+            self.timeout = 30
+            if self.message:
+                await self.message.edit(content=f"{reveal}\nDraw! {self.prompt}", view=self)
+            return
+        if winner == 0:
+            await self._settle(None, f"{reveal}\nThird consecutive draw — both stakes refunded.")
+        else:
+            winning_side = "challenger" if winner == 1 else "opponent"
+            winner_member = self.challenger if winner == 1 else self.opponent
+            await self._settle(winning_side, f"{reveal}\n{winner_member.mention} wins the duel!")
+
+    async def on_timeout(self) -> None:
+        async with self._lock:
+            if len(self.throws) == 1:
+                thrower_id = next(iter(self.throws))
+                side = "challenger" if thrower_id == self.challenger.id else "opponent"
+                member = self.challenger if thrower_id == self.challenger.id else self.opponent
+                await self._settle(side, f"{member.mention} wins by forfeit.")
+            else:
+                await self._settle(None, "Neither player threw in time — both stakes refunded.")
+
+    async def _settle(self, winning_side: str | None, content: str) -> None:
+        try:
+            await self.system.db.economy.settle_pool(
+                settlement_id=f"duel:{self.duel_id}",
+                stakes=self.stakes,
+                winning_side=winning_side,
+                game="duel",
+                void=winning_side is None,
+                note="PvP duel settlement",
+            )
+            if self.message:
+                with contextlib.suppress(discord.HTTPException):
+                    await self.message.edit(content=content, view=None)
+        except Exception:
+            # A failed decisive settlement must not strand both stakes after
+            # this view releases its in-memory locks and stops. Prefer a full
+            # refund; the durable id makes this inert if settlement committed.
+            with contextlib.suppress(Exception):
+                await self.system.db.economy.settle_pool(
+                    settlement_id=f"duel:{self.duel_id}",
+                    stakes=self.stakes,
+                    winning_side=None,
+                    game="duel",
+                    void=True,
+                    note="PvP duel settlement failure refund",
+                )
+            raise
+        finally:
+            await self.system.release_duel_users(self.challenger.id, self.opponent.id)
+            self.stop()
 
 
 class GamblingSystem:
@@ -222,6 +580,43 @@ class GamblingSystem:
         self.db = db
         self.config = config
         self.bot = bot
+        self._duel_users: set[int] = set()
+        self._duel_lock = asyncio.Lock()
+
+    async def claim_duel_users(self, challenger_id: int, opponent_id: int) -> bool:
+        async with self._duel_lock:
+            if challenger_id in self._duel_users or opponent_id in self._duel_users:
+                return False
+            self._duel_users.update((challenger_id, opponent_id))
+            return True
+
+    async def release_duel_users(self, challenger_id: int, opponent_id: int) -> None:
+        async with self._duel_lock:
+            self._duel_users.discard(challenger_id)
+            self._duel_users.discard(opponent_id)
+
+    async def challenge_duel(self, ctx: commands.Context, opponent: discord.Member, amount: int) -> str | None:
+        """Validate and publish one bounded duel challenge."""
+        if ctx.author.id == opponent.id:
+            return "You cannot duel yourself."
+        if opponent.bot:
+            return "Bots cannot be challenged to duels."
+        limit_error = await self._check_limits(amount)
+        if limit_error:
+            return limit_error
+        if not await self.claim_duel_users(ctx.author.id, opponent.id):
+            return "One of those players already has a pending or active duel."
+        try:
+            view = DuelChallengeView(ctx, self, opponent, amount)
+            symbol = await self.config.currency_symbol()
+            view.message = await ctx.send(
+                f"{opponent.mention}, {ctx.author.mention} challenges you to a duel for {symbol}{amount:,} each.",
+                view=view,
+            )
+        except Exception:
+            await self.release_duel_users(ctx.author.id, opponent.id)
+            raise
+        return None
 
     async def _check_limits(self, amount: int) -> str | None:
         """Check if bet is within limits"""
@@ -501,9 +896,25 @@ class GamblingSystem:
             return
 
         # Create View
-        view = BlackjackView(ctx, self, user_id, amount, user_hand, dealer_hand, deck, currency_symbol, key)
+        market_id = await self.db.economy.create_spectator_market(key)
+        view = BlackjackView(ctx, self, user_id, amount, user_hand, dealer_hand, deck, currency_symbol, key, market_id)
         embed = view.get_embed()
-        view.message = await ctx.send(embed=embed, view=view)
+        try:
+            view.message = await ctx.send(embed=embed, view=view)
+        except Exception:
+            with contextlib.suppress(Exception):
+                await self.db.economy.settle_stake(
+                    key=key,
+                    payout=amount,
+                    transaction_type="gambling_refund",
+                    extra="blackjack_publish_error",
+                    note="Refunded unpublished blackjack hand",
+                    result={"result": "publish_error_refund"},
+                    exclude_from_rtp=True,
+                )
+            with contextlib.suppress(Exception):
+                await self.db.economy.settle_spectator_market(market_id, None)
+            raise
 
     async def bet_flip(self, user_id: int, amount: int, guess: str) -> tuple[bool, _GamblingResult]:
         """Play betflip game.

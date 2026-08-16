@@ -52,6 +52,8 @@ HELP_CONTENT = {
             "`[p]rps <amount> <choice>` - Rock, Paper, Scissors.",
             "`[p]slots <amount>` - Slot Machine.",
             "`[p]mines <amount>` - Minesweeper game.",
+            "`[p]duel <user> <amount>` - Challenge another player to a staked RPS duel.",
+            "Blackjack messages accept capped spectator wagers until the player acts.",
             "`[p]rakeback` - Claim a percentage of your losses back.",
         ],
     },
@@ -134,6 +136,7 @@ HELP_CONTENT = {
             "`[p]stock buy <ticker> <amount>` - Buy shares.",
             "`[p]stock sell <ticker> <amount>` - Sell shares.",
             "`[p]stock portfolio` - View your holdings.",
+            "`[p]stock dividends` - View your dividend history by stock and period.",
         ],
     },
 }
