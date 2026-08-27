@@ -1,0 +1,26 @@
+{
+    "name": "Honeypot",
+    "author": [
+        "Kirin"
+    ],
+    "short": "Automatically contains accounts that post in Unicornia's honeypot channel",
+    "description": "Bans new accounts and quarantines established members that post in Unicornia's hardcoded honeypot channel, with durable role restoration for staff.",
+    "install_msg": "Thanks for installing the honeypot cog. Review the README deployment checklist before loading it.",
+    "end_user_data_statement": "This cog stores guild-scoped Discord user IDs, prior role IDs, and quarantine timestamps so staff can restore quarantined members. Red data-deletion requests remove the user's quarantine records from every guild.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "required_cogs": {},
+    "requirements": [],
+    "tags": [
+        "moderation",
+        "security",
+        "honeypot"
+    ]
+}

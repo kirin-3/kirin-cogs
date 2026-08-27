@@ -11,6 +11,7 @@ This repository treats Discord IDs as personal identifiers even when no username
 | CustomCommand | User limits, command ownership, triggers, and responses | Removes limits and commands owned by the user |
 | CustomEmoji | User limits and emoji ownership | Removes limits and ownership records |
 | CustomRoleColor | User-to-role management assignments | Removes the assignment |
+| Honeypot | Guild-scoped user IDs, prior role IDs, and quarantine timestamps | Removes the user's quarantine records from every guild |
 | NitroAward | Guild/member boost timestamps and legacy boost markers | Clears member and legacy records |
 | Patron | Discord-ID charge dates and annual-payment progress | Removes local tracking; Unicornia financial entries follow its policy |
 | Profile | Questionnaire answers, picture URLs, message IDs, and timestamps | Clears member-scoped and legacy user-scoped records |
