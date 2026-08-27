@@ -4,11 +4,14 @@ Stock Market Database Logic
 
 import logging
 import re
+from collections.abc import Sequence
+from datetime import datetime
 
 import aiosqlite
 
 from ..stock_market import INITIAL_SHARE_RESERVE, P_BASE
 from .core import CoreDB
+from .economy import POOL_SOURCE_TRADE_TAX
 
 log = logging.getLogger("red.kirin_cogs.unicornia.database")
 
@@ -18,6 +21,57 @@ class StockRepository:
 
     def __init__(self, db: CoreDB):
         self.db = db
+
+    @staticmethod
+    def _parse_db_time(value: str) -> datetime:
+        """Parse SQLite timestamps and ISO-8601 timestamps consistently."""
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+
+    async def get_time_weighted_holdings(
+        self,
+        period_start: datetime,
+        period_end: datetime,
+        db: aiosqlite.Connection | None = None,
+    ) -> dict[str, dict[int, float]]:
+        """Reconstruct average shares held during a period from the ledger."""
+        if period_end <= period_start:
+            raise ValueError("Period end must be after period start.")
+        if db is None:
+            async with self.db._get_connection() as connection:
+                return await self.get_time_weighted_holdings(period_start, period_end, connection)
+
+        rows = await (
+            await db.execute(
+                """
+                SELECT UserId, Symbol, Side, Shares, DateAdded
+                FROM StockTransactions
+                WHERE DateAdded <= ?
+                ORDER BY UserId, Symbol, DateAdded, Id
+                """,
+                (period_end.isoformat(sep=" "),),
+            )
+        ).fetchall()
+        duration = (period_end - period_start).total_seconds()
+        states: dict[tuple[int, str], tuple[int, datetime, float]] = {}
+        for user_id, symbol, side, shares, raw_time in rows:
+            event_time = self._parse_db_time(raw_time)
+            key = (int(user_id), str(symbol))
+            amount, last_time, area = states.get(key, (0, period_start, 0.0))
+            if event_time <= period_start:
+                amount += int(shares) if side == "buy" else -int(shares)
+                states[key] = (max(0, amount), period_start, area)
+                continue
+            area += max(0, amount) * (event_time - last_time).total_seconds()
+            amount += int(shares) if side == "buy" else -int(shares)
+            states[key] = (max(0, amount), event_time, area)
+
+        weights: dict[str, dict[int, float]] = {}
+        for (user_id, symbol), (amount, last_time, area) in states.items():
+            area += max(0, amount) * (period_end - last_time).total_seconds()
+            weight = area / duration
+            if weight > 0:
+                weights.setdefault(symbol, {})[user_id] = weight
+        return weights
 
     async def _insert_transaction(
         self,
@@ -161,6 +215,9 @@ class StockRepository:
                     tax=tax,
                     total_amount=-total_cost,
                 )
+                await self.db.economy.accrue_yield_pool(  # type: ignore[reportAttributeAccessIssue]
+                    db, tax, POOL_SOURCE_TRADE_TAX
+                )
                 await db.commit()
                 return True
             except Exception:
@@ -239,6 +296,9 @@ class StockRepository:
                     exec_price=exec_price,
                     tax=tax,
                     total_amount=total_payout,
+                )
+                await self.db.economy.accrue_yield_pool(  # type: ignore[reportAttributeAccessIssue]
+                    db, tax, POOL_SOURCE_TRADE_TAX
                 )
                 await db.commit()
                 return True
@@ -359,7 +419,7 @@ class StockRepository:
             cursor = await db.execute(
                 """
                 SELECT Symbol, Name, Emoji, CurrentPrice, PreviousPrice, TotalShares,
-                       ShareReserve, SmoothedUsage, Volatility, Hidden
+                       ShareReserve, SmoothedUsage, PeriodUsage, Volatility, Hidden
                 FROM Stocks WHERE Symbol = ?
             """,
                 (symbol.upper(),),
@@ -375,8 +435,9 @@ class StockRepository:
                     "total_shares": row[5],
                     "share_reserve": row[6],
                     "smoothed_usage": row[7],
-                    "volatility": row[8],
-                    "hidden": bool(row[9]),
+                    "period_usage": row[8],
+                    "volatility": row[9],
+                    "hidden": bool(row[10]),
                 }
             return None
 
@@ -384,7 +445,7 @@ class StockRepository:
         """Get all stocks."""
         query = """
             SELECT Symbol, Name, Emoji, CurrentPrice, PreviousPrice, TotalShares,
-                   ShareReserve, SmoothedUsage, Volatility, Hidden
+                   ShareReserve, SmoothedUsage, PeriodUsage, Volatility, Hidden
             FROM Stocks
         """
         if not include_hidden:
@@ -403,8 +464,9 @@ class StockRepository:
                     "total_shares": row[5],
                     "share_reserve": row[6],
                     "smoothed_usage": row[7],
-                    "volatility": row[8],
-                    "hidden": bool(row[9]),
+                    "period_usage": row[8],
+                    "volatility": row[9],
+                    "hidden": bool(row[10]),
                 }
                 for row in rows
             ]
@@ -432,12 +494,13 @@ class StockRepository:
 
     async def bulk_update_prices(
         self,
-        updates: list[tuple[str, float, float, float]],
+        updates: Sequence[tuple[str, float, float, float] | tuple[str, float, float, float, int]],
         *,
         completed_at: int | None = None,
     ) -> None:
         """Update multiple stock prices at once (Market Tick).
-        updates: List of (Symbol, NewPrice, PreviousPrice, SmoothedUsage)
+        updates: List of (Symbol, NewPrice, PreviousPrice, SmoothedUsage,
+        optional raw PeriodUsage increment)
 
         When supplied, ``completed_at`` is persisted in the same transaction
         so a committed economic tick can never be replayed after a later UI
@@ -446,13 +509,15 @@ class StockRepository:
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
             try:
+                normalized = [(*update, 0) if len(update) == 4 else update for update in updates]
                 await db.executemany(
                     """
                     UPDATE Stocks
-                    SET CurrentPrice = ?, PreviousPrice = ?, SmoothedUsage = ?
+                    SET CurrentPrice = ?, PreviousPrice = ?, SmoothedUsage = ?,
+                        PeriodUsage = PeriodUsage + ?
                     WHERE Symbol = ?
                     """,
-                    [(p, pp, usage, s) for s, p, pp, usage in updates],
+                    [(p, pp, usage, raw_usage, s) for s, p, pp, usage, raw_usage in normalized],
                 )
                 if completed_at is not None:
                     await db.execute(

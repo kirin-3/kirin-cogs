@@ -177,8 +177,33 @@ class StockCommands(UnicorniaMixinBase):
             return
 
         # Send V2 View
-        view = StockPortfolioView(self.market_system, user.id, holdings, transactions)
+        dividend_rows = await self.db.economy.get_dividend_history(user.id)
+        latest_dividends: dict[str, int] = {}
+        for row in dividend_rows:
+            latest_dividends.setdefault(str(row["symbol"]), int(row["amount"]))
+        view = StockPortfolioView(self.market_system, user.id, holdings, transactions, latest_dividends)
         await ctx.send(view=view)
+
+    @stock_group.command(name="dividends", aliases=["yield"])
+    async def stock_dividends(self, ctx):
+        """View your stock-dividend history by period and symbol."""
+        rows = await self.db.economy.get_dividend_history(ctx.author.id)
+        if not rows:
+            holdings = await self.db.stock.get_user_holdings(ctx.author.id)
+            if not holdings:
+                await ctx.send("You hold no shares, so you have no dividend history yet.")
+            else:
+                await ctx.send("You have not received a stock dividend yet.")
+            return
+
+        currency = await self.config.currency_symbol()
+        lines = ["## Your Stock Dividends"]
+        for row in rows[:25]:
+            lines.append(
+                f"- `{row['period_end']}` — **{row['symbol']}**: "
+                f"{currency}{int(row['amount']):,} (weight {float(row['weight']):,.3f})"
+            )
+        await send_in_chunks(ctx, "\n".join(lines))
 
     @stock_group.command(name="dashboard")
     @checks.admin_or_permissions(manage_guild=True)

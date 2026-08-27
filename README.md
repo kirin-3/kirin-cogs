@@ -52,6 +52,11 @@ AI-powered documentation question and answer system for moderation team using RA
 ### Unicornia
 Integration with Nadeko's SQLite database to provide leveling and economy features.
 
+Unicornia includes stock dividends funded by realized gambling edge and stock-trade tax, player-versus-player
+rock-paper-scissors through `[p]duel @user <amount>`, capped spectator wagering on live blackjack hands, and an
+owner-only aggregate economy dashboard at `[p]unicornia yieldstats`. Users can review dividend history with
+`[p]stock dividends`.
+
 ### UnicornImage
 Text-to-image generation supporting both Stable Horde (free) and Modal (premium) backends.
 

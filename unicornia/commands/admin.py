@@ -3,8 +3,26 @@ from redbot.core import checks, commands
 from redbot.core.utils.chat_formatting import box, humanize_number
 from redbot.core.utils.menus import DEFAULT_CONTROLS, menu
 
+from ..gambling import RTP_TARGET
 from ..mixins import UnicorniaMixinBase
 from ..views import UnicorniaHelpView
+
+RTP_TOLERANCE = 0.005
+LOW_CONFIDENCE_ROUNDS = 100
+
+
+async def _send_lines_in_chunks(ctx, lines: list[str]) -> None:
+    """Send a report without crossing Discord's message-size limit."""
+    chunk = ""
+    for line in lines:
+        candidate = f"{chunk}\n{line}" if chunk else line
+        if len(candidate) > 1900 and chunk:
+            await ctx.send(chunk)
+            chunk = line
+        else:
+            chunk = candidate
+    if chunk:
+        await ctx.send(chunk)
 
 
 class AdminCommands(UnicorniaMixinBase):
@@ -31,6 +49,60 @@ class AdminCommands(UnicorniaMixinBase):
         """
         view = UnicorniaHelpView(ctx)
         view.message = await ctx.send(embed=view.get_embed(), view=view)
+
+    @unicornia_group.command(name="yieldstats", aliases=["housedashboard", "rtpdashboard"])
+    @checks.is_owner()
+    async def yield_stats_dashboard(self, ctx):
+        """Report aggregate payout performance and yield-pool flows."""
+        stats = await self.economy_system.get_gambling_stats(None)
+        pool = await self.db.economy.get_yield_pool()
+        runs = await self.db.economy.get_recent_dividend_runs()
+        currency = await self.config.currency_symbol()
+
+        lines = ["## House Economy Dashboard", "### Gambling RTP"]
+        if not stats:
+            lines.append("No post-upgrade gambling data has accumulated yet.")
+        for row in stats:
+            feature, _legacy_bet, _legacy_win, _legacy_loss, rounds, staked, paid, rakeback, epoch = row
+            realized = (int(paid) + int(rakeback)) / int(staked) if int(staked) else None
+            if realized is None:
+                rtp_text = "unavailable"
+                marker = "⚪"
+            else:
+                deviation = realized - RTP_TARGET
+                marker = "🔴" if abs(deviation) > RTP_TOLERANCE else "🟢"
+                rtp_text = f"{realized:.3%} ({deviation:+.3%} vs target)"
+            confidence = " — low confidence" if int(rounds) < LOW_CONFIDENCE_ROUNDS else ""
+            lines.append(
+                f"- {marker} **{feature}**: {int(rounds):,} rounds, "
+                f"{currency}{int(staked):,} staked, RTP {rtp_text}{confidence}; epoch {epoch or 'not started'}"
+            )
+
+        balance = int(pool["balance"])
+        lines.extend(
+            [
+                "### Yield Pool",
+                (
+                    f"Deficit: **{currency}{abs(balance):,}** — distributions resume once repaid."
+                    if balance < 0
+                    else f"Balance: **{currency}{balance:,}**"
+                ),
+                f"Lifetime house-banked: {currency}{int(pool['lifetime_house_banked']):,}",
+                f"Lifetime pooled: {currency}{int(pool['lifetime_pooled']):,}",
+                f"Lifetime trade tax: {currency}{int(pool['lifetime_trade_tax']):,}",
+                f"Next distribution: {pool['next_distribution_at'] or 'not scheduled'}",
+                "### Recent Distributions",
+            ]
+        )
+        if runs:
+            lines.extend(
+                f"- `{run['period_end']}`: {currency}{int(run['distributed']):,} to "
+                f"{int(run['recipients']):,} recipient(s)"
+                for run in runs
+            )
+        else:
+            lines.append("No distributions have completed yet.")
+        await _send_lines_in_chunks(ctx, lines)
 
     @unicornia_group.group(name="migration")
     @checks.is_owner()
@@ -189,6 +261,8 @@ class AdminCommands(UnicorniaMixinBase):
             "decay_hour_interval",
             "gambling_min_bet",
             "gambling_max_bet",
+            "reservation_recovery_seconds",
+            "dividend_period_hours",
         ]
 
         if setting is None:
@@ -236,6 +310,8 @@ class AdminCommands(UnicorniaMixinBase):
             settings_display.append("\n[Gambling]")
             settings_display.append(f"Min Bet:             {await get_val('gambling_min_bet')}")
             settings_display.append(f"Max Bet:             {await get_val('gambling_max_bet')}")
+            settings_display.append(f"Reservation Recovery: {await get_val('reservation_recovery_seconds')}s")
+            settings_display.append(f"Dividend Period:     {await get_val('dividend_period_hours')}h")
 
             await ctx.send(box("\n".join(settings_display), lang="ini"))
             return
@@ -278,6 +354,8 @@ class AdminCommands(UnicorniaMixinBase):
                 "decay_hour_interval",
                 "gambling_min_bet",
                 "gambling_max_bet",
+                "reservation_recovery_seconds",
+                "dividend_period_hours",
             ]:
                 amount = int(value)
                 if amount < 0:

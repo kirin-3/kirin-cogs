@@ -30,6 +30,21 @@ class GamblingCommands(UnicorniaMixinBase):
 
         return amount
 
+    @commands.hybrid_command(name="duel")  # type: ignore[arg-type]
+    @commands.cooldown(1, 2, commands.BucketType.user)
+    @app_commands.describe(opponent="Player to challenge", amount="Stake paid by each player")
+    async def duel(self, ctx, opponent: discord.Member, amount: str):
+        """Challenge another player to a staked rock-paper-scissors duel."""
+        if not await self.config.gambling_enabled() or not await self.config.economy_enabled():
+            await ctx.reply("Gambling or the economy is currently disabled.", mention_author=False)
+            return
+        stake = await self._resolve_bet(ctx, amount)
+        if stake is None:
+            return
+        error = await self.gambling_system.challenge_duel(ctx, opponent, stake)
+        if error:
+            await ctx.reply(f"❌ {error}", mention_author=False)
+
     # Gambling commands
     @commands.hybrid_group(name="gambling", aliases=["gamble"])  # type: ignore[arg-type]
     async def gambling_group(self, ctx):

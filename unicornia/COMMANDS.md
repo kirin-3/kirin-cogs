@@ -98,6 +98,21 @@ Games of chance to win (or lose) currency. All gambling commands have top-level 
 | `[p]gambling betflip <amount> <heads/tails>` | Bet on a coin flip. Alias: `bf`. Shortcut: `[p]betflip`. |
 | `[p]gambling luckyladder <amount>` | Climb the lucky ladder for increasing multipliers. Alias: `ladder`. Shortcut: `[p]luckyladder`. |
 | `[p]gambling mines <amount> [mines]` | Play Minesweeper. Reveal safe spots to multiply your bet. Alias: `minesweeper`. Shortcut: `[p]mines`. |
+| `[p]duel <user> <amount>` | Challenge another player to a staked best-of-three-draw Rock-Paper-Scissors duel. |
+
+Live blackjack hands also expose spectator controls until the player takes their first action. The combined
+spectator market is capped at the blackjack stake and settles parimutually.
+
+## Stock Market
+
+| Command | Description |
+| :--- | :--- |
+| `[p]stock list` | View active stocks and prices. |
+| `[p]stock buy <ticker> <amount>` | Buy shares. |
+| `[p]stock sell <ticker> <amount>` | Sell shares. |
+| `[p]stock portfolio` | View holdings, performance, and the latest dividend. |
+| `[p]stock dividends` | View your dividend history by stock and period. |
+| `[p]unicornia yieldstats` | View aggregate RTP and yield-pool health. Bot owner only. |
 
 ## Leveling
 Track your activity and earn rewards.

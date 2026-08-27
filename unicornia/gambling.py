@@ -3,11 +3,29 @@
 from __future__ import annotations
 
 import random
+from decimal import ROUND_CEILING, Decimal
 
 RTP_TARGET = 0.975
 RAKEBACK_RATE = 0.05
 
 _TARGET_SCALE = RTP_TARGET / 0.975
+
+
+def pooled_rake(total_stake: int, losing_stake: int) -> int:
+    """Return the target-derived rake for a pooled-stake settlement.
+
+    The rakeback term must remain inside the rake.  With total stake ``T``
+    and losing stake ``L``, participants receive ``T - rake + rL``.  Using
+    ``ceil(T(1-target) + rL)`` therefore keeps returned value at or just below
+    ``target * T`` after integer rounding instead of adding rakeback on top.
+    """
+    if total_stake < 0 or losing_stake < 0 or losing_stake > total_stake:
+        raise ValueError("Stake totals must satisfy 0 <= losing <= total.")
+    value = Decimal(total_stake) * (Decimal(1) - Decimal(str(RTP_TARGET)))
+    value += Decimal(losing_stake) * Decimal(str(RAKEBACK_RATE))
+    return int(value.to_integral_value(rounding=ROUND_CEILING))
+
+
 BETFLIP_WIN_MULTIPLIER = 1.90 * _TARGET_SCALE
 RPS_WIN_MULTIPLIER = 1.875 * _TARGET_SCALE
 LUCKY_LADDER_MULTIPLIERS = tuple(value * _TARGET_SCALE for value in (2.35, 1.67, 1.47, 1.08, 0.49, 0.29, 0.20, 0.10))
