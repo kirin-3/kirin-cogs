@@ -3,10 +3,11 @@ XP and Leveling system for Unicornia
 """
 
 import asyncio
+import logging
 import os
 import time
 from collections import OrderedDict
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 import discord
@@ -14,6 +15,8 @@ import discord
 from ..database import DatabaseManager
 from ..types import LevelStats
 from .card_generator import XPCardGenerator
+
+log = logging.getLogger("red.kirin_cogs.unicornia.xp")
 
 
 class XPSystem:
@@ -23,18 +26,21 @@ class XPSystem:
         self.db = db
         self.config = config
         self.bot = bot
-        self.xp_cooldowns = {}  # {user_id: timestamp}
-        self.xp_buffer = {}  # {(user_id, guild_id): amount}
+        self._state_lock = asyncio.Lock()
+        self._stopping = False
+        self.xp_cooldowns: dict[int, float] = {}
+        self.xp_buffer: dict[tuple[int, int], int] = {}
         # Config Cache
         self._config_cache = {"xp_enabled": True, "xp_cooldown": 60, "xp_per_message": 1}
         self._guild_config_cache = {}  # {guild_id: {'xp_included_channels': set(), 'excluded_roles': set()}}
 
-        # User XP Cache (LRU) - Stores { (user_id, guild_id): {'xp': int, 'level': int, 'req_xp': int} }
-        self.user_xp_cache = OrderedDict()
+        # Entries contain effective XP (including pending messages) and a cumulative threshold.
+        self.user_xp_cache: OrderedDict[tuple[int, int], dict[str, int]] = OrderedDict()
         self.user_xp_cache_size = 5000
 
         self._voice_xp_task = None
         self._message_xp_task = None
+        self._shutdown_task: asyncio.Task[None] | None = None
         self._background_tasks: set[asyncio.Task[Any]] = set()
 
         # Initialize XP card generator
@@ -48,36 +54,62 @@ class XPSystem:
         # Initialize Config Cache
         self._create_task(self._init_config_cache())
 
-    def _create_task(self, coro: Coroutine[Any, Any, Any]) -> None:
+    def _create_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
         task = asyncio.create_task(coro)
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
+        return task
 
     async def _init_config_cache(self):
         """Initialize configuration cache"""
-        self._config_cache["xp_enabled"] = await self.config.xp_enabled()
-        self._config_cache["xp_cooldown"] = await self.config.xp_cooldown()
-        self._config_cache["xp_per_message"] = await self.config.xp_per_message()
+        enabled = await self.config.xp_enabled()
+        cooldown = await self.config.xp_cooldown()
+        per_message = await self.config.xp_per_message()
+        self._config_cache["xp_enabled"] = enabled if isinstance(enabled, bool) else True
+        self._config_cache["xp_cooldown"] = cooldown if type(cooldown) is int and cooldown >= 0 else 60
+        self._config_cache["xp_per_message"] = per_message if type(per_message) is int and per_message >= 0 else 1
+
+    @staticmethod
+    def _configured_ids(value: object) -> set[int]:
+        """Treat missing or malformed channel/role lists as empty."""
+        if not isinstance(value, (list, tuple, set)):
+            return set()
+        return {item for item in value if type(item) is int and item > 0}
 
     def start_loops(self):
         """Start XP loops"""
+        if self._stopping:
+            return
         if not self._voice_xp_task:
             self._voice_xp_task = asyncio.create_task(self._voice_xp_loop())
         if not self._message_xp_task:
             self._message_xp_task = asyncio.create_task(self._message_xp_loop())
 
-    def stop_loops(self):
-        """Stop XP loops"""
-        if self._voice_xp_task:
-            self._voice_xp_task.cancel()
-            self._voice_xp_task = None
-        if self._message_xp_task:
-            self._message_xp_task.cancel()
-            self._message_xp_task = None
+    async def stop_loops(self) -> None:
+        """Drain accepted XP work before the owning cog closes the database."""
+        self._stopping = True
+        if self._shutdown_task is None:
+            self._shutdown_task = asyncio.create_task(self._drain_xp())
+        # Cancelling a shutdown caller must not cancel the writes/callbacks being
+        # drained, or return while committed XP still needs cache bookkeeping.
+        await self._wait_for_completion(self._shutdown_task)
 
-        # Flush remaining buffer
+    async def _drain_xp(self) -> None:
+        """Run once per instance; all shutdown callers wait for this same task."""
+        loops = [task for task in (self._voice_xp_task, self._message_xp_task) if task is not None]
+        for task in loops:
+            task.cancel()
+        await asyncio.gather(*loops, return_exceptions=True)
+        self._voice_xp_task = None
+        self._message_xp_task = None
+
+        # Writes complete their bookkeeping on cancellation; callbacks may still
+        # need the database for rewards. Neither can outlive database shutdown.
+        while self._background_tasks:
+            await asyncio.gather(*tuple(self._background_tasks), return_exceptions=True)
+        await self._flush_buffer()
         if self.xp_buffer:
-            self._create_task(self._flush_buffer())
+            log.error("XP shutdown could not persist %s pending entries", len(self.xp_buffer))
 
     async def _voice_xp_loop(self):
         """Background task to award XP to users in voice channels"""
@@ -97,9 +129,9 @@ class XPSystem:
 
                 for guild in self.bot.guilds:
                     # Get whitelist and exclusions (Config)
-                    included_channels = set(await self.config.guild(guild).xp_included_channels())
-                    double_xp_channels = set(await self.config.guild(guild).xp_double_channels())
-                    excluded_roles = set(await self.config.guild(guild).excluded_roles())
+                    included_channels = self._configured_ids(await self.config.guild(guild).xp_included_channels())
+                    double_xp_channels = self._configured_ids(await self.config.guild(guild).xp_double_channels())
+                    excluded_roles = self._configured_ids(await self.config.guild(guild).excluded_roles())
 
                     for channel in guild.voice_channels:
                         # Skip if channel is not in whitelist
@@ -129,7 +161,7 @@ class XPSystem:
 
                 # Process bulk update
                 if pending_updates:
-                    await self.db.xp.add_xp_bulk(pending_updates)
+                    await self._award_voice_xp(pending_updates)
 
             except asyncio.CancelledError:
                 break
@@ -148,7 +180,8 @@ class XPSystem:
                 # Cleanup cooldowns every 10 minutes (20 iterations)
                 counter += 1
                 if counter >= 20:
-                    self._cleanup_cooldowns()
+                    async with self._state_lock:
+                        self._cleanup_cooldowns()
                     counter = 0
 
             except asyncio.CancelledError:
@@ -171,45 +204,81 @@ class XPSystem:
         for user_id in to_remove:
             del self.xp_cooldowns[user_id]
 
-    async def _flush_buffer(self):
-        """Flush the XP buffer to the database"""
-        if not self.xp_buffer:
-            return
+    async def _complete_write_locked(self, write: Coroutine[Any, Any, None], on_commit: Callable[[], None]) -> None:
+        """Finish persistence and bookkeeping before cancellation releases the state lock.
 
-        # Copy and clear buffer
-        current_buffer = self.xp_buffer.copy()
-        self.xp_buffer.clear()
+        Caller holds _state_lock. Repeated cancellation of the caller must not
+        detach the write or leave a committed gain pending for a second flush.
+        """
 
-        # Convert to list for bulk update: (user_id, guild_id, amount)
-        updates = [(uid, gid, amount) for (uid, gid), amount in current_buffer.items()]
+        async def commit() -> None:
+            await write
+            on_commit()
 
-        # We assume cache is already updated during process_message
+        task = asyncio.create_task(commit())
+        self._background_tasks.add(task)
         try:
-            await self.db.xp.add_xp_bulk(updates)
-        except Exception as e:
-            # If DB write fails, restore buffer to prevent data loss
-            import logging
+            await self._wait_for_completion(task)
+        finally:
+            self._background_tasks.discard(task)
 
-            log = logging.getLogger("red.kirin_cogs.unicornia.xp")
-            log.error(f"Failed to flush XP buffer: {e}. Restoring {len(updates)} entries.")
+    @staticmethod
+    async def _wait_for_completion(task: asyncio.Task[None]) -> None:
+        """Defer caller cancellation until owned work has a definite outcome."""
+        cancelled = False
+        while True:
+            try:
+                await asyncio.shield(task)
+                break
+            except asyncio.CancelledError:
+                if task.cancelled():
+                    raise
+                cancelled = True
+            except Exception:
+                if cancelled:
+                    log.exception("XP operation failed while its caller was being cancelled")
+                    raise asyncio.CancelledError from None
+                raise
+        if cancelled:
+            raise asyncio.CancelledError
 
-            # Merge back into current buffer (which might have new entries)
-            for key, amount in current_buffer.items():
-                if key in self.xp_buffer:
-                    self.xp_buffer[key] += amount
-                else:
-                    self.xp_buffer[key] = amount
+    async def _award_voice_xp(self, updates: list[tuple[int, int, int]]) -> None:
+        """Persist a voice batch and invalidate only successfully awarded entries."""
+        updates = [(uid, gid, amount) for uid, gid, amount in updates if amount > 0]
+        if not updates:
+            return
+        async with self._state_lock:
+            if self._stopping:
+                return
 
-    def _get_user_cache_data(self, user_id: int, guild_id: int):
-        """Get user data from cache, handling LRU"""
+            def invalidate() -> None:
+                for uid, gid, _ in updates:
+                    self.user_xp_cache.pop((uid, gid), None)
+
+            await self._complete_write_locked(self.db.xp.add_xp_bulk(updates), invalidate)
+
+    async def _flush_buffer(self) -> None:
+        """Commit pending messages once, retaining them if the transaction fails."""
+        async with self._state_lock:
+            if not self.xp_buffer:
+                return
+            updates = [(uid, gid, amount) for (uid, gid), amount in self.xp_buffer.items()]
+            try:
+                # Cache totals already include these gains. Only clear the buffer.
+                await self._complete_write_locked(self.db.xp.add_xp_bulk(updates), self.xp_buffer.clear)
+            except Exception:
+                log.exception("Failed to flush XP buffer; retaining %s entries for retry", len(updates))
+
+    def _get_user_cache_data(self, user_id: int, guild_id: int) -> dict[str, int] | None:
+        """Get user data from cache, handling LRU. Caller holds _state_lock."""
         key = (user_id, guild_id)
         if key in self.user_xp_cache:
             self.user_xp_cache.move_to_end(key)
             return self.user_xp_cache[key]
         return None
 
-    def _set_user_cache_data(self, user_id: int, guild_id: int, data: dict):
-        """Set user data in cache, handling LRU eviction"""
+    def _set_user_cache_data(self, user_id: int, guild_id: int, data: dict[str, int]) -> None:
+        """Set user data in cache, handling LRU eviction. Caller holds _state_lock."""
         key = (user_id, guild_id)
         self.user_xp_cache[key] = data
         self.user_xp_cache.move_to_end(key)
@@ -217,9 +286,23 @@ class XPSystem:
         if len(self.user_xp_cache) > self.user_xp_cache_size:
             self.user_xp_cache.popitem(last=False)
 
+    def _cache_stats_locked(self, user_id: int, guild_id: int, stats: LevelStats) -> dict[str, int]:
+        data = {
+            "xp": stats.total_xp,
+            "level": stats.level,
+            "next_level_total_xp": self.db.get_total_xp_req_for_level(stats.level + 1),
+        }
+        self._set_user_cache_data(user_id, guild_id, data)
+        return data
+
+    async def _read_stats_locked(self, user_id: int, guild_id: int) -> LevelStats:
+        """Read committed plus pending XP. Caller holds _state_lock."""
+        xp = await self.db.xp.get_user_xp(user_id, guild_id)
+        return self.db.calculate_level_stats(xp + self.xp_buffer.get((user_id, guild_id), 0))
+
     async def process_message(self, message: discord.Message):
         """Process a message for XP gain (Optimized)"""
-        if message.author.bot or not message.guild:
+        if self._stopping or message.author.bot or not message.guild:
             return
 
         # Check if message is a command
@@ -244,7 +327,7 @@ class XPSystem:
         # --- EXCLUSION CHECKS ---
 
         # 1. Channel Whitelist Check
-        included_channels = await self.config.guild(message.guild).xp_included_channels()
+        included_channels = self._configured_ids(await self.config.guild(message.guild).xp_included_channels())
 
         # Check channel ID directly
         channel_id = message.channel.id
@@ -262,7 +345,7 @@ class XPSystem:
             return
 
         # 2. Role Exclusion Check
-        excluded_roles = await self.config.guild(message.guild).excluded_roles()
+        excluded_roles = self._configured_ids(await self.config.guild(message.guild).excluded_roles())
         if isinstance(message.author, discord.Member) and any(
             role.id in excluded_roles for role in message.author.roles
         ):
@@ -271,9 +354,11 @@ class XPSystem:
         # --- XP CALCULATION (LRU Cache) ---
 
         xp_amount = self._config_cache.get("xp_per_message", 1)
+        if xp_amount <= 0:
+            return
 
         # Check for Double XP Channel
-        double_xp_channels = await self.config.guild(message.guild).xp_double_channels()
+        double_xp_channels = self._configured_ids(await self.config.guild(message.guild).xp_double_channels())
 
         # Check channel ID directly
         is_double = channel_id in double_xp_channels
@@ -289,66 +374,41 @@ class XPSystem:
         if is_double:
             xp_amount *= 2
 
-        # Check cache
-        cache_data = self._get_user_cache_data(user_id, guild_id)
+        transition: tuple[int, int] | None = None
+        async with self._state_lock:
+            if self._stopping:
+                return
+            # Config/context awaits above allow another message to win admission.
+            current_time = time.time()
+            if user_id in self.xp_cooldowns and current_time - self.xp_cooldowns[user_id] < cooldown:
+                return
 
-        if cache_data:
-            # Hit! Use cached data
-            current_xp = cache_data["xp"]
-            # Add buffered XP not yet in DB/Cache base?
-            # Actually, let's keep cache as "Total XP including buffer"
+            cache_data = self._get_user_cache_data(user_id, guild_id)
+            if cache_data is None:
+                stats = await self._read_stats_locked(user_id, guild_id)
+                # Shutdown can begin while the initial database read is pending.
+                if self._stopping:
+                    return
+                cache_data = self._cache_stats_locked(user_id, guild_id, stats)
 
-            new_total_xp = current_xp + xp_amount
-
-            # Check level up using cached threshold
-            if new_total_xp >= cache_data["req_xp"]:
-                # Potential level up - Recalculate everything to be sure
+            new_total_xp = cache_data["xp"] + xp_amount
+            if new_total_xp >= cache_data["next_level_total_xp"]:
                 new_stats = self.db.calculate_level_stats(new_total_xp)
                 if new_stats.level > cache_data["level"]:
-                    await self._handle_level_up(message, cache_data["level"], new_stats.level)
-
-                # Update cache
-                self._set_user_cache_data(
-                    user_id, guild_id, {"xp": new_total_xp, "level": new_stats.level, "req_xp": new_stats.required_xp}
-                )
+                    transition = (cache_data["level"], new_stats.level)
+                self._cache_stats_locked(user_id, guild_id, new_stats)
             else:
-                # No level up, just update XP in cache
                 cache_data["xp"] = new_total_xp
-                # No need to move_to_end again, getter did it
 
-        else:
-            # Miss! Fetch from DB
-            old_xp = await self.db.xp.get_user_xp(user_id, guild_id)
-
-            # Check buffer (in case we have pending writes)
             key = (user_id, guild_id)
-            buffered_xp = self.xp_buffer.get(key, 0)
+            self.xp_buffer[key] = self.xp_buffer.get(key, 0) + xp_amount
+            self.xp_cooldowns[user_id] = time.time()
 
-            current_total_xp = old_xp + buffered_xp
-
-            # Calculate stats
-            stats = self.db.calculate_level_stats(current_total_xp)
-
-            new_total_xp = current_total_xp + xp_amount
-            new_stats = self.db.calculate_level_stats(new_total_xp)
-
-            if new_stats.level > stats.level:
-                await self._handle_level_up(message, stats.level, new_stats.level)
-
-            # Populate cache
-            self._set_user_cache_data(
-                user_id, guild_id, {"xp": new_total_xp, "level": new_stats.level, "req_xp": new_stats.required_xp}
-            )
-
-        # Add to write buffer
-        key = (user_id, guild_id)
-        if key in self.xp_buffer:
-            self.xp_buffer[key] += xp_amount
-        else:
-            self.xp_buffer[key] = xp_amount
-
-        # Update cooldown
-        self.xp_cooldowns[user_id] = current_time
+        if transition is not None:
+            try:
+                await self._create_task(self._handle_level_up(message, *transition))
+            except Exception:
+                log.exception("Level-up side effects failed for user %s in guild %s", user_id, guild_id)
 
     async def _handle_role_rewards(self, message, level: int):
         """Handle role rewards for reaching a level"""
@@ -444,8 +504,10 @@ class XPSystem:
         Returns:
             LevelStats object.
         """
-        xp = await self.db.xp.get_user_xp(user_id, guild_id)
-        return self.db.calculate_level_stats(xp)
+        async with self._state_lock:
+            stats = await self._read_stats_locked(user_id, guild_id)
+            self._cache_stats_locked(user_id, guild_id, stats)
+            return stats
 
     async def get_leaderboard(self, guild_id: int, limit: int = 10, offset: int = 0) -> list[tuple]:
         """Get XP leaderboard for a guild.
@@ -514,7 +576,17 @@ class XPSystem:
             return False
 
         try:
-            await self.db.xp.add_xp(user_id, guild_id, amount)
+            async with self._state_lock:
+                if self._stopping:
+                    return False
+
+                def invalidate() -> None:
+                    self.user_xp_cache.pop((user_id, guild_id), None)
+
+                await self._complete_write_locked(
+                    self.db.xp.add_xp(user_id, guild_id, amount),
+                    invalidate,
+                )
             return True
         except Exception:
             return False

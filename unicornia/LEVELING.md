@@ -20,11 +20,28 @@ The system is designed for scale, handling high-traffic servers without blocking
     *   **Role Exclusion**: Checks if the user has any excluded roles.
 3.  **Calculation**:
     *   XP amount is determined (Default: 3 per message, Configurable).
-    *   Current XP is fetched from the **LRU Cache**. If missing, it's fetched from the DB and cached.
+    *   Effective XP is committed guild XP plus accepted message gains still waiting to be persisted. The **LRU Cache** stores this combined total. On a cache miss, it is rebuilt from the database plus that member's pending gains.
+    *   Message cooldown admission is checked again under the XP state lock, so concurrent messages cannot both claim the same cooldown window.
 4.  **Buffering**:
     *   Instead of writing to the DB immediately, the gain is added to an in-memory `xp_buffer`.
+    *   XP, cache, and cooldown state are recorded before rewards and notifications run. Failed Discord delivery does not discard the gain or replay its level transition.
 5.  **Flushing**:
     *   A background task (`_message_xp_loop`) runs every 30 seconds to bulk-insert all buffered XP into the database in a single transaction.
+    *   Pending entries remain visible until the transaction commits. A successful flush removes them without adding them to cached totals a second time. A failed transaction rolls back and retains the pending gains for retry.
+
+### Consistent XP Reads and Writes
+
+Message gains, voice awards, owner awards, cache changes, flushes, and level-stat reads share an XP state lock. Voice and owner awards invalidate affected cache entries after a successful commit, so the next message uses their updated XP. The database transaction updates guild XP and global total XP together; a partial failure rolls both back. Cancelling an active write waits for its outcome and cache/buffer bookkeeping before releasing the lock.
+
+`[p]xp`, `[p]level`, and `[p]level check` include pending message XP without forcing a database flush. For example, moving from 197 to 198 XP announces level 4, and an immediate card also shows level 4. Rank and XP leaderboard queries still use persisted data and can lag pending gains until the next flush.
+
+Discord notifications, role changes, reward delivery, and card rendering run outside the state lock. A notification describes the level reached by its message; further gains while Discord is delivering it can legitimately make a later card higher. The in-memory buffer is not durable across abrupt process termination.
+
+### Reload and Shutdown
+
+Cog unload stops new XP admission, cancels and awaits XP loops, drains in-flight writes and level-up callbacks, and flushes remaining message gains before closing the database. XP shutdown runs before other systems' cleanup, so their failures cannot leave XP loops active. Concurrent shutdown callers share one drain operation, and cancelling a caller waits for it to complete. A replacement XP system starts with an empty cache and reads the persisted totals. If the final flush fails, the failure is logged; pending gains cannot be guaranteed across shutdown with unavailable storage.
+
+When first upgrading from the version with the stale-cache bug, allow a normal buffer flush and restart the bot. The old version's already-loaded unload handler does not stop its XP loops. Once this fix is loaded, subsequent cog reloads use the corrected shutdown path.
 
 ## Performance Optimization
 
@@ -35,6 +52,8 @@ Database writes are the most expensive operation. By buffering XP gains in memor
 A Least Recently Used (LRU) cache (`self.user_xp_cache`) stores the level stats of active users.
 *   **Hits**: If a user chats frequently, their data is served entirely from RAM.
 *   **Eviction**: When the cache is full (default 5000 users), the least active users are dropped to free memory.
+*   **Invalidation**: Successful voice and owner awards discard only affected user/guild entries. Pending message gains remain in the buffer when an entry is invalidated or evicted.
+*   **Thresholds**: The cache compares cumulative XP against the cumulative next-level threshold (198 XP for level 4). Card progress still uses the per-level cost (63 XP from level 3 to level 4); the level formula is unchanged.
 
 ### 3. Config Caching
 Configuration values (rates, enabled status) and Guild settings (whitelisted channels, excluded roles) are cached to prevent querying the config/database on every single message.
@@ -58,6 +77,7 @@ A background task (`_voice_xp_loop`) awards XP every minute to users in voice ch
 ### 3. Rewards
 *   **Role Rewards**: Automatically assigns roles when a user reaches a specific level. Can also remove roles (e.g., replacing "Novice" with "Expert").
 *   **Currency Rewards**: Awards currency (e.g., "Slut points") upon leveling up.
+*   **Triggers**: Rewards and notifications continue to run for message-driven level increases. Voice and owner awards do not introduce announcements or replay rewards for previously crossed levels.
 
 ## Database Schema
 

@@ -45,25 +45,7 @@ class XPRepository:
         """
         if amount <= 0:
             raise ValueError("Amount must be a positive integer.")
-        async with self.db._get_connection() as db:
-            await db.execute(
-                """
-                INSERT INTO UserXpStats (UserId, GuildId, Xp) VALUES (?, ?, ?)
-                ON CONFLICT(UserId, GuildId) DO UPDATE SET Xp = Xp + ?
-            """,
-                (user_id, guild_id, amount, amount),
-            )
-
-            # Update total XP
-            await db.execute(
-                """
-                INSERT INTO DiscordUser (UserId, TotalXp) VALUES (?, ?)
-                ON CONFLICT(UserId) DO UPDATE SET TotalXp = TotalXp + ?
-            """,
-                (user_id, amount, amount),
-            )
-
-            await db.commit()
+        await self.add_xp_bulk([(user_id, guild_id, amount)])
 
     async def add_xp_bulk(self, updates: list[tuple[int, int, int]]) -> None:
         """Add XP to multiple users in bulk.
@@ -84,23 +66,29 @@ class XPRepository:
             if not xp_stats_params:
                 return
 
-            await db.executemany(
-                """
-                INSERT INTO UserXpStats (UserId, GuildId, Xp) VALUES (?, ?, ?)
-                ON CONFLICT(UserId, GuildId) DO UPDATE SET Xp = Xp + ?
-            """,
-                xp_stats_params,
-            )
+            try:
+                await db.executemany(
+                    """
+                    INSERT INTO UserXpStats (UserId, GuildId, Xp) VALUES (?, ?, ?)
+                    ON CONFLICT(UserId, GuildId) DO UPDATE SET Xp = Xp + ?
+                """,
+                    xp_stats_params,
+                )
 
-            await db.executemany(
-                """
-                INSERT INTO DiscordUser (UserId, TotalXp) VALUES (?, ?)
-                ON CONFLICT(UserId) DO UPDATE SET TotalXp = TotalXp + ?
-            """,
-                user_params,
-            )
+                await db.executemany(
+                    """
+                    INSERT INTO DiscordUser (UserId, TotalXp) VALUES (?, ?)
+                    ON CONFLICT(UserId) DO UPDATE SET TotalXp = TotalXp + ?
+                """,
+                    user_params,
+                )
 
-            await db.commit()
+                await db.commit()
+            except BaseException:
+                # The connection is persistent: do not leave partial XP writes
+                # for an unrelated operation to commit, including on cancellation.
+                await db.rollback()
+                raise
 
     # XP Settings Methods
     async def get_xp_settings(self, guild_id: int) -> tuple:

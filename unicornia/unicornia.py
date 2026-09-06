@@ -220,6 +220,10 @@ class Unicornia(
     async def cog_unload(self):
         """Called when the cog is unloaded - proper cleanup"""
         try:
+            # Stop XP admission first, even if another system's cleanup fails.
+            if self.xp_system:
+                await self.xp_system.stop_loops()
+
             if self.wal_task:
                 self.wal_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
