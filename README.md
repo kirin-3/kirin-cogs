@@ -2,6 +2,8 @@
 
 A collection of custom cogs for [Red Discord Bot](https://github.com/Cog-Creators/Red-DiscordBot).
 
+The bot's [Privacy Policy](PRIVACY.md) covers the whole instance; [DATA_GOVERNANCE.md](DATA_GOVERNANCE.md) is the per-cog data inventory behind it.
+
 ## Available Cogs
 
 ### Confess

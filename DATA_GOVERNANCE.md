@@ -1,6 +1,6 @@
 # Data governance
 
-This repository treats Discord IDs as personal identifiers even when no username is stored. Each cog's `info.json` describes its persistent and externally processed data. Cogs with user-linked persistent records implement Red's `red_delete_data_for_user` hook.
+This document is the per-cog annex to the bot's [Privacy Policy](PRIVACY.md), which covers the whole instance including community cogs. This repository treats Discord IDs as personal identifiers even when no username is stored. Each cog's `info.json` describes its persistent and externally processed data. Cogs with user-linked persistent records implement Red's `red_delete_data_for_user` hook.
 
 ## Retention and deletion
 
