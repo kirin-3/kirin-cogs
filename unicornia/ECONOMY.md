@@ -21,7 +21,7 @@ The currency (default name "Slut points") flows through the system via several m
         *   **Booster Bonus**: Extra currency for Server Boosters.
     *   **Currency Generation**: Random currency spawns in chat channels (`[p]pick`), simulating "flowers" from Nadeko.
     *   **Gambling Wins**: Users can win currency from games like Blackjack, Slots, Mines, and Betroll.
-    *   **Rakeback**: Users earn back 5% of their gambling losses, claimed via `[p]economy rakeback`.
+    *   **Rakeback**: Users earn back 5% of their gambling losses, claimed via `[p]economy rakeback`. Blackjack losses earn no rakeback.
 
 *   **Sinks**:
     *   **Shop Purchases**: Buying roles, items, XP card backgrounds, or Discord Nitro removes currency from circulation.
@@ -90,11 +90,11 @@ Users have a separate "Bank" account. This separation is useful for:
 ### 3. Gambling System
 The gambling module integrates deeply with the economy:
 *   **Provably Fair RNG**: Uses Python's `secrets` module for cryptographically secure random number generation.
-*   **Rakeback**: Tracks total losses per user and accumulates a 5% rebate.
+*   **Rakeback**: Tracks total losses per user and accumulates a 5% rebate (blackjack is excluded; its paytable already accounts for the house edge).
 *   **Global Stats**: Tracks `GamblingStats` (global) and `UserBetStats` (per-user) to monitor the economy's health.
 
 **Supported Games:**
-*   **Blackjack**: Interactive game with Hit/Stand logic and **2.5x** payout for Natural 21.
+*   **Blackjack**: Interactive game with Hit/Stand logic and a **2.4x** payout (stake included) for a Natural 21. Blackjack losses do not accrue rakeback.
 *   **Slots**: Multi-line payout logic matching Nadeko's original probability table (Jokers/Triples).
 *   **Betroll**: Simple 1-100 roll (Win if 66+). Payout: 2x.
 *   **Lucky Ladder**: A high-risk, high-reward game with 8 rungs. Multipliers range from 0.1x to **2.4x**.

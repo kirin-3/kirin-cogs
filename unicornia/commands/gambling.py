@@ -266,7 +266,7 @@ class GamblingCommands(UnicorniaMixinBase):
                 )
             else:
                 await ctx.reply(
-                    f"🎰 **{rolls_str}** - Better luck next time! You lost {currency_symbol}{amount:,}.",
+                    f"🎰 **{rolls_str}** - Better luck next time! You lost {currency_symbol}{amount_int:,}.",
                     mention_author=False,
                 )
 
@@ -331,7 +331,7 @@ class GamblingCommands(UnicorniaMixinBase):
         if guess is None:
             view = CoinFlipView(ctx.author)
             view.message = await ctx.reply(
-                f"You are betting {amount}. Choose Heads or Tails:", view=view, mention_author=False
+                f"You are betting {amount_int:,}. Choose Heads or Tails:", view=view, mention_author=False
             )
             await view.wait()
 
@@ -435,14 +435,14 @@ class GamblingCommands(UnicorniaMixinBase):
                 return
 
             currency_symbol = await self.config.currency_symbol()
-            if result["won_amount"] > amount:
+            if result["won_amount"] > amount_int:
                 await ctx.reply(
                     f"🪜 Rung {result['rung']} - {result['multiplier']}x multiplier! You won {currency_symbol}{result['won_amount']:,}!",
                     mention_author=False,
                 )
             else:
                 await ctx.reply(
-                    f"🪜 Rung {result['rung']} - {result['multiplier']}x multiplier. You lost {currency_symbol}{amount - result['won_amount']:,}.",
+                    f"🪜 Rung {result['rung']} - {result['multiplier']}x multiplier. You lost {currency_symbol}{amount_int - result['won_amount']:,}.",
                     mention_author=False,
                 )
 

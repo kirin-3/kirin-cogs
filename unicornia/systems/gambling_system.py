@@ -1068,7 +1068,21 @@ class GamblingSystem:
 
         # Send message
         timer_str = f"<t:{int(view.end_time)}:R>"
-        await ctx.send(
-            f"**Mines** | Bet: {currency_symbol}{amount:,} | Mines: {mines}\nClick the buttons to reveal safe spots 💎. Avoid the mines 💣!\nTime remaining: {timer_str}",
-            view=view,
-        )
+        try:
+            view.message = await ctx.send(
+                f"**Mines** | Bet: {currency_symbol}{amount:,} | Mines: {mines}\nClick the buttons to reveal safe spots 💎. Avoid the mines 💣!\nTime remaining: {timer_str}",
+                view=view,
+            )
+        except Exception:
+            view.stop()
+            with contextlib.suppress(Exception):
+                await self.db.economy.settle_stake(
+                    key=key,
+                    payout=amount,
+                    transaction_type="gambling_refund",
+                    extra="mines_publish_error",
+                    note="Refunded unpublished mines game",
+                    result={"result": "publish_error_refund"},
+                    exclude_from_rtp=True,
+                )
+            raise

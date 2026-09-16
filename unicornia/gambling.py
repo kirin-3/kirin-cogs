@@ -7,8 +7,15 @@ from decimal import ROUND_CEILING, Decimal
 
 RTP_TARGET = 0.975
 RAKEBACK_RATE = 0.05
+# Per-game overrides of the standard stake-settlement rakeback rate. Games absent here use RAKEBACK_RATE.
+GAME_RAKEBACK_RATES: dict[str, float] = {"blackjack": 0.0}
 
 _TARGET_SCALE = RTP_TARGET / 0.975
+
+
+def rakeback_rate(game: str) -> float:
+    """Return the rakeback rate a settled stake of ``game`` accrues on its loss."""
+    return GAME_RAKEBACK_RATES.get(game, RAKEBACK_RATE)
 
 
 def pooled_rake(total_stake: int, losing_stake: int) -> int:
@@ -30,7 +37,7 @@ BETFLIP_WIN_MULTIPLIER = 1.90 * _TARGET_SCALE
 RPS_WIN_MULTIPLIER = 1.875 * _TARGET_SCALE
 LUCKY_LADDER_MULTIPLIERS = tuple(value * _TARGET_SCALE for value in (2.35, 1.67, 1.47, 1.08, 0.49, 0.29, 0.20, 0.10))
 MINES_EDGE_FACTOR = RTP_TARGET - RAKEBACK_RATE
-BLACKJACK_NATURAL_MULTIPLIER = 2.61 * _TARGET_SCALE
+BLACKJACK_NATURAL_MULTIPLIER = 2.40 * _TARGET_SCALE
 
 
 def slots_multiplier(first: int, second: int, third: int) -> float:
@@ -139,10 +146,41 @@ def blackjack_natural_multiplier(player: list[int], dealer: list[int]) -> float 
     return None
 
 
-def simulate_blackjack_net_rtp(*, seed: int, hands: int) -> float:
-    """Simulate hit-to-17 blackjack deterministically for RTP verification."""
+def blackjack_basic_strategy_hits(player: list[int], dealer_upcard: int) -> bool:
+    """Return whether basic hit/stand strategy hits (single deck, dealer stands on soft 17)."""
+    total = sum(player)
+    soft_aces = player.count(11)
+    while total > 21 and soft_aces:
+        total -= 10
+        soft_aces -= 1
+    soft = soft_aces > 0
+    if soft:
+        if total <= 17:
+            return True
+        if total == 18:
+            return dealer_upcard in (9, 10, 11)
+        return False
+    if total <= 11:
+        return True
+    if total == 12:
+        return dealer_upcard not in (4, 5, 6)
+    if total <= 16:
+        return dealer_upcard not in (2, 3, 4, 5, 6)
+    return False
+
+
+def simulate_blackjack_net_rtp(
+    *, seed: int, hands: int, natural_multiplier: float | None = None, rakeback: float | None = None
+) -> float:
+    """Simulate basic-strategy blackjack deterministically for RTP verification.
+
+    ``natural_multiplier`` and ``rakeback`` default to the live paytable and blackjack's declared rakeback rate;
+    they can be overridden to evaluate alternative paytables.
+    """
     if hands <= 0:
         raise ValueError("Hands must be positive.")
+    natural_payout = BLACKJACK_NATURAL_MULTIPLIER if natural_multiplier is None else natural_multiplier
+    rakeback_share = rakeback_rate("blackjack") if rakeback is None else rakeback
 
     rng = random.Random(seed)
     base_deck = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 4
@@ -153,12 +191,15 @@ def simulate_blackjack_net_rtp(*, seed: int, hands: int) -> float:
         rng.shuffle(deck)
         player = [deck.pop(), deck.pop()]
         dealer = [deck.pop(), deck.pop()]
-        natural_multiplier = blackjack_natural_multiplier(player, dealer)
+        player_natural = calculate_blackjack_hand(player) == 21
+        dealer_natural = calculate_blackjack_hand(dealer) == 21
 
-        if natural_multiplier is not None:
-            payout = natural_multiplier
+        if player_natural:
+            payout = 1.0 if dealer_natural else natural_payout
+        elif dealer_natural:
+            payout = 0.0
         else:
-            while calculate_blackjack_hand(player) < 17:
+            while blackjack_basic_strategy_hits(player, dealer[0]):
                 player.append(deck.pop())
             player_total = calculate_blackjack_hand(player)
 
@@ -175,6 +216,6 @@ def simulate_blackjack_net_rtp(*, seed: int, hands: int) -> float:
                 else:
                     payout = 0.0
 
-        total_return += payout + RAKEBACK_RATE * max(0.0, 1.0 - payout)
+        total_return += payout + rakeback_share * max(0.0, 1.0 - payout)
 
     return total_return / hands

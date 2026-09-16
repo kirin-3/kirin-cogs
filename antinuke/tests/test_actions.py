@@ -67,6 +67,7 @@ async def test_execute_quarantine_success(actions: QuarantineActions, config_moc
     guild.me = bot_member
 
     user = MagicMock(spec=discord.Member)
+    user.bot = False
     user.id = 123
     user.top_role = MagicMock()
 
@@ -107,6 +108,7 @@ async def test_execute_quarantine_hierarchy_fail(actions: QuarantineActions) -> 
     bot_member.top_role = MagicMock()
 
     user = MagicMock(spec=discord.Member)
+    user.bot = False
     user.top_role = MagicMock()
 
     # Bot top role is NOT > user top role
@@ -133,6 +135,7 @@ async def test_execute_quarantine_no_role_configured(actions: QuarantineActions,
     guild.me = bot_member
 
     user = MagicMock(spec=discord.Member)
+    user.bot = False
     user.top_role = MagicMock()
 
     # No quarantine role configured
@@ -157,6 +160,7 @@ async def test_execute_quarantine_role_above_bot(actions: QuarantineActions, con
     guild.me = bot_member
 
     user = MagicMock(spec=discord.Member)
+    user.bot = False
     user.top_role = MagicMock()
     user.roles = [MagicMock(spec=discord.Role, id=101)]
 
@@ -183,6 +187,7 @@ async def test_restore_user_success(actions: QuarantineActions, config_mock: Mag
     guild.me = bot_member
 
     user = MagicMock(spec=discord.Member)
+    user.bot = False
     user.id = 123
 
     # Setup stored quarantine data
@@ -220,3 +225,26 @@ async def test_restore_user_success(actions: QuarantineActions, config_mock: Mag
     assert role2 in kwargs["roles"]
 
     assert str(user.id) not in q_users_dict
+
+
+@pytest.mark.asyncio
+async def test_execute_quarantine_skips_bot_members(actions: QuarantineActions, config_mock: MagicMock) -> None:
+    guild = MagicMock(spec=discord.Guild)
+    guild.id = 1
+    bot_member = MagicMock(spec=discord.Member)
+    bot_member.top_role = MagicMock()
+    bot_member.top_role.__gt__.return_value = False
+    guild.me = bot_member
+
+    user = MagicMock(spec=discord.Member)
+    user.bot = True
+    user.id = 900
+    user.edit = AsyncMock()
+    actions.notify_owner_hierarchy_issue = AsyncMock()  # type: ignore[method-assign]
+
+    result = await actions.execute_quarantine(guild, user, "ban")
+
+    assert result is False
+    user.edit.assert_not_awaited()
+    cast(AsyncMock, actions.notify_owner_hierarchy_issue).assert_not_awaited()
+    assert dict(await config_mock.guild.return_value.quarantined_users()) == {}

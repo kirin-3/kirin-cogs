@@ -196,7 +196,13 @@ class AuditLogHelper:
                 action=discord.AuditLogAction.bot_add,
                 limit=10,
             ):
-                if entry.created_at.timestamp() > cutoff and entry.target and entry.target.id == bot_id and entry.user:
+                if (
+                    entry.created_at.timestamp() > cutoff
+                    and entry.target
+                    and entry.target.id == bot_id
+                    and entry.user
+                    and not entry.user.bot
+                ):
                     return guild.get_member(entry.user.id)
             return None
 
@@ -254,6 +260,7 @@ class AuditLogHelper:
                                     not getattr(old_perms, perm_name, False)
                                     and getattr(new_perms, perm_name, False)
                                     and entry.user
+                                    and not entry.user.bot
                                 ):
                                     member = guild.get_member(entry.user.id)
                                     if member:
@@ -290,7 +297,12 @@ class AuditLogHelper:
                 action=discord.AuditLogAction.guild_update,
                 limit=10,
             ):
-                if entry.created_at.timestamp() > cutoff and hasattr(entry.after, "vanity_url_code") and entry.user:
+                if (
+                    entry.created_at.timestamp() > cutoff
+                    and hasattr(entry.after, "vanity_url_code")
+                    and entry.user
+                    and not entry.user.bot
+                ):
                     return guild.get_member(entry.user.id)
             return None
 
@@ -337,7 +349,8 @@ class AuditLogHelper:
                 if entry.created_at.timestamp() <= cutoff:
                     continue
 
-                if entry.user:
+                # Bots (this one and other moderation bots) are never attributed as culprits.
+                if entry.user and not entry.user.bot:
                     user_counts[entry.user.id] += 1
 
             # Find users exceeding threshold

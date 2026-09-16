@@ -482,6 +482,7 @@ class Honeypot(commands.Cog):
             await ctx.send_help()
 
     @honeypot_group.command(name="restore")
+    @commands.check(_staff_or_admin)
     async def honeypot_restore(self, ctx: commands.Context, member: discord.Member) -> None:
         """Restore a member's held roles and clear their timeout."""
         guild = ctx.guild
@@ -542,6 +543,7 @@ class Honeypot(commands.Cog):
         await self._log_embed(guild, embed)
 
     @honeypot_group.command(name="list")
+    @commands.check(_staff_or_admin)
     async def honeypot_list(self, ctx: commands.Context) -> None:
         """List current honeypot quarantine records."""
         guild = ctx.guild
@@ -567,6 +569,7 @@ class Honeypot(commands.Cog):
             await ctx.send(page)
 
     @honeypot_group.command(name="clear")
+    @commands.check(_staff_or_admin)
     async def honeypot_clear(self, ctx: commands.Context, member: discord.Member) -> None:
         """Delete a quarantine record without changing roles or timeout."""
         guild = ctx.guild

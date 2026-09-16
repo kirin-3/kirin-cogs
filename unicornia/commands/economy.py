@@ -365,7 +365,7 @@ class EconomyCommands(UnicorniaMixinBase):
             )
             embed.add_field(
                 name="About Rakeback",
-                value="You earn 5% rakeback on gambling losses. Claim it anytime!",
+                value="You earn 5% rakeback on gambling losses (blackjack excluded). Claim it anytime!",
                 inline=False,
             )
             await ctx.send(embed=embed)

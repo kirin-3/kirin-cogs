@@ -16,6 +16,17 @@ from .constants import TicketState
 log = logging.getLogger("red.kirin_cogs.tickets.utils")
 
 
+def ticket_channel_id(key: object) -> int | None:
+    """Return the channel ID a ticket record key refers to, or ``None`` for non-channel keys such as ``pending-3``."""
+    if isinstance(key, bool):
+        return None
+    if isinstance(key, int):
+        return key
+    if isinstance(key, str) and key.isdigit():
+        return int(key)
+    return None
+
+
 async def can_close(
     bot: Red,
     guild: discord.Guild,
@@ -237,7 +248,11 @@ async def prune_invalid_tickets(
             continue
 
         for channel_id, ticket in tickets.items():
-            if guild.get_channel_or_thread(int(channel_id)):
+            parsed_channel_id = ticket_channel_id(channel_id)
+            if parsed_channel_id is None:
+                # Pending creations are resolved by the creation flow or startup reconciliation.
+                continue
+            if guild.get_channel_or_thread(parsed_channel_id):
                 continue
 
             count += 1

@@ -5,6 +5,9 @@ from typing import Any
 # Config identifier - unique int for this cog
 CONFIG_IDENTIFIER = 789234561
 
+# Besides the guild owner, the only user who may change the trust list or disable AntiNuke
+SETTINGS_AUTHORITY_USER_ID = 140186220255903746
+
 # Dangerous permissions that trigger monitoring
 DANGEROUS_PERMISSIONS = [
     "administrator",

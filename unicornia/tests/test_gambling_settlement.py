@@ -142,6 +142,28 @@ async def test_settlement_retry_does_not_duplicate_rakeback_or_stats(db: Databas
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("game", "expected_rakeback"), [("blackjack", 0), ("betroll", 5)])
+async def test_stake_settlement_uses_game_rakeback_rate_and_still_records_stats(
+    db: DatabaseManager, game: str, expected_rakeback: int
+) -> None:
+    await db.economy.add_currency(USER, 500, "test", "test")
+    await db.economy.reserve_stake(key=f"{game}:loss", user_id=USER, amount=100, game=game)
+
+    outcome = await db.economy.settle_stake(key=f"{game}:loss", payout=0, transaction_type=game)
+
+    assert outcome.state == "settled"
+    assert await db.economy.get_rakeback_balance(USER) == expected_rakeback
+    assert await db.economy.get_user_bet_stats(USER) == [(game, 100, 0, 100, 0)]
+    async with db._get_connection() as connection:
+        row = await (
+            await connection.execute(
+                "SELECT BetAmount, LossAmount, Rounds, RakebackPaid FROM GamblingStats WHERE Feature = ?", (game,)
+            )
+        ).fetchone()
+    assert row == (100, 100, 1, expected_rakeback)
+
+
+@pytest.mark.asyncio
 async def test_betflip_win_records_stats_and_single_rows(db: DatabaseManager, system: GamblingSystem) -> None:
     await db.economy.add_currency(USER, 500, "test", "test")
     with patch("unicornia.systems.gambling_system.secrets.randbelow", return_value=0):
@@ -426,3 +448,67 @@ async def test_interactive_game_restart_safe_settlement(tmp_path: Path, system: 
         ).fetchone()
     assert refunds == (1,)
     await manager2.close()
+
+
+async def _mines_rounds(db: DatabaseManager) -> int:
+    async with db._get_connection() as connection:
+        row = await (await connection.execute("SELECT Rounds FROM GamblingStats WHERE Feature = 'mines'")).fetchone()
+    return int(row[0]) if row else 0
+
+
+def _mines_context() -> MagicMock:
+    ctx = MagicMock()
+    ctx.author.id = USER
+    return ctx
+
+
+@pytest.mark.asyncio
+async def test_mines_publish_failure_refunds_reserved_stake(db: DatabaseManager, system: GamblingSystem) -> None:
+    await db.economy.add_currency(USER, 500, "test", "test")
+    ctx = _mines_context()
+    ctx.send = AsyncMock(side_effect=RuntimeError("cannot send"))
+
+    with pytest.raises(RuntimeError):
+        await system.play_mines(ctx, 100, 3)
+
+    assert await db.economy.get_user_currency(USER) == 500
+    async with db._get_connection() as connection:
+        rows = await (
+            await connection.execute("SELECT State FROM EconomyOperations WHERE OperationKey LIKE 'mines:%'")
+        ).fetchall()
+    assert [tuple(row) for row in rows] == [("settled",)]
+    assert await _mines_rounds(db) == 0
+
+
+@pytest.mark.asyncio
+async def test_mines_published_game_stores_message_and_timeout_disables_it(
+    db: DatabaseManager, system: GamblingSystem
+) -> None:
+    await db.economy.add_currency(USER, 500, "test", "test")
+    ctx = _mines_context()
+    message = MagicMock()
+    message.edit = AsyncMock()
+    ctx.send = AsyncMock(return_value=message)
+
+    with patch("unicornia.systems.gambling_system.MinesView") as view_class:
+        real_views: list[MinesView] = []
+
+        def build(*args, **kwargs):
+            view = MinesView(*args, **kwargs)
+            real_views.append(view)
+            return view
+
+        view_class.side_effect = build
+        await system.play_mines(ctx, 100, 3)
+
+    view = real_views[0]
+    assert view.message is message
+    assert await db.economy.get_user_currency(USER) == 400
+
+    await view.on_timeout()
+
+    op = await db.economy.get_operation(view.operation_key)
+    assert op is not None and op["State"] == "settled"
+    assert await _mines_rounds(db) == 1
+    message.edit.assert_awaited_once_with(view=view)
+    assert all(getattr(child, "disabled", False) for child in view.children)

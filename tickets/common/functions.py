@@ -246,101 +246,107 @@ class Functions(MixinMeta):
             if pending is not None:
                 pending["channel_id"] = channel_or_thread.id
 
-        prefix = (await self.bot.get_valid_prefixes(guild))[0]
-        default_message = "Welcome to your ticket channel " + f"{user.display_name}!"
-        user_can_close = conf["user_can_close"]
-        if user_can_close:
-            default_message += f"\nYou or an admin can close this with the `{prefix}close` command"
+        msg: discord.Message | None = None
+        try:
+            prefix = (await self.bot.get_valid_prefixes(guild))[0]
+            default_message = "Welcome to your ticket channel " + f"{user.display_name}!"
+            user_can_close = conf["user_can_close"]
+            if user_can_close:
+                default_message += f"\nYou or an admin can close this with the `{prefix}close` command"
 
-        messages = conf["ticket_messages"]
-        params = {
-            "username": user.name,
-            "displayname": user.display_name,
-            "mention": user.mention,
-            "id": str(user.id),
-            "server": guild.name,
-            "guild": guild.name,
-            "members": int(guild.member_count or len(guild.members)),
-            "toprole": user.top_role.name,
-        }
-
-        def fmt_params(text: str) -> str:
-            for k, v in params.items():
-                text = text.replace("{" + str(k) + "}", str(v))
-            return text
-
-        support_mentions.append(user.mention)
-        content = " ".join(support_mentions)
-
-        from ..common.views import CloseView
-
-        allowed_mentions = discord.AllowedMentions(roles=True)
-        close_view = CloseView(
-            self.bot,
-            self.config,
-            user.id,
-            channel_or_thread,
-        )
-        if messages:
-            embeds = []
-            for index, einfo in enumerate(messages):
-                # Use custom color if set and valid, otherwise default to user's color
-                color_val = einfo.get("color")
-                embed_color = (
-                    discord.Color(color_val) if color_val is not None and isinstance(color_val, int) else user.color
-                )
-                em = discord.Embed(
-                    title=fmt_params(einfo["title"]) if einfo["title"] else None,
-                    description=fmt_params(einfo["desc"]),
-                    color=embed_color,
-                )
-                if index == 0:
-                    em.set_thumbnail(url=user.display_avatar.url)
-                if einfo["footer"]:
-                    em.set_footer(text=fmt_params(einfo["footer"]))
-                # Set image if configured
-                if einfo.get("image"):
-                    em.set_image(url=einfo["image"])
-                embeds.append(em)
-
-            msg = await channel_or_thread.send(
-                content=content, embeds=embeds, allowed_mentions=allowed_mentions, view=close_view
-            )
-        else:
-            # Default message
-            em = discord.Embed(description=default_message, color=user.color)
-            em.set_thumbnail(url=user.display_avatar.url)
-            msg = await channel_or_thread.send(
-                content=content, embed=em, allowed_mentions=allowed_mentions, view=close_view
-            )
-
-        if logchannel:
-            ts = int(now.timestamp())
-            kwargs = {
-                "user": str(user),
-                "userid": user.id,
-                "timestamp": f"<t:{ts}:R>",
-                "channelname": channel_name,
-                "jumpurl": msg.jump_url,
+            messages = conf["ticket_messages"]
+            params = {
+                "username": user.name,
+                "displayname": user.display_name,
+                "mention": user.mention,
+                "id": str(user.id),
+                "server": guild.name,
+                "guild": guild.name,
+                "members": int(guild.member_count or len(guild.members)),
+                "toprole": user.top_role.name,
             }
-            desc = (
-                "`Created By: `{user}\n"
-                "`User ID:    `{userid}\n"
-                "`Opened:     `{timestamp}\n"
-                "`Ticket:     `{channelname}\n"
-                "**[Click to Jump!]({jumpurl})**"
-            ).format(**kwargs)
-            em = discord.Embed(
-                title="Ticket Opened",
-                description=desc,
-                color=discord.Color.red(),
-            )
-            if user.avatar:
-                em.set_thumbnail(url=user.display_avatar.url)
 
-            log_message = await logchannel.send(embed=em)
-        else:
-            log_message = None
+            def fmt_params(text: str) -> str:
+                for k, v in params.items():
+                    text = text.replace("{" + str(k) + "}", str(v))
+                return text
+
+            support_mentions.append(user.mention)
+            content = " ".join(support_mentions)
+
+            from ..common.views import CloseView
+
+            allowed_mentions = discord.AllowedMentions(roles=True)
+            close_view = CloseView(
+                self.bot,
+                self.config,
+                user.id,
+                channel_or_thread,
+            )
+            if messages:
+                embeds = []
+                for index, einfo in enumerate(messages):
+                    # Use custom color if set and valid, otherwise default to user's color
+                    color_val = einfo.get("color")
+                    embed_color = (
+                        discord.Color(color_val) if color_val is not None and isinstance(color_val, int) else user.color
+                    )
+                    em = discord.Embed(
+                        title=fmt_params(einfo["title"]) if einfo["title"] else None,
+                        description=fmt_params(einfo["desc"]),
+                        color=embed_color,
+                    )
+                    if index == 0:
+                        em.set_thumbnail(url=user.display_avatar.url)
+                    if einfo["footer"]:
+                        em.set_footer(text=fmt_params(einfo["footer"]))
+                    # Set image if configured
+                    if einfo.get("image"):
+                        em.set_image(url=einfo["image"])
+                    embeds.append(em)
+
+                msg = await channel_or_thread.send(
+                    content=content, embeds=embeds, allowed_mentions=allowed_mentions, view=close_view
+                )
+            else:
+                # Default message
+                em = discord.Embed(description=default_message, color=user.color)
+                em.set_thumbnail(url=user.display_avatar.url)
+                msg = await channel_or_thread.send(
+                    content=content, embed=em, allowed_mentions=allowed_mentions, view=close_view
+                )
+        except Exception:
+            log.exception(f"Failed to send the welcome message in ticket channel {channel_or_thread.id} ({guild.id})")
+
+        log_message: discord.Message | None = None
+        if logchannel:
+            try:
+                ts = int(now.timestamp())
+                kwargs = {
+                    "user": str(user),
+                    "userid": user.id,
+                    "timestamp": f"<t:{ts}:R>",
+                    "channelname": channel_name,
+                    "jumpurl": msg.jump_url if msg else channel_or_thread.jump_url,
+                }
+                desc = (
+                    "`Created By: `{user}\n"
+                    "`User ID:    `{userid}\n"
+                    "`Opened:     `{timestamp}\n"
+                    "`Ticket:     `{channelname}\n"
+                    "**[Click to Jump!]({jumpurl})**"
+                ).format(**kwargs)
+                em = discord.Embed(
+                    title="Ticket Opened",
+                    description=desc,
+                    color=discord.Color.red(),
+                )
+                if user.avatar:
+                    em.set_thumbnail(url=user.display_avatar.url)
+
+                log_message = await logchannel.send(embed=em)
+            except Exception:
+                log.exception(f"Failed to post the opened-ticket log for channel {channel_or_thread.id} ({guild.id})")
 
         # 7.3: Promote PENDING -> ACTIVE with final channel ID as the key
         await self._finalize_ticket_creation(
@@ -354,7 +360,7 @@ class Functions(MixinMeta):
                 "logmsg": log_message.id if log_message else None,
                 "answers": answers,
                 "has_response": bool(answers),
-                "message_id": msg.id,
+                "message_id": msg.id if msg else 0,
                 "state": TicketState.ACTIVE,
             },
         )

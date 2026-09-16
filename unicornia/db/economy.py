@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from ..gambling import RAKEBACK_RATE, pooled_rake
+from ..gambling import RAKEBACK_RATE, pooled_rake, rakeback_rate
 
 log = logging.getLogger("red.kirin_cogs.unicornia.database")
 
@@ -1728,7 +1728,7 @@ class EconomyRepository:
                         (user_id, payout, transaction_type, extra, note),
                     )
 
-                rakeback_amount = int(loss * RAKEBACK_RATE)
+                rakeback_amount = int(loss * rakeback_rate(game))
                 if rakeback_amount > 0:
                     await db.execute(
                         """

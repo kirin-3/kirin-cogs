@@ -9,12 +9,22 @@ from redbot.core.utils.chat_formatting import inline
 
 from .actions import QuarantineActions
 from .audit import AuditLogHelper
-from .constants import CONFIG_IDENTIFIER, DEFAULT_GLOBAL, DEFAULT_GUILD
+from .constants import CONFIG_IDENTIFIER, DEFAULT_GLOBAL, DEFAULT_GUILD, SETTINGS_AUTHORITY_USER_ID
 from .events import EventHandlers
 from .migrations import migrate_guild_schemas
 from .utils import ActionCache
 
 log = logging.getLogger("red.kirin-cogs.antinuke")
+
+
+async def _settings_authority(ctx: commands.Context) -> bool:
+    """Allow only the guild owner or the designated user to change critical settings."""
+    guild = ctx.guild
+    if guild is not None and ctx.author.id in (guild.owner_id, SETTINGS_AUTHORITY_USER_ID):
+        return True
+    raise commands.UserFeedbackCheckFailure(
+        "❌ Only the server owner or the designated AntiNuke manager can change this setting."
+    )
 
 
 class CompositeMetaClass(type(commands.Cog), type):
@@ -208,6 +218,7 @@ class AntiNuke(
         await ctx.send("✅ AntiNuke has been **enabled** for this server.")
 
     @antinuke.command(name="disable")
+    @commands.check(_settings_authority)
     async def antinuke_disable(self, ctx: commands.Context) -> None:
         """Disable AntiNuke for this server."""
         guild = ctx.guild
@@ -439,6 +450,7 @@ class AntiNuke(
         pass
 
     @antinuke_trust.command(name="adduser")
+    @commands.check(_settings_authority)
     async def trust_adduser(self, ctx: commands.Context, user: discord.Member) -> None:
         """Add a user to the trusted list."""
         guild = ctx.guild
@@ -461,6 +473,7 @@ class AntiNuke(
         await ctx.send(f"✅ {user.mention} has been added to the trusted list.")
 
     @antinuke_trust.command(name="removeuser", aliases=["deluser", "rmuser"])
+    @commands.check(_settings_authority)
     async def trust_removeuser(self, ctx: commands.Context, user: discord.Member) -> None:
         """Remove a user from the trusted list."""
         guild = ctx.guild
@@ -475,6 +488,7 @@ class AntiNuke(
         await ctx.send(f"✅ {user.mention} has been removed from the trusted list.")
 
     @antinuke_trust.command(name="addrole")
+    @commands.check(_settings_authority)
     async def trust_addrole(self, ctx: commands.Context, role: discord.Role) -> None:
         """Add a role to the trusted list."""
         guild = ctx.guild
@@ -493,6 +507,7 @@ class AntiNuke(
         await ctx.send(f"✅ {role.mention} has been added to the trusted roles.")
 
     @antinuke_trust.command(name="removerole", aliases=["delrole", "rmrole"])
+    @commands.check(_settings_authority)
     async def trust_removerole(self, ctx: commands.Context, role: discord.Role) -> None:
         """Remove a role from the trusted list."""
         guild = ctx.guild
@@ -555,6 +570,7 @@ class AntiNuke(
         await ctx.send("\n".join(lines))
 
     @antinuke_trust.command(name="clear")
+    @commands.check(_settings_authority)
     async def trust_clear(self, ctx: commands.Context) -> None:
         """Clear all trusted users and roles."""
         guild = ctx.guild

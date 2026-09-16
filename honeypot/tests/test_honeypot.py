@@ -570,3 +570,54 @@ async def test_dpytest_dispatches_matching_message_to_handler(monkeypatch: pytes
 
     handler.assert_awaited_once()
     await dpytest.empty_queue()
+
+
+def _slash_interaction(author: Any, guild: MagicMock) -> MagicMock:
+    """Build an interaction whose baton context mirrors a slash invocation."""
+    ctx = MagicMock()
+    ctx.guild = guild
+    ctx.author = author
+    ctx.bot.is_owner = AsyncMock(return_value=False)
+    ctx.bot.is_admin = AsyncMock(return_value=False)
+    interaction = MagicMock()
+    interaction.client.can_run = AsyncMock(return_value=True)
+    interaction._baton = ctx
+    return interaction
+
+
+@pytest.mark.parametrize("command_name", ["honeypot_restore", "honeypot_list", "honeypot_clear"])
+def test_subcommands_carry_staff_check(command_name: str) -> None:
+    command = getattr(Honeypot, command_name)
+
+    assert _staff_or_admin in command.checks
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("command_name", ["honeypot_restore", "honeypot_list", "honeypot_clear"])
+async def test_slash_subcommand_refuses_unauthorized_member(command_name: str) -> None:
+    config = _MemoryConfig({GUILD_ID: {"42": {"roles": [10], "state": "completed"}}})
+    guild = _guild()
+    target = _member(guild)
+    author = _member(guild, user_id=7)
+    author.get_role.return_value = None
+    author.guild_permissions.manage_roles = False
+    app_command = getattr(Honeypot, command_name).app_command
+
+    allowed = await app_command._check_can_run(_slash_interaction(author, guild))
+
+    assert allowed is False
+    assert config.guild_records[GUILD_ID] == {"42": {"roles": [10], "state": "completed"}}
+    target.edit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("command_name", ["honeypot_restore", "honeypot_list", "honeypot_clear"])
+async def test_slash_subcommand_allows_staff_member(command_name: str) -> None:
+    guild = _guild()
+    staff_role = _role(STAFF_ROLE_ID, assignable=True)
+    author = _member(guild, user_id=7, roles=[staff_role])
+    author.get_role.side_effect = lambda role_id: staff_role if role_id == STAFF_ROLE_ID else None
+    author.guild_permissions.manage_roles = False
+    app_command = getattr(Honeypot, command_name).app_command
+
+    assert await app_command._check_can_run(_slash_interaction(author, guild)) is True

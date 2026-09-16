@@ -85,6 +85,7 @@ def _guild(*, q_role_id: int = 999, role_map: dict[int, MagicMock] | None = None
 
 def _member(user_id: int = 123, roles: list | None = None) -> MagicMock:
     user = MagicMock(spec=discord.Member)
+    user.bot = False
     user.id = user_id
     user.top_role = MagicMock()
     user.roles = roles if roles is not None else []

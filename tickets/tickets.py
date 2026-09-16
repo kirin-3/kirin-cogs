@@ -20,6 +20,7 @@ from .common.functions import Functions
 from .common.utils import (
     close_ticket,
     prune_invalid_tickets,
+    ticket_channel_id,
     ticket_owner_hastyped,
 )
 from .common.views import CloseView, PanelView
@@ -316,8 +317,11 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
             member = guild.get_member(int(uid))
             if not member:
                 continue
-            for ticket_channel_id, ticket_info in opened_tickets.items():
-                ticket_channel = guild.get_channel_or_thread(int(ticket_channel_id))
+            for ticket_key, ticket_info in opened_tickets.items():
+                channel_id = ticket_channel_id(ticket_key)
+                if channel_id is None:
+                    continue
+                ticket_channel = guild.get_channel_or_thread(channel_id)
                 if not ticket_channel:
                     continue
 
@@ -335,68 +339,93 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
     async def auto_close(self):
         all_guilds_conf = await self.config.all_guilds()
         for gid, guild_conf in all_guilds_conf.items():
-            if not guild_conf:
-                continue
-            guild = self.bot.get_guild(gid)
-            if not guild:
-                continue
-            inactive = guild_conf["inactive"]
-            if not inactive:
-                continue
-            opened = guild_conf["opened"]
-            if not opened:
-                continue
-            for uid, tickets in opened.items():
-                member = guild.get_member(int(uid))
-                if not member:
-                    continue
-                for channel_id, ticket in tickets.items():
-                    has_response = ticket.get("has_response")
-                    if has_response and channel_id not in self.valid:
-                        self.valid.append(channel_id)
-                        continue
-                    if channel_id in self.valid:
-                        continue
-                    channel = guild.get_channel_or_thread(int(channel_id))
-                    if not isinstance(channel, (discord.TextChannel, discord.Thread)):
-                        continue
-                    now = datetime.datetime.now().astimezone()
-                    opened_on = datetime.datetime.fromisoformat(ticket["opened"])
-                    hastyped = await ticket_owner_hastyped(channel, member)
-                    if hastyped and channel_id not in self.valid:
-                        self.valid.append(channel_id)
-                        continue
-                    td = (now - opened_on).total_seconds() / 3600
-                    next_td = td + 0.33
-                    if td < inactive <= next_td:
-                        warning = (
-                            "If you do not respond to this ticket "
-                            "within the next 20 minutes it will be closed automatically."
-                        )
-                        await channel.send(f"{member.mention}\n{warning}")
-                        continue
-                    elif td < inactive:
-                        continue
+            try:
+                await self._auto_close_guild(gid, guild_conf)
+            except Exception:
+                log.exception(f"Auto-close failed for guild {gid}")
 
-                    time = "hours" if inactive != 1 else "hour"
-                    try:
-                        await close_ticket(
-                            self.bot,
-                            member,
-                            guild,
-                            channel,
-                            guild_conf,
-                            "(Auto-Close) Opened ticket with no response for " + f"{inactive} {time}",
-                            self.bot.user.name if self.bot.user else "AutoClose",
-                            self.config,
-                        )
-                        log.info(
-                            f"Ticket opened by {member.name} has been auto-closed.\n"
-                            f"Has typed: {hastyped}\n"
-                            f"Hours elapsed: {td}"
-                        )
-                    except Exception as e:
-                        log.error(f"Failed to auto-close ticket for {member} in {guild.name}\nException: {e}")
+    async def _auto_close_guild(self, gid: int, guild_conf: dict) -> None:
+        if not guild_conf:
+            return
+        guild = self.bot.get_guild(gid)
+        if not guild:
+            return
+        inactive = guild_conf["inactive"]
+        if not inactive:
+            return
+        opened = guild_conf["opened"]
+        if not opened:
+            return
+        for uid, tickets in opened.items():
+            member = guild.get_member(int(uid))
+            if not member:
+                continue
+            for channel_id, ticket in tickets.items():
+                try:
+                    await self._auto_close_ticket(guild, guild_conf, member, channel_id, ticket, inactive)
+                except Exception:
+                    log.exception(f"Auto-close failed for ticket {channel_id} of {member} in {guild.name}")
+
+    async def _auto_close_ticket(
+        self,
+        guild: discord.Guild,
+        guild_conf: dict,
+        member: discord.Member,
+        channel_id: str,
+        ticket: dict,
+        inactive: int,
+    ) -> None:
+        parsed_channel_id = ticket_channel_id(channel_id)
+        if parsed_channel_id is None or not isinstance(ticket, dict):
+            return
+        # A close already in flight must not be started twice; close_failed tickets stay eligible for a retry.
+        if ticket.get("state", TicketState.ACTIVE) in (TicketState.PENDING, TicketState.CLOSE_PENDING):
+            return
+        has_response = ticket.get("has_response")
+        if has_response and channel_id not in self.valid:
+            self.valid.append(channel_id)
+            return
+        if channel_id in self.valid:
+            return
+        channel = guild.get_channel_or_thread(parsed_channel_id)
+        if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+            return
+        now = datetime.datetime.now().astimezone()
+        try:
+            opened_on = datetime.datetime.fromisoformat(ticket["opened"])
+            td = (now - opened_on).total_seconds() / 3600
+        except (KeyError, TypeError, ValueError):
+            log.warning(f"Skipping auto-close for ticket {channel_id} in {guild.name}: invalid opened timestamp")
+            return
+        hastyped = await ticket_owner_hastyped(channel, member)
+        if hastyped and channel_id not in self.valid:
+            self.valid.append(channel_id)
+            return
+        next_td = td + 0.33
+        if td < inactive <= next_td:
+            warning = "If you do not respond to this ticket within the next 20 minutes it will be closed automatically."
+            await channel.send(f"{member.mention}\n{warning}")
+            return
+        elif td < inactive:
+            return
+
+        time = "hours" if inactive != 1 else "hour"
+        try:
+            await close_ticket(
+                self.bot,
+                member,
+                guild,
+                channel,
+                guild_conf,
+                "(Auto-Close) Opened ticket with no response for " + f"{inactive} {time}",
+                self.bot.user.name if self.bot.user else "AutoClose",
+                self.config,
+            )
+            log.info(
+                f"Ticket opened by {member.name} has been auto-closed.\nHas typed: {hastyped}\nHours elapsed: {td}"
+            )
+        except Exception as e:
+            log.error(f"Failed to auto-close ticket for {member} in {guild.name}\nException: {e}")
 
     @auto_close.before_loop
     async def before_auto_close(self):
@@ -419,7 +448,10 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
             return
 
         for cid in tickets:
-            chan = guild.get_channel_or_thread(int(cid))
+            channel_id = ticket_channel_id(cid)
+            if channel_id is None:
+                continue
+            chan = guild.get_channel_or_thread(channel_id)
             if not isinstance(chan, (discord.TextChannel, discord.Thread)):
                 continue
             try:

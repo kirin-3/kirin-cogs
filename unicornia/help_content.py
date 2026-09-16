@@ -54,7 +54,7 @@ HELP_CONTENT = {
             "`[p]mines <amount>` - Minesweeper game.",
             "`[p]duel <user> <amount>` - Challenge another player to a staked RPS duel.",
             "Blackjack messages accept capped spectator wagers until the player acts.",
-            "`[p]rakeback` - Claim a percentage of your losses back.",
+            "`[p]rakeback` - Claim a percentage of your losses back (blackjack excluded).",
         ],
     },
     "level": {

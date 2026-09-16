@@ -72,7 +72,7 @@ Manage your wallet, bank, and transactions.
 | `[p]timely` | Global shortcut to claim daily reward. Alias: `daily`. | |
 | `[p]economy history [user]` | View recent transaction history. Aliases: `transactions`, `tx`. | |
 | `[p]economy stats [user]` | View detailed gambling statistics. Alias: `gambling`. | |
-| `[p]economy rakeback` | Check and claim your gambling rakeback (5% of losses). Alias: `rb`. | |
+| `[p]economy rakeback` | Check and claim your gambling rakeback (5% of losses; blackjack losses excluded). Alias: `rb`. | |
 | `[p]economy leaderboard` | View the global currency leaderboard. Aliases: `lb`, `top`. | |
 | `[p]baltop` | Global shortcut for economy leaderboard. Alias: `ballb`. | |
 | `[p]economy award <amount> <user>` | Award currency to a user (generated out of thin air). | Bot Owner |
@@ -94,7 +94,7 @@ Games of chance to win (or lose) currency. All gambling commands have top-level 
 | `[p]gambling betroll <amount>` | Roll dice (1-100). Roll 66+ to win. Alias: `roll`. Shortcut: `[p]betroll`. |
 | `[p]gambling rps <choice> [amount]` | Play Rock-Paper-Scissors against the bot. Alias: `rockpaperscissors`. Shortcut: `[p]rps`. |
 | `[p]gambling slots <amount>` | Play the slot machine. Shortcut: `[p]slots`. |
-| `[p]gambling blackjack <amount>` | Play a game of Blackjack (21). Aliases: `bj`, `21`. Shortcut: `[p]blackjack`. |
+| `[p]gambling blackjack <amount>` | Play a game of Blackjack (21). A natural 21 pays 2.4x (stake included); no rakeback. Aliases: `bj`, `21`. Shortcut: `[p]blackjack`. |
 | `[p]gambling betflip <amount> <heads/tails>` | Bet on a coin flip. Alias: `bf`. Shortcut: `[p]betflip`. |
 | `[p]gambling luckyladder <amount>` | Climb the lucky ladder for increasing multipliers. Alias: `ladder`. Shortcut: `[p]luckyladder`. |
 | `[p]gambling mines <amount> [mines]` | Play Minesweeper. Reveal safe spots to multiply your bet. Alias: `minesweeper`. Shortcut: `[p]mines`. |

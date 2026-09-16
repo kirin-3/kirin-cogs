@@ -10,9 +10,11 @@ from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import humanize_list
 
+from .constants import TicketState
 from .utils import (
     can_close,
     close_ticket,
+    ticket_channel_id,
 )
 
 log = logging.getLogger("red.kirin_cogs.tickets.views")
@@ -415,7 +417,16 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         if uid in opened:
             # Get the most recently opened ticket
             # (Sorting by ID is safer than max() on keys if keys are strings)
-            ticket_ids = sorted([int(x) for x in opened[uid]], reverse=True)
+            ticket_ids = sorted(
+                (
+                    channel_id
+                    for key, ticket in opened[uid].items()
+                    if (channel_id := ticket_channel_id(key)) is not None
+                    and isinstance(ticket, dict)
+                    and ticket.get("state", TicketState.ACTIVE) == TicketState.ACTIVE
+                ),
+                reverse=True,
+            )
             if ticket_ids:
                 latest_channel_id = ticket_ids[0]
                 channel_raw = self.guild.get_channel(latest_channel_id)

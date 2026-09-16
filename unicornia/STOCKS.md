@@ -22,7 +22,8 @@ The system is designed to be **passive yet engaging**:
 
 ### 1. Emoji Tracking
 The bot monitors every message sent in the server. It counts occurrences of emojis linked to active stocks.
-*   **Logic**: If "ROCKET" stock is tied to `🚀`, every use of `🚀` increases the stock's "Usage Score".
+*   **Logic**: If "ROCKET" stock is tied to `🚀`, using `🚀` increases the stock's "Usage Score".
+*   **Spam protection**: Each member's use of a given stock's emoji counts at most once per 60 seconds. Repeating the emoji within one message, or across rapid messages, adds nothing extra; different stocks and different members are counted independently.
 *   **Performance**: Uses efficient Regex parsing and in-memory buffering. No database writes occur per-message.
 
 ### 2. Price Movement (The Tick)

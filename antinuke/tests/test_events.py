@@ -1,5 +1,6 @@
 """Unit tests for the EventHandlers class."""
 
+import time
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -170,3 +171,50 @@ async def test_is_trusted(event_handlers: EventHandlers) -> None:
     # Trusted by role ID
     guild_group.trusted_roles = AsyncMock(return_value=[10])
     assert await event_handlers.is_trusted(guild, user2) is True
+
+
+@pytest.mark.asyncio
+async def test_bans_by_this_bot_past_threshold_schedule_no_quarantine(config_mock: MagicMock) -> None:
+    """The bot's own bans (e.g. honeypot enforcement) must never lead to quarantining the bot."""
+    config_mock.guild.return_value.monitor = AsyncMock(
+        return_value={"ban": {"enabled": True, "threshold": 2, "timeframe": 60}}
+    )
+    guild = MagicMock(spec=discord.Guild)
+    guild.id = 1
+    guild.owner_id = 1
+    bot_self = MagicMock(spec=discord.Member)
+    bot_self.id = 900
+    bot_self.bot = True
+    guild.me = bot_self
+    guild.get_member.side_effect = lambda user_id: bot_self if user_id == 900 else None
+
+    async def audit_logs(*args, **kwargs):
+        for _ in range(3):
+            entry = MagicMock(spec=discord.AuditLogEntry)
+            entry.user = bot_self
+            entry.created_at.timestamp.return_value = time.time()
+            yield entry
+
+    guild.audit_logs = audit_logs
+    quarantine_actions = MagicMock(spec=QuarantineActions)
+    handlers = EventHandlers(
+        MagicMock(spec=Red),
+        config_mock,
+        ActionCache(),
+        AuditLogHelper(MagicMock(spec=Red), config_mock),
+        quarantine_actions,
+    )
+    scheduled: list = []
+    handlers._create_task = scheduled.append  # type: ignore[method-assign]
+
+    for _ in range(3):
+        await handlers.on_member_ban(guild, MagicMock(spec=discord.User))
+
+    investigations = list(scheduled)
+    assert investigations, "ban threshold should trigger an investigation"
+    scheduled.clear()
+    for coroutine in investigations:
+        await coroutine
+
+    assert scheduled == []
+    cast(MagicMock, quarantine_actions.execute_quarantine).assert_not_called()

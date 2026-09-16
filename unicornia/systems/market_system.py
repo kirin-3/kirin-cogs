@@ -28,6 +28,8 @@ from .economy_system import EconomySystem
 
 log = logging.getLogger("red.kirin_cogs.unicornia.market")
 MARKET_TICK_INTERVAL = 3600
+USAGE_THROTTLE_SECONDS = 60
+USAGE_THROTTLE_SOFT_CAP = 10_000
 
 
 class MarketSystem:
@@ -41,6 +43,8 @@ class MarketSystem:
 
         # State
         self.emoji_buffer = Counter()
+        # (user_id, symbol) -> monotonic time the user's last use of that stock was counted
+        self._usage_last_counted: dict[tuple[int, str], float] = {}
         self.stocks_cache: dict[str, dict] = {}  # Symbol -> Stock Dict
         self.emoji_map: dict[str, str] = {}  # Emoji String -> Symbol
         self.regex_pattern: re.Pattern | None = None
@@ -88,22 +92,38 @@ class MarketSystem:
             self.regex_pattern = None
 
     async def process_message(self, message: discord.Message):
-        """Track emoji usage."""
+        """Track emoji usage, counting each user's use of a stock at most once per throttle window."""
         if not self.regex_pattern or message.author.bot:
             return
 
-        # Simple count of occurrences
-        # Note: This counts every occurrence. ":joy: :joy:" = 2
         matches = self.regex_pattern.findall(message.content)
-        if matches:
-            for match in matches:
-                symbol = self.emoji_map.get(match)
-                if symbol:
-                    self.emoji_buffer[symbol] += 1
+        symbols = {self.emoji_map[match] for match in matches if match in self.emoji_map}
+        if not symbols:
+            return
+
+        now = time.monotonic()
+        if len(self._usage_last_counted) > USAGE_THROTTLE_SOFT_CAP:
+            self._prune_usage_throttle(now)
+        author_id = message.author.id
+        for symbol in symbols:
+            throttle_key = (author_id, symbol)
+            last_counted = self._usage_last_counted.get(throttle_key)
+            if last_counted is not None and now - last_counted < USAGE_THROTTLE_SECONDS:
+                continue
+            self._usage_last_counted[throttle_key] = now
+            self.emoji_buffer[symbol] += 1
+
+    def _prune_usage_throttle(self, now: float) -> None:
+        """Drop throttle entries whose window has expired."""
+        cutoff = now - USAGE_THROTTLE_SECONDS
+        self._usage_last_counted = {
+            key: counted for key, counted in self._usage_last_counted.items() if counted > cutoff
+        }
 
     async def market_tick(self):
         """Hourly update of stock prices."""
         async with self.lock:
+            self._prune_usage_throttle(time.monotonic())
             if not self.stocks_cache:
                 await self.set_last_market_tick(int(time.time()))
                 return

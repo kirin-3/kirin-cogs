@@ -2,10 +2,23 @@
 Shop system for Unicornia - handles role and command items
 """
 
+import asyncio
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+
 import discord
 
 from ..database import DatabaseManager
 from ..types import ShopItem, UserInventoryItem
+
+
+@dataclass
+class _LockEntry:
+    """A keyed lock and the number of coroutines holding or awaiting it."""
+
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    holders: int = 0
 
 
 class ShopSystem:
@@ -15,6 +28,24 @@ class ShopSystem:
         self.db = db
         self.config = config
         self.bot = bot
+        self._purchase_locks: dict[tuple[int, int], _LockEntry] = {}
+
+    @asynccontextmanager
+    async def _purchase_lock(self, guild_id: int, user_id: int) -> AsyncGenerator[asyncio.Lock, None]:
+        """Serialize purchases for one guild member and remove idle locks."""
+        key = (guild_id, user_id)
+        entry = self._purchase_locks.get(key)
+        if entry is None:
+            entry = _LockEntry()
+            self._purchase_locks[key] = entry
+        entry.holders += 1
+        try:
+            async with entry.lock:
+                yield entry.lock
+        finally:
+            entry.holders -= 1
+            if entry.holders == 0 and self._purchase_locks.get(key) is entry:
+                del self._purchase_locks[key]
 
     async def get_shop_items(self, guild_id: int) -> list[ShopItem]:
         """Get all shop items for a guild.
@@ -109,6 +140,24 @@ class ShopSystem:
         Returns:
             Tuple of (success, message, data).
         """
+        async with self._purchase_lock(guild_id, user.id):
+            return await self._purchase_item_locked(user, guild_id, item_id)
+
+    async def _current_role_ids(self, user: discord.Member) -> set[int] | None:
+        """Return the member's role IDs as Discord currently reports them, or ``None`` if they left.
+
+        ``add_roles`` does not update the member cache until the gateway event arrives, so a rapid
+        second purchase must not trust cached roles.
+        """
+        try:
+            member = await user.guild.fetch_member(user.id)
+        except discord.NotFound:
+            return None
+        except discord.HTTPException:
+            member = user
+        return {role.id for role in member.roles}
+
+    async def _purchase_item_locked(self, user: discord.Member, guild_id: int, item_id: int) -> tuple[bool, str, dict]:
         item = await self.get_shop_item(guild_id, item_id)
         if not item:
             return False, "Shop item not found", {}
@@ -127,13 +176,16 @@ class ShopSystem:
                 if not role:
                     return False, "Role no longer exists", {}
 
-                if role in user.roles:
+                role_ids = await self._current_role_ids(user)
+                if role_ids is None:
+                    return False, "You are no longer a member of this server", {}
+                if role.id in role_ids:
                     return False, "You already have this role", {}
 
                 # Check role requirements
                 if item["role_requirement"]:
                     required_role = user.guild.get_role(item["role_requirement"])
-                    if required_role and required_role not in user.roles:
+                    if required_role and required_role.id not in role_ids:
                         return False, f"You need the {required_role.name} role to purchase this item", {}
 
                 role_to_add = role
@@ -153,7 +205,9 @@ class ShopSystem:
             try:
                 await user.add_roles(role_to_add, reason=f"Shop purchase: {item['name']}")
             except (discord.Forbidden, discord.HTTPException):
-                # Refund if role assignment fails
+                # Refund if role assignment fails; free items have nothing to refund.
+                if item["price"] <= 0:
+                    return False, "Failed to assign role.", {}
                 await self.db.economy.add_currency(
                     user.id,
                     item["price"],

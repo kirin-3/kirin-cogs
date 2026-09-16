@@ -115,6 +115,11 @@ class QuarantineActions:
         bool
             True if successful (or already quarantined), False otherwise.
         """
+        # Bot accounts are never quarantine targets (includes this bot and moderation bots).
+        if user.bot:
+            log.info(f"Skipping quarantine of bot account {user.id} in guild {guild.id}")
+            return False
+
         # Get bot's member object
         bot_member = guild.me
 

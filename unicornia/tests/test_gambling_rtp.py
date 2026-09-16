@@ -14,9 +14,11 @@ from unicornia.gambling import (
     RTP_TARGET,
     betflip_multiplier,
     betroll_multiplier,
+    blackjack_basic_strategy_hits,
     blackjack_natural_multiplier,
     lucky_ladder_multiplier,
     mines_multiplier,
+    rakeback_rate,
     rps_multiplier,
     simulate_blackjack_net_rtp,
     slots_multiplier,
@@ -80,7 +82,30 @@ def test_blackjack_seeded_monte_carlo_is_deterministic_and_on_target() -> None:
     second = simulate_blackjack_net_rtp(seed=8_675_309, hands=500_000)
 
     assert first == second
-    assert first == pytest.approx(RTP_TARGET, abs=0.01), f"blackjack net RTP was {first:.6f}"
+    assert RTP_TARGET - 0.01 <= first <= RTP_TARGET + RTP_TOLERANCE, f"blackjack net RTP was {first:.6f}"
+
+
+def test_blackjack_accrues_no_rakeback() -> None:
+    assert rakeback_rate("blackjack") == 0.0
+    assert rakeback_rate("betroll") == RAKEBACK_RATE
+
+
+def test_blackjack_basic_strategy_hit_stand_decisions() -> None:
+    assert blackjack_basic_strategy_hits([10, 2], 2) is True
+    assert blackjack_basic_strategy_hits([10, 2], 5) is False
+    assert blackjack_basic_strategy_hits([10, 6], 6) is False
+    assert blackjack_basic_strategy_hits([10, 6], 7) is True
+    assert blackjack_basic_strategy_hits([11, 6], 6) is True
+    assert blackjack_basic_strategy_hits([11, 7], 9) is True
+    assert blackjack_basic_strategy_hits([11, 7], 8) is False
+    assert blackjack_basic_strategy_hits([11, 7, 10], 10) is False  # the ace counts as 1, so this is hard 18
+    assert blackjack_basic_strategy_hits([10, 7], 11) is False
+
+
+def test_old_blackjack_paytable_exceeds_target_under_basic_strategy() -> None:
+    old = simulate_blackjack_net_rtp(seed=8_675_309, hands=500_000, natural_multiplier=2.61, rakeback=RAKEBACK_RATE)
+
+    assert old > RTP_TARGET + RTP_TOLERANCE, f"old blackjack paytable measured {old:.6f}"
 
 
 def test_blackjack_opening_naturals_and_equal_total_push() -> None:
