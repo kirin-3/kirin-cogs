@@ -65,14 +65,25 @@ Load the cog:
 ## Usage
 
 ### User Commands
-- `[p]genfree <prompt> [style] [negative_prompt]`: Generate an image using Stable Horde (Free).
-- `[p]gen <prompt> [model] [style] [negative_prompt]`: Generate an image using Modal (Premium).
-  - **Note**: When using text commands, use quotes for the prompt: `[p]gen "a cat" standard anime`
-- `[p]loras`: List available style presets.
+- `[p]genfree <prompt> [style] [style2] [style3] [negative_prompt]`: Generate an image using Stable Horde (Free).
+- `[p]gen <prompt> <model> [batch_size] [style] [style2] [style3] [style4] [style5] [negative_prompt]`: Generate an image using Modal (Premium). The `model` argument is required.
+  - **Note**: When using text commands, use quotes for the prompt: `[p]gen "a cat" "CyberRealistic Pony" 2 anime`
+  - Requires the configured premium role (bot owners always pass the check).
+  - Cooldown: one generation per user every 6 hours (bot owners bypass).
+- `[p]gentest <prompt> <model> [batch_size] [seed] [...]`: Owner-only test generation with an optional seed.
+- `[p]loras`: List available style presets in a paginated Components V2 view with preview images.
+
+### Configuration Commands
+The `[p]unicornimage` group requires **Administrator** (except `concurrency`, which is Bot Owner only):
+- `[p]unicornimage setapi <key>`: Set the Stable Horde API key.
+- `[p]unicornimage setrole <role>`: Set the premium role for this guild.
+- `[p]unicornimage setapp <app_name>`: Set the Modal app name.
+- `[p]unicornimage setprompt <prompt>`: Set the default positive prompt appended to Modal requests.
+- `[p]unicornimage concurrency <1-4>`: Set the process-wide generation limit (Bot Owner only, only while idle).
 
 ### Models & Styles
-- **Models**: You can choose between models like `standard` (SDXL) or `pony` (Pony V6).
-- **Styles**: Apply LoRAs using the `style` parameter. Ensure the style is compatible with the selected model (e.g., Pony styles for Pony model).
+- **Models**: The available model keys are `CyberRealistic Pony` (default), `Hassaku XL` (SDXL), and `Nova Anime XL Pony`.
+- **Styles**: Apply LoRAs using the `style` parameter. Ensure the style is compatible with the selected model (e.g., Pony styles for Pony models). Use `[p]loras` to see the available presets.
 
 ## Troubleshooting
 - **Modal Error**: If `[p]gen` fails with an authentication error, ensure the bot's host machine has run `modal setup` or has `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` environment variables set.

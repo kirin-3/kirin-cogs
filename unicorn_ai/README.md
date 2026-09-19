@@ -15,7 +15,7 @@ The bot uses webhooks to impersonate personas, posting messages that appear to c
 - **Auto-Messaging**: Configurable loop to make the AI speak periodically.
 - **Webhook Impersonation**: Uses webhooks to post messages as the persona character.
 - **User Opt-Out**: Users can opt out of having their messages included in AI context.
-- **Smart Logic**: Automatically strips internal "thinking" tags (`<thinking>`) from model output.
+- **Smart Logic**: The Vertex AI client strips internal "thinking" tags (`<think>`, including unclosed ones) from model output.
 
 ## Installation
 
@@ -64,7 +64,7 @@ The bot uses webhooks to impersonate personas, posting messages that appear to c
     [p]ai toggle
     ```
 
-### Using OpenAI-Compatible Endpoints (NanoGPT, OpenRouter, etc.)
+### Using OpenAI-Compatible Endpoints (OpenRouter, NVIDIA NIM, etc.)
 
 1.  **Set API Key**
     ```
@@ -78,7 +78,7 @@ The bot uses webhooks to impersonate personas, posting messages that appear to c
     ```
 
 3.  **Configure Model (Optional)**
-    The default model is `zai-org/glm-5:thinking` with temperature 0.95, top_k 40, and top_p 0.93.
+    The default model is `z-ai/glm5` with temperature 0.95, top_k 40, and top_p 0.93.
     To change the model:
     ```
     [p]ai openai_model your_model_name
@@ -103,7 +103,7 @@ The bot uses webhooks to impersonate personas, posting messages that appear to c
 ### Provider Settings
 - `[p]ai provider <vertex|openai>`: Switch between Vertex AI and OpenAI-compatible endpoints.
 - `[p]ai model <name>`: Set the Vertex AI model name (e.g., `gemini-3-pro-preview`).
-- `[p]ai openai_model <name>`: Set the OpenAI-compatible model name (e.g., `zai-org/glm-5:thinking`).
+- `[p]ai openai_model <name>`: Set the OpenAI-compatible model name (e.g., `z-ai/glm5`).
 - `[p]ai openai_key <api_key>`: Set the OpenAI API key directly (alternative to `[p]set api openai`).
 
 ### Persona Management
@@ -142,9 +142,9 @@ Create new JSON files in `.../unicorn_ai/data/personas/`.
 
 ## OpenAI-Compatible Configuration
 
-The OpenAI provider is pre-configured for NanoGPT with the following settings:
-- **Endpoint**: `https://nano-gpt.com/api/v1/chat/completions`
-- **Model**: `zai-org/glm-5:thinking`
+The OpenAI provider is pre-configured for NVIDIA's hosted API with the following settings:
+- **Endpoint**: `https://integrate.api.nvidia.com/v1/chat/completions`
+- **Model**: `z-ai/glm5`
 - **Temperature**: 0.95
 - **Top-K**: 40
 - **Top-P**: 0.93

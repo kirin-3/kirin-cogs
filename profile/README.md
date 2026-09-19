@@ -139,7 +139,7 @@ The cog uses the following default settings:
 - The cog will edit your existing message rather than creating a new one
 
 **Button not responding?**
-- The interaction may have expired (buttons work for 10 minutes after the message is sent)
-- Wait for the sticky message to refresh or use `[p]profileset fix`
+- The sticky message buttons are persistent and do not expire; if a click does nothing, check the bot's console log or use `[p]profileset fix` to repost the sticky message.
+- The profile builder view itself times out after 10 minutes of inactivity — reopen it with the "Create/Edit Profile" button.
 
 Profile settings are guild-scoped and answers are stored per guild/member. Legacy global/user records are adopted lazily without deleting the source, so rollback remains possible. Uploaded pictures use the canonical `picture_url` field.

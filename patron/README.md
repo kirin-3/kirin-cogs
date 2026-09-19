@@ -39,16 +39,16 @@ Create a Google Sheet with the following headers (order doesn't matter, names mu
 
 | Column Name | Description | Example |
 |-------------|-------------|---------|
-| `Discord` | The Discord username of the patron | `kirin_dev` |
+| `Discord` | The patron's Discord **user ID** (numeric). Legacy username rows are detected but require manual reconciliation | `140186220255903746` |
 | `Patron Status` | Must be "Active patron" to get rewards | `Active patron` |
 | `Pledge Amount` | The donation amount (currency symbol optional) | `€10.00` or `10,00` |
 | `Charge Frequency`| "Monthly" or "Annual" | `Monthly` |
 | `Last Charge Date`| Date string (any format distinct per charge) | `2024-05-01` |
 
-**Share** this sheet (Editor access) with the **client email** found inside your `service_account.json` file.
+**Share** this sheet (Viewer access is sufficient; the bot only reads) with the **client email** found inside your `service_account.json` file.
 
 ### 3. Bot Configuration
-Load the cog and configure the settings:
+Load the cog and configure the settings. **All `[p]patronset` commands require Bot Owner**:
 
 ```
 [p]load patron
@@ -68,12 +68,14 @@ The bot checks the sheet **every hour**.
 ### Commands
 
 #### Setup Commands
+All commands below are **Bot Owner only**.
 ```
 [p]patronset setup <SHEET_ID_FROM_URL>    # Set the Google Sheet ID
 [p]patronset roles @ActivePatron @FormerPatron    # Set Active and Former patron roles
 [p]patronset logchannel #bot-logs    # Set channel for reward logs
 [p]patronset creds    # Show instructions for uploading credentials
 [p]patronset sync    # Manually trigger a sync
+[p]patronset unreconciled    # List legacy username-keyed charge records awaiting reconciliation
 ```
 
 ### Manual Sync

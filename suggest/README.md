@@ -48,7 +48,7 @@ Rejects a suggestion and updates the suggestion message with rejection status.
 ### Submitting a Suggestion
 1. Click the **"Make a Suggestion"** button (💡) on the sticky message in the suggestions channel
 2. A modal dialog opens where you can type your suggestion (5-2000 characters)
-3. Submit the form to post your suggestion anonymously with your display name
+3. Submit the form to post your suggestion; the embed shows your display name and user ID
 4. Your suggestion appears as an embed with a unique ID number
 
 ### Voting on Suggestions

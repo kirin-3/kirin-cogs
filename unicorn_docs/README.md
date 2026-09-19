@@ -2,6 +2,20 @@
 
 Unicorn Docs provides moderation-team search and question answering over Markdown files in `unicorn_docs/docs`.
 
+## Access
+
+The `[p]docs` group is guild-only. `ask`, `search`, and `stats` are restricted to members holding one of two hardcoded moderation role IDs (configured in the cog source); `config` commands are Bot Owner only.
+
+## Commands
+
+| Command | Who | Description |
+|---------|-----|-------------|
+| `[p]docs ask <question>` | Moderation roles | Search the docs and return an AI-generated answer (OpenRouter). |
+| `[p]docs search <query>` | Moderation roles | Local keyword search returning excerpts; never calls the AI. |
+| `[p]docs stats` | Moderation roles | Show the doc path, file/chunk counts, chat model, and retrieval mode. |
+| `[p]docs config apikey <key>` | Bot Owner | Set the OpenRouter API key. |
+| `[p]docs config show` | Bot Owner | Show current configuration (path, model, max chunks, roles). |
+
 ## Retrieval
 
 At cog load, Markdown files are read in a worker thread and split into bounded paragraph-aligned chunks. Searches use deterministic keyword scoring. Legacy pickle/vector files are not loaded or deserialized and are not runtime dependencies.

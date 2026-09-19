@@ -12,7 +12,7 @@ This cog provides a self-service role assignment system for sensitive or taboo c
 
 ## Commands
 
-All commands require **Manage Guild** permissions or **Admin** role.
+All commands require the **Administrator** permission or **Manage Server** permission.
 
 ### `sendtaboo`
 Sends the taboo access control buttons to the channel. Users can interact with these buttons to manage their access.

@@ -33,8 +33,8 @@ List custom commands.
 ## Features
 - **Dynamic Limits**: Admins can assign different command limits to specific users.
 - **Multi-word Triggers**: Supports triggers with spaces (e.g., "hello world").
-- **Image Support**: Supports adding images via attachments or URLs.
-- **Logging**: Logs command creations and deletions to the configured channel.
+- **Image Support**: Attach an image to the `create` command to have it sent as part of the response.
+- **Logging**: Logs command creations and deletions to a hardcoded audit-log channel (set in the cog's code).
 - **Moderation**: Moderators can delete any custom command.
 - **Cooldowns**: Commands have a cooldown to prevent spam.
 - **Permission-based listing**: Regular users see only their commands, moderators see all commands.
@@ -42,6 +42,3 @@ List custom commands.
 ## Requirements
 - Users must have the specific supporter role to create commands.
 - Moderators need Ban Members permission to delete others' commands or see all commands in list.
-
-## Requirements
-- Users must have the specific supporter role to create commands.

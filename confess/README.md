@@ -19,7 +19,7 @@ Confess is a Discord bot cog that allows users to submit anonymous confessions i
 
 ## Usage
 
-Users can submit confessions by clicking the "Confess" button (🙈) in the sticky message at the bottom of the confession channel. This opens a modal where they can type their confession (minimum 5 characters, maximum 2000 characters).
+Users can submit confessions by clicking the "Confess" button (🙊) in the sticky message at the bottom of the confession channel. This opens a modal where they can type their confession (minimum 5 characters, maximum 2000 characters).
 
 Once submitted, the confession appears in the channel as an anonymous post, and the user receives a confirmation message: "Your confession has been sent, you are forgiven now."
 

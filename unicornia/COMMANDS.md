@@ -8,14 +8,21 @@ Commands for configuring the Unicornia system.
 | Command | Description | Permission |
 | :--- | :--- | :--- |
 | `[p]unicornia` | Base command for Unicornia configuration. Alias: `uni` | |
+| `[p]unicornia guide` | Open the interactive Unicornia help menu. Alias: `help`. | |
 | `[p]unicornia config [setting] [value]` | Configure global Unicornia settings. | Bot Owner |
 | `[p]unicornia status` | Check the current status and configuration of Unicornia systems. | |
+| `[p]unicornia yieldstats` | View aggregate RTP and yield-pool health. Aliases: `housedashboard`, `rtpdashboard`. | Bot Owner |
+| `[p]unicornia migration setpath <path>` | Set the path to a Nadeko `nadeko.db` file for migration. | Bot Owner |
+| `[p]unicornia migration run` | Run the Nadeko data migration. | Bot Owner |
 | `[p]unicornia gen channel <operation> <channel>` | Add or remove a channel for currency generation. Operation: `add` or `remove`. | Bot Owner |
 | `[p]unicornia gen list` | List currency generation channels. | |
 | `[p]unicornia guild` | Base command for guild-specific configuration. | Admin |
 | `[p]unicornia guild xp include <channel>` | Add a channel to the XP whitelist. | Admin |
 | `[p]unicornia guild xp exclude <channel>` | Remove a channel from the XP whitelist. | Admin |
 | `[p]unicornia guild xp listchannels` | List all channels in the XP whitelist. | Admin |
+| `[p]unicornia guild xp double add <channel>` | Add a double-XP channel. | Bot Owner |
+| `[p]unicornia guild xp double remove <channel>` | Remove a double-XP channel. | Bot Owner |
+| `[p]unicornia guild xp double list` | List double-XP channels. | Bot Owner |
 | `[p]unicornia guild rolereward <level> <role> [remove]` | Set a role reward for reaching a specific level. Set `remove` to True to remove role instead of adding. | Admin |
 | `[p]unicornia guild removerolereward <level> <role>` | Remove a configured role reward. | Admin |
 | `[p]unicornia guild currencyreward <level> <amount>` | Set a currency reward for reaching a specific level. | Admin |
@@ -35,7 +42,7 @@ Social groups that users can join, level up, and manage.
 | Command | Description | Permission |
 | :--- | :--- | :--- |
 | `[p]club` | Base command for club management. | |
-| `[p]club create <name>` | Create a new club (costs currency). | |
+| `[p]club create <name>` | Create a new club (currently free). | |
 | `[p]club info [name]` | View information about a club. Alias: `profile`. | |
 | `[p]club leave` | Leave your current club. | |
 | `[p]club apply <name>` | Apply to join an existing club. | |
@@ -91,10 +98,10 @@ Games of chance to win (or lose) currency. All gambling commands have top-level 
 | Command | Description |
 | :--- | :--- |
 | `[p]gambling` | Base command for gambling. Alias: `gamble`. |
-| `[p]gambling betroll <amount>` | Roll dice (1-100). Roll 66+ to win. Alias: `roll`. Shortcut: `[p]betroll`. |
+| `[p]gambling betroll <amount>` | Roll dice (1-100). Roll 67+ to win. Alias: `roll`. Shortcut: `[p]betroll`. |
 | `[p]gambling rps <choice> [amount]` | Play Rock-Paper-Scissors against the bot. Alias: `rockpaperscissors`. Shortcut: `[p]rps`. |
 | `[p]gambling slots <amount>` | Play the slot machine. Shortcut: `[p]slots`. |
-| `[p]gambling blackjack <amount>` | Play a game of Blackjack (21). A natural 21 pays 2.4x (stake included); no rakeback. Aliases: `bj`, `21`. Shortcut: `[p]blackjack`. |
+| `[p]gambling blackjack <amount>` | Play a game of Blackjack (21). A natural 21 pays 2.4x (stake included); no rakeback. Alias: `21`. Shortcut: `[p]blackjack` (prefix only). |
 | `[p]gambling betflip <amount> <heads/tails>` | Bet on a coin flip. Alias: `bf`. Shortcut: `[p]betflip`. |
 | `[p]gambling luckyladder <amount>` | Climb the lucky ladder for increasing multipliers. Alias: `ladder`. Shortcut: `[p]luckyladder`. |
 | `[p]gambling mines <amount> [mines]` | Play Minesweeper. Reveal safe spots to multiply your bet. Alias: `minesweeper`. Shortcut: `[p]mines`. |
@@ -107,11 +114,17 @@ spectator market is capped at the blackjack stake and settles parimutually.
 
 | Command | Description |
 | :--- | :--- |
-| `[p]stock list` | View active stocks and prices. |
+| `[p]stock` | Base command for the stock market. Aliases: `market`, `stocks`. |
+| `[p]stock list` | View active stocks and prices. Aliases: `all`, `prices`. |
 | `[p]stock buy <ticker> <amount>` | Buy shares. |
 | `[p]stock sell <ticker> <amount>` | Sell shares. |
-| `[p]stock portfolio` | View holdings, performance, and the latest dividend. |
-| `[p]stock dividends` | View your dividend history by stock and period. |
+| `[p]stock portfolio [user]` | View holdings, performance, and the latest dividend. Alias: `holdings`. |
+| `[p]stock dividends` | View your dividend history by stock and period. Alias: `yield`. |
+| `[p]stock dashboard [channel]` | Set up the persistent live market dashboard in a channel. | Admin/Manage Guild |
+| `[p]stock unwind [confirm]` | Dry-run (or confirm) a full market unwind. | Bot Owner |
+| `[p]stock ipo <symbol> <price> <emoji> <name>` | List a new stock. | Bot Owner |
+| `[p]stock delist <symbol>` | Remove a stock from the market. | Bot Owner |
+| `[p]stock cleanup` | Clear stored market dashboard configuration. | Bot Owner |
 | `[p]unicornia yieldstats` | View aggregate RTP and yield-pool health. Bot owner only. |
 
 ## Leveling
@@ -119,7 +132,7 @@ Track your activity and earn rewards.
 
 | Command | Description | Permission |
 | :--- | :--- | :--- |
-| `[p]level` | Base command for leveling. Aliases: `lvl`, `xp`. | |
+| `[p]level` | Base command for leveling. Alias: `lvl`. Bare `[p]level [user]` shows the rank card. | |
 | `[p]level check [user]` | Check your (or another user's) level, rank, and view XP card. Alias: `me`. | |
 | `[p]xp [user]` | Global shortcut to check XP card. | |
 | `[p]level leaderboard` | View the server XP leaderboard. Aliases: `lb`, `top`. | |

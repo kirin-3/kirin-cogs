@@ -13,7 +13,7 @@ The system logs all rule acceptances to a designated channel for administrative 
 
 ## Commands
 
-All commands require **Manage Guild** permissions or **Admin** role.
+All commands require the **Administrator** permission or **Manage Server** permission.
 
 ### `sendrules`
 Sends the rules acceptance button to the channel. Members can click this button to begin the acceptance process.

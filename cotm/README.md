@@ -5,6 +5,7 @@ A Discord bot cog that manages the Cutie of the Month contest on the Unicornia s
 ## Features
 
 - **Interactive Dashboard**: A persistent message with tabs for contest information, entry terms, prizes, and voting instructions
+- **Check Standings Button**: Any user can press "Check Standings" on the dashboard to see the current top 10 standings (ephemeral reply)
 - **Vote Counting**: Automated tallying of votes using reaction counts in the contest channel
 - **Leaderboard Display**: Shows the top 10 contestants based on vote counts
 - **Reward Distribution**: Automatic distribution of special currency rewards to contest winners
@@ -55,6 +56,7 @@ A Discord bot cog that manages the Cutie of the Month contest on the Unicornia s
 ### For Contestants
 - Submit contest entries in the designated entries channel (as configured in the constants)
 - Entries must comply with the contest terms and conditions listed in the dashboard
+- Use the dashboard's "Check Standings" button to see the current top 10 at any time
 
 ### For Voters
 - Navigate to the contest entries channel

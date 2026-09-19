@@ -1,6 +1,6 @@
 # UniMod - AI-Powered Auto Moderation Cog
 
-Intelligent auto-moderation system that combines **VADER sentiment analysis** for local pre-filtering with **GLM5 via NanoGPT** for accurate rule violation detection.
+Intelligent auto-moderation system that combines **VADER sentiment analysis** for local pre-filtering with **GLM5 via an OpenAI-compatible endpoint** (default: NVIDIA's hosted API at `integrate.api.nvidia.com`) for accurate rule violation detection.
 
 ## Features
 
@@ -10,7 +10,7 @@ Intelligent auto-moderation system that combines **VADER sentiment analysis** fo
 - **Anti-Censorship Design**: Explicitly permits 18+ content while detecting actual rule violations
 - **Per-Channel Buffers**: Collects 20 messages per channel for conversation context
 - **Idle Buffer Processing**: Background task handles conversations that stop abruptly
-- **Extreme Toxicity Detection**: Immediate processing for severely negative content (< -0.8 VADER score)
+- **Extreme Toxicity Detection**: Immediate processing for severely negative content (compound score below the configured threshold minus 0.3, i.e. -0.8 at the default threshold)
 - **Flexible Notifications**: Alerts to configured channel or DM to bot owner
 
 ## Installation
@@ -29,7 +29,7 @@ Intelligent auto-moderation system that combines **VADER sentiment analysis** fo
 
 ### Required Setup
 
-1. **Set OpenAI API Key** (used for NanoGPT):
+1. **Set API Key** (stored under Red's shared `openai` token, used for the GLM5 endpoint):
    ```
    [p]set api openai YOUR_API_KEY
    ```
@@ -76,18 +76,17 @@ Intelligent auto-moderation system that combines **VADER sentiment analysis** fo
 | `[p]unimod whitelist [#channel...]` | Add channels to monitoring whitelist |
 | `[p]unimod unwhitelist [#channel...]` | Remove channels from whitelist |
 | `[p]unimod clearwhitelist` | Clear all whitelisted channels |
-| `[p]unimod config apikey <key>` | Set OpenAI API key (for NanoGPT) |
+| `[p]unimod config apikey <key>` | Set API key (for the GLM5 endpoint) |
 | `[p]unimod config threshold <value>` | Set VADER threshold (-1.0 to 0.0) |
 | `[p]unimod config buffersize <int>` | Set buffer size (10-50) |
 | `[p]unimod config show` | Show current configuration |
+| `[p]unimod config diagnostic` | Enable diagnostic mode for one hour (records a redacted AI response) |
 | `[p]unimod reloadrules` | Reload rules from rules.md file |
-
-### Information Commands
-
-| Command | Description |
-|---------|-------------|
 | `[p]unimod status` | Show monitoring status for this guild |
 | `[p]unimod stats` | Show detection statistics |
+| `[p]unimod last` | View the last AI response (DM only; requires diagnostic mode) |
+
+> The entire `unimod` command group (including `status` and `stats`) is restricted to the **Bot Owner**.
 
 ## How It Works
 
@@ -110,7 +109,7 @@ Discord Message
       ↓
   Build Prompt with Rules
       ↓
-  Send to GLM5 via NanoGPT
+  Send to GLM5 via the configured endpoint
       ↓
   Parse JSON Response
       ↓
@@ -125,7 +124,7 @@ VADER (Valence Aware Dictionary and sEntiment Reasoner) is a lexicon and rule-ba
 
 - **Compound Score**: Normalized weighted composite score (-1 to +1)
 - **Threshold**: Messages with compound < -0.5 trigger AI review
-- **Extreme Threshold**: Messages with compound < -0.8 trigger immediate review
+- **Extreme Threshold**: Messages with compound < (threshold - 0.3) trigger immediate review
 
 **Important**: Each message is analyzed individually, not combined. This prevents toxicity dilution where one toxic message among many positive ones would be missed.
 
@@ -204,7 +203,7 @@ Add channels to the whitelist: `[p]unimod whitelist #channel-name`
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - Red Bot 3.5.0+
 - nltk >= 3.8.0
 - aiohttp (pre-installed with Red)

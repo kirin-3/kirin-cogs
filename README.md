@@ -6,11 +6,14 @@ The bot's [Privacy Policy](PRIVACY.md) covers the whole instance; [DATA_GOVERNAN
 
 ## Available Cogs
 
+### AntiNuke
+Server protection against rogue administrators: monitors destructive actions (mass deletions, bans, prunes, permission grants, vanity/bot changes) and automatically quarantines offenders, with a trust system and role restoration.
+
 ### Confess
 Confess secretly in a confession room using a button and modal system.
 
 ### ContestCog
-Posts embeds for Unicornia's Cutie of the Month (COTM) contest information, prizes, and voting instructions.
+Posts an interactive dashboard (Components V2) for Unicornia's Cutie of the Month (COTM) contest information, prizes, and voting instructions, with reaction-based vote counting and reward distribution.
 
 ### CustomCommand
 Allows users with a specific role to create and manage their own single custom command.
@@ -21,14 +24,14 @@ Allows users with a specific role to create and manage their own custom emojis.
 ### CustomRoleColor
 Allows administrators to assign a role to a user and lets that user customize the color, name, and icon of their assigned role.
 
-### DailyReddit
-Fetches and posts the daily top image from specified subreddits to assigned channels.
+### Honeypot
+Trap channel that automatically bans fresh members or strips roles and times out established members who post in it.
 
 ### NitroAward
-Awards economy currency to users when they boost the server via the Unicornia API.
+Awards economy currency to users when they boost the server via the Unicornia cog.
 
 ### Patron
-Connects to Patreon's API to fetch donation data and automatically sends award messages for patrons.
+Syncs patron roles and awards currency from a Google Sheet (Patreon/BuyMeACoffee) using idempotent payments.
 
 ### Profile
 Create and manage user profiles with interactive modals and sticky messages.
@@ -43,16 +46,16 @@ A suggestion system that uses a sticky message with a button to submit suggestio
 Manages access to restricted content through a button and modal system, assigning appropriate roles upon acceptance.
 
 ### Tickets
-Advanced multi-panel Discord support ticket system with button interactions.
+Advanced single-panel Discord support ticket system with a verification flow.
 
 ### UnicornAI
 Autonomous AI persona system using Vertex AI or OpenAI-compatible endpoints for persona-based interactions.
 
 ### UnicornDocs
-AI-powered documentation question and answer system for moderation team using RAG and OpenRouter.
+AI-powered documentation question and answer system for moderation team using keyword retrieval and OpenRouter.
 
 ### Unicornia
-Integration with Nadeko's SQLite database to provide leveling and economy features.
+Full Nadeko-compatible leveling and economy suite (currency, banking, gambling, XP, shops, clubs, waifus, stocks) backed by SQLite, with migration support from an existing Nadeko database.
 
 Unicornia includes stock dividends funded by realized gambling edge and stock-trade tax, player-versus-player
 rock-paper-scissors through `[p]duel @user <amount>`, capped spectator wagering on live blackjack hands, and an
@@ -63,10 +66,10 @@ owner-only aggregate economy dashboard at `[p]unicornia yieldstats`. Users can r
 Text-to-image generation supporting both Stable Horde (free) and Modal (premium) backends.
 
 ### UnicornModeration
-Moderation cog with a specialized theme for server management.
+Papers, Please–themed moderation cog that issues "citation" images for bans, kicks, mutes, and warnings.
 
 ### UnicornSecurity
-Moderation and security tools, including a filter that only allows tenor GIF links in specific channels.
+Channel filter that only allows tenor GIF links in a specific channel, deleting other image links.
 
 ### UniMod
 AI-powered auto-moderation using sentiment analysis and AI detection to alert moderators of potential violations.
@@ -84,12 +87,13 @@ To install these cogs, run the following commands in Discord:
 [p]load <cogname>
 ```
 
-Replace `<cogname>` with the name of the cog you want to install.
+Replace `<cogname>` with the name of the cog you want to install. Each cog folder contains its own README with detailed setup instructions.
 
 ## Requirements
 
-- Red Discord Bot V3
-- discord.py 2.0+
+- Red Discord Bot V3 (3.5.22+)
+- Python 3.11+
+- discord.py 2.6+ (provided by Red)
 
 ## License
 

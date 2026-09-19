@@ -1,11 +1,11 @@
 {
-    "name": "tabooacess",
+    "name": "tabooaccess",
     "author": [
         "kirin"
     ],
     "short": "Taboo access control with button and modal.",
     "description": "Manages access to taboo content through a button and modal system, assigning appropriate roles upon acceptance.",
-    "install_msg": "tabooaccess cog loaded. Use `[p]sendrules` to send the tabooacess acceptance button.",
+    "install_msg": "tabooaccess cog loaded. Use `[p]settaboorole` to set the access role, then `[p]sendtaboo` to send the access buttons.",
     "end_user_data_statement": "This cog does not persistently store data or metadata about users.",
     "min_bot_version": "3.5.0",
     "min_python_version": [

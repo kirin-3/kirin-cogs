@@ -3,8 +3,8 @@
     "author": [
         "Ruffiana"
     ],
-    "short": "Cog to post embeds for Unicornia's Cutie of the Month Contest",
-    "description": "This cog posts embeds for contest information, terms, prizes, and instructions for voting to a specified channel.",
+    "short": "Interactive dashboard cog for Unicornia's Cutie of the Month Contest",
+    "description": "This cog posts an interactive Components V2 dashboard with contest information, terms, prizes, and voting instructions, and counts reactions to distribute rewards.",
     "install_msg": "Thank you for installing the Unicornia Cutie of the Month Contest Cog!",
     "end_user_data_statement": "This cog does not store any user data.",
     "min_bot_version": "3.5.0",
@@ -23,6 +23,6 @@
         "utility",
         "contest"
     ],
-    "version": "1.0.1",
+    "version": "1.0.12",
     "license": "MIT"
 }

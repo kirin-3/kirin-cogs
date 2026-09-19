@@ -5,13 +5,14 @@ A robust, single-panel support ticket system for Red Discord Bot.
 ## Features
 - **Single Panel**: Easy to set up and manage.
 - **Button Interaction**: Users open tickets with a simple button click.
-- **Modals**: Collect information from users before the ticket opens.
-- **Working Hours**: Restrict ticket opening times or warn users.
-- **Automation**: Auto-close inactive tickets.
+- **Verification Modal**: Opening a ticket prompts users to upload 1–3 verification images (selfie ID check flow), with "Verified"/"Not Verified" close options that grant a Verified role.
+- **Automation**: Auto-close inactive tickets and tickets whose opener leaves the server.
 
 ## Commands
 
 ### User Commands
+The user commands are hybrid — they work as slash commands too.
+
 - `[p]add <user>`: Add a user to your ticket.
 - `[p]renameticket <new_name>`: Rename your ticket channel.
 - `[p]close [reason]`: Close your ticket.
@@ -23,6 +24,8 @@ A robust, single-panel support ticket system for Red Discord Bot.
 When using the **Close** button in a ticket, a verification dialog appears:
 - **Verified** ✅: Closes ticket, assigns Verified role, and DMs the user confirming verification.
 - **Not Verified** ❌: Prompts for a reason, then closes ticket and DMs the user that they were not verified.
+
+The close view also includes a **Remind Instructions** button that reposts the ID-verification selfie instructions.
 
 ### Admin Commands (`[p]tickets`)
 Base support ticket settings. Alias: `[p]tset`
@@ -43,12 +46,14 @@ Base support ticket settings. Alias: `[p]tset`
 - `[p]tickets logchannel <channel>`: Set a channel for logging opened/closed tickets.
 
 #### Modals (Input Forms)
+> **Note:** The ticket panel currently always opens the built-in verification modal (image upload).
+> These commands configure a custom input form that is not shown by the default open flow.
 - `[p]tickets modaltitle <title>`: Set the title of the input form.
 - `[p]tickets addmodal <field_name>`: Add or edit a field in the modal (e.g., "Username", "Issue").
 - `[p]tickets viewmodal`: View and delete configured modal fields.
 
 #### Access Control
-- `[p]tickets supportrole <role>`: Add/remove roles that can manage tickets.
+- `[p]tickets supportrole <role> [mention]`: Add/remove roles that can manage tickets. Pass `True` to mention the role when a ticket opens.
 - `[p]tickets blacklist <user_or_role>`: Prevent specific users/roles from opening tickets.
 - `[p]tickets openrole <role>`: If set, only users with these roles can open tickets.
 - `[p]tickets maxtickets <amount>`: Max concurrent open tickets per user.

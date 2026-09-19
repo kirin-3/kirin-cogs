@@ -9,7 +9,7 @@ This cog allows server administrators to assign a specific role to a user, givin
 #### `[p]assignrole <user> <role>`
 Assigns a role to a user for management.
 - **Usage**: `[p]assignrole @User @Role`
-- **Permission**: Manage Roles
+- **Permission**: Administrator or Manage Roles
 
 ---
 
@@ -65,3 +65,4 @@ View a generated image of common colors and a copyable text list of hex codes.
 - The bot must have `Manage Roles` permission.
 - The bot's top role must be higher than the role being managed.
 - Server must have Level 2 boost for role icons feature.
+- `Pillow` (declared in the cog's `info.json` and installed automatically by Red when installing the cog).
