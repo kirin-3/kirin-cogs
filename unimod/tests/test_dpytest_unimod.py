@@ -22,6 +22,7 @@ def config_mock() -> MagicMock:
         "whitelisted_channels": [],
         "vader_threshold": -0.5,
         "buffer_size": 20,
+        "min_severity": "medium",
     }
 
     def _guild(*args: object, **kwargs: object) -> object:
@@ -123,6 +124,7 @@ async def test_on_message_buffered_when_whitelisted(bot_and_cog: tuple[dpy_comma
         "whitelisted_channels": [channel.id],
         "vader_threshold": -0.5,
         "buffer_size": 20,
+        "min_severity": "medium",
     }
 
     def _guild(*args: object, **kwargs: object) -> object:

@@ -23,6 +23,7 @@ def config_mock() -> MagicMock:
         "whitelisted_channels": [],
         "vader_threshold": -0.5,
         "buffer_size": 20,
+        "min_severity": "medium",
     }
 
     def _guild_side_effect(*args: object, **kwargs: object) -> object:

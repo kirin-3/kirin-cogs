@@ -27,6 +27,8 @@ from redbot.core.bot import Red
 
 log = logging.getLogger("red.kirin_cogs.unimod")
 
+SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3}
+
 
 @dataclass
 class BufferedMessage:
@@ -79,13 +81,18 @@ class UniMod(commands.Cog):
 5. FALSE POSITIVES: If the behavior is borderline, consensual banter, or you are unsure, lean towards NOT flagging ("is_violation": false).
 6. Horny-Jail and Comfy-Chat are the server's general chat channels.
 
+## SEVERITY
+- "low": etiquette or channel placement (wrong channel, missing spoiler tag, minor etiquette).
+- "medium": needs a staff look (a real rule breach staff should review).
+- "high": act now (staff must intervene immediately).
+
 ## RESPONSE FORMAT
 You MUST respond with valid JSON only. Do not include markdown formatting, code blocks (like ```json), or conversational text.
 Use this exact schema:
 {{
     "is_violation": <boolean: true or false>,
     "confidence": <float: 0.0 to 1.0>,
-    "violated_rules": <array of strings: list of rule numbers like ["9.2", "8.1"], or [] if no violation>,
+    "violated_rules": <array of strings: list of rule numbers like ["7.1", "8.1"], or [] if no violation>,
     "severity": <string: "low", "medium", "high", or null if no violation>,
     "explanation": <string: 1-2 sentence explanation of your decision, noting the channel context if relevant>,
     "primary_message_id": <integer: exact ID of the most problematic message, or null if no violation>
@@ -102,8 +109,8 @@ This conversation is taking place in the channel: #{channel_name}
 Analyze this conversation against the server rules, paying close attention to channel-specific rules. Respond with JSON only."""
 
     # NanoGPT API configuration (same as unicorn_ai)
-    NANOGPT_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
-    NANOGPT_MODEL = "z-ai/glm5"
+    NANOGPT_ENDPOINT = "https://nano-gpt.com/api/v1/chat/completions"
+    NANOGPT_MODEL = "z-ai/glm-5.3:thinking"
 
     def __init__(self, bot: Red):
         self.bot = bot
@@ -117,6 +124,7 @@ Analyze this conversation against the server rules, paying close attention to ch
             "whitelisted_channels": [],
             "vader_threshold": -0.5,
             "buffer_size": 20,
+            "min_severity": "medium",
         }
 
         self.config.register_guild(**default_guild)
@@ -511,6 +519,15 @@ Analyze this conversation against the server rules, paying close attention to ch
             # Handle result
             if result.is_violation:
                 self.stats["violations_found"] += 1
+                floor = await self.config.guild(guild).min_severity()
+                rank = SEVERITY_RANK.get(result.severity or "")
+                # Missing/unknown severity fails open: alert rather than drop a possible "high".
+                if rank is not None and rank < SEVERITY_RANK.get(floor, 2):
+                    log.info(
+                        f"Violation below severity floor ({result.severity} < {floor}), not alerting. "
+                        f"Rules: {result.violated_rules}"
+                    )
+                    return
                 log.warning(f"VIOLATION DETECTED! Severity: {result.severity}, Rules: {result.violated_rules}")
                 await self._send_alert(guild, channel, messages, result)
             else:
@@ -905,12 +922,14 @@ Analyze this conversation against the server rules, paying close attention to ch
         whitelisted = await self.config.guild(ctx.guild).whitelisted_channels()
         threshold = await self.config.guild(ctx.guild).vader_threshold()
         buffer_size = await self.config.guild(ctx.guild).buffer_size()
+        min_severity = await self.config.guild(ctx.guild).min_severity()
 
         embed = discord.Embed(title="🛡️ UniMod Status", color=0x00FF00 if enabled else 0xFF0000)
 
         embed.add_field(name="Enabled", value="✅ Yes" if enabled else "❌ No", inline=True)
         embed.add_field(name="VADER Threshold", value=str(threshold), inline=True)
         embed.add_field(name="Buffer Size", value=str(buffer_size), inline=True)
+        embed.add_field(name="Min Severity", value=str(min_severity).title(), inline=True)
 
         alert_channel = f"<#{alert_channel_id}>" if alert_channel_id else "Owner DM"
         embed.add_field(name="Alert Channel", value=alert_channel, inline=True)
@@ -979,6 +998,18 @@ Analyze this conversation against the server rules, paying close attention to ch
                 self.channel_buffers[channel_id] = new_buffer
 
         await ctx.send(f"✅ Buffer size set to {size} and active buffers resized.")
+
+    @config_group.command(name="severity")
+    @commands.guild_only()
+    async def set_min_severity(self, ctx: commands.Context, level: str):
+        """Set the minimum severity that sends an alert (low, medium, high)."""
+        assert ctx.guild is not None
+        level = level.lower()
+        if level not in SEVERITY_RANK:
+            await ctx.send(f"❌ Severity must be one of: {', '.join(SEVERITY_RANK)}")
+            return
+        await self.config.guild(ctx.guild).min_severity.set(level)
+        await ctx.send(f"✅ Minimum alert severity set to {level}")
 
     @config_group.command(name="diagnostic")
     async def set_diagnostic(self, ctx: commands.Context):

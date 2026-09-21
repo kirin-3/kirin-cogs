@@ -56,8 +56,6 @@
 8.10 Do not spam channels! You will be muted.
 8.11 Banned words: n****r, t****y and f****t and their variations.
 # Post in Appropriate Channels
-9.1 Venting, sexual assault, and emotional support in ⁠😢᠈venting (if related trans-talk channels).
-9.2 Please keep general chat channels positive and welcoming. Avoid bringing excessive personal drama or negativity into these spaces. If you need support, please use the venting channel or contact staff.
 9.3 Please use spoiler tags for content involving trauma, abuse, or self-harm, even in appropriate channels. This helps keep the space safe for all.
 9.4 Memes in ⁠🐟᠈shit-post.
 9.5 Spoiler nudity in ⁠💛᠈horny-jail.

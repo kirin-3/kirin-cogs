@@ -65,6 +65,11 @@ Intelligent auto-moderation system that combines **VADER sentiment analysis** fo
    [p]unimod config buffersize 30
    ```
 
+- **Minimum Alert Severity** (low, medium, high; default medium): violations the AI rates below this are logged, not alerted. `low` = etiquette or channel placement, `medium` = needs a staff look, `high` = act now. Use `low` to alert on everything.
+   ```
+   [p]unimod config severity medium
+   ```
+
 ## Commands
 
 ### Bot Owner Only
@@ -79,6 +84,7 @@ Intelligent auto-moderation system that combines **VADER sentiment analysis** fo
 | `[p]unimod config apikey <key>` | Set API key (for the GLM5 endpoint) |
 | `[p]unimod config threshold <value>` | Set VADER threshold (-1.0 to 0.0) |
 | `[p]unimod config buffersize <int>` | Set buffer size (10-50) |
+| `[p]unimod config severity <low\|medium\|high>` | Set minimum severity that sends an alert (default medium) |
 | `[p]unimod config show` | Show current configuration |
 | `[p]unimod config diagnostic` | Enable diagnostic mode for one hour (records a redacted AI response) |
 | `[p]unimod reloadrules` | Reload rules from rules.md file |
@@ -115,6 +121,8 @@ Discord Message
       ↓
   Violation Detected? ──No──→ Log & Stop
       ↓ Yes
+  Severity ≥ Floor? ──No──→ Log & Stop
+      ↓ Yes
   Send Alert (Channel/DM)
 ```
 
@@ -139,9 +147,9 @@ The AI responds with structured JSON:
 {
     "is_violation": true,
     "confidence": 0.85,
-    "violated_rules": ["9.2", "8.1"],
+    "violated_rules": ["7.1", "8.1"],
     "severity": "medium",
-    "explanation": "User posted venting content in general chat instead of venting channel.",
+    "explanation": "User advertised another server in general chat.",
     "primary_message_id": 123456789012345678
 }
 ```
