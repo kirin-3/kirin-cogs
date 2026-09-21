@@ -65,9 +65,6 @@ owner-only aggregate economy dashboard at `[p]unicornia yieldstats`. Users can r
 ### UnicornImage
 Text-to-image generation supporting both Stable Horde (free) and Modal (premium) backends.
 
-### UnicornModeration
-Papers, Please–themed moderation cog that issues "citation" images for bans, kicks, mutes, and warnings.
-
 ### UnicornSecurity
 Channel filter that only allows tenor GIF links in a specific channel, deleting other image links.
 

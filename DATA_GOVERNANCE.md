@@ -19,7 +19,6 @@ This document is the per-cog annex to the bot's [Privacy Policy](PRIVACY.md), wh
 | Suggest | Author IDs, suggestion text, message IDs, status, and review reason | Removes suggestions authored by the user |
 | Tickets | Owner IDs, answers, channel/message metadata, avatar URL, timestamps, and lifecycle state | Removes ticket tracking and blacklist entries; Discord messages/channels remain subject to server moderation policy |
 | UnicornAI | User opt-out preference | Clears the preference; channel history is processed transiently by the configured provider |
-| UnicornModeration | Guild/member warning history | Clears warnings in every guild |
 | Unicornia | XP, balances, inventory, games, relationships, and financial history | Removes operational state; anonymizes accounting rows that must remain internally consistent |
 | UniMod | In-memory message buffers; optional redacted diagnostic response | Buffers vanish on unload; diagnostic files expire within one hour and are removed on unload/restart |
 

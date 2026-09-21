@@ -22,7 +22,6 @@ PERSISTENT_COGS = {
     "suggest",
     "tickets",
     "unicorn_ai",
-    "unicornmoderation",
     "unicornia",
     "unimod",
 }
