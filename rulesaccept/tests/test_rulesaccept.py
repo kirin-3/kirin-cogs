@@ -10,7 +10,7 @@ import pytest
 import pytest_asyncio
 from redbot.core import Config
 
-from rulesaccept.rulesaccept import RulesAccept, rulesacceptButton, rulesacceptModal, rulesacceptView
+from rulesaccept.rulesaccept import MUTED_ROLE_ID, RulesAccept, rulesacceptButton, rulesacceptModal, rulesacceptView
 
 
 def _make_config_attr(value: object) -> AsyncMock:
@@ -137,6 +137,7 @@ async def test_modal_submit_invalid_response(cog: RulesAccept, bot_mock: MagicMo
     member = MagicMock(spec=discord.Member)
     member.id = 100
     member.mention = "<@100>"
+    member.get_role.return_value = None  # not muted
 
     guild = MagicMock(spec=discord.Guild)
     interaction = _make_interaction(member=member, guild=guild)
@@ -163,6 +164,7 @@ async def test_modal_submit_valid_assigns_role_and_sends_followup(cog: RulesAcce
     member = MagicMock(spec=discord.Member)
     member.id = 555
     member.mention = "<@555>"
+    member.get_role.return_value = None  # not muted
     member.add_roles = AsyncMock()
 
     interaction = _make_interaction(member=member, guild=guild)
@@ -197,6 +199,7 @@ async def test_modal_submit_valid_role_missing(cog: RulesAccept, config_mock: Ma
     member = MagicMock(spec=discord.Member)
     member.id = 777
     member.mention = "<@777>"
+    member.get_role.return_value = None  # not muted
 
     interaction = _make_interaction(member=member, guild=guild)
     config_mock.guild.return_value.member_role_id = AsyncMock(return_value=999)
@@ -222,6 +225,7 @@ async def test_modal_submit_valid_role_assign_error(cog: RulesAccept, config_moc
     member = MagicMock(spec=discord.Member)
     member.id = 888
     member.mention = "<@888>"
+    member.get_role.return_value = None  # not muted
     member.add_roles = AsyncMock(side_effect=RuntimeError("failed"))
 
     interaction = _make_interaction(member=member, guild=guild)
@@ -242,6 +246,7 @@ async def test_modal_submit_valid_with_no_guild_returns_silently(cog: RulesAccep
     member = MagicMock(spec=discord.Member)
     member.id = 999
     member.mention = "<@999>"
+    member.get_role.return_value = None  # not muted
 
     interaction = _make_interaction(member=member, guild=None)
 
@@ -288,3 +293,25 @@ async def test_dpytest_sendrules_callback_uses_real_guild_context(dpytest_bot: d
     ctx.send.assert_awaited_once()
     assert "Please read the rules" in ctx.send.call_args[0][0]
     assert isinstance(ctx.send.call_args[1]["view"], rulesacceptView)
+
+
+@pytest.mark.asyncio
+async def test_modal_submit_refuses_muted_member(cog: RulesAccept) -> None:
+    modal = rulesacceptModal(cog)
+    modal.answer._value = "I agree to the rules."
+
+    member = MagicMock(spec=discord.Member)
+    member.id = 888
+    member.mention = "<@888>"
+    member.add_roles = AsyncMock()
+    member.get_role.side_effect = lambda role_id: MagicMock() if role_id == MUTED_ROLE_ID else None
+
+    interaction = _make_interaction(member=member, guild=MagicMock(spec=discord.Guild))
+    cog.bot.get_channel = MagicMock(return_value=None)
+
+    await modal.on_submit(interaction)
+
+    member.add_roles.assert_not_awaited()
+    interaction.response.send_message.assert_awaited_once_with(
+        "You can't accept the rules while you're muted.", ephemeral=True
+    )

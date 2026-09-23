@@ -1,3 +1,6 @@
+import asyncio
+from collections import defaultdict
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -5,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from warnlist.warnlist import DELETED_MOD, WarnList, format_warnings
+from moderation.moderation import DELETED_MOD, MUTED_ROLE_ID, Moderation, format_warnings, split_roles, unmuted_roles
 
 
 def key(y: int, m: int, d: int) -> str:
@@ -44,12 +47,12 @@ async def test_warnings_replies_for_user_without_warnings() -> None:
     async def embed_color() -> discord.Color:
         return discord.Color.blurple()
 
-    cog = WarnList.__new__(WarnList)
-    cog.config = SimpleNamespace(member_from_ids=lambda g, u: Member())  # type: ignore[assignment]
+    cog = Moderation.__new__(Moderation)
+    cog.warnings_config = SimpleNamespace(member_from_ids=lambda g, u: Member())  # type: ignore[assignment]
     ctx = SimpleNamespace(guild=SimpleNamespace(id=1), send=send, embed_color=embed_color, author=None)
     user = SimpleNamespace(id=2, display_avatar=SimpleNamespace(url="https://cdn.discordapp.com/embed/avatars/0.png"))
 
-    await WarnList.warnings.callback(cog, ctx, user)  # type: ignore[arg-type]
+    await Moderation.warnings.callback(cog, ctx, user)  # type: ignore[arg-type]
 
     embed = sent[0]["embed"]
     assert embed.description == "*This user has no warnings.*"
@@ -62,24 +65,89 @@ async def test_warn_dm_sent_only_for_saved_warning() -> None:
         async def warnings(self) -> dict:
             return {"111": {"points": 1, "description": "spam", "mod": 5}}
 
-    async def embed_color() -> discord.Color:
-        return discord.Color.red()
-
-    cog = WarnList.__new__(WarnList)
-    cog.config = SimpleNamespace(member_from_ids=lambda g, u: Member())  # type: ignore[assignment]
+    cog = Moderation.__new__(Moderation)
+    cog.warnings_config = SimpleNamespace(member_from_ids=lambda g, u: Member())  # type: ignore[assignment]
     member = MagicMock(spec=discord.Member, id=2)
     member.send = AsyncMock()
     command = SimpleNamespace(qualified_name="warn", cog_name="Warnings")
     ctx = SimpleNamespace(
-        guild=SimpleNamespace(id=1), command=command, args=[None, None, member], embed_color=embed_color
+        guild=SimpleNamespace(id=1, name="Unicornia", icon=None), command=command, args=[None, None, member]
     )
 
-    ctx.message = SimpleNamespace(id=111)
+    ctx.message = SimpleNamespace(id=111, created_at=datetime.now(UTC))
     await cog.on_command_completion(ctx)  # type: ignore[arg-type]
-    description = member.send.await_args.kwargs["embed"].description
-    assert description.startswith("You have been warned in the Unicornia Server for the following reason:\nspam\n\n")
+    embed = member.send.await_args.kwargs["embed"]
+    assert embed.description.startswith(
+        "You have been warned in the **Unicornia Server** for the following reason:\n> spam\n\n"
+    )
+    assert embed.footer.text == "Use .mywarnings to see your warnings."
 
     member.send.reset_mock()
     ctx.message = SimpleNamespace(id=222)  # Red refused this warn, nothing was saved
     await cog.on_command_completion(ctx)  # type: ignore[arg-type]
     member.send.assert_not_awaited()
+
+
+@dataclass(frozen=True)
+class Role:
+    id: int
+    default: bool = False
+    assignable: bool = True
+
+    def is_default(self) -> bool:
+        return self.default
+
+    def is_assignable(self) -> bool:
+        return self.assignable
+
+
+def test_mute_strips_and_unmute_restores_roles() -> None:
+    everyone, member_role, booster, muted = (
+        Role(1, default=True),
+        Role(2),
+        Role(3, assignable=False),
+        Role(MUTED_ROLE_ID),
+    )
+
+    keep, strip = split_roles([everyone, member_role, booster, muted])  # type: ignore[list-item]
+    assert keep == [booster]  # bots can't remove managed roles
+    assert strip == [2]  # Muted is never saved, so unmute can't hand it back
+
+    # member_role still exists; the second saved role was deleted during the mute.
+    roles, skipped = unmuted_roles([everyone, booster, muted], [member_role, None])  # type: ignore[list-item]
+    assert set(roles) == {booster, member_role}
+    assert skipped == 1
+
+
+def _muted_member(roles: list, record: dict | None) -> tuple[Moderation, MagicMock, AsyncMock]:
+    mute = AsyncMock(return_value=record)
+    mute.set = AsyncMock()
+    cog = Moderation.__new__(Moderation)
+    cog.config = SimpleNamespace(member=lambda m: SimpleNamespace(mute=mute))  # type: ignore[assignment]
+    cog._locks = defaultdict(asyncio.Lock)
+    member = MagicMock(spec=discord.Member, id=9, roles=roles)
+    member.guild.id = 1
+    member.guild.get_member.return_value = member
+    member.guild.get_role.return_value = Role(MUTED_ROLE_ID)
+    member.edit = AsyncMock()
+    return cog, member, mute
+
+
+@pytest.mark.asyncio
+async def test_enforce_takes_off_and_saves_roles_gained_while_muted() -> None:
+    muted, onboarding_role, booster = Role(MUTED_ROLE_ID), Role(5), Role(3, assignable=False)
+    cog, member, mute = _muted_member([Role(1, default=True), booster, onboarding_role], {"roles": [2], "until": None})
+
+    await cog._enforce(member)  # Muted was removed by hand and a role was self-assigned
+
+    mute.set.assert_awaited_once_with({"roles": [2, 5], "until": None})  # given back on unmute
+    assert member.edit.await_args.kwargs["roles"] == [booster, muted]
+
+
+@pytest.mark.asyncio
+async def test_enforce_leaves_unmuted_and_expired_members_alone() -> None:
+    for record in (None, {"roles": [2], "until": 1.0}):
+        cog, member, mute = _muted_member([Role(5)], record)
+        await cog._enforce(member)
+        member.edit.assert_not_awaited()
+        mute.set.assert_not_awaited()

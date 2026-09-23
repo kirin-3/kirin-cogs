@@ -1,8 +1,8 @@
-"""Dated, paginated warnings list"""
+"""Warnings, role-strip mutes, kicks, bans, and user info"""
 
-from .warnlist import WarnList
+from .moderation import Moderation
 
 
 async def setup(bot):
-    # Take over Red's plain-text [p]warnings; WarnList.cog_unload gives it back.
-    await bot.add_cog(WarnList(bot, bot.remove_command("warnings")))
+    # Take over Red's plain-text [p]warnings; Moderation.cog_unload gives it back.
+    await bot.add_cog(Moderation(bot, bot.remove_command("warnings")))

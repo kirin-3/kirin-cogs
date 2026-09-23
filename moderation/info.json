@@ -1,12 +1,12 @@
 {
-    "name": "warnlist",
+    "name": "moderation",
     "author": [
         "kirin"
     ],
-    "short": "Dated, paginated [p]warnings",
-    "description": "Replaces Red's [p]warnings with a paginated embed that shows when each warning was given, and sends a custom DM on [p]warn.",
-    "install_msg": "Thanks for installing the warnlist cog! Load it after the Warnings cog.",
-    "end_user_data_statement": "This cog does not store data about users; it only displays warnings stored by Red's core Warnings cog.",
+    "short": "Warnings viewer, role-strip mutes, kicks, bans, and user info",
+    "description": "Replaces Red's [p]warnings with a dated, paginated list and sends custom DMs for warns, mutes, kicks, bans, and unbans. Mutes strip a member's roles and give them back on unmute.",
+    "install_msg": "Unload Red's Mod and Mutes cogs first, and load this after the Warnings cog.",
+    "end_user_data_statement": "This cog stores the roles a member had when they were muted and when the mute ends, so the roles can be given back on unmute. Warnings are stored by Red's core Warnings cog.",
     "min_bot_version": "3.5.0",
     "min_python_version": [
         3,
@@ -19,7 +19,9 @@
     "required_cogs": {},
     "requirements": [],
     "tags": [
-        "warnings"
+        "moderation",
+        "warnings",
+        "mute"
     ],
     "version": "0.1.0",
     "license": "MIT"

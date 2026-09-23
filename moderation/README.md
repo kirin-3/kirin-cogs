@@ -1,38 +1,118 @@
-# WarnList
+# Moderation
 
-WarnList sits on top of Red's core **Warnings** cog. It stores no data of its own: it reads and shows the warnings
-that Warnings saves, including the ones imported from YAGPDB with `yagpdbimport`.
-
-It does two things:
-
-- Replaces `[p]warnings` with a paginated embed that shows each warning's date.
-- Sends its own DM to a member after `[p]warn`, in place of Red's.
+Unicornia's moderation commands: a dated warnings viewer, role-strip mutes, kicks, bans, unbans with a reinvite, and
+user info. Every action DMs the member in the same style. Warnings themselves stay in Red's core **Warnings** cog
+(`[p]warn`, `[p]unwarn`, `[p]mywarnings`, `[p]warnaction`), including the ones imported from YAGPDB.
 
 ## Setup
 
-Load WarnList **after** the Warnings cog, then turn off Red's own warn DM so members don't get two:
+Red's Mod and Mutes cogs use the same command names, so unload them first. Load Warnings before this cog, and turn off
+Warnings' own DM so members don't get two:
 
 ```
+[p]unload mod mutes
 [p]load warnings
-[p]load warnlist
+[p]load moderation
 [p]warningset senddm false
 ```
 
-On load, WarnList takes Red's `[p]warnings` command and puts it back when unloaded. If you reload the Warnings cog,
-reload WarnList afterwards, otherwise Red's plain-text `[p]warnings` comes back.
+On load, the cog takes Red's `[p]warnings` command and puts it back when unloaded. If you reload the Warnings cog,
+reload this cog afterwards, otherwise Red's plain-text `[p]warnings` comes back.
+
+Also reload the updated **RulesAccept** cog, which refuses muted members (see [Mutes](#mutes)).
 
 ## Commands
 
-| Command | Who | Description |
+All commands are server-only. Each one is open to staff role `696020813299580940`, Red admins, bot owners, and
+members holding the Discord permission that matches the action. Everyone else gets no reply (Red ignores failed
+permission checks silently).
+
+| Command | Also allowed with | Description |
 | --- | --- | --- |
-| `[p]warnings <user>` | Admins | Paginated warning history. Also works as `[p]warns`. Accepts a mention, name, or user ID (IDs work for users who left). |
+| `[p]warnings <user>` | - | Paginated warning history. Also `[p]warns`. Accepts an ID for users who left. |
+| `[p]mute <member> [duration] [reason]` | Manage Roles | Takes all their roles, gives them Muted, and disconnects them from voice. Duration like `30m`, `2h`, `7d`, `1d12h`; leave it out for a mute that lasts until someone unmutes. |
+| `[p]unmute <user> [reason]` | Manage Roles | Removes Muted and gives back the roles the mute took. Accepts an ID to lift the mute of someone who left. |
+| `[p]kick <member> [reason]` | Kick Members | DMs them, then kicks. |
+| `[p]ban <user> [days] [reason]` | Ban Members | DMs them, then bans. `days` (0-7) deletes that many days of their messages. Accepts an ID for users who aren't in the server. |
+| `[p]unban <user ID> [reason]` | Ban Members | Unbans and sends them a one-use invite to the rules channel. |
+| `[p]userinfo [user]` | - | Account age, join date, roles, warning count, and mute status. |
 
-Everything else (`[p]warn`, `[p]unwarn`, `[p]mywarnings`, `[p]warningset`, `[p]warnaction`) is Red's Warnings cog,
-unchanged.
+Kick, ban, and mute refuse targets who are yourself, the server owner, or have the same or a higher role than you or
+the bot. Every action is logged as a Red modlog case (`smute`, `sunmute`, `kick`, `ban`, `hackban`, `unban`), so
+`[p]case` and `[p]casesfor` show it next to warnings. Set the channel with `[p]modlogset modlog #channel`.
 
-### What the list shows
+## Mutes
 
-The newest warning is at the top, and `#1` is always the oldest. Each entry shows:
+A mute saves the member's roles, removes them, and gives them the Muted role (`686252873583165520`). With no roles
+they can only see the rules channel. Unmute gives the saved roles back and removes Muted.
+
+While someone is muted, the bot keeps them at exactly **Muted plus the roles it can't remove**:
+
+- **Any role added during the mute is taken off again and saved**, and they get it on unmute. This covers every way
+  a role can appear: Discord's onboarding "Channels & Roles" menu, linked roles, other bots (autoroles, role
+  persistence, self-role commands), the rules button, and staff adding a role by hand.
+- **If Muted is removed**, by hand or by another bot, the bot puts it back. Only `[p]unmute` or the timer ends a mute.
+- **Leaving and rejoining** doesn't escape a mute: they get Muted back as soon as they rejoin. If a timed mute ran out
+  while they were gone, the record is dropped and they rejoin normally.
+- **Changes made while the bot was offline** are caught within 30 seconds of it coming back.
+- **The rules button** in RulesAccept also refuses anyone with the Muted role.
+
+Other details:
+
+- **Timed mutes** end automatically. The bot checks every 30 seconds, and saved mutes survive restarts.
+- **Muting someone who is already muted** only changes when the mute ends.
+- **Voice**: muting disconnects them from voice. The bot needs **Move Members** for this, otherwise the reply says it
+  couldn't.
+- **Roles the bot can't remove** stay on the member: Server Booster, other bot-managed roles, and roles above the bot.
+  Make sure none of those open channels.
+- **If a saved role was deleted or moved above the bot** during the mute, unmute skips it and says how many it
+  skipped.
+- **Muted without a saved record** (someone given the role by hand or by YAGPDB): `[p]unmute` only removes Muted,
+  because the bot doesn't know their old roles, and the bot doesn't enforce those mutes. Unmute YAGPDB mutes through
+  YAGPDB, and use `[p]mute` for new ones.
+- **A ban clears any mute**, so an unbanned user doesn't come back muted. A kick doesn't: a kicked member who rejoins
+  is still muted.
+
+### What the bot can't enforce
+
+These come from Discord permissions, not roles, so they need to be right in the server settings:
+
+- **What `@everyone` can do in the rules channel.** That's the one channel a muted member still sees. If `@everyone`
+  can send messages, react, create threads, or use apps and slash commands there, so can a muted member. Deny those
+  for the Muted role with a channel override in the rules channel.
+- **Access given to a person directly.** A channel override for a specific member (for example their ticket channel)
+  outranks roles, so they keep that channel while muted. Useful for tickets; remove other personal overrides by hand.
+- **Server-wide `@everyone` permissions** such as Change Nickname or Create Invite still apply while muted.
+- **Alt accounts.** Mutes and bans follow one account.
+
+## Unban reinvite
+
+`[p]unban` creates an invite to the rules channel (`684360255798509582`) that works once and expires in 24 hours, then
+DMs it to the user. Bots can only DM people they share a server with, which a banned user usually doesn't, so if the
+DM fails the bot posts the invite in the channel for you to pass on. The bot needs **Create Invite** in the rules
+channel.
+
+## DMs
+
+Each DM is an embed with the server name and icon, a title, and the time. The texts are hardcoded constants at the top
+of `moderation.py`; edit them there to change the wording.
+
+| Action | Title | Body |
+| --- | --- | --- |
+| Warn | ⚠️ You have been warned | Reason, plus "Further violations of server rules may result in channel restrictions, temporary mute, or permanent ban." Footer: "Use .mywarnings to see your warnings." |
+| Mute | 🔇 You have been muted | Reason, when the mute ends, and "Further violations of server rules may result in a permanent ban." |
+| Unmute | 🔊 You have been unmuted | "Your mute has ended and your roles have been given back." Also sent when a timed mute runs out. |
+| Kick | 👢 You have been kicked | Reason and the permanent-ban notice. |
+| Ban | ⛔ You have been banned | Reason and the appeal form `https://forms.gle/SdrjyV9ggi3hBQbh8`. |
+| Unban | ✅ You have been unbanned | The one-use invite. |
+
+Kick and ban DM **before** acting, because the bot can't DM people who have left. The warn DM goes out after
+Red saves the warning. A member kicked or banned by `[p]warnaction` has already left by then, so they usually won't
+get it. When a DM fails, the command reply says so.
+
+## Warnings list
+
+`[p]warnings` shows the newest warning at the top, and `#1` is always the oldest. Each entry shows:
 
 - **Number and date**: in the viewer's local time, plus a relative time ("3 years ago").
 - **Reason**: shown as a quote, cut off after about 550 characters.
@@ -47,29 +127,16 @@ warnings gets a one-page embed that says so.
 The date comes from the warning's ID. Red saves every warning under the ID of the `[p]warn` message, and Discord IDs
 contain their creation time. Imported warnings got IDs built from the original YAGPDB date, so the same logic works for both.
 
-## Warn DM
+## Bot permissions
 
-After `[p]warn` saves a warning, the member gets this DM as an embed:
-
-> You have been warned in the Unicornia Server for the following reason:
-> *(reason)*
->
-> **Further violations of server rules may result in channel restrictions, temporary mute, or permanent ban.**
->
-> Use .mywarnings to see your warnings.
-
-- The text is the hardcoded `WARN_DM` constant in `warnlist.py`; edit it there to change the wording.
-- No DM is sent when Red refuses the warn (warning yourself, a bot, the owner, an unknown reason).
-- If the DM can't be delivered, the bot says so in the channel where `[p]warn` was used.
-- Red runs automatic punishments (`[p]warnaction`) before this DM goes out. A member who gets kicked or banned
-  by a warn action has left the server by then, so they usually won't receive it.
-
-## Permissions
-
-- `[p]warnings` uses Red's admin check, same as the original. Members without it get no reply (Red ignores failed
-  permission checks silently). To let other roles use it, see `[p]permissions`.
-- The bot needs **Embed Links** in channels where `[p]warnings` is used.
+- **Manage Roles**, with the bot's highest role above Muted and above every role it should strip.
+- **Move Members**, to disconnect muted members from voice.
+- **Kick Members** and **Ban Members**.
+- **Create Invite** in the rules channel, for unban reinvites.
+- **Embed Links** where the commands are used.
 
 ## Data storage
 
-WarnList stores nothing. Warnings live in Red's Warnings cog, which handles their retention and deletion.
+For each active mute the cog stores the member's ID, the IDs of the roles the mute removed, and when the mute ends.
+The record is deleted on unmute, when a timed mute expires, and on ban. Red's data-deletion requests remove a user's
+mute records from every server. Warnings are stored by Red's Warnings cog, and modlog cases by Red's modlog.

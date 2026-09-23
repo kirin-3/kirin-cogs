@@ -6,6 +6,8 @@ from redbot.core import Config, commands
 
 log = logging.getLogger("red.cogs.rulesaccept")
 
+MUTED_ROLE_ID = 686252873583165520  # same role the moderation cog mutes with
+
 
 class RulesAccept(commands.Cog):
     """Cog for rule acceptance with button and modal."""
@@ -105,6 +107,11 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
             if guild is None or not isinstance(member, discord.Member):
                 await interaction.response.send_message(
                     "This action can only be performed in a server.", ephemeral=True
+                )
+                return
+            if member.get_role(MUTED_ROLE_ID) is not None:  # accepting again must not undo a mute
+                await interaction.response.send_message(
+                    "You can't accept the rules while you're muted.", ephemeral=True
                 )
                 return
             role_id = await self.cog.config.guild(guild).member_role_id()

@@ -16,6 +16,7 @@ PERSISTENT_COGS = {
     "customcommand",
     "customemoji",
     "customrolecolor",
+    "moderation",
     "nitroaward",
     "patron",
     "profile",

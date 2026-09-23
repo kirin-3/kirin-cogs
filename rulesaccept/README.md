@@ -59,3 +59,4 @@ Sets the role that will be assigned to members when they accept the rules.
 - The acceptance phrase is case-sensitive and must match exactly: `I agree to the rules.` or `I Agree To The Rules.`
 - All rule acceptances are logged with the member's ID and what they typed
 - Members are informed they need additional roles from the roles channel for full server access
+- Members with the Muted role (`686252873583165520`) are refused, so accepting the rules again can't undo a mute

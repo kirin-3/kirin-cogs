@@ -27,6 +27,10 @@ Allows administrators to assign a role to a user and lets that user customize th
 ### Honeypot
 Trap channel that automatically bans fresh members or strips roles and times out established members who post in it.
 
+### Moderation
+Dated, paginated `[p]warnings`, role-strip mutes with automatic unmute, kicks, bans, unbans with a reinvite, and
+`[p]userinfo`, each with a custom DM. Replaces Red's Mod and Mutes cogs. See [moderation/README.md](moderation/README.md).
+
 ### NitroAward
 Awards economy currency to users when they boost the server via the Unicornia cog.
 
@@ -73,10 +77,6 @@ AI-powered auto-moderation using sentiment analysis and AI detection to alert mo
 
 ### VerifyUser
 Allows authorized users to verify other members by granting them a specific verification role.
-
-### WarnList
-Replaces `[p]warnings` (alias `[p]warns`) with a paginated embed showing each warning's date, reason, and moderator,
-and sends a custom DM on `[p]warn`. Load it after the core Warnings cog. See [warnlist/README.md](warnlist/README.md).
 
 ## Installation
 
