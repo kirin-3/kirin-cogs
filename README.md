@@ -29,7 +29,7 @@ Trap channel that automatically bans fresh members or strips roles and times out
 
 ### Moderation
 Dated, paginated `[p]warnings`, role-strip mutes with automatic unmute, kicks, bans, unbans with a reinvite, and
-`[p]userinfo`, each with a custom DM. Replaces Red's Mod and Mutes cogs. See [moderation/README.md](moderation/README.md).
+`[p]userinfo`, each with a custom DM, plus a YAGPDB-style public mod-log. Replaces Red's Mod and Mutes cogs. See [moderation/README.md](moderation/README.md).
 
 ### NitroAward
 Awards economy currency to users when they boost the server via the Unicornia cog.

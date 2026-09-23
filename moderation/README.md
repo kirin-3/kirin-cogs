@@ -1,7 +1,7 @@
 # Moderation
 
-Unicornia's moderation commands: a dated warnings viewer, role-strip mutes, kicks, bans, unbans with a reinvite, and
-user info. Every action DMs the member in the same style. Warnings themselves stay in Red's core **Warnings** cog
+Unicornia's moderation commands: a dated warnings viewer, role-strip mutes, kicks, bans, unbans with a reinvite,
+user info, and a public mod-log. Every action DMs the member in the same style. Warnings themselves stay in Red's core **Warnings** cog
 (`[p]warn`, `[p]unwarn`, `[p]mywarnings`, `[p]warnaction`), including the ones imported from YAGPDB.
 
 ## Setup
@@ -92,6 +92,33 @@ DMs it to the user. Bots can only DM people they share a server with, which a ba
 DM fails the bot posts the invite in the channel for you to pass on. The bot needs **Create Invite** in the rules
 channel.
 
+## Public mod-log
+
+Bans, kicks, unbans, mutes, unmutes, and timeouts are posted to the public mod-log channel `694857480307474432`, in
+the same layout YAGPDB used. **Warnings are never posted there.**
+
+| Part | Content |
+| --- | --- |
+| Top | The moderator's name, ID, and avatar |
+| Body | The action with an emoji (e.g. 🔨 **Banned** name *(ID ...)*), the duration for mutes and timeouts, and 📄 **Reason** |
+| Right | The member's avatar |
+| Colour | Red for bans and kicks, orange for mutes, gold for timeouts, green for unbans, unmutes, and removed timeouts |
+| Bottom | The time of the action |
+
+Where each entry comes from:
+
+- **This cog's commands** (`mute`, `unmute`, `kick`, `ban`, `unban`) post directly, with the moderator who ran them.
+  Automatic unmutes show the bot as the moderator and "Mute expired" as the reason.
+- **Everything done outside this cog** is read from the server's audit log: bans, kicks, and unbans through
+  Discord's own menus or other bots, and **timeouts** added or removed through Discord's Timeout option. These show
+  the moderator and reason from the audit log.
+- **Actions by this bot outside the commands** (Honeypot, AntiNuke) are not posted.
+- **Timeouts from Discord's own AutoMod** use a different audit log entry and are not posted, and timeouts that simply
+  run out aren't either.
+
+Turn off YAGPDB's mod-log when you switch over, otherwise YAGPDB's own bans show up twice (once from YAGPDB, once
+from the audit log).
+
 ## DMs
 
 Each DM is an embed with the server name and icon, a title, and the time. The texts are hardcoded constants at the top
@@ -131,6 +158,7 @@ contain their creation time. Imported warnings got IDs built from the original Y
 
 - **Manage Roles**, with the bot's highest role above Muted and above every role it should strip.
 - **Move Members**, to disconnect muted members from voice.
+- **View Audit Log**, and **Send Messages** plus **Embed Links** in the public mod-log channel.
 - **Kick Members** and **Ban Members**.
 - **Create Invite** in the rules channel, for unban reinvites.
 - **Embed Links** where the commands are used.

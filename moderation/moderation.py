@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import discord
 from discord.ext import tasks
 from redbot.core import Config, commands, modlog
+from redbot.core.utils.chat_formatting import humanize_timedelta
 from redbot.core.utils.views import SimpleMenu
 
 log = logging.getLogger("red.kirin_cogs.moderation")
@@ -17,7 +18,20 @@ log = logging.getLogger("red.kirin_cogs.moderation")
 STAFF_ROLE_ID = 696020813299580940
 MUTED_ROLE_ID = 686252873583165520
 RULES_CHANNEL_ID = 684360255798509582  # unban reinvites point here
+PUBLIC_LOG_CHANNEL_ID = 694857480307474432  # public mod-log; warnings are never posted here
 BAN_APPEAL_URL = "https://forms.gle/SdrjyV9ggi3hBQbh8"
+
+# Public mod-log look per action (keys are Red modlog case types, plus Discord timeouts).
+LOG_STYLES: dict[str, tuple[str, str, discord.Color]] = {
+    "ban": ("\N{HAMMER}", "Banned", discord.Color.dark_red()),
+    "hackban": ("\N{HAMMER}", "Banned", discord.Color.dark_red()),
+    "kick": ("\N{WOMANS BOOTS}", "Kicked", discord.Color.red()),
+    "unban": ("\N{OPEN LOCK}", "Unbanned", discord.Color.green()),
+    "smute": ("\N{SPEAKER WITH CANCELLATION STROKE}", "Muted", discord.Color.dark_orange()),
+    "sunmute": ("\N{SPEAKER WITH THREE SOUND WAVES}", "Unmuted", discord.Color.green()),
+    "timeout": ("\N{HOURGLASS WITH FLOWING SAND}", "Timed out", discord.Color.gold()),
+    "untimeout": ("\N{HOURGLASS}", "Timeout removed", discord.Color.green()),
+}
 
 PER_PAGE = 5
 MAX_REASON = 550  # keeps 5 entries under the 4096-char embed description limit
@@ -104,6 +118,45 @@ def unmuted_roles(current: Iterable[discord.Role], saved: list[discord.Role | No
     back = [r for r in saved if r is not None and r.is_assignable()]
     roles = {r for r in current if not r.is_default() and r.id != MUTED_ROLE_ID} | set(back)
     return list(roles), len(saved) - len(back)
+
+
+def log_embed(
+    action: str,
+    user: discord.abc.User,
+    moderator: discord.abc.User | None,
+    reason: str | None,
+    until: datetime | None = None,
+) -> discord.Embed:
+    """Public mod-log entry: moderator on top, the member's avatar on the right."""
+    emoji, verb, color = LOG_STYLES[action]
+    lines = [f"{emoji} **{verb}** {discord.utils.escape_markdown(str(user))} *(ID {user.id})*"]
+    if action in ("smute", "timeout"):
+        if until is None:
+            duration = "Until unmuted"
+        else:
+            # Rounded to the minute so a 1h timeout doesn't read "59 minutes, 59 seconds".
+            minutes = max(1, round((until - discord.utils.utcnow()).total_seconds() / 60))
+            duration = f"{humanize_timedelta(seconds=minutes * 60)} (ends {discord.utils.format_dt(until, 'R')})"
+        lines.append(f"\N{STOPWATCH}\N{VARIATION SELECTOR-16} **Duration:** {duration}")
+    lines.append(f"\N{PAGE FACING UP} **Reason:** {(reason or 'No reason given.')[:1000]}")
+    embed = discord.Embed(description="\n".join(lines), color=color, timestamp=discord.utils.utcnow())
+    if moderator is not None:
+        embed.set_author(name=f"{moderator} (ID {moderator.id})", icon_url=moderator.display_avatar.url)
+    embed.set_thumbnail(url=user.display_avatar.url)
+    return embed
+
+
+def audit_action(entry: discord.AuditLogEntry) -> tuple[str, datetime | None] | None:
+    """Which public-log action an audit log entry is, if any: (action, timeout end)."""
+    kinds = discord.AuditLogAction
+    if entry.action in (kinds.ban, kinds.kick, kinds.unban):
+        return entry.action.name, None
+    if entry.action is kinds.member_update and hasattr(entry.after, "timed_out_until"):
+        until = entry.after.timed_out_until
+        if until is not None and until > discord.utils.utcnow():
+            return "timeout", until
+        return "untimeout", None
+    return None
 
 
 def audit_reason(ctx: commands.Context, reason: str | None) -> str:
@@ -194,10 +247,50 @@ class Moderation(commands.Cog):
         reason: str | None,
         until: datetime | None = None,
     ) -> None:
+        """Red modlog case plus the public mod-log post, for every action this cog takes."""
         try:
             await modlog.create_case(self.bot, guild, discord.utils.utcnow(), action, user, moderator, reason, until)
         except Exception:
             log.exception("Could not create %s modlog case in %s", action, guild.id)
+        await self._public_log(guild, log_embed(action, user, moderator, reason, until))
+
+    @staticmethod
+    async def _public_log(guild: discord.Guild, embed: discord.Embed) -> None:
+        channel = guild.get_channel(PUBLIC_LOG_CHANNEL_ID)
+        if not isinstance(channel, discord.TextChannel):
+            return  # another server, or the channel is gone
+        try:
+            await channel.send(embed=embed)
+        except discord.HTTPException:
+            log.warning("Could not post to the public mod-log in %s", guild.id)
+
+    async def _resolve_user(self, target: object) -> discord.abc.User | None:
+        if isinstance(target, (discord.User, discord.Member)):
+            return target
+        if not isinstance(target, discord.Object):
+            return None
+        try:
+            return self.bot.get_user(target.id) or await self.bot.fetch_user(target.id)
+        except discord.HTTPException:
+            return None
+
+    @commands.Cog.listener()
+    async def on_audit_log_entry_create(self, entry: discord.AuditLogEntry) -> None:
+        """Publicly log bans, kicks, unbans, and timeouts done outside this cog (Discord's menus, other bots).
+
+        The bot's own actions are skipped: this cog's commands already logged them with the real moderator,
+        and Honeypot/AntiNuke actions stay out of the public log.
+        """
+        if entry.guild.get_channel(PUBLIC_LOG_CHANNEL_ID) is None or entry.user_id == entry.guild.me.id:
+            return
+        if (found := audit_action(entry)) is None:
+            return
+        user = await self._resolve_user(entry.target)
+        if user is None:
+            return
+        moderator = await self._resolve_user(entry.user or discord.Object(entry.user_id or 0))
+        action, until = found
+        await self._public_log(entry.guild, log_embed(action, user, moderator, entry.reason, until))
 
     @staticmethod
     def _hierarchy_error(ctx: commands.Context, target: discord.Member) -> str | None:

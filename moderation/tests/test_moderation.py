@@ -1,14 +1,23 @@
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
 
-from moderation.moderation import DELETED_MOD, MUTED_ROLE_ID, Moderation, format_warnings, split_roles, unmuted_roles
+from moderation.moderation import (
+    DELETED_MOD,
+    MUTED_ROLE_ID,
+    Moderation,
+    audit_action,
+    format_warnings,
+    log_embed,
+    split_roles,
+    unmuted_roles,
+)
 
 
 def key(y: int, m: int, d: int) -> str:
@@ -151,3 +160,43 @@ async def test_enforce_leaves_unmuted_and_expired_members_alone() -> None:
         await cog._enforce(member)
         member.edit.assert_not_awaited()
         mute.set.assert_not_awaited()
+
+
+def _user(name: str, user_id: int) -> MagicMock:
+    user = MagicMock(spec=discord.User, id=user_id)
+    user.configure_mock(**{"__str__.return_value": name})
+    user.display_avatar.url = f"https://cdn.example/{user_id}.png"
+    return user
+
+
+def test_public_log_embed_matches_yagpdb_layout() -> None:
+    member, mod = _user("milky_way", 5), _user("junny", 7)
+
+    ban = log_embed("ban", member, mod, "Trolling in verification")
+    assert (
+        ban.description
+        == "\N{HAMMER} **Banned** milky\\_way *(ID 5)*\n\N{PAGE FACING UP} **Reason:** Trolling in verification"
+    )
+    assert ban.author.name == "junny (ID 7)"
+    assert ban.thumbnail.url == "https://cdn.example/5.png"  # the member's avatar
+
+    mute = log_embed("smute", member, mod, None, discord.utils.utcnow() + timedelta(hours=2))
+    description = mute.description or ""
+    assert "**Duration:** 2 hours (ends <t:" in description
+    assert description.endswith("**Reason:** No reason given.")
+
+
+def test_audit_action_picks_bans_kicks_unbans_and_timeouts_only() -> None:
+    kinds = discord.AuditLogAction
+    later = discord.utils.utcnow() + timedelta(hours=1)
+
+    def entry(action, **after):
+        return SimpleNamespace(action=action, after=SimpleNamespace(**after))
+
+    assert audit_action(entry(kinds.ban)) == ("ban", None)  # type: ignore[arg-type]
+    assert audit_action(entry(kinds.kick)) == ("kick", None)  # type: ignore[arg-type]
+    assert audit_action(entry(kinds.unban)) == ("unban", None)  # type: ignore[arg-type]
+    assert audit_action(entry(kinds.member_update, timed_out_until=later)) == ("timeout", later)  # type: ignore[arg-type]
+    assert audit_action(entry(kinds.member_update, timed_out_until=None)) == ("untimeout", None)  # type: ignore[arg-type]
+    assert audit_action(entry(kinds.member_update, nick="new name")) is None  # type: ignore[arg-type]
+    assert audit_action(entry(kinds.member_role_update)) is None  # type: ignore[arg-type]
