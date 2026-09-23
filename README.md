@@ -74,6 +74,10 @@ AI-powered auto-moderation using sentiment analysis and AI detection to alert mo
 ### VerifyUser
 Allows authorized users to verify other members by granting them a specific verification role.
 
+### WarnList
+Replaces `[p]warnings` with a paginated embed showing each warning's date, reason, and moderator.
+Load it after the core Warnings cog.
+
 ## Installation
 
 To install these cogs, run the following commands in Discord:
