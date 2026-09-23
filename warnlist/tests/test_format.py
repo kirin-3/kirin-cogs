@@ -1,8 +1,11 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
+import pytest
 
-from warnlist.warnlist import DELETED_MOD, format_warnings
+from warnlist.warnlist import DELETED_MOD, WarnList, format_warnings
 
 
 def key(y: int, m: int, d: int) -> str:
@@ -25,3 +28,58 @@ def test_format_orders_dates_and_strips_yagpdb_suffix() -> None:
     assert "> spam\n> again\nMod: Mod#0001 · YAGPDB · ID" in second
     assert "(YAGPDB" not in second
     assert third == "**#1** · unknown date\n> No reason given.\nMod: Deleted moderator · ID `junk`"
+
+
+@pytest.mark.asyncio
+async def test_warnings_replies_for_user_without_warnings() -> None:
+    sent: list[dict] = []
+
+    class Member:
+        async def all(self) -> dict:
+            return {"total_points": 0, "status": "", "warnings": {}}
+
+    async def send(**kwargs) -> None:
+        sent.append(kwargs)
+
+    async def embed_color() -> discord.Color:
+        return discord.Color.blurple()
+
+    cog = WarnList.__new__(WarnList)
+    cog.config = SimpleNamespace(member_from_ids=lambda g, u: Member())  # type: ignore[assignment]
+    ctx = SimpleNamespace(guild=SimpleNamespace(id=1), send=send, embed_color=embed_color, author=None)
+    user = SimpleNamespace(id=2, display_avatar=SimpleNamespace(url="https://cdn.discordapp.com/embed/avatars/0.png"))
+
+    await WarnList.warnings.callback(cog, ctx, user)  # type: ignore[arg-type]
+
+    embed = sent[0]["embed"]
+    assert embed.description == "*This user has no warnings.*"
+    assert embed.footer.text.startswith("0 warnings · 0 points")
+
+
+@pytest.mark.asyncio
+async def test_warn_dm_sent_only_for_saved_warning() -> None:
+    class Member:
+        async def warnings(self) -> dict:
+            return {"111": {"points": 1, "description": "spam", "mod": 5}}
+
+    async def embed_color() -> discord.Color:
+        return discord.Color.red()
+
+    cog = WarnList.__new__(WarnList)
+    cog.config = SimpleNamespace(member_from_ids=lambda g, u: Member())  # type: ignore[assignment]
+    member = MagicMock(spec=discord.Member, id=2)
+    member.send = AsyncMock()
+    command = SimpleNamespace(qualified_name="warn", cog_name="Warnings")
+    ctx = SimpleNamespace(
+        guild=SimpleNamespace(id=1), command=command, args=[None, None, member], embed_color=embed_color
+    )
+
+    ctx.message = SimpleNamespace(id=111)
+    await cog.on_command_completion(ctx)  # type: ignore[arg-type]
+    description = member.send.await_args.kwargs["embed"].description
+    assert description.startswith("You have been warned in the Unicornia Server for the following reason:\nspam\n\n")
+
+    member.send.reset_mock()
+    ctx.message = SimpleNamespace(id=222)  # Red refused this warn, nothing was saved
+    await cog.on_command_completion(ctx)  # type: ignore[arg-type]
+    member.send.assert_not_awaited()

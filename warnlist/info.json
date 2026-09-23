@@ -4,7 +4,7 @@
         "kirin"
     ],
     "short": "Dated, paginated [p]warnings",
-    "description": "Replaces Red's [p]warnings with a paginated embed that shows when each warning was given.",
+    "description": "Replaces Red's [p]warnings with a paginated embed that shows when each warning was given, and sends a custom DM on [p]warn.",
     "install_msg": "Thanks for installing the warnlist cog! Load it after the Warnings cog.",
     "end_user_data_statement": "This cog does not store data about users; it only displays warnings stored by Red's core Warnings cog.",
     "min_bot_version": "3.5.0",

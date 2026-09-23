@@ -10,6 +10,12 @@ MAX_REASON = 550  # keeps 5 entries under the 4096-char embed description limit
 DELETED_MOD = 0xDE1  # Red's placeholder for a moderator whose data was deleted
 # yagpdbimport appends this to imported reasons: "... (YAGPDB, 2020-06-28, by name#0)"
 YAG_SUFFIX = re.compile(r"\s*\(YAGPDB, \d{4}-\d{2}-\d{2}, by (?P<mod>.+)\)\s*$")
+WARN_DM = (
+    "You have been warned in the Unicornia Server for the following reason:\n"
+    "{reason}\n\n"
+    "**Further violations of server rules may result in channel restrictions, temporary mute, or permanent ban.**\n\n"
+    "Use .mywarnings to see your warnings."
+)
 
 
 def format_warnings(warnings: dict, mod_name: Callable[[int], str | None]) -> list[str]:
@@ -62,7 +68,32 @@ class WarnList(commands.Cog):
         if self.old_warnings and self.bot.get_cog("Warnings") is self.old_warnings.cog:
             self.bot.add_command(self.old_warnings)
 
-    @commands.command()
+    @commands.Cog.listener()
+    async def on_command_completion(self, ctx: commands.Context) -> None:
+        """DM the member after Red's [p]warn saves a warning. Red's own DM is off via `warningset senddm false`."""
+        if ctx.guild is None or ctx.command is None or ctx.command.qualified_name != "warn":
+            return
+        if ctx.command.cog_name != "Warnings":
+            return
+        member = next((a for a in ctx.args if isinstance(a, discord.Member)), None)
+        if member is None:
+            return
+        warns = await self.config.member_from_ids(ctx.guild.id, member.id).warnings()
+        warning = warns.get(str(ctx.message.id)) if isinstance(warns, dict) else None
+        if not isinstance(warning, dict):
+            return  # Red refused the warn (self-warn, unknown reason, ...)
+
+        reason = str(warning.get("description") or "No reason given.")[:3800]  # embed limit is 4096
+        embed = discord.Embed(description=WARN_DM.format(reason=reason), color=await ctx.embed_color())
+        try:
+            await member.send(embed=embed)
+        except discord.HTTPException:
+            await ctx.send(
+                f"Warning saved, but I couldn't DM {member.mention} (DMs closed or they left).",
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+
+    @commands.command(aliases=["warns"])
     @commands.guild_only()
     @commands.admin()
     async def warnings(self, ctx: commands.Context, user: discord.Member | discord.User) -> None:
@@ -71,9 +102,6 @@ class WarnList(commands.Cog):
         guild = ctx.guild
         data = await self.config.member_from_ids(guild.id, user.id).all()
         warnings = data.get("warnings")
-        if not isinstance(warnings, dict) or not warnings:
-            await ctx.send("That user has no warnings!")
-            return
 
         def mod_name(mod_id: int) -> str | None:
             if member := guild.get_member(mod_id):
@@ -81,8 +109,10 @@ class WarnList(commands.Cog):
             found = self.bot.get_user(mod_id)
             return str(found) if found else None
 
-        entries = format_warnings(warnings, mod_name)
-        chunks = [entries[i : i + PER_PAGE] for i in range(0, len(entries), PER_PAGE)]
+        entries = format_warnings(warnings, mod_name) if isinstance(warnings, dict) else []
+        chunks = [entries[i : i + PER_PAGE] for i in range(0, len(entries), PER_PAGE)] or [
+            ["*This user has no warnings.*"]
+        ]
         color = await ctx.embed_color()
         pages = []
         for n, chunk in enumerate(chunks, 1):

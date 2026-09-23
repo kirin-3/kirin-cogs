@@ -75,8 +75,8 @@ AI-powered auto-moderation using sentiment analysis and AI detection to alert mo
 Allows authorized users to verify other members by granting them a specific verification role.
 
 ### WarnList
-Replaces `[p]warnings` with a paginated embed showing each warning's date, reason, and moderator.
-Load it after the core Warnings cog.
+Replaces `[p]warnings` (alias `[p]warns`) with a paginated embed showing each warning's date, reason, and moderator,
+and sends a custom DM on `[p]warn`. Load it after the core Warnings cog. See [warnlist/README.md](warnlist/README.md).
 
 ## Installation
 
