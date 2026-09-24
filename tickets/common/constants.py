@@ -45,6 +45,9 @@ DEFAULT_GUILD = {
     "opened": {},  # All opened tickets {user_id: {channel_id: ticket_data}}
 }
 
+# Discord modals hold 5 components and the verification image upload always takes one.
+MAX_MODAL_FIELDS = 4
+
 MODAL_SCHEMA = {
     "label": "",  # <Required>
     "style": "short",  # <Required>

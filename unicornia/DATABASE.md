@@ -19,6 +19,10 @@ Unicornia uses **WAL (Write-Ahead Logging) Mode** for performance and data integ
 
 **Do not delete the -wal or -shm files** while the bot is running, as they contain uncommitted data. They are automatically managed by SQLite.
 
+### Hourly maintenance
+
+Every hour the cog runs a passive WAL checkpoint and `PRAGMA quick_check`. The check reads the whole file, so it runs on its own read-only connection: in WAL mode a reader doesn't block writers, and economy commands keep working while it runs. A failed check is logged as `Database integrity check failed`.
+
 ## Migration from Nadeko
 
 When the cog loads, it attempts to migrate data from an existing Nadeko Bot database (`nadeko.db`) if found in the cog's directory.

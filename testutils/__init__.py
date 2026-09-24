@@ -1,5 +1,6 @@
 """Shared test utilities for the kirin-cogs repository."""
 
+from testutils.bots import RedLikeBot
 from testutils.migration import (
     DictConfig,
     DictGroup,
@@ -12,6 +13,7 @@ __all__ = [
     "DictConfig",
     "DictGroup",
     "DictValue",
+    "RedLikeBot",
     "assert_idempotent",
     "historical_variants",
 ]

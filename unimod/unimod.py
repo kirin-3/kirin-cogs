@@ -29,6 +29,9 @@ log = logging.getLogger("red.kirin_cogs.unimod")
 
 SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3}
 
+# Discord rejects an embed field value longer than this, which would drop the whole alert.
+EMBED_FIELD_LIMIT = 1024
+
 
 @dataclass
 class BufferedMessage:
@@ -153,6 +156,10 @@ Analyze this conversation against the server rules, paying close attention to ch
         # Last AI response for debugging
         self._last_ai_response: str | None = None
         self._last_ai_error: str | None = None
+
+        # Time-limited diagnostic logging, off until `[p]unimod config diagnostic`
+        self.diagnostic_mode = False
+        self.diagnostic_expiry = 0.0
 
         log.info(f"UniMod initialized. Rules loaded: {len(self.rules)} characters")
 
@@ -304,8 +311,8 @@ Analyze this conversation against the server rules, paying close attention to ch
         confidence = max(0.0, min(1.0, confidence))
 
         explanation = str(data.get("explanation", ""))
-        if len(explanation) > 2000:
-            explanation = explanation[:1997] + "..."
+        if len(explanation) > EMBED_FIELD_LIMIT:
+            explanation = explanation[: EMBED_FIELD_LIMIT - 3] + "..."
 
         violated_rules = data.get("violated_rules", [])
         if not isinstance(violated_rules, list):
@@ -444,10 +451,10 @@ Analyze this conversation against the server rules, paying close attention to ch
 
     def _save_last_response(self, content: str):
         """Save a redacted AI response while time-limited diagnostics are enabled."""
-        if not getattr(self, "diagnostic_mode", False):
+        if not self.diagnostic_mode:
             return
 
-        if time.time() > getattr(self, "diagnostic_expiry", 0):
+        if time.time() > self.diagnostic_expiry:
             self.diagnostic_mode = False
             self._remove_diagnostic_log()
             return
@@ -649,8 +656,11 @@ Analyze this conversation against the server rules, paying close attention to ch
         return embed
 
     @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        """Handle incoming messages for moderation."""
+    async def on_message_without_command(self, message: discord.Message):
+        """Handle incoming messages for moderation.
+
+        Red dispatches this only for messages that aren't commands, after its own command parsing.
+        """
         # 1. Filter invalid messages
         if message.author.bot or not message.guild:
             return
@@ -667,11 +677,6 @@ Analyze this conversation against the server rules, paying close attention to ch
             return
 
         channel = message.channel
-
-        # 3. CRITICAL: Ignore bot commands
-        ctx = await self.bot.get_context(message)
-        if ctx.valid:
-            return
 
         self.stats["messages_processed"] += 1
 
@@ -1055,7 +1060,11 @@ Analyze this conversation against the server rules, paying close attention to ch
 
         # Check if we have a response
         if self._last_ai_error:
-            await ctx.send(f"❌ Last AI request failed:\n```\n{self._last_ai_error}\n```")
+            # API error bodies (e.g. an HTML error page) can exceed Discord's 2,000-character message limit.
+            error = self._last_ai_error
+            if len(error) > 1900:
+                error = error[:1897] + "..."
+            await ctx.send(f"❌ Last AI request failed:\n```\n{error}\n```")
             return
 
         if not self._last_ai_response:

@@ -76,8 +76,7 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
         label="Type exactly: I agree to the rules.", placeholder="I agree to the rules.", required=True, max_length=30
     )
 
-    async def on_submit(self, interaction: discord.Interaction):
-        # --- Start of new logging code ---
+    async def _log_acceptance(self, interaction: discord.Interaction):
         log_channel_id = 1422656113077256322  # Your specified logging channel ID
         log_channel = self.cog.bot.get_channel(log_channel_id)
 
@@ -98,8 +97,15 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
                 log.exception("Failed to send the rule-acceptance log message")
         else:
             log.warning(f"Could not find the log channel with ID: {log_channel_id}")
-        # --- End of new logging code ---
 
+    async def on_submit(self, interaction: discord.Interaction):
+        # Reply first: Discord allows 3 seconds, and a slow log send must not use them up
+        try:
+            await self._respond(interaction)
+        finally:
+            await self._log_acceptance(interaction)
+
+    async def _respond(self, interaction: discord.Interaction):
         valid_responses = ["I agree to the rules.", "I Agree To The Rules."]
         if self.answer.value.strip() in valid_responses:
             guild = interaction.guild

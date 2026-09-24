@@ -98,21 +98,31 @@ class CoreDB:
                     await db.execute("PRAGMA journal_mode=WAL")
                     await db.commit()
 
-                # Check database integrity
-                cursor = await db.execute("PRAGMA integrity_check")
-                result = await cursor.fetchone()
-                if result and result[0] != "ok":
-                    log.error(f"Database integrity check failed: {result[0]}")
-                    return False
-
                 # Perform WAL checkpoint to prevent WAL file from growing too large
                 # Using PASSIVE to avoid locking the database
                 await db.execute("PRAGMA wal_checkpoint(PASSIVE)")
 
-                return True
+            # The check reads the whole file, so it runs outside the shared connection's lock
+            result = await self._quick_check()
+            if result != "ok":
+                log.error(f"Database integrity check failed: {result}")
+                return False
+            return True
         except Exception as e:
             log.error(f"WAL integrity check failed: {e}")
             return False
+
+    async def _quick_check(self) -> str:
+        """Run PRAGMA quick_check on a separate read-only connection.
+
+        In WAL mode a reader doesn't block writers, so economy commands keep running on the
+        shared connection while the check reads the file.
+        """
+        uri = f"{self.db_path.resolve().as_uri()}?mode=ro"
+        async with aiosqlite.connect(uri, uri=True) as db:
+            cursor = await db.execute("PRAGMA quick_check")
+            row = await cursor.fetchone()
+        return str(row[0]) if row else "no result"
 
     async def initialize(self) -> None:
         """Initialize the database with all required tables."""

@@ -90,7 +90,7 @@ Intelligent auto-moderation system that combines **VADER sentiment analysis** fo
 | `[p]unimod reloadrules` | Reload rules from rules.md file |
 | `[p]unimod status` | Show monitoring status for this guild |
 | `[p]unimod stats` | Show detection statistics |
-| `[p]unimod last` | View the last AI response (DM only; requires diagnostic mode) |
+| `[p]unimod last` | View the last AI response or error (DM only; shows the redacted log while diagnostic mode is on) |
 
 > The entire `unimod` command group (including `status` and `stats`) is restricted to the **Bot Owner**.
 

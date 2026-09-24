@@ -88,9 +88,15 @@ class Functions(MixinMeta):
         self,
         user: discord.Member,
         *args,
+        answers: dict[str, str] | None = None,
         **kwargs,
     ) -> str:
-        """Create a ticket for the given member."""
+        """Create a ticket for the given member.
+
+        Args:
+            user (discord.Member): User the ticket is for.
+            answers (dict[str, str] | None): Answers to the ticket modal questions, keyed by question label.
+        """
 
         guild = user.guild
         conf = await self.config.guild(guild).all()
@@ -166,8 +172,7 @@ class Functions(MixinMeta):
                 }
 
         # Now create the Discord channel (outside creation lock for shorter hold time)
-        answers: dict = {}
-        discord.Embed()
+        answers = dict(answers or {})
 
         can_read_send = discord.PermissionOverwrite(
             read_messages=True,
@@ -317,6 +322,15 @@ class Functions(MixinMeta):
                 )
         except Exception:
             log.exception(f"Failed to send the welcome message in ticket channel {channel_or_thread.id} ({guild.id})")
+
+        if answers:
+            try:
+                em = discord.Embed(title="Submission Info", color=user.color)
+                for question, answer in answers.items():
+                    em.add_field(name=question[:256], value=answer[:1024], inline=False)
+                await channel_or_thread.send(embed=em)
+            except Exception:
+                log.exception(f"Failed to send the modal answers in ticket channel {channel_or_thread.id} ({guild.id})")
 
         log_message: discord.Message | None = None
         if logchannel:

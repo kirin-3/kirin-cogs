@@ -15,6 +15,14 @@ deletes the message, and chooses an action from the member's server tenure:
 Bots, webhook messages, non-member authors, and members holding the staff role are ignored. A per-member lock prevents a
 message burst from running enforcement more than once. Outcomes and failures are sent to the hardcoded log channel.
 
+A member who triggers the honeypot again is handled as a new incident when:
+
+- they were banned, then unbanned and rejoined, or they left and rejoined;
+- they were quarantined and staff gave roles back by hand instead of using `[p]honeypot restore`. The new quarantine
+  keeps the earlier stored roles and adds the roles they hold now, so nothing restorable is lost.
+
+A quarantined member who still has no assignable roles only has the message deleted.
+
 > [!IMPORTANT]
 > Quarantine depends on `@everyone` having no channel visibility in Unicornia. A member with no roles must be unable to
 > view or post in ordinary channels. The 28-day timeout is never renewed; the role strip is the lasting containment.
@@ -55,7 +63,10 @@ owners, or members with `Manage Roles`:
 - `[p]honeypot list` lists stored members, record state, quarantine time, and role-snapshot size.
 - `[p]honeypot restore <member>` unions the stored roles with the member's current roles and clears the timeout in one
   request. Deleted or newly unassignable roles are skipped and counted. The record is deleted only after success.
+  If the user has left the server, the record is kept in case they rejoin.
 - `[p]honeypot clear <member>` deletes the record without changing the member's roles or timeout.
+
+Both commands take a mention or a user ID, so a record for a user who left the server can still be cleared.
 
 Slash-command equivalents are registered by Red because the command group is hybrid.
 

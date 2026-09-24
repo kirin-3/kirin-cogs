@@ -54,5 +54,8 @@ VOTES_DESCRIPTION = DATA_PATH / "votes.txt"
 # UWU_HEART_EMOJI_ID = 862261325077544971
 COTM_VOTE_EMOJI = "<:uwuheart:862261325077544971>"
 
-# Reward payouts for Top 10 (1st through 10th)
-COTM_REWARDS = [20000, 25000, 20000, 15000, 10000, 10000, 10000, 10000, 10000, 10000]
+# Reward payouts for 1st through 9th place; keep in step with data/prizes.txt
+COTM_REWARDS = [20000, 25000, 20000, 15000, 10000, 10000, 10000, 10000, 10000]
+
+# The public "Check Standings" button re-reads the whole entries channel, so share one tally for this long
+STANDINGS_CACHE_SECONDS = 300

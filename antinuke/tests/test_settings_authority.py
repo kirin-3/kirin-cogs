@@ -1,4 +1,4 @@
-"""Tests for the owner-or-designated-user restriction on critical AntiNuke settings."""
+"""Tests for the owner-or-designated-user restriction on every AntiNuke command."""
 
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
@@ -14,12 +14,22 @@ OWNER_ID = 1000
 ADMIN_ID = 2000
 
 RESTRICTED = [
+    "antinuke_enable",
     "antinuke_disable",
+    "antinuke_logchannel",
+    "antinuke_quarantinerole",
+    "monitor_enable",
+    "monitor_disable",
+    "monitor_threshold",
+    "monitor_botkick",
     "trust_adduser",
     "trust_removeuser",
     "trust_addrole",
     "trust_removerole",
     "trust_clear",
+    "quarantine_restore",
+    "quarantine_force",
+    "quarantine_clear",
 ]
 
 
@@ -76,23 +86,32 @@ def _ctx(author_id: int | None, *, guild: bool = True) -> MagicMock:
     return ctx
 
 
-def _store() -> dict[str, Any]:
-    return {"enabled": True, "trusted_users": [55], "trusted_roles": [66]}
+def _store(name: str = "") -> dict[str, Any]:
+    return {
+        "enabled": name == "antinuke_disable",
+        "log_channel": None,
+        "quarantine_role": None,
+        "trusted_users": [55],
+        "trusted_roles": [66],
+        "monitor": {},
+        "quarantined_users": {"55": {"roles": [], "state": "completed"}},
+    }
 
 
 async def _invoke(cog: AntiNuke, name: str, ctx: MagicMock, *args: Any) -> None:
-    """Run a command's own checks then its callback, as a slash or prefix invocation would."""
+    """Run the checks of a command and its parent groups, then its callback, as an invocation would."""
     command = getattr(AntiNuke, name)
-    for check in command.checks:
-        if not await check(ctx):
-            raise commands.CheckFailure
+    for invoked in [*reversed(command.parents), command]:
+        for check in invoked.checks:
+            if not await discord.utils.maybe_coroutine(check, ctx):
+                raise commands.CheckFailure
     await cast(Any, command).callback(cog, ctx, *args)
 
 
 def _target(name: str) -> tuple[Any, ...]:
-    if name in {"trust_adduser", "trust_removeuser"}:
+    if name in {"trust_adduser", "trust_removeuser", "quarantine_clear"}:
         member = MagicMock(spec=discord.Member)
-        member.id = 55 if name == "trust_removeuser" else 77
+        member.id = 77 if name == "trust_adduser" else 55
         member.bot = False
         return (member,)
     if name in {"trust_addrole", "trust_removerole"}:
@@ -100,7 +119,48 @@ def _target(name: str) -> tuple[Any, ...]:
         role.id = 66 if name == "trust_removerole" else 88
         role.is_default.return_value = False
         return (role,)
+    if name == "antinuke_logchannel":
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = 99
+        return (channel,)
+    if name == "antinuke_quarantinerole":
+        role = MagicMock(spec=discord.Role)
+        role.id = 98
+        return (role,)
+    if name in {"monitor_enable", "monitor_disable"}:
+        return ("ban",)
+    if name == "monitor_threshold":
+        return ("ban", 5, 30)
+    if name == "monitor_botkick":
+        return (False,)
     return ()
+
+
+def _prepare(cog: AntiNuke, ctx: MagicMock, name: str) -> None:
+    """Give commands that act on Discord objects what they need to change state."""
+    ctx.guild.me.top_role.__le__.return_value = False
+    if name in {"quarantine_restore", "quarantine_force"}:
+        cog.quarantine_actions = MagicMock()
+        cog.quarantine_actions.restore_user = AsyncMock(return_value=True)
+        cog.quarantine_actions.execute_quarantine = AsyncMock(return_value=True)
+        cog.action_cache = MagicMock()
+
+
+def _changed(name: str, store: dict[str, Any], cog: AntiNuke) -> bool:
+    if name == "quarantine_restore":
+        return cast(AsyncMock, cog.quarantine_actions.restore_user).await_count == 1
+    if name == "quarantine_force":
+        return cast(AsyncMock, cog.quarantine_actions.execute_quarantine).await_count == 1
+    return store != _store(name)
+
+
+def _args(name: str) -> tuple[Any, ...]:
+    if name in {"quarantine_restore", "quarantine_force"}:
+        member = MagicMock(spec=discord.Member)
+        member.id = 55
+        member.top_role = MagicMock()
+        return (member,)
+    return _target(name)
 
 
 @pytest.mark.asyncio
@@ -125,14 +185,15 @@ async def test_predicate_refuses_outside_guild() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("name", RESTRICTED)
 async def test_admin_is_refused_and_config_unchanged(name: str) -> None:
-    store = _store()
+    store = _store(name)
     cog = _cog(store)
     ctx = _ctx(ADMIN_ID)
+    _prepare(cog, ctx, name)
 
     with pytest.raises(commands.UserFeedbackCheckFailure):
-        await _invoke(cog, name, ctx, *_target(name))
+        await _invoke(cog, name, ctx, *_args(name))
 
-    assert store == _store()
+    assert not _changed(name, store, cog)
     ctx.send.assert_not_awaited()
 
 
@@ -140,26 +201,39 @@ async def test_admin_is_refused_and_config_unchanged(name: str) -> None:
 @pytest.mark.parametrize("name", RESTRICTED)
 @pytest.mark.parametrize("author_id", [OWNER_ID, SETTINGS_AUTHORITY_USER_ID])
 async def test_authorized_user_changes_setting(name: str, author_id: int) -> None:
-    store = _store()
+    store = _store(name)
     cog = _cog(store)
+    ctx = _ctx(author_id)
+    _prepare(cog, ctx, name)
 
-    await _invoke(cog, name, _ctx(author_id), *_target(name))
+    await _invoke(cog, name, ctx, *_args(name))
 
-    assert store != _store()
+    assert _changed(name, store, cog)
+
+
+def test_every_antinuke_command_is_behind_the_group_check() -> None:
+    assert _settings_authority in AntiNuke.antinuke.checks
+    walked = {command.qualified_name for command in AntiNuke.antinuke.walk_commands()}
+    assert walked, "the antinuke group should have subcommands"
+    for command in AntiNuke.antinuke.walk_commands():
+        assert AntiNuke.antinuke in command.parents
 
 
 @pytest.mark.asyncio
-async def test_enable_and_trust_list_keep_existing_access() -> None:
-    assert _settings_authority not in AntiNuke.antinuke_enable.checks
-    assert _settings_authority not in AntiNuke.trust_list.checks
-
-    store = _store()
-    store["enabled"] = False
+async def test_read_only_commands_are_refused_for_admins() -> None:
     ctx = _ctx(ADMIN_ID)
-    await _invoke(_cog(store), "antinuke_enable", ctx)
-    assert store["enabled"] is True
+    with pytest.raises(commands.UserFeedbackCheckFailure):
+        await _invoke(_cog(_store()), "trust_list", ctx)
+    ctx.send.assert_not_awaited()
 
-    ctx.guild.get_member.return_value = None
-    ctx.guild.get_role.return_value = None
-    await _invoke(_cog(store), "trust_list", ctx)
-    ctx.send.assert_awaited()
+
+@pytest.mark.asyncio
+async def test_bots_can_be_trusted() -> None:
+    store = _store()
+    bot_member = MagicMock(spec=discord.Member)
+    bot_member.id = 321
+    bot_member.bot = True
+
+    await _invoke(_cog(store), "trust_adduser", _ctx(OWNER_ID), bot_member)
+
+    assert 321 in store["trusted_users"]

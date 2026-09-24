@@ -1,61 +1,51 @@
 # UnicornAI
 
-**UnicornAI** is an advanced Red Discord Bot cog that integrates with Google Vertex AI and OpenAI-compatible endpoints (NanoGPT, OpenRouter, etc.) to provide an autonomous, persona-based AI assistant. It can automatically engage in conversations, maintaining a consistent personality and memory of recent chat history.
+**UnicornAI** is a Red Discord Bot cog that talks to OpenAI-compatible chat completion endpoints (**NanoGPT** by default, or OpenRouter, NVIDIA NIM, and others) to provide an autonomous, persona-based AI. It can join conversations on a timer, keeping a consistent personality and a memory of recent chat history.
 
 The bot uses webhooks to impersonate personas, posting messages that appear to come from the character itself.
 
 ## Features
-- **Multiple Provider Support**: Switch between Google Vertex AI and OpenAI-compatible endpoints.
-- **Vertex AI Integration**: Uses `gemini-3-pro-preview` (configurable) via asynchronous Google Cloud API calls.
-- **OpenAI-Compatible Support**: Works with NanoGPT, OpenRouter, and other OpenAI-compatible APIs.
+- **OpenAI-Compatible Endpoints**: NanoGPT out of the box; point it at any other compatible API with `[p]ai endpoint`.
 - **Custom Personas**: Load character definitions from simple JSON files.
-- **Context Awareness**: Remembers the last 50-100 messages in the channel (configurable per persona or globally).
+- **Context Awareness**: Remembers the last 50-100 messages in the channel (configurable per persona or globally). The persona's own earlier replies are recognised as its own, so it does not answer itself.
 - **Multi-Channel Support**: Configure different personas and intervals for different channels.
 - **Thread Support**: Works in both text channels and threads.
 - **Auto-Messaging**: Configurable loop to make the AI speak periodically.
 - **Webhook Impersonation**: Uses webhooks to post messages as the persona character.
 - **User Opt-Out**: Users can opt out of having their messages included in AI context.
-- **Smart Logic**: The Vertex AI client strips internal "thinking" tags (`<think>`, including unclosed ones) from model output.
+- **Safe Failures**: API errors are never posted in the channel. A failed scheduled run waits a full interval before retrying, and repeated failures back off (doubling up to 24 hours) until a run succeeds.
+- **Reasoning Cleanup**: Inline `<think>` blocks (including ones cut off unclosed) are stripped from replies.
 
 ## Installation
 
 1.  **Dependencies**
-    Ensure your bot's environment has the required libraries:
     ```bash
-    pip install google-auth aiohttp
+    pip install aiohttp
     ```
 
-2.  **Service Account (for Vertex AI)**
-    - Create a Service Account in your Google Cloud Project with **Vertex AI User** permissions.
-    - Download the JSON key file.
-    - Rename it to `service_account.json` (or any `.json` name).
-    - Place it inside the cog folder: `.../cogs/unicorn_ai/`.
-
-3.  **Load the Cog**
+2.  **Load the Cog**
     ```
     [p]load unicorn_ai
     ```
 
 ## Setup
 
-### Using Vertex AI (Default)
-
-1.  **Initialize Credentials**
+1.  **Set the API Key**
     ```
-    [p]ai setup
+    [p]ai key your_api_key_here
     ```
-    *If successful, the bot will confirm credentials loaded.*
+    The key is stored as Red's `openai` API token (the same as `[p]set api openai api_key,<key>`), and the command message is deleted.
 
-2.  **Configure a Channel**
-    Go to the channel you want the bot to speak in.
+2.  **Endpoint and Model (Optional)**
+    The defaults are NanoGPT (`https://nano-gpt.com/api/v1/chat/completions`) with the `zai-org/glm-5:thinking` model.
+    ```
+    [p]ai endpoint https://openrouter.ai/api/v1
+    [p]ai model your_model_name
+    ```
 
 3.  **Load a Persona (Per Channel)**
-    List available personas:
     ```
     [p]ai persona list
-    ```
-    Load one for the current channel:
-    ```
     [p]ai persona load example
     ```
 
@@ -63,29 +53,6 @@ The bot uses webhooks to impersonate personas, posting messages that appear to c
     ```
     [p]ai toggle
     ```
-
-### Using OpenAI-Compatible Endpoints (OpenRouter, NVIDIA NIM, etc.)
-
-1.  **Set API Key**
-    ```
-    [p]ai openai_key your_api_key_here
-    ```
-    *Note: This command is provided as an alternative to `[p]set api openai` which may have issues in some Redbot versions.*
-
-2.  **Switch Provider**
-    ```
-    [p]ai provider openai
-    ```
-
-3.  **Configure Model (Optional)**
-    The default model is `z-ai/glm5` with temperature 0.95, top_k 40, and top_p 0.93.
-    To change the model:
-    ```
-    [p]ai openai_model your_model_name
-    ```
-
-4.  **Configure Channel**
-    Follow the same steps as Vertex AI (load persona, toggle, etc.).
 
 ## Permissions Required
 - **Manage Webhooks**: Required for the bot to impersonate personas via webhooks. If not granted, the bot will fall back to posting messages as itself.
@@ -98,13 +65,12 @@ The bot uses webhooks to impersonate personas, posting messages that appear to c
 - `[p]ai history <limit>`: Set how many past messages the bot reads (Global setting, default: 50).
 - `[p]ai trigger [persona_name]`: Manually force the bot to generate a response immediately. Optionally provide a persona name to test it without loading it.
 - `[p]ai toggle`: Enable or disable the auto-messaging loop for the current channel.
-- `[p]ai setup`: Reload Vertex AI credentials from the `service_account.json` file.
 
-### Provider Settings
-- `[p]ai provider <vertex|openai>`: Switch between Vertex AI and OpenAI-compatible endpoints.
-- `[p]ai model <name>`: Set the Vertex AI model name (e.g., `gemini-3-pro-preview`).
-- `[p]ai openai_model <name>`: Set the OpenAI-compatible model name (e.g., `z-ai/glm5`).
-- `[p]ai openai_key <api_key>`: Set the OpenAI API key directly (alternative to `[p]set api openai`).
+### Endpoint Settings
+- `[p]ai endpoint [url]`: Set the OpenAI-compatible endpoint. A base URL like `https://nano-gpt.com/api/v1` gets `/chat/completions` added. Leave empty to reset to NanoGPT. (Alias: `openai_endpoint`)
+- `[p]ai model <name>`: Set the model name sent to the endpoint. (Alias: `openai_model`)
+- `[p]ai key <api_key>`: Set the API key. (Alias: `openai_key`)
+- `[p]ai settings`: Show the endpoint, model, history limit, and whether a key is set.
 
 ### Persona Management
 - `[p]ai persona list`: List available personas.
@@ -140,17 +106,14 @@ Create new JSON files in `.../unicorn_ai/data/personas/`.
 - **examples**: (Optional) Example conversations for few-shot learning.
 - **allow_summon**: If set to `true`, users can summon this persona with the `[p]summon` command (subject to cooldowns).
 
-## OpenAI-Compatible Configuration
+## Request Settings
 
-The OpenAI provider is pre-configured for NVIDIA's hosted API with the following settings:
-- **Endpoint**: `https://integrate.api.nvidia.com/v1/chat/completions`
-- **Model**: `z-ai/glm5`
+Every request uses:
 - **Temperature**: 0.95
 - **Top-K**: 40
 - **Top-P**: 0.93
 - **Max Tokens**: 8192
-
-To use a different OpenAI-compatible provider (like OpenRouter), you can modify the `openai_endpoint` setting in the config or use a provider that accepts the same API format.
+- **Timeout**: 180 seconds
 
 ## Troubleshooting
 
@@ -158,18 +121,14 @@ To use a different OpenAI-compatible provider (like OpenRouter), you can modify 
 - Ensure the channel has auto-messaging enabled: `[p]ai toggle`
 - Check that a persona is loaded: `[p]ai persona list` then `[p]ai persona load <name>`
 - Verify the interval is appropriate: `[p]ai interval <seconds>` (default is 300 seconds)
+- Check the bot logs: failed runs are logged with the time of the next attempt. After repeated failures the wait doubles each time (up to 24 hours); one successful run, such as `[p]ai trigger`, resets it.
 
 ### "No active persona set" error
 - Load a persona for the channel: `[p]ai persona load <persona_name>`
 
-### OpenAI responses failing
-- Ensure the API key is set: `[p]ai openai_key <your_key>` or `[p]set api openai <your_key>`
-- Verify the provider is set to openai: `[p]ai provider openai`
-
-### Vertex AI responses failing
-- Ensure `service_account.json` is in the cog folder
-- Run `[p]ai setup` to reload credentials
-- Check the service account has "Vertex AI User" permissions
+### Responses failing
+- Run `[p]ai trigger`: as the bot owner you will see the API error.
+- Check `[p]ai settings` for the endpoint, model, and whether the key is set.
 
 ### Bot posting as itself instead of persona
 - The bot needs "Manage Webhooks" permission to impersonate personas via webhooks

@@ -118,11 +118,11 @@ def test_parse_ai_response_confidence_bounds(cog: UniMod) -> None:
 
 
 def test_parse_ai_response_explanation_length(cog: UniMod) -> None:
-    """Explanation should be clamped to 2000 chars."""
+    """Explanation should be clamped to what one embed field can hold."""
     long_expl = "A" * 2500
     raw = f'{{"is_violation": false, "confidence": 0.5, "violated_rules": [], "severity": null, "explanation": "{long_expl}", "primary_message_id": null}}'
     result = cog.parse_ai_response(raw)
-    assert len(result.explanation) <= 2000
+    assert len(result.explanation) == 1024
     assert result.explanation.endswith("...")
 
 

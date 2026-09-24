@@ -3,6 +3,7 @@ Currency generation and decay systems for Unicornia
 """
 
 import asyncio
+import logging
 import os
 import random
 import time
@@ -13,6 +14,8 @@ import discord
 
 from ..database import DatabaseManager
 from ..types import DecayStats
+
+log = logging.getLogger("red.kirin_cogs.unicornia.currency")
 
 
 class CurrencyGeneration:
@@ -49,18 +52,22 @@ class CurrencyGeneration:
         self.gen_channels = set(await self.config.generation_channels())
         self.gen_cooldown = await self.config.generation_cooldown()
         self.gen_chance = await self.config.generation_chance()
-        self.gen_min = await self.config.generation_min_amount()
-        self.gen_max = await self.config.generation_max_amount()
+        gen_min = await self.config.generation_min_amount()
+        gen_max = await self.config.generation_max_amount()
+        if gen_min > gen_max:
+            # Stored before the config command checked the pair; random.randint would raise on every spawn
+            log.warning("generation_min_amount %s is above generation_max_amount %s; swapping them", gen_min, gen_max)
+            gen_min, gen_max = gen_max, gen_min
+        self.gen_min = gen_min
+        self.gen_max = gen_max
         self.currency_symbol = await self.config.currency_symbol()
 
     async def process_message(self, message: discord.Message):
-        """Process a message for potential currency generation"""
-        if message.author.bot or not message.guild:
-            return
+        """Process a message for potential currency generation.
 
-        # Check if message is a command
-        ctx = await self.bot.get_context(message)
-        if ctx.valid:
+        Called from on_message_without_command, so commands are already filtered out.
+        """
+        if message.author.bot or not message.guild:
             return
 
         # Fast checks using cache
@@ -302,7 +309,8 @@ class CurrencyDecay:
 
         while True:
             try:
-                interval_hours = await self.config.decay_hour_interval()
+                # At least an hour: 0 (stored before the config command checked it) would decay every minute
+                interval_hours = max(1, await self.config.decay_hour_interval())
 
                 # Get last run from DB (more reliable) or Config (fallback)
                 last_run_db = await self._get_last_decay_from_db()

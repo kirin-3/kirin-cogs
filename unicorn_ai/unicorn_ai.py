@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import math
 import os
@@ -10,9 +11,8 @@ import discord
 from discord.ext import tasks
 from redbot.core import Config, app_commands, commands
 
-from .openai import OpenAIClient
+from .openai import DEFAULT_ENDPOINT, DEFAULT_MODEL, AIRequestError, OpenAIClient
 from .persona import PersonaManager
-from .vertex import VertexClient
 
 log = logging.getLogger("red.unicorn_ai")
 
@@ -22,6 +22,8 @@ DEFAULT_INTERVAL = 300
 MIN_HISTORY = 1
 MAX_HISTORY = 200
 DEFAULT_HISTORY = 50
+# Consecutive scheduled failures double the wait, up to this many doublings (and MAX_INTERVAL).
+MAX_BACKOFF_DOUBLINGS = 8
 
 
 class ChannelSettings(TypedDict):
@@ -33,8 +35,6 @@ class ChannelSettings(TypedDict):
 
 class GlobalSettings(TypedDict):
     history_limit: int
-    provider: str
-    model: str
     openai_endpoint: str
     openai_model: str
 
@@ -75,27 +75,36 @@ def normalize_channel_settings(value: object) -> ChannelSettings:
 def normalize_global_settings(value: object) -> GlobalSettings:
     """Return complete global settings without trusting Config shapes."""
     raw = value if isinstance(value, Mapping) else {}
-    provider = raw.get("provider")
-    if not isinstance(provider, str) or provider not in {"vertex", "openai"}:
-        provider = "vertex"
-    model = raw.get("model")
-    if not isinstance(model, str):
-        model = "gemini-3-pro-preview"
     openai_endpoint = raw.get("openai_endpoint")
-    if not isinstance(openai_endpoint, str):
-        openai_endpoint = "https://integrate.api.nvidia.com/v1/chat/completions"
+    if not isinstance(openai_endpoint, str) or not openai_endpoint.strip():
+        openai_endpoint = DEFAULT_ENDPOINT
     openai_model = raw.get("openai_model")
-    if not isinstance(openai_model, str):
-        openai_model = "z-ai/glm5"
+    if not isinstance(openai_model, str) or not openai_model.strip():
+        openai_model = DEFAULT_MODEL
     return {
         "history_limit": _bounded_int(
             raw.get("history_limit"), default=DEFAULT_HISTORY, minimum=MIN_HISTORY, maximum=MAX_HISTORY
         ),
-        "provider": provider,
-        "model": model,
         "openai_endpoint": openai_endpoint,
         "openai_model": openai_model,
     }
+
+
+def normalize_endpoint(url: str) -> str | None:
+    """Return a chat completions URL for an OpenAI-compatible base or full URL, or None if it is not http(s)."""
+    url = url.strip().strip("<>").rstrip("/")
+    if not url.lower().startswith(("https://", "http://")) or len(url.split("://", 1)[1]) == 0:
+        return None
+    if not url.endswith("/chat/completions"):
+        url += "/chat/completions"
+    return url
+
+
+def retry_delay(interval: int, failures: int) -> int:
+    """Seconds to wait before the next scheduled run after ``failures`` consecutive failed runs."""
+    if failures <= 0:
+        return interval
+    return min(MAX_INTERVAL, interval * 2 ** min(failures - 1, MAX_BACKOFF_DOUBLINGS))
 
 
 def _summon_user_cd(ctx: commands.Context) -> commands.Cooldown | None:
@@ -112,7 +121,7 @@ def _summon_channel_cd(ctx: commands.Context) -> commands.Cooldown | None:
 
 class UnicornAI(commands.Cog):
     """
-    Autonomous AI persona using Vertex AI or OpenAI-compatible endpoints.
+    Autonomous AI persona using OpenAI-compatible endpoints (NanoGPT by default).
     """
 
     def __init__(self, bot):
@@ -123,6 +132,12 @@ class UnicornAI(commands.Cog):
         self._generation_semaphore = asyncio.Semaphore(2)
         self._active_channels: set[int] = set()
         self._background_tasks: set[asyncio.Task[None]] = set()
+        # Consecutive failed scheduled runs per channel, used to back off retries
+        self._failures: dict[int, int] = {}
+        # Webhooks this bot owns, so persona messages are recognised as the persona's own,
+        # and every webhook already looked up, so foreign webhooks do not trigger a refetch each run
+        self._own_webhook_ids: set[int] = set()
+        self._seen_webhook_ids: set[int] = set()
 
         # Channel-specific config
         default_channel = {
@@ -136,10 +151,8 @@ class UnicornAI(commands.Cog):
         # Global config for API/System settings
         default_global = {
             "history_limit": 50,
-            "model": "gemini-3-pro-preview",
-            "provider": "vertex",
-            "openai_endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
-            "openai_model": "z-ai/glm5",
+            "openai_endpoint": DEFAULT_ENDPOINT,
+            "openai_model": DEFAULT_MODEL,
         }
         self.config.register_global(**default_global)
 
@@ -150,7 +163,6 @@ class UnicornAI(commands.Cog):
         self.cog_path = os.path.dirname(__file__)
         self.data_path = os.path.join(self.cog_path, "data", "personas")
 
-        self.vertex = VertexClient(self.cog_path)
         self.openai = OpenAIClient(self.bot)
         self.personas = PersonaManager(self.data_path)
 
@@ -210,7 +222,7 @@ class UnicornAI(commands.Cog):
                 channel_id = int(raw_channel_id)
             except (TypeError, ValueError, OverflowError):
                 continue
-            interval = int(settings["interval"])
+            interval = retry_delay(int(settings["interval"]), self._failures.get(channel_id, 0))
             last_run = float(settings["last_run"])
 
             if (now - last_run) >= interval:
@@ -251,19 +263,36 @@ class UnicornAI(commands.Cog):
         self._active_channels.add(channel_id)
         try:
             async with self._get_channel_lock(channel_id):
-                await self._trigger_ai_claimed(channel, ctx, persona_override)
+                posted = await self._trigger_ai_claimed(channel, ctx, persona_override)
+                if posted or not ctx:
+                    await self._record_run(target_channel, posted=posted)
         finally:
             self._active_channels.discard(channel_id)
+
+    async def _record_run(self, channel: discord.TextChannel | discord.Thread, *, posted: bool) -> None:
+        """Restart the channel's timer; failed scheduled runs back off instead of retrying every minute."""
+        await self.config.channel(channel).last_run.set(time.time())
+        if posted:
+            self._failures.pop(channel.id, None)
+            return
+        failures = self._failures.get(channel.id, 0) + 1
+        self._failures[channel.id] = failures
+        interval = normalize_channel_settings(await self.config.channel(channel).all())["interval"]
+        log.warning(
+            f"UnicornAI run in channel {channel.id} posted nothing ({failures} in a row); "
+            f"next attempt in {retry_delay(interval, failures)}s"
+        )
 
     async def _trigger_ai_claimed(
         self,
         channel: discord.TextChannel | None = None,
         ctx: commands.Context | None = None,
         persona_override: str | None = None,
-    ) -> None:
+    ) -> bool:
         """
         Core logic to fetch history and generate response.
         Can be triggered by loop (passed channel) or manual command (passed ctx).
+        Returns whether a reply was posted.
         """
         # Resolve target channel
         if ctx:
@@ -272,29 +301,29 @@ class UnicornAI(commands.Cog):
             target_channel = channel
 
         if not target_channel:
-            return
+            return False
 
         # Fetch settings — only guild channels are tracked in config
         if not isinstance(target_channel, (discord.TextChannel, discord.Thread)):
-            return
+            return False
         settings = normalize_channel_settings(await self.config.channel(target_channel).all())
         global_settings = normalize_global_settings(await self.config.all())
 
         # If manual trigger, ignore 'enabled' check
         if not ctx and settings["enabled"] is not True:
-            return
+            return False
 
         persona_name = persona_override or settings["active_persona"]
         if not persona_name:
             if ctx:
                 await ctx.send("No active persona set (and no override provided).")
-            return
+            return False
 
         persona = await asyncio.to_thread(self.personas.load_persona, persona_name)
         if not persona:
             if ctx:
                 await ctx.send(f"Failed to load persona '{persona_name}'.")
-            return
+            return False
 
         # 2. Fetch History
         try:
@@ -309,7 +338,7 @@ class UnicornAI(commands.Cog):
             if not hasattr(target_channel, "history"):
                 if ctx:
                     await ctx.send("Cannot fetch history from this channel type.")
-                return
+                return False
 
             messages = [m async for m in target_channel.history(limit=limit)]
             messages.reverse()  # Oldest first
@@ -317,16 +346,21 @@ class UnicornAI(commands.Cog):
             log.error(f"Failed to fetch history: {e}")
             if ctx:
                 await ctx.send(f"Error fetching history: {e}")
-            return
+            return False
 
-        # 3. Format History for Gemini (With Opt-Out Check)
+        # 3. Format History (With Opt-Out Check)
+        own_webhook_ids = await self._get_own_webhook_ids(target_channel, messages)
         formatted_history = []
         for msg in messages:
+            from_bot = msg.author.id == self.bot.user.id
+            from_own_webhook = msg.webhook_id is not None and msg.webhook_id in own_webhook_ids
             # Check opt-out status for user messages
-            if msg.author.id != self.bot.user.id and await self.config.user(msg.author).opt_out():
+            if not from_bot and not from_own_webhook and await self.config.user(msg.author).opt_out():
                 continue
 
-            role = "model" if msg.author.id == self.bot.user.id else "user"
+            # Persona replies arrive through our webhook; only this persona's own lines are the model's turns.
+            is_model = from_bot or (from_own_webhook and msg.author.display_name == persona.name)
+            role = "model" if is_model else "user"
             content = msg.clean_content
             if not content:
                 continue  # Skip empty messages
@@ -338,51 +372,68 @@ class UnicornAI(commands.Cog):
             await ctx.send("Generating response...")
 
         async with self._generation_semaphore:
-            await self._do_generate_and_send(ctx, target_channel, global_settings, formatted_history, persona)
+            return await self._do_generate_and_send(ctx, target_channel, global_settings, formatted_history, persona)
 
-    async def _do_generate_and_send(self, ctx, target_channel, global_settings, formatted_history, persona):
-        provider = global_settings.get("provider", "vertex")
+    async def _get_own_webhook_ids(
+        self, channel: discord.TextChannel | discord.Thread, messages: list[discord.Message]
+    ) -> set[int]:
+        """Return this bot's webhook IDs, fetching the channel's webhooks only for unrecognised webhook messages."""
+        unknown = {m.webhook_id for m in messages if m.webhook_id is not None} - self._seen_webhook_ids
+        if not unknown:
+            return self._own_webhook_ids
+        parent = channel.parent if isinstance(channel, discord.Thread) else channel
+        if not isinstance(parent, discord.TextChannel) or not parent.permissions_for(parent.guild.me).manage_webhooks:
+            return self._own_webhook_ids
+        try:
+            webhooks = await parent.webhooks()
+        except discord.HTTPException as e:
+            log.warning(f"Could not list webhooks in channel {parent.id}: {e}")
+            return self._own_webhook_ids
+        self._own_webhook_ids.update(w.id for w in webhooks if w.user and w.user.id == self.bot.user.id)
+        # Unknown IDs not in the list belong to deleted or foreign webhooks; either way they are not ours.
+        self._seen_webhook_ids.update(unknown, (w.id for w in webhooks))
+        return self._own_webhook_ids
 
-        if provider == "openai":
-            # Get API key from Red's shared tokens
-            api_key = await self.bot.get_shared_api_tokens("openai")
-            if not api_key.get("api_key"):
-                error_msg = "OpenAI API key not set. Use `[p]set api openai <api_key>` to configure."
-                if ctx:
-                    await ctx.send(error_msg)
-                return
+    async def _do_generate_and_send(self, ctx, target_channel, global_settings, formatted_history, persona) -> bool:
+        """Generate a reply and post it as the persona. Returns whether a reply was posted."""
+        # Get API key from Red's shared tokens
+        api_key = await self.bot.get_shared_api_tokens("openai")
+        if not api_key.get("api_key"):
+            log.warning("UnicornAI API key is not set")
+            if ctx:
+                await ctx.send("API key not set. Use `[p]ai key <api_key>` to configure.")
+            return False
 
+        try:
             response = await self.openai.generate_response(
-                endpoint=global_settings.get("openai_endpoint", "https://nano-gpt.com/api/v1/chat/completions"),
+                endpoint=global_settings["openai_endpoint"],
                 api_key=api_key["api_key"],
-                model=global_settings.get("openai_model", "zai-org/glm-5:thinking"),
+                model=global_settings["openai_model"],
                 system_instruction=persona.system_prompt,
                 history=formatted_history,
                 after_context=persona.after_context,
             )
-        else:  # vertex (default)
-            response = await self.vertex.generate_response(
-                model=global_settings["model"],
-                location="global",
-                api_version="v1beta1",
-                system_instruction=persona.system_prompt,
-                history=formatted_history,
-                after_context=persona.after_context,
-            )
+        except AIRequestError as e:
+            # Errors are never posted as the persona; only the invoker is told.
+            if ctx:
+                detail = f": {e}" if await self.bot.is_owner(ctx.author) else ". Check the bot logs."
+                await ctx.send(f"The AI request failed{detail}")
+            return False
 
         if not response:
             if ctx:
-                await ctx.send("Failed to generate response (empty or error).")
-            return
+                await ctx.send("The AI returned an empty response.")
+            return False
 
         # 5. Send
         try:
             await self._send_response(target_channel, response, persona)
-            # Update last_run only on success
-            await self.config.channel(target_channel).last_run.set(time.time())
         except Exception as e:
+            log.error(f"Failed to send UnicornAI message in channel {target_channel.id}: {e}")
             if ctx:
                 await ctx.send(f"Failed to send message: {e}")
+            return False
+        return True
 
     async def _send_response(self, channel, content: str, persona):
         """
@@ -425,6 +476,8 @@ class UnicornAI(commands.Cog):
 
             if not webhook:
                 webhook = await target_channel.create_webhook(name="UnicornAI Webhook")
+            self._own_webhook_ids.add(webhook.id)
+            self._seen_webhook_ids.add(webhook.id)
 
             # Send via webhook
             await webhook.send(
@@ -519,18 +572,6 @@ class UnicornAI(commands.Cog):
         """Manage UnicornAI settings."""
         pass
 
-    @ai_group.command(name="setup")
-    @commands.is_owner()
-    async def ai_setup(self, ctx):
-        """Reloads credentials from local JSON file."""
-        success = await self.vertex._load_credentials()
-        if success:
-            await ctx.send("Credentials loaded successfully.")
-        else:
-            await ctx.send(
-                "Failed to load credentials. Check logs and ensure `service_account.json` is in the cog folder."
-            )
-
     @ai_group.command(name="toggle")
     @commands.is_owner()
     async def ai_toggle(self, ctx):
@@ -563,45 +604,54 @@ class UnicornAI(commands.Cog):
         await self.config.history_limit.set(limit)
         await ctx.send(f"Global history limit set to {limit} messages.")
 
-    @ai_group.command(name="model")
+    @ai_group.command(name="endpoint", aliases=["openai_endpoint"])
+    @commands.is_owner()
+    async def ai_endpoint(self, ctx, url: str | None = None):
+        """
+        Set the OpenAI-compatible chat completions endpoint.
+
+        A base URL such as `https://nano-gpt.com/api/v1` gets `/chat/completions` added.
+        Leave empty to reset to NanoGPT.
+        """
+        if url is None:
+            await self.config.openai_endpoint.clear()
+            await ctx.send(f"Endpoint reset to `{DEFAULT_ENDPOINT}`.")
+            return
+        endpoint = normalize_endpoint(url)
+        if endpoint is None:
+            await ctx.send("The endpoint must be an `http://` or `https://` URL.")
+            return
+        await self.config.openai_endpoint.set(endpoint)
+        await ctx.send(f"Endpoint set to `{endpoint}`.")
+
+    @ai_group.command(name="model", aliases=["openai_model"])
     @commands.is_owner()
     async def ai_model(self, ctx, name: str):
-        """Set the AI model name (Vertex AI only)."""
-        await self.config.model.set(name)
+        """Set the model name sent to the endpoint."""
+        await self.config.openai_model.set(name)
         await ctx.send(f"Model set to `{name}`.")
 
-    @ai_group.command(name="provider")
+    @ai_group.command(name="key", aliases=["openai_key"])
     @commands.is_owner()
-    async def ai_provider(self, ctx, provider: str):
-        """Set the AI provider (vertex or openai)."""
-        valid_providers = ["vertex", "openai"]
-        if provider.lower() not in valid_providers:
-            await ctx.send(f"Invalid provider. Valid options: {', '.join(valid_providers)}")
-            return
-
-        provider = provider.lower()
-        await self.config.provider.set(provider)
-
-        if provider == "openai":
-            await ctx.send(
-                "Provider set to **OpenAI-compatible**. Make sure to set the API key with `[p]set api openai <api_key>`"
-            )
-        else:
-            await ctx.send("Provider set to **Vertex AI**.")
-
-    @ai_group.command(name="openai_model")
-    @commands.is_owner()
-    async def ai_openai_model(self, ctx, name: str):
-        """Set the OpenAI-compatible model name."""
-        await self.config.openai_model.set(name)
-        await ctx.send(f"OpenAI model set to `{name}`.")
-
-    @ai_group.command(name="openai_key")
-    @commands.is_owner()
-    async def ai_openai_key(self, ctx, api_key: str):
-        """Set the OpenAI API key directly (alternative to [p]set api)."""
+    async def ai_key(self, ctx, api_key: str):
+        """Set the endpoint's API key (stored as Red's `openai` API token)."""
         await self.bot.set_shared_api_tokens("openai", api_key=api_key)
-        await ctx.send("OpenAI API key set successfully.")
+        with contextlib.suppress(discord.HTTPException):
+            await ctx.message.delete()
+        await ctx.send("API key set successfully.")
+
+    @ai_group.command(name="settings")
+    @commands.is_owner()
+    async def ai_settings(self, ctx):
+        """Show the endpoint, model, and history settings."""
+        settings = normalize_global_settings(await self.config.all())
+        key_set = bool((await self.bot.get_shared_api_tokens("openai")).get("api_key"))
+        await ctx.send(
+            f"Endpoint: `{settings['openai_endpoint']}`\n"
+            f"Model: `{settings['openai_model']}`\n"
+            f"History limit: {settings['history_limit']}\n"
+            f"API key: {'set' if key_set else 'not set'}"
+        )
 
     @ai_group.group(name="persona")
     @commands.is_owner()

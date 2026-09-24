@@ -1,3 +1,7 @@
+# Price of a waifu with no stored record (matches the WaifuInfo.Price column default)
+DEFAULT_WAIFU_PRICE = 50
+
+
 class WaifuRepository:
     """Repository for Waifu system database operations"""
 
@@ -233,10 +237,13 @@ class WaifuRepository:
         gift_name: str,
         gift_emoji: str,
         gift_price: int,
-        new_waifu_price: int,
+        price_change: int,
         note: str,
-    ) -> bool:
-        """Atomically gift a waifu: deduct currency, update price, add item.
+    ) -> int | None:
+        """Atomically gift a waifu: deduct currency, change price, add item.
+
+        The price change is applied in SQL to the stored price, so gifts made at the
+        same moment all count instead of overwriting each other.
 
         Args:
             giver_id: Giver ID.
@@ -244,11 +251,11 @@ class WaifuRepository:
             gift_name: Gift name.
             gift_emoji: Gift emoji.
             gift_price: Price of gift.
-            new_waifu_price: New price of waifu.
+            price_change: Amount added to the waifu's price (negative for negative gifts). The price stays at least 1.
             note: Transaction note.
 
         Returns:
-            bool: True if successful, False if insufficient funds.
+            The waifu's new price, or None if the giver can't afford the gift.
         """
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
@@ -265,17 +272,20 @@ class WaifuRepository:
 
                 if cursor.rowcount == 0:
                     await db.execute("ROLLBACK")
-                    return False
+                    return None
 
-                # 2. Update waifu price (Upsert to ensure existence for FK constraint)
+                # 2. Change waifu price (Upsert to ensure existence for FK constraint)
                 await db.execute(
                     """
                     INSERT INTO WaifuInfo (WaifuId, Price, DateAdded)
-                    VALUES (?, ?, datetime('now'))
-                    ON CONFLICT(WaifuId) DO UPDATE SET Price = ?
+                    VALUES (?, MAX(1, ? + ?), datetime('now'))
+                    ON CONFLICT(WaifuId) DO UPDATE SET Price = MAX(1, COALESCE(Price, ?) + ?)
                 """,
-                    (waifu_id, new_waifu_price, new_waifu_price),
+                    (waifu_id, DEFAULT_WAIFU_PRICE, price_change, DEFAULT_WAIFU_PRICE, price_change),
                 )
+                cursor = await db.execute("SELECT Price FROM WaifuInfo WHERE WaifuId = ?", (waifu_id,))
+                row = await cursor.fetchone()
+                new_price = row[0] if row else DEFAULT_WAIFU_PRICE
 
                 # 3. Add item
                 await db.execute(
@@ -296,7 +306,7 @@ class WaifuRepository:
                 )
 
                 await db.commit()
-                return True
+                return new_price
 
             except Exception:
                 await db.execute("ROLLBACK")

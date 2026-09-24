@@ -19,6 +19,7 @@ from redbot.core.bot import Red
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from testutils.bots import RedLikeBot
 from unicornia.errors import SystemNotReadyError, UnicorniaError
 from unicornia.unicornia import Unicornia
 
@@ -307,7 +308,7 @@ async def test_on_command_error_handles_unicornia_error(cog: Unicornia) -> None:
 
 
 @pytest.mark.asyncio
-async def test_on_message_processes_all_message_systems_when_ready(cog: Unicornia) -> None:
+async def test_message_listeners_split_market_from_xp_and_spawns(cog: Unicornia) -> None:
     xp_system = MagicMock()
     xp_system.process_message = AsyncMock()
     currency_generation = MagicMock()
@@ -327,8 +328,14 @@ async def test_on_message_processes_all_message_systems_when_ready(cog: Unicorni
     message.author.bot = False
     message.guild = MagicMock(spec=discord.Guild)
 
+    # Every message counts toward stock emoji usage
     await cog.on_message(message)
+    market_system.process_message.assert_awaited_once_with(message)
+    xp_system.process_message.assert_not_awaited()
+    currency_generation.process_message.assert_not_awaited()
 
+    # XP and spawns listen to Red's event for non-command messages instead of parsing the message again
+    await cog.on_message_without_command(message)
     xp_system.process_message.assert_awaited_once_with(message)
     currency_generation.process_message.assert_awaited_once_with(message)
     market_system.process_message.assert_awaited_once_with(message)
@@ -342,7 +349,7 @@ async def dpytest_bot() -> AsyncGenerator[dpy_commands.Bot, None]:
     intents.messages = True
     intents.message_content = True
 
-    bot = dpy_commands.Bot(command_prefix="!", intents=intents)
+    bot = RedLikeBot(command_prefix="!", intents=intents)
     await bot._async_setup_hook()  # type: ignore[attr-defined]
     dpytest.configure(bot)
 
@@ -383,6 +390,46 @@ async def test_dpytest_message_dispatches_unicornia_listener(dpytest_bot: dpy_co
     cast(AsyncMock, xp_system.process_message).assert_awaited_once()
     cast(AsyncMock, currency_generation.process_message).assert_awaited_once()
     cast(AsyncMock, market_system.process_message).assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dpytest_command_message_is_parsed_once_and_skips_xp_and_spawns(
+    dpytest_bot: dpy_commands.Bot,
+) -> None:
+    config_mock = _make_config_mock()
+
+    with patch("unicornia.unicornia.Config.get_conf", return_value=config_mock):
+        cog = Unicornia(dpytest_bot)  # type: ignore[arg-type]
+    cog.cog_load = AsyncMock()  # type: ignore[method-assign]
+
+    xp_system = MagicMock()
+    xp_system.process_message = AsyncMock()
+    currency_generation = MagicMock()
+    currency_generation.process_message = AsyncMock()
+    market_system = MagicMock()
+    market_system.process_message = AsyncMock()
+    _mark_systems_ready(
+        cog,
+        xp_system=xp_system,
+        currency_generation=currency_generation,
+        market_system=market_system,
+    )
+    await dpytest_bot.add_cog(cog)
+
+    @dpytest_bot.command(name="ping")
+    async def ping(ctx: dpy_commands.Context) -> None:
+        pass
+
+    original_get_context = dpytest_bot.get_context
+    with patch.object(dpytest_bot, "get_context", side_effect=original_get_context) as get_context:
+        await dpytest.message("!ping")
+        await dpytest.run_all_events()
+    await dpytest.empty_queue()
+
+    get_context.assert_awaited_once()
+    cast(AsyncMock, market_system.process_message).assert_awaited_once()
+    cast(AsyncMock, xp_system.process_message).assert_not_awaited()
+    cast(AsyncMock, currency_generation.process_message).assert_not_awaited()
 
 
 @pytest.mark.asyncio

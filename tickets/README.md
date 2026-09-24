@@ -21,9 +21,11 @@ The user commands are hybrid — they work as slash commands too.
   - **Note:** This command bypasses the verification workflow; use the Close button for verification status selection.
 
 ### Close Button Workflow
-When using the **Close** button in a ticket, a verification dialog appears:
+When staff (support roles, the server owner, or bot admins) use the **Close** button in a ticket, a verification dialog appears:
 - **Verified** ✅: Closes ticket, assigns Verified role, and DMs the user confirming verification.
 - **Not Verified** ❌: Prompts for a reason, then closes ticket and DMs the user that they were not verified.
+
+When the ticket owner uses the **Close** button (allowed while `[p]tickets selfclose` is on), they are only asked for a reason and the ticket closes without a verification status. Users cannot verify themselves.
 
 The close view also includes a **Remind Instructions** button that reposts the ID-verification selfie instructions.
 
@@ -46,10 +48,9 @@ Base support ticket settings. Alias: `[p]tset`
 - `[p]tickets logchannel <channel>`: Set a channel for logging opened/closed tickets.
 
 #### Modals (Input Forms)
-> **Note:** The ticket panel currently always opens the built-in verification modal (image upload).
-> These commands configure a custom input form that is not shown by the default open flow.
-- `[p]tickets modaltitle <title>`: Set the title of the input form.
-- `[p]tickets addmodal <field_name>`: Add or edit a field in the modal (e.g., "Username", "Issue").
+The ticket panel opens the verification modal (image upload). These commands customize it; answers are posted in the new ticket.
+- `[p]tickets modaltitle <title>`: Set the title of the modal (defaults to "Verification").
+- `[p]tickets addmodal <field_name>`: Add or edit a question shown below the image upload (e.g., "Username", "Issue"). Up to 4 questions, since the upload takes one of Discord's 5 modal slots.
 - `[p]tickets viewmodal`: View and delete configured modal fields.
 
 #### Access Control

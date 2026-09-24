@@ -264,6 +264,7 @@ async def test_verification_modal_posts_to_newest_active_ticket_with_pending_pre
     modal.user = member
     modal.image = MagicMock()
     modal.image.values = [MagicMock(url="https://example.invalid/a.png")]
+    modal.questions = []
     interaction = MagicMock()
     interaction.response.defer = AsyncMock()
     interaction.followup.send = AsyncMock()

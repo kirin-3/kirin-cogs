@@ -10,6 +10,22 @@ from ..views import UnicorniaHelpView
 RTP_TOLERANCE = 0.005
 LOW_CONFIDENCE_ROUNDS = 100
 
+# Integer settings where 0 would remove the limit entirely (a daily every minute, decay every minute) or spawn nothing
+MIN_ONE_SETTINGS = {
+    "timely_cooldown",
+    "decay_hour_interval",
+    "dividend_period_hours",
+    "generation_min_amount",
+    "generation_max_amount",
+}
+# Settings that form a (minimum, maximum) pair: the minimum can't be above the maximum
+RANGE_SETTINGS = {
+    "generation_min_amount": ("generation_min_amount", "generation_max_amount"),
+    "generation_max_amount": ("generation_min_amount", "generation_max_amount"),
+    "gambling_min_bet": ("gambling_min_bet", "gambling_max_bet"),
+    "gambling_max_bet": ("gambling_min_bet", "gambling_max_bet"),
+}
+
 
 async def _send_lines_in_chunks(ctx, lines: list[str]) -> None:
     """Send a report without crossing Discord's message-size limit."""
@@ -358,9 +374,17 @@ class AdminCommands(UnicorniaMixinBase):
                 "dividend_period_hours",
             ]:
                 amount = int(value)
-                if amount < 0:
-                    await ctx.send("❌ Amount must be positive.")
+                minimum = 1 if setting in MIN_ONE_SETTINGS else 0
+                if amount < minimum:
+                    await ctx.send(f"❌ {setting} must be at least {minimum}.")
                     return
+                if setting in RANGE_SETTINGS:
+                    low_key, high_key = RANGE_SETTINGS[setting]
+                    low = amount if setting == low_key else await getattr(self.config, low_key)()
+                    high = amount if setting == high_key else await getattr(self.config, high_key)()
+                    if low > high:
+                        await ctx.send(f"❌ {low_key} ({low}) can't be above {high_key} ({high}).")
+                        return
                 await getattr(self.config, setting).set(amount)
                 await ctx.send(f"✅ {setting} updated to {amount}")
             elif setting == "generation_chance":

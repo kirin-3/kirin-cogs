@@ -1,12 +1,33 @@
 import logging
+from dataclasses import dataclass
 
 import discord
 from discord import ButtonStyle, Interaction, TextStyle
 from discord.ui import Button, Modal, TextInput, View
 
-from .models import QUESTIONS, ProfileData
+from .models import (
+    AGE_RULE,
+    ATTACHMENT_PREFIX,
+    MAX_PICTURE_BYTES,
+    PICTURE_TYPES,
+    QUESTIONS,
+    ProfileData,
+    is_valid_age,
+    parse_age,
+)
 
 log = logging.getLogger("red.kirin_cogs.profile.views")
+
+# A dismissed modal never submits; stop waiting on it with the builder's own lifetime.
+MODAL_TIMEOUT = 600
+
+
+@dataclass
+class UploadedPicture:
+    """A picture downloaded from the builder's upload, to be attached to the profile post."""
+
+    data: bytes
+    filename: str
 
 
 class ProfileModal(Modal):
@@ -20,7 +41,7 @@ class ProfileModal(Modal):
         style: TextStyle,
         current_value: str = "",
     ):
-        super().__init__(title=label)
+        super().__init__(title=label, timeout=MODAL_TIMEOUT)
         self.field_id = field_id
         self.input = TextInput(
             label=question,
@@ -44,9 +65,10 @@ class ProfileModal(Modal):
 
 class PictureUploadModal(Modal):
     def __init__(self):
-        super().__init__(title="Profile Picture")
-        self.interaction = None
-        self.value = None
+        super().__init__(title="Profile Picture", timeout=MODAL_TIMEOUT)
+        self.interaction: Interaction | None = None
+        self.value: UploadedPicture | None = None
+        self.error: str | None = None
         self.image = discord.ui.FileUpload(
             custom_id="profile_picture_upload",
             required=True,
@@ -61,13 +83,33 @@ class PictureUploadModal(Modal):
         self.add_item(self.label)
 
     async def on_submit(self, interaction: Interaction):
-        # discord.ui.FileUpload exposes uploaded Attachment objects directly.
-        attachments = list(self.image.values or [])
-        self.value = attachments[0].url if attachments else None
-
         self.interaction = interaction
         await interaction.response.defer()
-        self.stop()
+        # discord.ui.FileUpload exposes uploaded Attachment objects directly. Their links are temporary,
+        # so download the file now; it is re-uploaded with the profile post.
+        attachments = list(self.image.values or [])
+        try:
+            if attachments:
+                self.value = await self._download(attachments[0])
+        finally:
+            self.stop()
+
+    async def _download(self, attachment: discord.Attachment) -> UploadedPicture | None:
+        content_type = (attachment.content_type or "").split(";")[0].strip().lower()
+        extension = PICTURE_TYPES.get(content_type)
+        if extension is None:
+            self.error = "Please upload a PNG, JPEG, GIF or WebP image."
+            return None
+        if attachment.size > MAX_PICTURE_BYTES:
+            self.error = f"Please upload an image smaller than {MAX_PICTURE_BYTES // (1024 * 1024)} MB."
+            return None
+        try:
+            data = await attachment.read()
+        except discord.HTTPException as e:
+            log.warning(f"Could not download profile picture upload: {e}")
+            self.error = "Discord didn't let me download that image. Please try again."
+            return None
+        return UploadedPicture(data=data, filename=f"profile_picture{extension}")
 
 
 class ProfileBuilderView(View):
@@ -75,6 +117,8 @@ class ProfileBuilderView(View):
         super().__init__(timeout=600)
         self.user = user
         self.data = current_data.copy()
+        # A picture uploaded in this session, attached to the profile post on submit
+        self.picture: UploadedPicture | None = None
         self.submitted = False
         self._setup_buttons()
 
@@ -108,12 +152,16 @@ class ProfileBuilderView(View):
                 return await interaction.response.send_message("This menu is not for you.", ephemeral=True)
 
             field_id = question_data["id"]
+            modal: PictureUploadModal | ProfileModal
             if question_data.get("type") == "image":
                 modal = PictureUploadModal()
                 await interaction.response.send_modal(modal)
                 await modal.wait()
+                if modal.error and modal.interaction:
+                    return await modal.interaction.followup.send(modal.error, ephemeral=True)
                 if modal.value:
-                    self.data[field_id] = modal.value
+                    self.picture = modal.value
+                    self.data[field_id] = f"{ATTACHMENT_PREFIX}{modal.value.filename}"
             else:
                 style = TextStyle.long if question_data.get("style") == "long" else TextStyle.short
                 modal = ProfileModal(
@@ -128,25 +176,28 @@ class ProfileBuilderView(View):
                 await interaction.response.send_modal(modal)
                 await modal.wait()
                 if modal.value is not None:
-                    val = modal.value
+                    val: str | int = modal.value
                     if question_data.get("type") == "int":
-                        try:
-                            val = int(val)
-                        except ValueError:
-                            return await interaction.followup.send("Age must be a number!", ephemeral=True)
+                        age = parse_age(modal.value)
+                        if age is None:
+                            if modal.interaction:
+                                await modal.interaction.followup.send(AGE_RULE, ephemeral=True)
+                            return
+                        val = age
                     self.data[field_id] = val
 
+            if modal.interaction is None:
+                return  # The modal was dismissed or timed out
             self._setup_buttons()
             try:
-                if interaction.message is not None:
-                    await interaction.message.edit(view=self)
+                # The builder is ephemeral, so only the interaction token can edit it; Message.edit gets a 404.
+                # The modal submit was deferred as a message update, so its original response is the builder.
+                await modal.interaction.edit_original_response(view=self)
             except discord.NotFound:
-                # Original message was deleted (likely dismissed by user)
-                # If we have a fresh interaction from the modal, send a new message
-                if hasattr(modal, "interaction") and modal.interaction:
-                    await modal.interaction.followup.send(
-                        "Your profile builder session continues here:", view=self, ephemeral=True
-                    )
+                # The builder message was dismissed by the user: continue in a new one
+                await modal.interaction.followup.send(
+                    "Your profile builder session continues here:", view=self, ephemeral=True
+                )
 
         return callback
 
@@ -161,6 +212,8 @@ class ProfileBuilderView(View):
             return await interaction.response.send_message(
                 f"Please fill in the following required fields: {', '.join(missing)}", ephemeral=True
             )
+        if not is_valid_age(self.data.get("age")):
+            return await interaction.response.send_message(f"Please update your age. {AGE_RULE}", ephemeral=True)
 
         self.submitted = True
         self.stop()

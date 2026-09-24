@@ -3,11 +3,13 @@ XP and Leveling system for Unicornia
 """
 
 import asyncio
+import contextlib
 import logging
 import os
+import random
 import time
 from collections import OrderedDict
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any
 
 import discord
@@ -42,6 +44,8 @@ class XPSystem:
         self._message_xp_task = None
         self._shutdown_task: asyncio.Task[None] | None = None
         self._background_tasks: set[asyncio.Task[Any]] = set()
+        # (guild_id, user_id) -> (lock, tasks using it); level rewards for one member are applied in order
+        self._reward_locks: dict[tuple[int, int], tuple[asyncio.Lock, int]] = {}
 
         # Initialize XP card generator
         # Pass the cog root directory (parent of 'systems')
@@ -243,7 +247,10 @@ class XPSystem:
             raise asyncio.CancelledError
 
     async def _award_voice_xp(self, updates: list[tuple[int, int, int]]) -> None:
-        """Persist a voice batch and invalidate only successfully awarded entries."""
+        """Persist a voice batch and invalidate only successfully awarded entries.
+
+        Rewards for levels reached through voice are granted without an announcement.
+        """
         updates = [(uid, gid, amount) for uid, gid, amount in updates if amount > 0]
         if not updates:
             return
@@ -251,11 +258,23 @@ class XPSystem:
             if self._stopping:
                 return
 
+            gained: dict[tuple[int, int], int] = {}
+            for uid, gid, amount in updates:
+                gained[(uid, gid)] = gained.get((uid, gid), 0) + amount
+            before = {key: await self._effective_xp_locked(*key) for key in gained}
+
             def invalidate() -> None:
                 for uid, gid, _ in updates:
                     self.user_xp_cache.pop((uid, gid), None)
 
             await self._complete_write_locked(self.db.xp.add_xp_bulk(updates), invalidate)
+
+            # Started before the lock is released, so shutdown waits for them before closing the database
+            for (uid, gid), amount in gained.items():
+                old_level = self.db.calculate_level_stats(before[(uid, gid)]).level
+                new_level = self.db.calculate_level_stats(before[(uid, gid)] + amount).level
+                if new_level > old_level:
+                    self._start_level_up(uid, gid, None, old_level, new_level)
 
     async def _flush_buffer(self) -> None:
         """Commit pending messages once, retaining them if the transaction fails."""
@@ -300,14 +319,19 @@ class XPSystem:
         xp = await self.db.xp.get_user_xp(user_id, guild_id)
         return self.db.calculate_level_stats(xp + self.xp_buffer.get((user_id, guild_id), 0))
 
-    async def process_message(self, message: discord.Message):
-        """Process a message for XP gain (Optimized)"""
-        if self._stopping or message.author.bot or not message.guild:
-            return
+    async def _effective_xp_locked(self, user_id: int, guild_id: int) -> int:
+        """Committed plus pending XP, from the cache when present. Caller holds _state_lock."""
+        cached = self._get_user_cache_data(user_id, guild_id)
+        if cached is not None:
+            return cached["xp"]
+        return (await self._read_stats_locked(user_id, guild_id)).total_xp
 
-        # Check if message is a command
-        ctx = await self.bot.get_context(message)
-        if ctx.valid:
+    async def process_message(self, message: discord.Message):
+        """Process a message for XP gain (Optimized).
+
+        Called from on_message_without_command, so commands are already filtered out.
+        """
+        if self._stopping or message.author.bot or not message.guild:
             return
 
         # Check cached config
@@ -410,89 +434,139 @@ class XPSystem:
             except Exception:
                 log.exception("Level-up side effects failed for user %s in guild %s", user_id, guild_id)
 
-    async def _handle_role_rewards(self, message, level: int):
-        """Handle role rewards for reaching a level"""
-        try:
-            # Get role rewards for this level
-            role_rewards = await self.db.xp.get_xp_role_rewards(message.guild.id, level)
-
-            for role_id, remove in role_rewards:
-                role = message.guild.get_role(role_id)
-                if not role:
-                    continue
-
-                try:
-                    if remove and role in message.author.roles:
-                        await message.author.remove_roles(role, reason=f"XP level {level} role removal")
-                    elif not remove and role not in message.author.roles:
-                        await message.author.add_roles(role, reason=f"XP level {level} role reward")
-                except discord.Forbidden:
-                    pass  # Bot lacks permissions
-                except discord.HTTPException:
-                    pass  # Other Discord API error
-
-        except Exception as e:
-            import logging
-
-            log = logging.getLogger("red.kirin_cogs.unicornia.xp")
-            log.error(f"Error handling role rewards for level {level}: {e}")
-
     async def _handle_level_up(self, message, old_level: int, new_level: int):
         """Handle level up rewards and notifications"""
-        user = message.author
-        guild = message.guild
+        await self._level_up(message.author, message.guild, message.channel, old_level, new_level)
 
-        channel = message.channel
+    def _start_level_up(
+        self,
+        user_id: int,
+        guild_id: int,
+        channel: discord.abc.Messageable | None,
+        old_level: int,
+        new_level: int,
+    ) -> asyncio.Task[None] | None:
+        """Start granting the rewards of a level-up from a direct award (admin or voice)."""
+        guild = self.bot.get_guild(guild_id)
+        member = guild.get_member(user_id) if guild is not None else None
+        if guild is None or member is None:
+            log.warning(
+                "User %s reached level %s in guild %s but isn't cached; level rewards %s-%s were not granted",
+                user_id,
+                new_level,
+                guild_id,
+                old_level + 1,
+                new_level,
+            )
+            return None
+        return self._create_task(self._safe_level_up(member, guild, channel, old_level, new_level))
+
+    async def _safe_level_up(
+        self,
+        member: discord.Member,
+        guild: discord.Guild,
+        channel: discord.abc.Messageable | None,
+        old_level: int,
+        new_level: int,
+    ) -> None:
+        try:
+            await self._level_up(member, guild, channel, old_level, new_level)
+        except Exception:
+            log.exception("Level-up side effects failed for user %s in guild %s", member.id, guild.id)
+
+    async def _level_up(
+        self,
+        member: discord.Member,
+        guild: discord.Guild,
+        channel: discord.abc.Messageable | None,
+        old_level: int,
+        new_level: int,
+    ) -> None:
+        """Grant the rewards of every level passed, then announce the new level in channel (if any)."""
+        # Tasks for one member reach this in the order their level-ups happened, and take turns here,
+        # so a later level's role removal can't run before an earlier level's role is added
+        async with self._member_reward_lock(guild.id, member.id):
+            footer_texts = await self._grant_level_rewards(member, guild, old_level, new_level)
+        if channel is None:
+            return
 
         # Random Color for Embed
-        import random
-
         embed_color = discord.Color(random.randint(0, 0xFFFFFF))
-
-        # Send level up message
         embed = discord.Embed(
-            description=f"Congratulations {user.mention}, you have reached level **{new_level}**!", color=embed_color
+            description=f"Congratulations {member.mention}, you have reached level **{new_level}**!", color=embed_color
         )
+        if footer_texts:
+            embed.set_footer(text=" • ".join(footer_texts))
 
-        # Footer text building
-        footer_texts = []
+        await channel.send(embed=embed)
 
-        # Check for role rewards (from DB)
+    @contextlib.asynccontextmanager
+    async def _member_reward_lock(self, guild_id: int, user_id: int) -> AsyncIterator[None]:
+        key = (guild_id, user_id)
+        lock, users = self._reward_locks.get(key, (asyncio.Lock(), 0))
+        self._reward_locks[key] = (lock, users + 1)
+        try:
+            async with lock:
+                yield
+        finally:
+            lock, users = self._reward_locks[key]
+            if users == 1:
+                del self._reward_locks[key]
+            else:
+                self._reward_locks[key] = (lock, users - 1)
 
-        role_rewards = await self.db.xp.get_xp_role_rewards(guild.id, new_level)
-        for role_id, remove in role_rewards:
+    async def _grant_level_rewards(
+        self, member: discord.Member, guild: discord.Guild, old_level: int, new_level: int
+    ) -> list[str]:
+        """Apply the role and currency rewards of every level above old_level up to new_level.
+
+        One level-up can pass several levels (an admin award, voice XP), and each level's rewards count.
+
+        Returns:
+            A summary line for each change.
+        """
+        summary: list[str] = []
+
+        # Rewards come ordered by level, so for a role set at several levels (given at 5, removed at 10)
+        # the highest level passed decides
+        role_changes: dict[int, tuple[int, bool]] = {}
+        for level, role_id, remove in await self.db.xp.get_all_xp_role_rewards(guild.id):
+            if old_level < level <= new_level:
+                role_changes[role_id] = (level, bool(remove))
+
+        if role_changes:
+            # The cached member only learns about role changes when Discord sends the update, which can
+            # be after an earlier level-up's change, so read the roles the member holds right now
+            with contextlib.suppress(discord.HTTPException):
+                member = await guild.fetch_member(member.id)
+        held = {role.id for role in member.roles}
+        for role_id, (level, remove) in role_changes.items():
             role = guild.get_role(role_id)
             if not role:
                 continue
-
             try:
-                if remove and role in user.roles:
-                    await user.remove_roles(role, reason=f"XP level {new_level} role removal")
-                    footer_texts.append(f"Removed role: {role.name}")
-                elif not remove and role not in user.roles:
-                    await user.add_roles(role, reason=f"XP level {new_level} role reward")
-                    footer_texts.append(f"Gained role: {role.name}")
-            except discord.Forbidden:
-                pass
+                if remove and role_id in held:
+                    await member.remove_roles(role, reason=f"XP level {level} role removal")
+                    summary.append(f"Removed role: {role.name}")
+                elif not remove and role_id not in held:
+                    await member.add_roles(role, reason=f"XP level {level} role reward")
+                    summary.append(f"Gained role: {role.name}")
+            except discord.HTTPException as e:
+                log.warning("Could not update level %s role %s for user %s: %s", level, role_id, member.id, e)
 
-        # Check for currency rewards (from DB)
-        currency_rewards = await self.db.xp.get_xp_currency_rewards(guild.id)
         currency_gained = 0
-        for level, amount in currency_rewards:
-            if level == new_level and amount > 0:
+        for level, amount in await self.db.xp.get_xp_currency_rewards(guild.id):
+            if old_level < level <= new_level and amount > 0:
                 await self.db.economy.add_currency(
-                    user.id, amount, "level_reward", f"level_{new_level}", note=f"Level {new_level} reward"
+                    member.id, amount, "level_reward", f"level_{level}", note=f"Level {level} reward"
                 )
                 currency_gained += amount
 
         if currency_gained > 0:
             currency_name = await self.config.currency_name()
-            footer_texts.append(f"Gained {currency_gained} {currency_name}")
+            summary.append(f"Gained {currency_gained} {currency_name}")
 
-        if footer_texts:
-            embed.set_footer(text=" • ".join(footer_texts))
-
-        await channel.send(embed=embed)
+        return summary
 
     async def get_user_level_stats(self, user_id: int, guild_id: int) -> LevelStats:
         """Get user's level statistics.
@@ -560,14 +634,25 @@ class XPSystem:
         bar = "█" * filled_length + "░" * (length - filled_length)
         return bar
 
-    async def award_xp(self, user_id: int, guild_id: int, amount: int, note: str = "") -> bool:
+    async def award_xp(
+        self,
+        user_id: int,
+        guild_id: int,
+        amount: int,
+        note: str = "",
+        channel: discord.abc.Messageable | None = None,
+    ) -> bool:
         """Award XP to a user (admin only).
+
+        The rewards of every level the award passes are granted, and the new level is announced in
+        channel when one is given.
 
         Args:
             user_id: User ID.
             guild_id: Guild ID.
             amount: Amount of XP to award.
             note: Optional note for the award.
+            channel: Where to announce a level-up.
 
         Returns:
             Success boolean.
@@ -575,10 +660,12 @@ class XPSystem:
         if amount <= 0:
             return False
 
+        level_up = None
         try:
             async with self._state_lock:
                 if self._stopping:
                     return False
+                xp_before = await self._effective_xp_locked(user_id, guild_id)
 
                 def invalidate() -> None:
                     self.user_xp_cache.pop((user_id, guild_id), None)
@@ -587,6 +674,15 @@ class XPSystem:
                     self.db.xp.add_xp(user_id, guild_id, amount),
                     invalidate,
                 )
-            return True
+
+                old_level = self.db.calculate_level_stats(xp_before).level
+                new_level = self.db.calculate_level_stats(xp_before + amount).level
+                if new_level > old_level:
+                    # Started before the lock is released, so shutdown waits for it before closing the database
+                    level_up = self._start_level_up(user_id, guild_id, channel, old_level, new_level)
         except Exception:
             return False
+
+        if level_up is not None:
+            await level_up
+        return True

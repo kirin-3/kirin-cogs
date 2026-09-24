@@ -16,7 +16,7 @@ Users can set an "affinity" towards another user (`[p]waifu affinity @user`). Th
 
 ### 3. Gifts and Value
 You can increase (or decrease) a waifu's market value by giving them gifts (`[p]waifu gift`).
-*   **Value Calculation**: Gifts increase the waifu's price by roughly **90%** of the gift's cost. Some items (like "Potato") decrease the value.
+*   **Value Calculation**: Gifts increase the waifu's price by roughly **90%** of the gift's cost. Some items (like "Potato") decrease the value, never below 1. The change is applied to the stored price inside the gift's transaction, so gifts sent at the same moment all count.
 *   **Inventory**: Gifts are stored in the waifu's inventory and are permanent additions to their value profile.
 
 ### 4. Transfer & Taxes

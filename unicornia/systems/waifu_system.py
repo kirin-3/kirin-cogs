@@ -72,33 +72,27 @@ class WaifuSystem:
         if giver_balance < gift["price"]:
             return False, f"Not enough currency. You need {gift['price']}."
 
-        # Get waifu current price
-        current_price = await self.db.waifu.get_waifu_price(target.id)
-
         # Calculate effect (90% of price)
         effect = int(gift["price"] * 0.9)
-
-        # Calculate new price
         if gift["negative"]:
-            # Ensure price doesn't drop below 1
-            new_price = max(1, current_price - effect)
+            price_change = -effect
             effect_desc = f"decreased by {effect}"
         else:
-            new_price = current_price + effect
+            price_change = effect
             effect_desc = f"increased by {effect}"
 
-        # Transaction
-        success = await self.db.waifu.gift_waifu_transaction(
+        # The price is changed inside the transaction (never below 1), so simultaneous gifts all count
+        new_price = await self.db.waifu.gift_waifu_transaction(
             giver_id=giver.id,
             waifu_id=target.id,
             gift_name=gift["name"],
             gift_emoji=gift["emoji"],
             gift_price=gift["price"],
-            new_waifu_price=new_price,
+            price_change=price_change,
             note="",
         )
 
-        if not success:
+        if new_price is None:
             return False, f"Not enough currency. You need {gift['price']}."
 
         return (

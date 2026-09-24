@@ -10,10 +10,11 @@ from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import humanize_list
 
-from .constants import TicketState
+from .constants import MAX_MODAL_FIELDS, TicketState
 from .utils import (
     can_close,
     close_ticket,
+    is_ticket_staff,
     ticket_channel_id,
 )
 
@@ -133,7 +134,7 @@ class CloseReasonModal(Modal):
         owner_id: int,
         channel: discord.TextChannel | discord.Thread,
         conf: dict,
-        status: str,
+        status: str | None,
     ):
         self.bot = bot
         self.config = config
@@ -187,6 +188,18 @@ class VerificationStatusView(View):
         self.owner_id = owner_id
         self.channel = channel
         self.conf = conf
+
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        # Only staff may set a verification status, otherwise a ticket owner could verify themselves.
+        if isinstance(interaction.user, discord.Member) and await is_ticket_staff(
+            self.bot, self.channel.guild, interaction.user, self.conf
+        ):
+            return True
+        await interaction.response.send_message(
+            "Only ticket staff can set the verification status.",
+            ephemeral=True,
+        )
+        return False
 
     @discord.ui.button(label="Verified", style=ButtonStyle.success, emoji="✅")
     async def verified(self, interaction: Interaction, button: Button):
@@ -290,6 +303,18 @@ class CloseView(View):
                 ephemeral=True,
             )
 
+        if not await is_ticket_staff(self.bot, interaction.guild, user, conf):
+            # The owner is closing their own ticket: close it without a verification status.
+            modal = CloseReasonModal(
+                self.bot,
+                self.config,
+                self.owner_id,
+                self.channel,
+                conf,
+                status=None,
+            )
+            return await interaction.response.send_modal(modal)
+
         view = VerificationStatusView(
             bot=self.bot,
             config=self.config,
@@ -355,9 +380,9 @@ class FileUpload(discord.ui.Item):
         return self._uploaded_attachments
 
 
-class VerificationModal(discord.ui.Modal, title="Verification"):
-    def __init__(self, bot: Red, guild: discord.Guild, config: Config, user: discord.Member):
-        super().__init__()
+class VerificationModal(discord.ui.Modal):
+    def __init__(self, bot: Red, guild: discord.Guild, config: Config, user: discord.Member, conf: dict):
+        super().__init__(title=conf.get("modal_title") or "Verification")
         self.bot = bot
         self.guild = guild
         self.config = config
@@ -378,6 +403,25 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
             component=self.image,
         )
         self.add_item(self.label)
+
+        # 3. Questions configured with `[p]tickets addmodal`, below the upload
+        fields = list(conf.get("modal", {}).values())
+        if len(fields) > MAX_MODAL_FIELDS:
+            log.warning(
+                f"Guild {guild.id} has {len(fields)} ticket modal fields; only the first {MAX_MODAL_FIELDS} fit next to the verification upload"
+            )
+        self.questions: list[tuple[str, TextInput]] = []
+        for field in fields[:MAX_MODAL_FIELDS]:
+            text_input = TextInput(
+                style=get_modal_style(field["style"]),
+                placeholder=field.get("placeholder"),
+                default=field.get("default"),
+                required=field.get("required", True),
+                min_length=field.get("min_length"),
+                max_length=field.get("max_length"),
+            )
+            self.add_item(discord.ui.Label(text=field["label"], component=text_input))
+            self.questions.append((field["label"], text_input))
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -408,7 +452,17 @@ class VerificationModal(discord.ui.Modal, title="Verification"):
         if not cog or not isinstance(cog, TicketFunctions):
             return await interaction.followup.send("Tickets cog not loaded!", ephemeral=True)
 
-        result = await cog.create_ticket_for_user(self.user)
+        answers: dict[str, str] = {}
+        for label, text_input in self.questions:
+            if not text_input.value:
+                continue
+            # Two fields can share a label; number the repeats so neither answer is dropped
+            key, n = label, 1
+            while key in answers:
+                n += 1
+                key = f"{label} ({n})"
+            answers[key] = text_input.value
+        result = await cog.create_ticket_for_user(self.user, answers=answers)
 
         # Post image to the new ticket channel
         conf = await self.config.guild(self.guild).all()
@@ -521,7 +575,7 @@ class SupportButton(Button):
             return await interaction.response.send_message(embed=em, ephemeral=True)
 
         # Open Verification Modal
-        modal = VerificationModal(self.view.bot, guild, self.view.config, user)
+        modal = VerificationModal(self.view.bot, guild, self.view.config, user, conf)
         await interaction.response.send_modal(modal)
 
 

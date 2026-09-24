@@ -14,6 +14,7 @@ The system is designed for scale, handling high-traffic servers without blocking
 
 1.  **Event**: A user sends a message or joins a voice channel.
 2.  **Validation**:
+    *   **Commands**: Messages that are bot commands earn no XP. Message XP listens to Red's `on_message_without_command` event, so the message isn't parsed as a command a second time.
     *   **Global Toggle**: Checks if XP is enabled via global config.
     *   **Cooldown**: Verifies the user isn't on cooldown (Default: 180s, Configurable).
     *   **Whitelist Check**: **Critical**: XP is **Whitelist Only**. The channel (or its parent Category/Thread) MUST be in the `xp_included_channels` list.
@@ -77,7 +78,8 @@ A background task (`_voice_xp_loop`) awards XP every minute to users in voice ch
 ### 3. Rewards
 *   **Role Rewards**: Automatically assigns roles when a user reaches a specific level. Can also remove roles (e.g., replacing "Novice" with "Expert").
 *   **Currency Rewards**: Awards currency (e.g., "Slut points") upon leveling up.
-*   **Triggers**: Rewards and notifications continue to run for message-driven level increases. Voice and owner awards do not introduce announcements or replay rewards for previously crossed levels.
+*   **Every level counts**: When one gain passes several levels, the rewards of each level passed are granted. For a role set at several levels (given at 5, removed at 10), the highest level passed decides. Levels reached before the gain are never rewarded again.
+*   **Triggers**: Message level-ups are announced in the message's channel. `[p]level award` grants the rewards of the levels it passes and announces the new level in the channel where it was run. Voice XP grants the rewards without an announcement. A member the bot doesn't have cached gets the XP but not the rewards; this is logged.
 
 ## Database Schema
 

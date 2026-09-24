@@ -248,3 +248,76 @@ async def test_execute_quarantine_skips_bot_members(actions: QuarantineActions, 
     user.edit.assert_not_awaited()
     cast(AsyncMock, actions.notify_owner_hierarchy_issue).assert_not_awaited()
     assert dict(await config_mock.guild.return_value.quarantined_users()) == {}
+
+
+def _bot_guild(*, above: bool = True) -> tuple[MagicMock, MagicMock]:
+    guild = MagicMock(spec=discord.Guild)
+    guild.id = 1
+    guild.name = "Guild"
+    bot_self = MagicMock(spec=discord.Member)
+    bot_self.id = 900
+    bot_self.top_role = MagicMock()
+    bot_self.top_role.__gt__.return_value = above
+    guild.me = bot_self
+    guild.kick = AsyncMock()
+
+    rogue = MagicMock(spec=discord.Member)
+    rogue.id = 555
+    rogue.bot = True
+    rogue.top_role = MagicMock()
+    guild.get_member.side_effect = {900: bot_self, 555: rogue}.get
+    return guild, rogue
+
+
+@pytest.mark.asyncio
+async def test_remove_bot_kicks_and_logs(actions: QuarantineActions) -> None:
+    guild, rogue = _bot_guild()
+    cache = MagicMock()
+    actions.log_bot_removal = AsyncMock()  # type: ignore[method-assign]
+
+    assert await actions.remove_bot(guild, rogue, "ban", cache) is True
+    await actions.cancel_all_tasks()
+
+    guild.kick.assert_awaited_once()
+    assert guild.kick.await_args.args[0] is rogue
+    assert "Member Ban" in guild.kick.await_args.kwargs["reason"]
+    cache.clear_user.assert_called_once_with(1, 555)
+
+
+@pytest.mark.asyncio
+async def test_remove_bot_reports_hierarchy_issue(actions: QuarantineActions) -> None:
+    guild, rogue = _bot_guild(above=False)
+    actions.notify_owner_hierarchy_issue = AsyncMock()  # type: ignore[method-assign]
+
+    assert await actions.remove_bot(guild, rogue, "ban") is False
+
+    guild.kick.assert_not_awaited()
+    cast(AsyncMock, actions.notify_owner_hierarchy_issue).assert_awaited_once_with(guild, rogue, "ban")
+
+
+@pytest.mark.asyncio
+async def test_remove_bot_never_kicks_itself(actions: QuarantineActions) -> None:
+    guild, _rogue = _bot_guild()
+
+    assert await actions.remove_bot(guild, guild.me, "ban") is False
+
+    guild.kick.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_remove_bot_skips_bot_that_already_left(actions: QuarantineActions) -> None:
+    guild, rogue = _bot_guild()
+    guild.get_member.side_effect = {900: guild.me}.get
+
+    assert await actions.remove_bot(guild, rogue, "ban") is True
+
+    guild.kick.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_kick_bot_never_kicks_itself(actions: QuarantineActions) -> None:
+    guild, _rogue = _bot_guild()
+
+    assert await actions.kick_bot(guild, discord.Object(id=900)) is False
+
+    guild.kick.assert_not_awaited()

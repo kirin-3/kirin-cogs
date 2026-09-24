@@ -7,8 +7,8 @@ Allows users with a specific role to create and manage their own custom emojis o
 - **Slot System**: Limits how many emojis each user can own (default 2).
 - **Flexible**: Upload images or copy existing emojis from other servers.
 - **Permission-based management**: Moderators can delete any emoji and view others' emoji lists.
-- **Image validation**: Checks image type and size (max 256KB) to comply with Discord limits.
-- **Auto-cleanup**: Automatically removes records of emojis that were deleted outside the bot's control.
+- **Image validation**: Checks image type and size (max 256KB) to comply with Discord limits. Downloads from URLs or emojis stop as soon as they pass 256KB.
+- **Auto-cleanup**: When an emoji is deleted outside the bot (e.g. in Server Settings), its record is dropped right away and the owner's slot is freed.
 - **Cooldowns**: Commands have cooldowns to prevent spam.
 
 ## Commands

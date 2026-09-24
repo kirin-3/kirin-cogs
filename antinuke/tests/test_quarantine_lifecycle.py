@@ -347,7 +347,7 @@ async def test_cancel_all_tasks_cancels_and_gathers(bot_mock: MagicMock, config_
 
 @pytest.mark.asyncio
 async def test_event_handlers_cancel_all_tasks(bot_mock: MagicMock, config_mock: MagicMock) -> None:
-    handlers = EventHandlers(bot_mock, config_mock, MagicMock(), MagicMock(), MagicMock())
+    handlers = EventHandlers(bot_mock, config_mock, MagicMock(), MagicMock())
 
     started = asyncio.Event()
 
@@ -364,7 +364,7 @@ async def test_event_handlers_cancel_all_tasks(bot_mock: MagicMock, config_mock:
 
 @pytest.mark.asyncio
 async def test_event_handler_task_exception_is_logged(bot_mock: MagicMock, config_mock: MagicMock) -> None:
-    handlers = EventHandlers(bot_mock, config_mock, MagicMock(), MagicMock(), MagicMock())
+    handlers = EventHandlers(bot_mock, config_mock, MagicMock(), MagicMock())
 
     async def _failing() -> None:
         raise ValueError("investigator exploded")

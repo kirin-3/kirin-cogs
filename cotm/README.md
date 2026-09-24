@@ -5,9 +5,9 @@ A Discord bot cog that manages the Cutie of the Month contest on the Unicornia s
 ## Features
 
 - **Interactive Dashboard**: A persistent message with tabs for contest information, entry terms, prizes, and voting instructions
-- **Check Standings Button**: Any user can press "Check Standings" on the dashboard to see the current top 10 standings (ephemeral reply)
+- **Check Standings Button**: Any user can press "Check Standings" on the dashboard to see the current top 10 standings (ephemeral reply). The tally is shared and refreshed at most every 5 minutes, so repeated presses don't re-read the entries channel
 - **Vote Counting**: Automated tallying of votes using reaction counts in the contest channel
-- **Leaderboard Display**: Shows the top 10 contestants based on vote counts
+- **Leaderboard Display**: Shows the top 10 contestants based on vote counts. Each person is ranked once, by their best entry
 - **Reward Distribution**: Automatic distribution of special currency rewards to contest winners
 - **Persistent Interface**: Dashboard remains functional across bot restarts
 
@@ -26,12 +26,16 @@ A Discord bot cog that manages the Cutie of the Month contest on the Unicornia s
   - `emote`: The emoji to count (defaults to the contest vote emoji)
   - `show_invalid`: Whether to show invalid vote counts (defaults to false)
   - `voter_server_age`: Timedelta filter for minimum server membership to count votes
-  - `*other_emotes`: Additional emojis to count as votes
+  - `*other_emotes`: Additional emojis to count as votes. A voter counts once per entry, whichever of the emojis they used
 
 ### Owner Commands
 
-- `[p]cotmreward <channel>`
-  - Counts votes in the specified channel and automatically distributes rewards to the top 10 contestants
+- `[p]cotmreward <channel> [contest_number]`
+  - Counts votes in the specified channel and pays the currency rewards for the places listed in `data/prizes.txt` (1st to 9th, amounts in `COTM_REWARDS`)
+  - The first run saves the places and amounts for that contest number before paying anyone. Running it again (for example after a failed deposit) pays those same saved places, only what is still missing, even if votes changed since
+  - Each winner is paid at most once per contest (`cotm:<contest>:<user>` Unicornia operation key)
+  - Once a contest's places are saved, running it for that contest number on a different channel is refused
+  - `contest_number` defaults to the number set with `[p]contest`; make sure it is the current contest, or the saved results of an earlier contest with the same number are used
   - Requires the Unicornia cog to be loaded for currency distribution
   - Restricted to bot owners only
 
@@ -69,7 +73,7 @@ A Discord bot cog that manages the Cutie of the Month contest on the Unicornia s
 - Use `[p]contestcount` to check the current standings during the contest
 
 ### For Bot Owners
-- Use `[p]cotmreward` to distribute rewards to the top 10 contestants at the end of the contest
+- Use `[p]cotmreward` to distribute rewards to the winners at the end of the contest
 - This command is only available to bot owners and requires the Unicornia currency system to be operational
 
 ## Contest Terms & Conditions
@@ -88,7 +92,7 @@ The top contestants receive various rewards including:
 - Gift cards (for 1st place)
 - Special server role (Cutie of the Month)
 - Custom server role (for 1st place)
-- Currency rewards distributed to top 10 finishers
+- Currency rewards for 1st to 9th place
 - Inclusion in special commands and channels (with consent)
 
 ## Voting System

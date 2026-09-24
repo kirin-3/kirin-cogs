@@ -623,7 +623,22 @@ class Unicornia(
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        """Handle XP gain and currency generation from messages"""
+        """Track stock emoji usage in every message, commands included"""
+        if message.author.bot or not message.guild:
+            return
+
+        # Check if systems are initialized
+        if not self._check_systems_ready():
+            return
+
+        await self.market_system.process_message(message)
+
+    @commands.Cog.listener()
+    async def on_message_without_command(self, message):
+        """Handle XP gain and currency generation from messages that aren't commands.
+
+        Red dispatches this after its own command parsing, so the message isn't parsed again here.
+        """
         if message.author.bot or not message.guild:
             return
 
@@ -636,6 +651,3 @@ class Unicornia(
 
         # Process currency generation
         await self.currency_generation.process_message(message)
-
-        # Process market tracking
-        await self.market_system.process_message(message)

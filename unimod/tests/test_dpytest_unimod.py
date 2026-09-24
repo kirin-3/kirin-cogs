@@ -10,6 +10,7 @@ import pytest
 import pytest_asyncio
 from redbot.core import Config
 
+from testutils.bots import RedLikeBot
 from unimod.unimod import UniMod
 
 
@@ -54,7 +55,7 @@ async def bot_and_cog(
     intents.guilds = True
     intents.message_content = True
 
-    real_bot = dpy_commands.Bot(command_prefix="!", intents=intents)
+    real_bot = RedLikeBot(command_prefix="!", intents=intents)
     real_bot.owner_id = 1
     await real_bot._async_setup_hook()  # type: ignore[attr-defined]
 
@@ -144,6 +145,37 @@ async def test_on_message_buffered_when_whitelisted(bot_and_cog: tuple[dpy_comma
 
     # Even if no pending tasks the message should have been processed (stats incremented)
     assert cog.stats["messages_processed"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_command_message_is_parsed_once_and_not_moderated(
+    bot_and_cog: tuple[dpy_commands.Bot, UniMod],
+) -> None:
+    """Commands are skipped using the bot's own parse; the cog doesn't parse the message again."""
+    real_bot, cog = bot_and_cog
+    channel = dpytest.get_config().channels[0]
+    guild_data: dict[str, object] = {"enabled": True, "whitelisted_channels": [channel.id], "buffer_size": 20}
+
+    def _guild(*args: object, **kwargs: object) -> object:
+        class _Group:
+            def __getattr__(self, name: str) -> AsyncMock:
+                return AsyncMock(return_value=guild_data.get(name))
+
+        return _Group()
+
+    cog.config.guild.side_effect = _guild  # pyright: ignore[reportAttributeAccessIssue]
+
+    @real_bot.command(name="ping")
+    async def ping(ctx: dpy_commands.Context) -> None:
+        pass
+
+    original_get_context = real_bot.get_context
+    with patch.object(real_bot, "get_context", side_effect=original_get_context) as get_context:
+        await dpytest.message("!ping")
+        await dpytest.run_all_events()
+
+    get_context.assert_awaited_once()
+    assert cog.stats["messages_processed"] == 0
 
 
 # --- toggle command (direct invocation, bypasses is_owner check) ---

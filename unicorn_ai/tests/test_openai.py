@@ -3,10 +3,11 @@
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import aiohttp
 import pytest
 from redbot.core.bot import Red
 
-from unicorn_ai.openai import OpenAIClient
+from unicorn_ai.openai import AIRequestError, OpenAIClient, clean_reply
 
 
 @pytest.fixture
@@ -25,7 +26,7 @@ class MockResponse:
         self._json_data = json_data or {}
         self._text_data = text_data
 
-    async def json(self):
+    async def json(self, **kwargs):
         return self._json_data
 
     async def text(self):
@@ -86,9 +87,47 @@ async def test_generate_response_payload_mapping(post_mock: MagicMock, client: O
 async def test_generate_response_error_status(post_mock: MagicMock, client: OpenAIClient) -> None:
     post_mock.return_value = MockResponse(status=401, text_data="Invalid API Key")
 
+    with pytest.raises(AIRequestError, match="401"):
+        await client.generate_response(endpoint="", api_key="", model="", system_instruction="", history=[])
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.post")
+async def test_generate_response_connection_error_raises(post_mock: MagicMock, client: OpenAIClient) -> None:
+    post_mock.side_effect = aiohttp.ClientConnectionError("refused")
+
+    with pytest.raises(AIRequestError, match="Request failed"):
+        await client.generate_response(endpoint="", api_key="", model="", system_instruction="", history=[])
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.post")
+async def test_generate_response_strips_thinking(post_mock: MagicMock, client: OpenAIClient) -> None:
+    post_mock.return_value = MockResponse(
+        status=200, json_data={"choices": [{"message": {"content": "<think>plan</think>\n Hello"}}]}
+    )
+
     result = await client.generate_response(endpoint="", api_key="", model="", system_instruction="", history=[])
 
-    assert result == "Error 401: Invalid API Key"
+    assert result == "Hello"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", [None, "", "<think>only thinking, cut off"])
+@patch("aiohttp.ClientSession.post")
+async def test_generate_response_empty_content_is_none(
+    post_mock: MagicMock, client: OpenAIClient, content: object
+) -> None:
+    post_mock.return_value = MockResponse(status=200, json_data={"choices": [{"message": {"content": content}}]})
+
+    result = await client.generate_response(endpoint="", api_key="", model="", system_instruction="", history=[])
+
+    assert result is None
+
+
+def test_clean_reply_handles_closed_and_unclosed_blocks() -> None:
+    assert clean_reply("a<think>x</think>b") == "ab"
+    assert clean_reply("reply<think>never closed") == "reply"
 
 
 @pytest.mark.asyncio

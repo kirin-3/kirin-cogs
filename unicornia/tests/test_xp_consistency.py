@@ -431,7 +431,7 @@ async def test_slow_side_effect_does_not_hold_state_lock(xp: XPSystem, stage: st
         await XPSystem._handle_level_up(xp, *args)
 
     target = msg.channel if stage == "notification" else xp.db.xp
-    method = "send" if stage == "notification" else "get_xp_role_rewards"
+    method = "send" if stage == "notification" else "get_all_xp_role_rewards"
     async with asyncio.timeout(5):
         with patch.object(xp, "_handle_level_up", side_effect=notify), patch.object(target, method, side_effect=pause):
             chat = asyncio.create_task(xp.process_message(msg))
@@ -758,3 +758,177 @@ async def test_xp_shutdown_is_not_skipped_when_other_cleanup_fails(xp: XPSystem)
         assert await xp.db.xp.get_user_xp(USER, GUILD) == 1
     finally:
         await xp.stop_loops()
+
+
+# ---------------------------------------------------------------------------
+# Rewards for every level passed, including levels jumped by admin awards and voice XP
+# ---------------------------------------------------------------------------
+
+ROLE_A, ROLE_B, ROLE_C = 1, 2, 3
+
+
+def reward_guild(xp: XPSystem, *, held: tuple[int, ...] = ()) -> tuple[MagicMock, dict[int, MagicMock]]:
+    """Make bot.get_guild return a guild whose member USER holds the given roles."""
+    roles = {role_id: MagicMock(spec=discord.Role, id=role_id) for role_id in (ROLE_A, ROLE_B, ROLE_C)}
+    for role_id, role in roles.items():
+        role.name = f"role{role_id}"
+    member = MagicMock(spec=discord.Member, id=USER, mention=f"<@{USER}>")
+    member.roles = [roles[role_id] for role_id in held]
+    # Discord's side: role changes land here at once, but the cached member.roles only on fetch
+    on_discord = set(held)
+    member.add_roles = AsyncMock(side_effect=lambda role, **_: on_discord.add(role.id))
+    member.remove_roles = AsyncMock(side_effect=lambda role, **_: on_discord.discard(role.id))
+
+    async def fetch_member(user_id: int) -> MagicMock:
+        member.roles = [roles[role_id] for role_id in sorted(on_discord)]
+        return member
+
+    guild = MagicMock(spec=discord.Guild, id=GUILD)
+    guild.fetch_member = AsyncMock(side_effect=fetch_member)
+    guild.get_member.side_effect = lambda user_id: member if user_id == USER else None
+    guild.get_role.side_effect = roles.get
+    xp.bot.get_guild.side_effect = lambda guild_id: guild if guild_id == GUILD else None
+    xp.config.currency_name = AsyncMock(return_value="points")
+    return member, roles
+
+
+async def configure_rewards(xp: XPSystem) -> None:
+    await xp.db.xp.add_xp_role_reward(GUILD, 4, ROLE_A)
+    await xp.db.xp.add_xp_role_reward(GUILD, 10, ROLE_A, remove=True)
+    await xp.db.xp.add_xp_role_reward(GUILD, 15, ROLE_B)
+    await xp.db.xp.add_xp_role_reward(GUILD, 25, ROLE_C)
+    await xp.db.xp.add_xp_currency_reward(GUILD, 4, 20)
+    await xp.db.xp.add_xp_currency_reward(GUILD, 19, 30)
+    await xp.db.xp.add_xp_currency_reward(GUILD, 20, 99)
+
+
+@pytest.mark.asyncio
+async def test_owner_award_grants_the_rewards_of_every_level_it_passes(xp: XPSystem) -> None:
+    await xp.db.xp.add_xp(USER, GUILD, 197)  # level 3
+    await configure_rewards(xp)
+    member, roles = reward_guild(xp)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+
+    assert await xp.award_xp(USER, GUILD, 2027, channel=channel)  # 2224 XP: level 19
+
+    # Levels 4 and 19 pay out; role A (given at 4, removed at 10) ends up not given; role B from 15 is
+    assert await xp.db.economy.get_user_currency(USER) == 50
+    member.add_roles.assert_awaited_once_with(roles[ROLE_B], reason="XP level 15 role reward")
+    member.remove_roles.assert_not_awaited()
+    embed = channel.send.await_args.kwargs["embed"]
+    assert "level **19**" in embed.description
+    assert embed.footer.text == "Gained role: role2 • Gained 50 points"
+    assert isinstance(xp._handle_level_up, AsyncMock)
+    xp._handle_level_up.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_owner_award_removes_a_role_held_from_an_earlier_level(xp: XPSystem) -> None:
+    await xp.db.xp.add_xp(USER, GUILD, 198)  # level 4, holding role A
+    await configure_rewards(xp)
+    member, roles = reward_guild(xp, held=(ROLE_A,))
+
+    assert await xp.award_xp(USER, GUILD, 700)  # 898 XP: level 11
+
+    member.remove_roles.assert_awaited_once_with(roles[ROLE_A], reason="XP level 10 role removal")
+    member.add_roles.assert_not_awaited()
+    # Level 4 was already reached before the award
+    assert await xp.db.economy.get_user_currency(USER) == 0
+
+
+@pytest.mark.asyncio
+async def test_owner_award_without_a_level_up_grants_nothing(xp: XPSystem) -> None:
+    await xp.db.xp.add_xp(USER, GUILD, 100)
+    await configure_rewards(xp)
+    member, _ = reward_guild(xp)
+
+    assert await xp.award_xp(USER, GUILD, 10)
+
+    member.add_roles.assert_not_awaited()
+    assert await xp.db.economy.get_user_currency(USER) == 0
+
+
+@pytest.mark.asyncio
+async def test_award_includes_unflushed_message_xp_when_finding_levels_passed(xp: XPSystem) -> None:
+    await xp.db.xp.add_xp(USER, GUILD, 196)
+    await xp.process_message(message())  # 197, still buffered
+    await configure_rewards(xp)
+    reward_guild(xp)
+
+    assert await xp.award_xp(USER, GUILD, 1)  # 198: level 4
+
+    assert await xp.db.economy.get_user_currency(USER) == 20
+
+
+@pytest.mark.asyncio
+async def test_voice_xp_crossing_a_level_grants_its_rewards(xp: XPSystem) -> None:
+    await xp.db.xp.add_xp(USER, GUILD, 197)
+    await configure_rewards(xp)
+    member, roles = reward_guild(xp)
+
+    await xp._award_voice_xp([(USER, GUILD, 1)])
+    await asyncio.gather(*xp._background_tasks)
+
+    member.add_roles.assert_awaited_once_with(roles[ROLE_A], reason="XP level 4 role reward")
+    assert await xp.db.economy.get_user_currency(USER) == 20
+
+
+@pytest.mark.asyncio
+async def test_level_rewards_are_not_granted_twice(xp: XPSystem) -> None:
+    await xp.db.xp.add_xp(USER, GUILD, 197)
+    await configure_rewards(xp)
+    reward_guild(xp)
+
+    await xp._award_voice_xp([(USER, GUILD, 1)])
+    await asyncio.gather(*xp._background_tasks)
+    assert await xp.award_xp(USER, GUILD, 1)
+    await xp.process_message(message())
+
+    assert await xp.db.economy.get_user_currency(USER) == 20
+    assert isinstance(xp._handle_level_up, AsyncMock)
+    xp._handle_level_up.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_overlapping_level_ups_apply_role_changes_in_level_order(xp: XPSystem) -> None:
+    await xp.db.xp.add_xp(USER, GUILD, 197)  # level 3
+    await configure_rewards(xp)
+    member, roles = reward_guild(xp)
+    real_rewards = xp.db.xp.get_all_xp_role_rewards
+    first_read_started, release_first_read = asyncio.Event(), asyncio.Event()
+
+    async def first_read_is_slow(guild_id: int) -> list[Any]:
+        if not first_read_started.is_set():
+            first_read_started.set()
+            await release_first_read.wait()
+        return await real_rewards(guild_id)
+
+    async with asyncio.timeout(5):
+        with patch.object(xp.db.xp, "get_all_xp_role_rewards", side_effect=first_read_is_slow):
+            # Level 4 (gives role A) is still loading its rewards when level 11 (removes role A) starts
+            await xp._award_voice_xp([(USER, GUILD, 1)])
+            await first_read_started.wait()
+            second = asyncio.create_task(xp.award_xp(USER, GUILD, 700))
+            await asyncio.sleep(0.05)
+            release_first_read.set()
+            assert await second
+            await asyncio.gather(*xp._background_tasks)
+
+    member.add_roles.assert_awaited_once_with(roles[ROLE_A], reason="XP level 4 role reward")
+    member.remove_roles.assert_awaited_once_with(roles[ROLE_A], reason="XP level 10 role removal")
+    assert xp._reward_locks == {}
+
+
+@pytest.mark.asyncio
+async def test_member_not_cached_is_logged_and_the_award_still_counts(
+    xp: XPSystem, caplog: pytest.LogCaptureFixture
+) -> None:
+    await xp.db.xp.add_xp(USER, GUILD, 197)
+    await configure_rewards(xp)
+    xp.bot.get_guild.side_effect = lambda guild_id: None
+
+    assert await xp.award_xp(USER, GUILD, 1)
+
+    assert await xp.db.xp.get_user_xp(USER, GUILD) == 198
+    assert "level rewards 4-4 were not granted" in caplog.text
