@@ -7,7 +7,9 @@ embeds, retrieving contest channels, formatting text with contest-specific
 details, and posting contest information to a designated channel.
 """
 
+import asyncio
 import logging
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -30,6 +32,10 @@ class ContestCog(commands.Cog):
         self.logger.setLevel(const.LOGGER_LEVEL)
 
         self._contest_number: int = 1
+
+        # Shared "Check Standings" result: (monotonic time, ranked entries, tallied at)
+        self._standings_cache: tuple[float, list[dict[str, Any]], datetime] | None = None
+        self._standings_lock = asyncio.Lock()
 
         self.config = Config.get_conf(self, identifier=906144832, force_registration=True)
         self.config.register_global(contest_number=1)
@@ -165,42 +171,74 @@ class ContestCog(commands.Cog):
         """
         await self._post_contest_info(ctx, contest_number)
 
-    async def _get_contest_results(
+    async def _tally_entries(
         self,
         channel: discord.TextChannel,
         emote: str = const.COTM_VOTE_EMOJI,
         voter_server_age: timedelta | None = None,
-        *other_emotes,
-    ) -> list:
-        """Helper to tally valid votes from a channel."""
-        timenow = datetime.now(UTC)
+        *other_emotes: str,
+    ) -> list[dict[str, Any]]:
+        """Tally votes in a channel and rank authors, most valid votes first.
 
-        def valid_user_vote(u):
+        A voter counts once per entry, however many of the vote emojis they used on it.
+        Each author is ranked once, by their best entry, so extra entries never earn extra places.
+        """
+        timenow = datetime.now(UTC)
+        vote_emotes = {emote, *other_emotes}
+
+        def valid_user_vote(u) -> bool:
             return not (
                 not hasattr(u, "joined_at")
                 or u.joined_at is None
                 or (voter_server_age is not None and u.joined_at >= timenow - voter_server_age)
             )
 
-        entries = []
+        best_by_author: dict[int, dict[str, Any]] = {}
         async for message in channel.history(limit=None):
-            entry = {
-                "name": str(message.author),
-                "valid_votes": 0,
-                "invalid_votes": 0,
-            }
+            valid_voters: set[int] = set()
+            invalid_voters: set[int] = set()
             for r in message.reactions:
-                if str(r.emoji) == emote or str(r.emoji) in other_emotes:
-                    all_votes = [u async for u in r.users()]
-                    valid_votes_list = list(filter(valid_user_vote, all_votes))
-                    entry["valid_votes"] = len(valid_votes_list)
-                    entry["invalid_votes"] = len(all_votes) - entry["valid_votes"]
-            entries.append(entry)
+                if str(r.emoji) not in vote_emotes:
+                    continue
+                async for u in r.users():
+                    (valid_voters if valid_user_vote(u) else invalid_voters).add(u.id)
 
-        if entries:
-            entries = sorted(entries, key=lambda e: e["valid_votes"], reverse=True)
-            return entries[:10]  # Return Top 10
-        return []
+            entry = {
+                "user": message.author,
+                "name": str(message.author),
+                "valid_votes": len(valid_voters),
+                "invalid_votes": len(invalid_voters),
+            }
+            best = best_by_author.get(message.author.id)
+            if best is None or entry["valid_votes"] > best["valid_votes"]:
+                best_by_author[message.author.id] = entry
+
+        return sorted(best_by_author.values(), key=lambda e: e["valid_votes"], reverse=True)
+
+    async def _get_contest_results(
+        self,
+        channel: discord.TextChannel,
+        emote: str = const.COTM_VOTE_EMOJI,
+        voter_server_age: timedelta | None = None,
+        *other_emotes: str,
+    ) -> list[dict[str, Any]]:
+        """Top 10 authors in a channel, one row per author."""
+        entries = await self._tally_entries(channel, emote, voter_server_age, *other_emotes)
+        return entries[:10]
+
+    async def get_standings(self, channel: discord.TextChannel) -> tuple[list[dict[str, Any]], datetime]:
+        """Top 10 for the public standings button, re-tallied at most every STANDINGS_CACHE_SECONDS.
+
+        Presses that arrive while a tally is running wait for it instead of starting their own.
+        """
+        async with self._standings_lock:
+            cached = self._standings_cache
+            if cached is not None and time.monotonic() - cached[0] < const.STANDINGS_CACHE_SECONDS:
+                return cached[1], cached[2]
+            entries = await self._get_contest_results(channel)
+            tallied_at = datetime.now(UTC)
+            self._standings_cache = (time.monotonic(), entries, tallied_at)
+            return entries, tallied_at
 
     def _build_standings_container(
         self,
@@ -264,13 +302,19 @@ class ContestCog(commands.Cog):
         self,
         ctx: commands.Context,
         channel: discord.TextChannel,
+        contest_number: int | None = None,
     ) -> None:
         """
-        Counts the Top 10 users in a contest channel using the predetermined emoji
-        and automatically distributes the tiered Unicornia currency rewards to them.
+        Pays the tiered Unicornia currency rewards to the top contestants in a contest channel.
+
+        Places are ranked by author using the contest vote emoji, and only the places in
+        prizes.txt are paid. Each winner is paid at most once per contest, so running this
+        again (for example after a failed deposit) only pays what is still missing.
+        `contest_number` defaults to the number set with `[p]contest`.
 
         This command is restricted to bot owners.
         """
+        assert ctx.guild is not None
         unicornia: Any = self.bot.get_cog("Unicornia")
         if not unicornia:
             await ctx.send(
@@ -278,65 +322,45 @@ class ContestCog(commands.Cog):
             )
             return
 
+        contest = contest_number if contest_number is not None else self._contest_number
+
         async with ctx.typing():
-            datetime.now(UTC)
-
-            def valid_user_vote(u):
-                return not (not hasattr(u, "joined_at") or u.joined_at is None)
-
-            entries = []
-            async for message in channel.history(limit=None):
-                entry = {
-                    "user": message.author,
-                    "name": str(message.author),
-                    "valid_votes": 0,
-                }
-                for r in message.reactions:
-                    if str(r.emoji) == const.COTM_VOTE_EMOJI:
-                        all_votes = [u async for u in r.users()]
-                        valid_votes_list = list(filter(valid_user_vote, all_votes))
-                        entry["valid_votes"] += len(valid_votes_list)
-
-                # We only want entries that actually got votes
-                if entry["valid_votes"] > 0:
-                    entries.append(entry)
-
+            entries = [entry for entry in await self._tally_entries(channel) if entry["valid_votes"] > 0]
             if not entries:
                 await ctx.send(f"No valid entries found for channel {channel.mention}")
                 return
 
-            # Sort users by valid votes descending
-            entries = sorted(entries, key=lambda e: e["valid_votes"], reverse=True)
-            top_entries = entries[:10]
-
-            # --- Build Confirmation V2 Container ---
-            # Reuse the container builder but append the payout details
+            top_entries = entries[: len(const.COTM_REWARDS)]
+            contest_label = strings.add_ordinal_suffix(contest)
             container = self._build_standings_container(
-                top_entries, "Contest Rewards Distributed", channel, show_invalid=False
+                top_entries, f"Contest Rewards — {contest_label} Cutie of the Month", channel, show_invalid=False
             )
 
             # Add a separator and the payout logs
             container.add_item(ui.Separator())
             payout_text = "### 💸 Payout Log\n"
 
-            for i, entry in enumerate(top_entries):
-                if i >= len(const.COTM_REWARDS):
-                    break  # Safety bounds check just in case
-
-                reward_amount = const.COTM_REWARDS[i]
-                rank = i + 1
+            for rank, (entry, reward_amount) in enumerate(zip(top_entries, const.COTM_REWARDS, strict=False), 1):
                 user = entry["user"]
+                try:
+                    outcome = await unicornia.apply_operation(
+                        key=f"cotm:{contest}:{user.id}",
+                        user_id=user.id,
+                        amount=reward_amount,
+                        direction="credit",
+                        source="ContestCog",
+                        guild_id=ctx.guild.id,
+                        reason=f"COTM {contest_label} Reward (Rank {rank})",
+                    )
+                except Exception:
+                    self.logger.exception(f"COTM {contest} payout to {user.id} failed")
+                    outcome = None
+                state = getattr(outcome, "state", None)
 
-                # Payout
-                success = await unicornia.add_balance(
-                    user_id=user.id,
-                    amount=reward_amount,
-                    reason=f"COTM Top 10 Reward (Rank {rank})",
-                    source="ContestCog",
-                )
-
-                if success:
+                if state == "settled":
                     payout_text += f"**#{rank} {entry['name']}**: +{reward_amount:,} <:slut:686148402941001730>\n"
+                elif state == "duplicate":
+                    payout_text += f"**#{rank} {entry['name']}**: already paid for this contest\n"
                 else:
                     payout_text += f"**#{rank} {entry['name']}**: ❌ Failed to deposit\n"
 

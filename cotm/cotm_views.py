@@ -1,5 +1,11 @@
+import logging
+
 import discord
 from discord import ui
+
+from . import const
+
+log = logging.getLogger("red.cotm.views")
 
 
 class ContestDashboardView(ui.LayoutView):
@@ -105,25 +111,33 @@ class ContestDashboardView(ui.LayoutView):
         await interaction.response.send_message("Tallying votes, please wait...", ephemeral=True)
 
         # Find the entries channel
-        entries_channel = interaction.client.get_channel(782019562795302934)
+        entries_channel = interaction.client.get_channel(const.ENTRIES_CHANNEL_ID)
 
-        if not entries_channel:
+        if not isinstance(entries_channel, discord.TextChannel):
             await interaction.edit_original_response(
                 content="❌ Error: Could not find the entries channel to tally votes.",
                 view=None,
             )
             return
 
-        # Tally the votes
-        entries = await self.cog._get_contest_results(entries_channel)
+        # Shared, cached tally: pressing repeatedly does not re-read the channel each time
+        try:
+            entries, tallied_at = await self.cog.get_standings(entries_channel)
+        except discord.HTTPException:
+            log.exception("Failed to tally COTM standings")
+            await interaction.edit_original_response(
+                content="❌ Error: Could not tally the votes right now. Please try again later.", view=None
+            )
+            return
 
         # Format the leaderboard via Container (hide invalid votes)
         container = self.cog._build_standings_container(entries, title="📊 Current Standings", show_invalid=False)
-
-        class StandingsView(ui.LayoutView):
-            def __init__(self, container):
-                super().__init__(timeout=180)
-                self.add_item(container)
+        container.add_item(
+            ui.TextDisplay(
+                content=f"-# Counted {discord.utils.format_dt(tallied_at, 'R')}; "
+                f"standings refresh at most every {const.STANDINGS_CACHE_SECONDS // 60} minutes."
+            )
+        )
 
         await interaction.edit_original_response(content=None, view=StandingsView(container))
 
