@@ -621,3 +621,151 @@ async def test_slash_subcommand_allows_staff_member(command_name: str) -> None:
     app_command = getattr(Honeypot, command_name).app_command
 
     assert await app_command._check_can_run(_slash_interaction(author, guild)) is True
+
+
+@pytest.mark.asyncio
+async def test_banned_user_who_rejoins_is_enforced_again() -> None:
+    cog = _make_cog()
+    guild = _guild()
+    member = _member(guild, joined_at=datetime.now(UTC))
+    ban = AsyncMock(return_value=True)
+
+    with patch.object(cog, "_ban_member", ban):
+        await cog._handle_trigger(_message(guild, member), member, "Member (42)", "spam", ())
+        # The rest of the burst, queued before the ban landed, is only deleted.
+        burst = _message(guild, member)
+        await cog._handle_trigger(burst, member, "Member (42)", "spam", ())
+        burst.delete.assert_awaited_once()
+        assert ban.await_count == 1
+
+        # Unbanned and rejoined: a new post is a new incident.
+        await cog.on_member_join(member)
+        await cog._handle_trigger(_message(guild, member), member, "Member (42)", "spam", ())
+
+    assert ban.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_quarantine_burst_with_stale_author_roles_edits_once() -> None:
+    """Queued burst messages still carry the pre-quarantine roles and must not re-quarantine."""
+    config = _MemoryConfig()
+    cog = _make_cog(config)
+    guild = _guild()
+    member = _member(guild, joined_at=None, roles=[_role(10, assignable=True)])
+
+    for _ in range(3):
+        await cog._handle_trigger(_message(guild, member), member, "Member (42)", "spam", ())
+
+    member.edit.assert_awaited_once()
+    assert config.guild_records[GUILD_ID]["42"]["roles"] == [10]
+
+
+@pytest.mark.asyncio
+async def test_own_quarantine_edit_does_not_release_member() -> None:
+    cog = _make_cog()
+    guild = _guild()
+    before = _member(guild, roles=[_role(10, assignable=True)])
+    after = _member(guild, roles=[_role(11, assignable=False)])
+    cog._enforced_users.add((GUILD_ID, 42))
+
+    await cog.on_member_update(before, after)
+
+    assert (GUILD_ID, 42) in cog._enforced_users
+
+
+@pytest.mark.asyncio
+async def test_roles_given_back_by_hand_allow_a_new_quarantine() -> None:
+    config = _MemoryConfig({GUILD_ID: {"42": {"roles": [10, 20], "state": "completed", "quarantined_at": "then"}}})
+    cog = _make_cog(config)
+    channel = _log_channel()
+    guild = _guild(records_channel=channel)
+    cog._enforced_users.add((GUILD_ID, 42))
+    contained = _member(guild, joined_at=None, roles=[])
+    released = _member(guild, joined_at=None, roles=[_role(10, assignable=True), _role(30, assignable=True)])
+
+    # Staff hand roles back instead of using the restore command.
+    await cog.on_member_update(contained, released)
+    assert (GUILD_ID, 42) not in cog._enforced_users
+
+    await cog._handle_trigger(_message(guild, released), released, "Member (42)", "spam", ())
+
+    released.edit.assert_awaited_once()
+    assert released.edit.call_args.kwargs["roles"] == []
+    record = config.guild_records[GUILD_ID]["42"]
+    assert record["state"] == "completed"
+    # Nothing restorable is lost: the earlier snapshot plus the roles held now.
+    assert record["roles"] == [10, 20, 30]
+    assert record["quarantined_at"] != "then"
+    embed = channel.send.call_args.kwargs["embed"]
+    assert any(field.name == "Repeat quarantine" for field in embed.fields)
+
+
+@pytest.mark.asyncio
+async def test_completed_record_with_roles_back_is_enforced_after_restart() -> None:
+    config = _MemoryConfig({GUILD_ID: {"42": {"roles": [10], "state": "completed", "quarantined_at": "then"}}})
+    cog = _make_cog(config)
+    guild = _guild()
+    member = _member(guild, joined_at=None, roles=[_role(10, assignable=True)])
+
+    await cog._handle_trigger(_message(guild, member), member, "Member (42)", "spam", ())
+
+    member.edit.assert_awaited_once()
+    assert config.guild_records[GUILD_ID]["42"]["roles"] == [10]
+
+
+def _command_ctx(guild: MagicMock) -> MagicMock:
+    ctx = MagicMock()
+    ctx.guild = guild
+    ctx.author = SimpleNamespace(id=7)
+    ctx.send = AsyncMock()
+    return ctx
+
+
+def _departed_user(user_id: int = 42) -> MagicMock:
+    user = MagicMock(spec=discord.User)
+    user.id = user_id
+    user.mention = f"<@{user_id}>"
+    return user
+
+
+@pytest.mark.asyncio
+async def test_clear_removes_record_for_user_who_left() -> None:
+    config = _MemoryConfig({GUILD_ID: {"42": {"roles": [10], "state": "completed"}}})
+    cog = _make_cog(config)
+    guild = _guild()
+    guild.get_member.return_value = None
+    cog._enforced_users.add((GUILD_ID, 42))
+    ctx = _command_ctx(guild)
+
+    await cast(Any, cog.honeypot_clear).callback(cog, ctx, _departed_user())
+
+    assert config.guild_records[GUILD_ID] == {}
+    assert (GUILD_ID, 42) not in cog._enforced_users
+    assert "Cleared" in ctx.send.call_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_restore_for_user_who_left_keeps_record_and_explains() -> None:
+    record = {"roles": [10], "state": "completed"}
+    config = _MemoryConfig({GUILD_ID: {"42": record.copy()}})
+    cog = _make_cog(config)
+    guild = _guild()
+    guild.get_member.return_value = None
+    ctx = _command_ctx(guild)
+
+    await cast(Any, cog.honeypot_restore).callback(cog, ctx, _departed_user())
+
+    assert config.guild_records[GUILD_ID]["42"] == record
+    reply = ctx.send.call_args.args[0]
+    assert "no longer in the server" in reply
+    assert "honeypot clear" in reply
+
+
+@pytest.mark.parametrize("command_name", ["honeypot_restore", "honeypot_clear"])
+def test_restore_and_clear_accept_users_outside_the_server(command_name: str) -> None:
+    command = getattr(Honeypot, command_name)
+
+    # The parameter keeps its name so already-synced slash commands keep working.
+    annotation = command.clean_params["member"].annotation
+    assert discord.User in getattr(annotation, "__args__", (annotation,))
+    assert command.app_command.parameters[0].type is discord.AppCommandOptionType.user

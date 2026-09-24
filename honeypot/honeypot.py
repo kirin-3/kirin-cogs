@@ -70,6 +70,8 @@ class Honeypot(commands.Cog):
         self.config.register_guild(quarantined_users={})
         self._quarantine_locks: dict[tuple[int, int], _LockEntry] = {}
         self._background_tasks: set[asyncio.Task[Any]] = set()
+        # Members already handled, so the rest of a message burst queued behind the lock is only deleted.
+        # Cleared when the member rejoins or gets roles back, since a later post is then a new incident.
         self._enforced_users: set[tuple[int, int]] = set()
 
     async def cog_unload(self) -> None:
@@ -155,6 +157,18 @@ class Honeypot(commands.Cog):
         attachment_names = tuple(attachment.filename for attachment in message.attachments)
         self._create_task(self._handle_trigger(message, member, captured_identity, captured_content, attachment_names))
 
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member) -> None:
+        """A rejoin (e.g. after an unban) starts a new membership that can be enforced again."""
+        self._enforced_users.discard((member.guild.id, member.id))
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
+        """Staff giving roles back by hand releases the member just like the restore command."""
+        key = (after.guild.id, after.id)
+        if key in self._enforced_users and self._partition_roles(after)[1]:
+            self._enforced_users.discard(key)
+
     async def _handle_trigger(
         self,
         message: discord.Message,
@@ -167,13 +181,17 @@ class Honeypot(commands.Cog):
         key = (guild.id, member.id)
         async with self._quarantine_lock(*key):
             await self._delete_trigger(message, guild, captured_identity)
+            if key in self._enforced_users:
+                return
 
             records = await self.config.guild(guild).quarantined_users()
             record = records.get(str(member.id)) if isinstance(records, dict) else None
-            if isinstance(record, dict) and record.get("state", "completed") == "completed":
-                self._enforced_users.add(key)
-                return
-            if key in self._enforced_users:
+            if (
+                isinstance(record, dict)
+                and record.get("state", "completed") == "completed"
+                and not self._partition_roles(member)[1]
+            ):
+                # Still contained: the quarantine left them without assignable roles.
                 return
 
             if member.id == guild.owner_id:
@@ -289,13 +307,17 @@ class Honeypot(commands.Cog):
         existing_record: dict[str, Any] | None,
     ) -> bool:
         keep, current_snapshot = self._partition_roles(member)
+        stored_roles = existing_record.get("roles") if existing_record is not None else None
+        stored_snapshot = (
+            [role_id for role_id in stored_roles if isinstance(role_id, int)] if isinstance(stored_roles, list) else []
+        )
+        released_by_hand = existing_record is not None and existing_record.get("state", "completed") == "completed"
         if existing_record is not None and existing_record.get("state") in {"pending", "failed"}:
-            stored_roles = existing_record.get("roles")
-            snapshot = (
-                [role_id for role_id in stored_roles if isinstance(role_id, int)]
-                if isinstance(stored_roles, list)
-                else []
-            )
+            snapshot = stored_snapshot
+        elif released_by_hand:
+            # Roles were given back without the restore command. Keep the earlier snapshot so nothing
+            # restorable is lost, and add the roles they hold now.
+            snapshot = stored_snapshot + [role_id for role_id in current_snapshot if role_id not in stored_snapshot]
         else:
             snapshot = current_snapshot
 
@@ -353,6 +375,12 @@ class Honeypot(commands.Cog):
         embed.add_field(name="DM delivered", value=str(dm_delivered), inline=True)
         if not current_snapshot:
             embed.add_field(name="Role outcome", value="No assignable roles were present.", inline=False)
+        if released_by_hand:
+            embed.add_field(
+                name="Repeat quarantine",
+                value="Roles had been given back without the restore command; the earlier stored roles were kept.",
+                inline=False,
+            )
         self._add_message_fields(embed, captured_content, attachment_names)
         await self._log_embed(guild, embed)
         return True
@@ -379,7 +407,8 @@ class Honeypot(commands.Cog):
             await self.config.guild(guild).quarantined_users.set({})
         async with self.config.guild(guild).quarantined_users() as records:
             previous = records.get(str(user_id))
-            quarantined_at = previous.get("quarantined_at", now) if isinstance(previous, dict) else now
+            retrying = isinstance(previous, dict) and previous.get("state") in {"pending", "failed"}
+            quarantined_at = previous.get("quarantined_at", now) if retrying else now
             records[str(user_id)] = {
                 "roles": list(role_ids),
                 "quarantined_at": quarantined_at,
@@ -483,7 +512,7 @@ class Honeypot(commands.Cog):
 
     @honeypot_group.command(name="restore")
     @commands.check(_staff_or_admin)
-    async def honeypot_restore(self, ctx: commands.Context, member: discord.Member) -> None:
+    async def honeypot_restore(self, ctx: commands.Context, member: discord.Member | discord.User) -> None:
         """Restore a member's held roles and clear their timeout."""
         guild = ctx.guild
         if guild is None:
@@ -493,6 +522,15 @@ class Honeypot(commands.Cog):
         if not isinstance(record, dict):
             await ctx.send(f"{member.mention} has no honeypot quarantine record.")
             return
+        # Users who left can be named by ID; they have no roles or timeout to restore.
+        current = member if isinstance(member, discord.Member) else guild.get_member(member.id)
+        if current is None:
+            await ctx.send(
+                f"{member.mention} is no longer in the server, so there is nothing to restore. The record was kept "
+                f"in case they rejoin; use `{ctx.clean_prefix}honeypot clear` to delete it."
+            )
+            return
+        member = current
         stored_roles = record.get("roles")
         if not isinstance(stored_roles, list):
             await ctx.send(f"{member.mention}'s quarantine record is malformed; no changes were made.")
@@ -570,8 +608,8 @@ class Honeypot(commands.Cog):
 
     @honeypot_group.command(name="clear")
     @commands.check(_staff_or_admin)
-    async def honeypot_clear(self, ctx: commands.Context, member: discord.Member) -> None:
-        """Delete a quarantine record without changing roles or timeout."""
+    async def honeypot_clear(self, ctx: commands.Context, member: discord.Member | discord.User) -> None:
+        """Delete a quarantine record without changing roles or timeout. Works for users who left."""
         guild = ctx.guild
         if guild is None:
             return
