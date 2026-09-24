@@ -53,7 +53,7 @@ Manages access to restricted content through a button and modal system, assignin
 Advanced single-panel Discord support ticket system with a verification flow.
 
 ### UnicornAI
-Autonomous AI persona system using Vertex AI or OpenAI-compatible endpoints for persona-based interactions.
+Autonomous AI persona system using OpenAI-compatible endpoints (NanoGPT by default) for persona-based interactions.
 
 ### UnicornDocs
 AI-powered documentation question and answer system for moderation team using keyword retrieval and OpenRouter.

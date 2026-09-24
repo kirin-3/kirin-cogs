@@ -3,8 +3,8 @@
     "author": [
         "Kirin"
     ],
-    "short": "Autonomous AI persona using Vertex AI or OpenAI-compatible endpoints.",
-    "description": "An advanced AI cog that integrates with Vertex AI and OpenAI-compatible endpoints (NanoGPT, OpenRouter, etc.) to provide autonomous messaging and persona-based interactions.",
+    "short": "Autonomous AI persona using OpenAI-compatible endpoints (NanoGPT by default).",
+    "description": "An AI cog that talks to OpenAI-compatible chat completion endpoints (NanoGPT by default, or OpenRouter and others) to provide autonomous messaging and persona-based interactions.",
     "install_msg": "Thanks for installing the unicorn_ai cog!",
     "end_user_data_statement": "This cog stores each user's AI opt-out preference. Channel history is sent transiently to the configured AI provider for response generation. Red data-deletion requests clear the preference.",
     "min_bot_version": "3.5.0",
@@ -18,13 +18,10 @@
     "type": "COG",
     "required_cogs": {},
     "requirements": [
-        "google-auth",
         "aiohttp"
     ],
     "tags": [
         "ai",
-        "gemini",
-        "vertex",
         "openai",
         "persona",
         "automation"
