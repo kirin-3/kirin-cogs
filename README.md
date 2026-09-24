@@ -55,9 +55,6 @@ Advanced single-panel Discord support ticket system with a verification flow.
 ### UnicornAI
 Autonomous AI persona system using OpenAI-compatible endpoints (NanoGPT by default) for persona-based interactions.
 
-### UnicornDocs
-AI-powered documentation question and answer system for moderation team using keyword retrieval and OpenRouter.
-
 ### Unicornia
 Full Nadeko-compatible leveling and economy suite (currency, banking, gambling, XP, shops, clubs, waifus, stocks) backed by SQLite, with migration support from an existing Nadeko database.
 
@@ -65,9 +62,6 @@ Unicornia includes stock dividends funded by realized gambling edge and stock-tr
 rock-paper-scissors through `[p]duel @user <amount>`, capped spectator wagering on live blackjack hands, and an
 owner-only aggregate economy dashboard at `[p]unicornia yieldstats`. Users can review dividend history with
 `[p]stock dividends`.
-
-### UnicornImage
-Text-to-image generation supporting both Stable Horde (free) and Modal (premium) backends.
 
 ### UnicornSecurity
 Channel filter that only allows tenor GIF links in a specific channel, deleting other image links.
@@ -77,6 +71,14 @@ AI-powered auto-moderation using sentiment analysis and AI detection to alert mo
 
 ### VerifyUser
 Allows authorized users to verify other members by granting them a specific verification role.
+
+## Archived Cogs
+
+These cogs live in [archived/](archived/). They are retired, no longer developed, and cannot be installed through `[p]cog install`.
+
+- **UnicornDocs**: AI-powered documentation question and answer system for the moderation team using keyword retrieval and OpenRouter.
+- **UnicornImage**: Text-to-image generation supporting both Stable Horde (free) and Modal (premium) backends.
+- **YAGPDBImport**: Imports YAGPDB warnings into Red's Warnings cog.
 
 ## Installation
 

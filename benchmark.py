@@ -147,8 +147,8 @@ sys.modules["redbot.core.bot"].Red = MockBot.Red
 
 sys.modules["modal"] = types.ModuleType("modal")
 
-# Add the parent directory to the path so we can import unicornimage
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add the archived directory to the path so we can import unicornimage
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "archived"))
 
 from unicornimage.views import LoraListView  # noqa: E402
 
@@ -184,7 +184,7 @@ def busy_wait(seconds):
 
 async def run_benchmark():
     # Setup dummy data and files
-    test_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unicornimage", "lorapreviews")
+    test_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "archived", "unicornimage", "lorapreviews")
     os.makedirs(test_dir, exist_ok=True)
 
     # Create some large dummy files to simulate slow I/O
