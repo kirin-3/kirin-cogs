@@ -100,6 +100,31 @@ QUESTIONS = [
 PROFILE_CHANNEL_ID = 686091267012296714
 UNIQUE_ID = 0x6AFE8001
 
+# The server is 18+; 100 is a sanity cap for the 3-character field
+MIN_AGE = 18
+MAX_AGE = 100
+AGE_RULE = f"Age must be a whole number from {MIN_AGE} to {MAX_AGE}."
+
+# Uploaded pictures are re-attached to the profile post, because a modal upload's link is temporary.
+# Stored `picture_url` values with this prefix name the post's own attachment.
+ATTACHMENT_PREFIX = "attachment://"
+MAX_PICTURE_BYTES = 8 * 1024 * 1024
+PICTURE_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp"}
+
+
+def parse_age(text: str) -> int | None:
+    """Return the age typed into the builder, or None if it is not a whole number in range."""
+    text = text.strip()
+    if not text.isdecimal():
+        return None
+    age = int(text)
+    return age if MIN_AGE <= age <= MAX_AGE else None
+
+
+def is_valid_age(value: object) -> bool:
+    """Whether a stored age is acceptable (older records may predate validation)."""
+    return isinstance(value, int) and not isinstance(value, bool) and MIN_AGE <= value <= MAX_AGE
+
 
 def canonicalize_profile_data(data: dict) -> ProfileData:
     """Return a copy of profile data using only canonical field names.

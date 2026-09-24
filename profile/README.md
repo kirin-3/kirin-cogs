@@ -18,7 +18,7 @@ The following fields can be included in a user's profile:
 
 ### Required Fields (marked with *)
 - **Name**: What name the user goes by
-- **Age**: User's age (must be a number)
+- **Age**: User's age (a whole number from 18 to 100)
 - **Location**: Where the user is from (country or continent)
 - **Gender**: User's gender identity
 - **Sexuality**: User's sexuality
@@ -30,7 +30,8 @@ The following fields can be included in a user's profile:
 - **Kinks**: User's kinks
 - **Limits**: User's limits
 - **About Me**: Additional information about the user
-- **Picture**: Profile picture (uploaded as an attachment)
+- **Picture**: Profile picture (PNG, JPEG, GIF or WebP, up to 8 MB). The upload is attached to the profile post itself,
+  because the link of a builder upload is temporary
 
 ## Setup Guide
 
@@ -63,6 +64,11 @@ If the sticky message gets deleted or needs to be refreshed:
 **`[p]profileset fix`**
 - Forces the sticky message to be reposted in the profile channel
 - Useful if the sticky message was accidentally deleted
+- **Permission Required**: Admin or Manage Guild
+
+**`[p]profileset cleanup`**
+- Deletes the profile posts and stored answers of people who are no longer in the server
+- New departures are handled automatically; run this once for profiles left behind before that
 - **Permission Required**: Admin or Manage Guild
 
 ## User Commands
@@ -100,6 +106,8 @@ The cog maintains a "sticky" message at the bottom of the profile channel. This 
 - The embed includes the user's mention, profile information, and avatar
 - Users can update their profile information at any time by using the Create/Edit button
 - The cog tracks each user's profile message ID to enable editing instead of creating duplicates
+- When a member leaves or is removed, their profile post and stored answers are deleted. The 24-hour cooldown after a
+  self-deletion still applies if they rejoin
 
 ### Cooldown System
 To prevent abuse, users who delete their profiles must wait 24 hours before creating a new one. This cooldown does not apply to editing existing profiles, only to creating new profiles after deletion.
@@ -116,7 +124,7 @@ The cog uses the following default settings:
 
 ## Notes
 
-- **Bot Permissions**: The bot needs permission to send messages, manage messages, and read message history in the profile channel
+- **Bot Permissions**: The bot needs permission to send messages, attach files, manage messages, and read message history in the profile channel
 - **Profile Privacy**: Profiles are public and visible to all members in the designated channel
 - **Data Storage**: Profile data is stored in the bot's configuration and linked to user IDs
 - **Profile Message Deletion**: If a user's profile message is deleted (by mods or the user), they can recreate it by editing their profile
@@ -142,4 +150,6 @@ The cog uses the following default settings:
 - The sticky message buttons are persistent and do not expire; if a click does nothing, check the bot's console log or use `[p]profileset fix` to repost the sticky message.
 - The profile builder view itself times out after 10 minutes of inactivity — reopen it with the "Create/Edit Profile" button.
 
-Profile settings are guild-scoped and answers are stored per guild/member. Legacy global/user records are adopted lazily without deleting the source, so rollback remains possible. Uploaded pictures use the canonical `picture_url` field.
+Profile settings are guild-scoped and answers are stored per guild/member. Legacy global/user records are adopted lazily without deleting the source, so rollback remains possible. Uploaded pictures use the canonical `picture_url` field: `attachment://<file>` for a
+picture attached to the profile post. Older profiles that saved the upload's link keep showing that link, which may
+have stopped working; re-uploading the picture fixes it.

@@ -1,14 +1,15 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
+from io import BytesIO
 
 import discord
 from redbot.core import Config, checks, commands
 from redbot.core.bot import Red
 
 from .migrations import migrate_global_schema
-from .models import PROFILE_CHANNEL_ID, UNIQUE_ID, ProfileData, canonicalize_profile_data
-from .views import ProfileBuilderView, ProfileDeleteConfirmView, ProfileStickyView
+from .models import ATTACHMENT_PREFIX, PROFILE_CHANNEL_ID, UNIQUE_ID, ProfileData, canonicalize_profile_data
+from .views import ProfileBuilderView, ProfileDeleteConfirmView, ProfileStickyView, UploadedPicture
 
 log = logging.getLogger("red.kirin_cogs.profile")
 
@@ -141,6 +142,28 @@ class Profile(commands.Cog):
         await self._repost_sticky(ctx.guild, channel)
         await ctx.tick()
 
+    @profileset.command(name="cleanup")
+    async def profileset_cleanup(self, ctx: commands.Context):
+        """Remove the profiles of people who are no longer in the server."""
+        assert ctx.guild is not None
+        if not ctx.guild.chunked:
+            return await ctx.send("The member list isn't fully loaded yet. Try again in a minute.")
+        await self._ensure_guild_data(ctx.guild)
+        removed = failed = 0
+        for user_id, record in (await self.config.all_members(ctx.guild)).items():
+            if ctx.guild.get_member(user_id) is not None:
+                continue
+            if not (record.get("profile_data") or record.get("message_id")):
+                continue
+            if await self._remove_profile(ctx.guild, user_id):
+                removed += 1
+            else:
+                failed += 1
+        text = f"Removed {removed} profile(s) of people who left."
+        if failed:
+            text += f" {failed} post(s) could not be deleted; check my permissions in the profile channel."
+        await ctx.send(text)
+
     async def handle_create_edit(self, interaction: discord.Interaction):
         if not isinstance(interaction.user, discord.Member) or interaction.guild is None:
             return
@@ -172,8 +195,8 @@ class Profile(commands.Cog):
 
         await view.wait()
         if view.submitted:
+            await self._update_profile_embed(member, view.data, picture=view.picture)
             await self.config.member(member).profile_data.set(view.data)
-            await self._update_profile_embed(member, view.data)
             await interaction.followup.send("Profile updated successfully!", ephemeral=True)
 
     async def handle_delete_request(self, interaction: discord.Interaction):
@@ -209,10 +232,55 @@ class Profile(commands.Cog):
             await self.config.member(member).last_delete.set(datetime.now(UTC).timestamp())
             await interaction.followup.send("Your profile has been deleted.", ephemeral=True)
 
-    async def _update_profile_embed(self, user: discord.Member, data: ProfileData):
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        """Take down a profile (including kinks and limits) when its owner leaves or is removed."""
+        await self._ensure_guild_data(member.guild)
+        await self._remove_profile(member.guild, member.id)
+
+    async def _remove_profile(self, guild: discord.Guild, user_id: int) -> bool:
+        """Delete a member's profile post and stored answers.
+
+        The deletion cooldown is kept. Returns False, keeping the record so a later cleanup can retry,
+        if the post exists but could not be deleted.
+        """
+        member_group = self.config.member_from_ids(guild.id, user_id)
+        message_id = await member_group.message_id()
+        if message_id:
+            channel = await self.get_profile_channel(guild)
+            if channel is not None:
+                try:
+                    await channel.get_partial_message(message_id).delete()
+                except discord.NotFound:
+                    pass
+                except discord.HTTPException as e:
+                    log.error(f"Failed to delete profile message of departed user {user_id}: {e}")
+                    return False
+        await member_group.profile_data.clear()
+        await member_group.message_id.clear()
+        return True
+
+    async def _existing_picture(
+        self, channel: discord.TextChannel, message_id: int, filename: str
+    ) -> UploadedPicture | None:
+        """Download the picture attached to the current profile post, to carry it over to the edited post."""
+        try:
+            message = await channel.fetch_message(message_id)
+            for attachment in message.attachments:
+                if attachment.filename == filename:
+                    return UploadedPicture(data=await attachment.read(), filename=filename)
+        except discord.HTTPException as e:
+            log.warning(f"Could not carry over profile picture from message {message_id}: {e}")
+        return None
+
+    async def _update_profile_embed(
+        self, user: discord.Member, data: ProfileData, picture: UploadedPicture | None = None
+    ):
+        """Post or edit the profile. `picture` is a new upload; otherwise the post's current picture is kept."""
         channel = await self.get_profile_channel(user.guild)
         if not channel:
             return
+        message_id = await self.config.member(user).message_id()
 
         embed = discord.Embed(title=data.get("name", user.display_name), color=user.color, timestamp=datetime.now(UTC))
         embed.set_author(name=f"{user.display_name}", icon_url=user.display_avatar.url)
@@ -239,24 +307,35 @@ class Profile(commands.Cog):
         if about_me := data.get("about_me"):
             embed.add_field(name="About Me", value=about_me, inline=False)
 
-        if picture_url := data.get("picture_url"):
-            embed.set_image(url=picture_url)
+        # Uploaded pictures live on the profile post itself; modal upload links are temporary.
+        picture_url = data.get("picture_url")
+        if picture is None and picture_url and picture_url.startswith(ATTACHMENT_PREFIX) and message_id:
+            picture = await self._existing_picture(channel, message_id, picture_url.removeprefix(ATTACHMENT_PREFIX))
+            if picture is None:
+                data["picture_url"] = None  # The post and its picture are gone
+        if picture is not None:
+            embed.set_image(url=f"{ATTACHMENT_PREFIX}{picture.filename}")
+        elif picture_url and not picture_url.startswith(ATTACHMENT_PREFIX):
+            embed.set_image(url=picture_url)  # Link saved before pictures were attached
+
+        def files() -> list[discord.File]:
+            # A File can only be sent once, so build a fresh one per request
+            return [discord.File(BytesIO(picture.data), filename=picture.filename)] if picture else []
 
         embed.set_footer(text=f"Profile created by {user.display_name}")
 
         content = f"{user.mention}"  # User mention as requested
 
-        message_id = await self.config.member(user).message_id()
         if message_id:
             try:
                 msg = channel.get_partial_message(message_id)
-                await msg.edit(content=content, embed=embed)
+                await msg.edit(content=content, embed=embed, attachments=files())
                 return
             except discord.NotFound:
                 pass
 
         # Create new message if none exists or old one was deleted
-        new_msg = await channel.send(content=content, embed=embed)
+        new_msg = await channel.send(content=content, embed=embed, files=files())
         await self.config.member(user).message_id.set(new_msg.id)
 
         # After sending a profile, we might need to repost the sticky

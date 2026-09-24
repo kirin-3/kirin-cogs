@@ -166,6 +166,7 @@ async def test_handle_create_edit_submitted_updates_profile(cog: Profile, config
     fake_view.wait = AsyncMock()
     fake_view.submitted = True
     fake_view.data = {"name": "Alice", "age": 28}
+    fake_view.picture = None
 
     cog._update_profile_embed = AsyncMock()  # type: ignore[method-assign]
 
@@ -173,7 +174,7 @@ async def test_handle_create_edit_submitted_updates_profile(cog: Profile, config
         await cog.handle_create_edit(interaction)
 
     config_mock.member.return_value.profile_data.set.assert_awaited_once_with(fake_view.data)
-    cog._update_profile_embed.assert_awaited_once_with(member, fake_view.data)
+    cog._update_profile_embed.assert_awaited_once_with(member, fake_view.data, picture=None)
     interaction.followup.send.assert_awaited_once_with("Profile updated successfully!", ephemeral=True)
 
 
