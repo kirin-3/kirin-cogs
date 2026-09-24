@@ -7,7 +7,7 @@ from redbot.core import commands
 from redbot.core.utils.chat_formatting import box
 
 from ..abc import MixinMeta
-from ..common.constants import MODAL_SCHEMA
+from ..common.constants import MAX_MODAL_FIELDS, MODAL_SCHEMA
 from ..common.menu import SMALL_CONTROLS, MenuButton, menu
 from ..common.utils import prune_invalid_tickets, update_active_overview
 from ..common.views import PanelView, TestButton, confirm, wait_reply
@@ -282,7 +282,8 @@ class AdminCommands(MixinMeta):
         """
         Add a modal field to the ticket panel
 
-        Ticket panels can have up to 5 fields per modal for the user to fill out before opening a ticket.
+        Ticket panels can have up to 4 fields per modal for the user to fill out before opening a ticket.
+        The fields are shown below the verification image upload, which takes Discord's fifth modal slot.
         If modal fields are added and have required fields,
         the user will have to fill them out before they can open a ticket.
 
@@ -312,8 +313,10 @@ class AdminCommands(MixinMeta):
                     del m[field_name]
                 return await ctx.send(f"Field {field_name} has been removed!")
 
-            if len(modal_data) >= 5:
-                return await ctx.send("The most fields a modal can have is 5!")
+            if len(modal_data) >= MAX_MODAL_FIELDS:
+                return await ctx.send(
+                    f"The most fields a modal can have is {MAX_MODAL_FIELDS}, since the verification image upload takes one of Discord's 5 slots!"
+                )
 
         async def make_preview(m, mm: discord.Message):
             txt = ""

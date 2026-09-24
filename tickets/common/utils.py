@@ -27,6 +27,18 @@ def ticket_channel_id(key: object) -> int | None:
     return None
 
 
+async def is_ticket_staff(bot: Red, guild: discord.Guild, member: discord.Member, conf: dict) -> bool:
+    """Whether the member is ticket staff: a support role holder, the guild owner, or a bot admin."""
+    # Simplified structure: no panel roles anymore
+    user_roles = [r.id for r in member.roles]
+    support_roles = [i[0] for i in conf["support_roles"]]
+    return (
+        any(i in support_roles for i in user_roles)
+        or member.id == guild.owner_id
+        or await is_admin_or_superior(bot, member)
+    )
+
+
 async def can_close(
     bot: Red,
     guild: discord.Guild,
@@ -40,19 +52,9 @@ async def can_close(
     if str(channel.id) not in conf["opened"][str(owner_id)]:
         return False
 
-    # Simplified structure: no panel roles anymore
-    user_roles = [r.id for r in author.roles]
-    support_roles = [i[0] for i in conf["support_roles"]]
-
-    can_close = False
-    if (
-        any(i in support_roles for i in user_roles)
-        or author.id == guild.owner_id
-        or await is_admin_or_superior(bot, author)
-        or (str(owner_id) == str(author.id) and conf["user_can_close"])
-    ):
-        can_close = True
-    return can_close
+    if str(owner_id) == str(author.id) and conf["user_can_close"]:
+        return True
+    return await is_ticket_staff(bot, guild, author, conf)
 
 
 async def ticket_owner_hastyped(channel: discord.TextChannel | discord.Thread, user: discord.Member) -> bool:
