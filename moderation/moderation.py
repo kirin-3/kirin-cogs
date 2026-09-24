@@ -20,6 +20,18 @@ MUTED_ROLE_ID = 686252873583165520
 RULES_CHANNEL_ID = 684360255798509582  # unban reinvites point here
 PUBLIC_LOG_CHANNEL_ID = 694857480307474432  # public mod-log; warnings are never posted here
 BAN_APPEAL_URL = "https://forms.gle/SdrjyV9ggi3hBQbh8"
+# The only roles [p]userinfo lists; the field is left out when a member has none of them.
+USERINFO_ROLE_IDS = frozenset(
+    {
+        696020813299580940,
+        898586656842600549,
+        1267157222530748439,
+        686097823900368896,
+        686097889910325281,
+        686097944340070447,
+        1319776542099767316,
+    }
+)
 
 # Public mod-log look per action (keys are Red modlog case types, plus Discord timeouts).
 LOG_STYLES: dict[str, tuple[str, str, discord.Color]] = {
@@ -201,9 +213,8 @@ def format_warnings(warnings: dict, mod_name: Callable[[int], str | None]) -> li
 class Moderation(commands.Cog):
     """Warnings, role-strip mutes, kicks, bans, and user info."""
 
-    def __init__(self, bot, old_warnings: commands.Command | None):
+    def __init__(self, bot):
         self.bot = bot
-        self.old_warnings = old_warnings
         # mute = {"roles": [ids stripped by the mute], "until": unix time or None}
         self.config = Config.get_conf(self, identifier=0x6D6F6431, force_registration=True)
         self.config.register_member(mute=None)
@@ -218,9 +229,36 @@ class Moderation(commands.Cog):
 
     async def cog_unload(self) -> None:
         self.expire_mutes.cancel()
-        # d.py has already removed our command; give Red's back if its cog is still the loaded one.
-        if self.old_warnings and self.bot.get_cog("Warnings") is self.old_warnings.cog:
-            self.bot.add_command(self.old_warnings)
+        # d.py has already removed [p]warnings by name; hand it back to whichever Warnings cog is loaded now.
+        red = self._red_warnings()
+        if red is not None and self.bot.get_command("warnings") is None:
+            self.bot.add_command(red)
+
+    def _red_warnings(self) -> commands.Command | None:
+        """Red's own [p]warnings, from the Warnings cog loaded right now (a reload makes a new one)."""
+        cog = self.bot.get_cog("Warnings")
+        return next((c for c in cog.get_commands() if c.name == "warnings"), None) if cog else None
+
+    def sync_warnings(self) -> None:
+        """Hold [p]warnings only while Red's Warnings cog is loaded.
+
+        discord.py adds and removes commands by name, so two cogs can't share one: whichever loads second
+        fails, and unloading either removes the other's. Giving the name back while Warnings is away lets it
+        load in any order; on_cog_add takes the name over again once it has.
+        """
+        ours = self.warnings
+        current = self.bot.get_command("warnings")
+        if self._red_warnings() is None:
+            if current is ours:
+                self.bot.remove_command("warnings")
+        elif current is not ours:
+            self.bot.remove_command("warnings")
+            self.bot.add_command(ours)
+
+    @commands.Cog.listener()
+    async def on_cog_add(self, cog: commands.Cog) -> None:
+        if cog.qualified_name == "Warnings":
+            self.sync_warnings()
 
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
         """Remove the user's saved mute roles in every guild."""
@@ -610,7 +648,7 @@ class Moderation(commands.Cog):
 
     # --- info ----------------------------------------------------------------------------------
 
-    @commands.command()
+    @commands.command(aliases=["whois"])
     @commands.guild_only()
     @staff_or()
     async def userinfo(self, ctx: commands.Context, user: discord.Member | discord.User | None = None) -> None:
@@ -645,11 +683,9 @@ class Moderation(commands.Cog):
         embed.add_field(name="Joined server", value=joined_text)
         embed.add_field(name="Warnings", value=str(len(warns) if isinstance(warns, dict) else 0))
         embed.add_field(name="Muted", value=muted)
-        if member is not None:
-            roles = " ".join(r.mention for r in reversed(member.roles) if not r.is_default()) or "None"
-            if len(roles) > 1024:
-                roles = roles[:1000].rsplit(" ", 1)[0] + " …"
-            embed.add_field(name="Roles", value=roles, inline=False)
+        roles = [r.mention for r in reversed(member.roles) if r.id in USERINFO_ROLE_IDS] if member else []
+        if roles:
+            embed.add_field(name="Roles", value=" ".join(roles), inline=False)
         await ctx.send(embed=embed)
 
     # --- warnings ------------------------------------------------------------------------------

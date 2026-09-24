@@ -6,8 +6,8 @@ user info, and a public mod-log. Every action DMs the member in the same style. 
 
 ## Setup
 
-Red's Mod and Mutes cogs use the same command names, so unload them first. Load Warnings before this cog, and turn off
-Warnings' own DM so members don't get two:
+Red's Mod and Mutes cogs use the same command names, so unload them first. Load Red's Warnings cog too, and turn off
+its own DM so members don't get two:
 
 ```
 [p]unload mod mutes
@@ -16,8 +16,10 @@ Warnings' own DM so members don't get two:
 [p]warningset senddm false
 ```
 
-On load, the cog takes Red's `[p]warnings` command and puts it back when unloaded. If you reload the Warnings cog,
-reload this cog afterwards, otherwise Red's plain-text `[p]warnings` comes back.
+This cog's `[p]warnings` replaces Red's plain-text one while the Warnings cog is loaded. Load order doesn't matter,
+and reloading either cog is safe: when Warnings loads or reloads, this cog takes `[p]warnings` over again, and when
+this cog unloads, Red's version comes back. While the Warnings cog isn't loaded, `[p]warnings` and `[p]warns` don't
+exist (this cog steps aside so Warnings can always load).
 
 Also reload the updated **RulesAccept** cog, which refuses muted members (see [Mutes](#mutes)).
 
@@ -35,7 +37,7 @@ permission checks silently).
 | `[p]kick <member> [reason]` | Kick Members | DMs them, then kicks. |
 | `[p]ban <user> [days] [reason]` | Ban Members | DMs them, then bans. `days` (0-7) deletes that many days of their messages. Accepts an ID for users who aren't in the server. |
 | `[p]unban <user ID> [reason]` | Ban Members | Unbans and sends them a one-use invite to the rules channel. |
-| `[p]userinfo [user]` | - | Account age, join date, roles, warning count, and mute status. |
+| `[p]userinfo [user]` | - | Account age, join date, warning count, mute status, and which of a few key roles they hold (`USERINFO_ROLE_IDS` in `moderation.py`; the field is left out when they have none). Also `[p]whois`. |
 
 Kick, ban, and mute refuse targets who are yourself, the server owner, or have the same or a higher role than you or
 the bot. Every action is logged as a Red modlog case (`smute`, `sunmute`, `kick`, `ban`, `hackban`, `unban`), so

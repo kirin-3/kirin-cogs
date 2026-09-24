@@ -4,5 +4,7 @@ from .moderation import Moderation
 
 
 async def setup(bot):
-    # Take over Red's plain-text [p]warnings; Moderation.cog_unload gives it back.
-    await bot.add_cog(Moderation(bot, bot.remove_command("warnings")))
+    bot.remove_command("warnings")  # free the name so our cog can register; sync_warnings sorts out who keeps it
+    cog = Moderation(bot)
+    await bot.add_cog(cog)
+    cog.sync_warnings()

@@ -200,3 +200,49 @@ def test_audit_action_picks_bans_kicks_unbans_and_timeouts_only() -> None:
     assert audit_action(entry(kinds.member_update, timed_out_until=None)) == ("untimeout", None)  # type: ignore[arg-type]
     assert audit_action(entry(kinds.member_update, nick="new name")) is None  # type: ignore[arg-type]
     assert audit_action(entry(kinds.member_role_update)) is None  # type: ignore[arg-type]
+
+
+class _CommandBot:
+    """Just the command registry, keyed by name like discord.py's."""
+
+    def __init__(self, warnings_cog=None) -> None:
+        self.commands: dict = {}
+        self.warnings_cog = warnings_cog
+
+    def get_cog(self, name: str):
+        return self.warnings_cog if name == "Warnings" else None
+
+    def get_command(self, name: str):
+        return self.commands.get(name)
+
+    def remove_command(self, name: str):
+        return self.commands.pop(name, None)
+
+    def add_command(self, command) -> None:
+        assert command.name not in self.commands, "discord.py would raise CommandRegistrationError"
+        self.commands[command.name] = command
+
+
+@pytest.mark.asyncio
+async def test_warnings_command_is_shared_safely_with_reds_warnings_cog() -> None:
+    red_command = SimpleNamespace(name="warnings")
+    warnings_cog = SimpleNamespace(get_commands=lambda: [red_command])
+    cog = Moderation.__new__(Moderation)
+    cog.expire_mutes = MagicMock()  # type: ignore[method-assign]
+
+    # Warnings isn't loaded yet: give the name up so it can load later.
+    cog.bot = bot = _CommandBot()
+    bot.add_command(cog.warnings)
+    cog.sync_warnings()
+    assert bot.get_command("warnings") is None
+
+    # Warnings loaded (startup or a reload): take the name over from Red's command.
+    bot.warnings_cog = warnings_cog
+    bot.add_command(red_command)
+    cog.sync_warnings()
+    assert bot.get_command("warnings") is cog.warnings
+
+    # Moderation unloads: d.py removes the name, then Red's command goes back.
+    bot.remove_command("warnings")
+    await cog.cog_unload()
+    assert bot.get_command("warnings") is red_command
