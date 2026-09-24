@@ -137,7 +137,7 @@ Track your activity and earn rewards.
 | `[p]xp [user]` | Global shortcut to check XP card. | |
 | `[p]level leaderboard` | View the server XP leaderboard. Aliases: `lb`, `top`. | |
 | `[p]xplb` | Global shortcut for XP leaderboard. | |
-| `[p]level award <amount> <user>` | Award XP to a user (generated out of thin air). | Bot Owner |
+| `[p]level award <amount> <user>` | Award XP to a user (generated out of thin air). Grants the rewards of every level it passes and announces the new level in the channel. | Bot Owner |
 
 ## Nitro Shop
 Buy Discord Nitro with currency.

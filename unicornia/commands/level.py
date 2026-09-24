@@ -223,7 +223,7 @@ class LevelCommands(UnicorniaMixinBase):
             return
 
         try:
-            success = await self.xp_system.award_xp(member.id, ctx.guild.id, amount, note)
+            success = await self.xp_system.award_xp(member.id, ctx.guild.id, amount, note, channel=ctx.channel)
             if success:
                 await ctx.send(f"<a:zz_YesTick:729318762356015124> Awarded {amount:,} XP to {member.display_name}!")
             else:

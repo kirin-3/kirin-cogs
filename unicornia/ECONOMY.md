@@ -128,9 +128,15 @@ Admins can configure the economy via `[p]unicornia config` or by editing `unicor
 *   `currency_name`: Name of the currency.
 *   `currency_symbol`: Emoji/Symbol used in displays.
 *   `timely_amount`: Base amount for daily claims.
+*   `timely_cooldown`: Hours between daily claims (at least 1).
 *   `generation_chance`: Probability of currency spawning in chat (0.0-1.0).
+*   `generation_min_amount` / `generation_max_amount`: Size of a spawn (at least 1; the minimum can't be above the maximum).
 *   `decay_percent`: Percentage of wealth removed per interval.
-*   `gambling_min_bet` / `gambling_max_bet`: Betting limits.
+*   `decay_hour_interval`: Hours between decay runs (at least 1).
+*   `gambling_min_bet` / `gambling_max_bet`: Betting limits (the minimum can't be above the maximum).
+*   `dividend_period_hours`: Hours between dividend payouts (at least 1).
+
+Values saved before these limits existed are tolerated: a zero daily cooldown or decay interval is treated as one hour, and a spawn minimum above the maximum is swapped (with a warning in the log). Check `[p]unicornia config` and correct them.
 
 ## Migration Guide (Nadeko -> Unicornia)
 

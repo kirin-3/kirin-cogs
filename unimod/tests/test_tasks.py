@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -9,6 +9,7 @@ from unimod.unimod import UniMod
 @pytest.fixture
 def cog():
     bot = MagicMock()
+    bot.wait_until_ready = AsyncMock()
     with patch("unimod.unimod.Config.get_conf"), patch("discord.ext.tasks.Loop.start"):
         return UniMod(bot)
 
@@ -31,4 +32,8 @@ async def test_event_loop_responsiveness(cog: UniMod):
 
     start = time.time()
     await cog.cog_load()
-    assert time.time() - start < 1.0  # Should be fast and not block event loop
+    try:
+        assert time.time() - start < 1.0  # Should be fast and not block event loop
+    finally:
+        # Stop the idle-buffer loop cog_load started, so it doesn't outlive the test
+        await cog.cog_unload()

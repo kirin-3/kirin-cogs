@@ -167,7 +167,8 @@ class EconomySystem:
         from datetime import datetime, timedelta
 
         # Get cooldown from config
-        cooldown_hours = await self.config.timely_cooldown()
+        # At least an hour: 0 (stored before the config command checked it) would allow unlimited dailies
+        cooldown_hours = max(1, await self.config.timely_cooldown())
         cooldown_seconds = cooldown_hours * 3600
 
         # Attempt atomic claim

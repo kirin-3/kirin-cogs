@@ -656,8 +656,11 @@ Analyze this conversation against the server rules, paying close attention to ch
         return embed
 
     @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        """Handle incoming messages for moderation."""
+    async def on_message_without_command(self, message: discord.Message):
+        """Handle incoming messages for moderation.
+
+        Red dispatches this only for messages that aren't commands, after its own command parsing.
+        """
         # 1. Filter invalid messages
         if message.author.bot or not message.guild:
             return
@@ -674,11 +677,6 @@ Analyze this conversation against the server rules, paying close attention to ch
             return
 
         channel = message.channel
-
-        # 3. CRITICAL: Ignore bot commands
-        ctx = await self.bot.get_context(message)
-        if ctx.valid:
-            return
 
         self.stats["messages_processed"] += 1
 
