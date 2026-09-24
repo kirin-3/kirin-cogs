@@ -1,5 +1,10 @@
+import aiohttp
 import discord
 from redbot.core import Config, checks, commands
+
+# Discord's upload limit for custom emojis
+MAX_EMOJI_BYTES = 256 * 1024
+DOWNLOAD_TIMEOUT = aiohttp.ClientTimeout(total=15)
 
 
 class CustomEmoji(commands.Cog):
@@ -16,6 +21,17 @@ class CustomEmoji(commands.Cog):
             "emoji_ownership": {},  # {str(emoji_id): user_id}
         }
         self.config.register_guild(**default_guild)
+        self._session: aiohttp.ClientSession | None = None
+
+    async def cog_unload(self) -> None:
+        if self._session is not None:
+            await self._session.close()
+
+    def _get_session(self) -> aiohttp.ClientSession:
+        # Red does not provide a shared HTTP session, so the cog owns one.
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(timeout=DOWNLOAD_TIMEOUT)
+        return self._session
 
     async def red_delete_data_for_user(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, *, requester, user_id: int
@@ -41,25 +57,55 @@ class CustomEmoji(commands.Cog):
         limits = await self.config.guild(guild).user_limits()
         return limits.get(str(user_id), 2)  # Default limit is 2
 
-    async def get_user_emoji_count(self, guild: discord.Guild, user_id: int) -> int:
-        """Count how many emojis a user currently owns."""
+    async def get_live_ownership(self, guild: discord.Guild) -> dict[str, int]:
+        """Return ownership records, first dropping those whose emoji no longer exists in the guild."""
         ownership = await self.config.guild(guild).emoji_ownership()
-        count = 0
-        # iterate and count match
-        for owner_id in ownership.values():
-            if owner_id == user_id:
-                count += 1
-        return count
+        stale = [emoji_id for emoji_id in ownership if guild.get_emoji(int(emoji_id)) is None]
+        if stale:
+            async with self.config.guild(guild).emoji_ownership() as stored:
+                for emoji_id in stale:
+                    stored.pop(emoji_id, None)
+        return {emoji_id: owner_id for emoji_id, owner_id in ownership.items() if emoji_id not in stale}
+
+    async def get_user_emoji_count(self, guild: discord.Guild, user_id: int) -> int:
+        """Count how many existing emojis a user currently owns."""
+        ownership = await self.get_live_ownership(guild)
+        return sum(1 for owner_id in ownership.values() if owner_id == user_id)
 
     async def download_image(self, url: str) -> bytes:
-        """Download image from URL."""
-        async with self.bot.session.get(url) as response:
+        """Download image from URL, refusing anything over Discord's emoji size limit."""
+        too_large = f"Image is too large (max {MAX_EMOJI_BYTES // 1024}KB)."
+        async with self._get_session().get(url) as response:
             if response.status != 200:
                 raise ValueError("Failed to download image.")
-            data = await response.read()
-            if len(data) > 256 * 1024:
-                raise ValueError("Image is too large (max 256KB).")
-            return data
+            if response.content_length is not None and response.content_length > MAX_EMOJI_BYTES:
+                raise ValueError(too_large)
+            # Content-Length can be missing or wrong, so enforce the cap while reading.
+            data = bytearray()
+            async for chunk in response.content.iter_chunked(64 * 1024):
+                data.extend(chunk)
+                if len(data) > MAX_EMOJI_BYTES:
+                    raise ValueError(too_large)
+            return bytes(data)
+
+    @commands.Cog.listener()
+    async def on_guild_emojis_update(
+        self,
+        guild: discord.Guild,
+        before: list[discord.Emoji],
+        after: list[discord.Emoji],
+    ) -> None:
+        """Free the owner's slot as soon as an emoji is deleted, including through Discord directly."""
+        removed = {str(emoji.id) for emoji in before} - {str(emoji.id) for emoji in after}
+        if not removed:
+            return
+        ownership = await self.config.guild(guild).emoji_ownership()
+        tracked = removed & ownership.keys()
+        if not tracked:
+            return
+        async with self.config.guild(guild).emoji_ownership() as stored:
+            for emoji_id in tracked:
+                stored.pop(emoji_id, None)
 
     @commands.group(aliases=["ce"])
     @commands.guild_only()
@@ -149,8 +195,8 @@ class CustomEmoji(commands.Cog):
             if not attachment.filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif")):
                 await ctx.send("Invalid file type. Please upload a PNG, JPG, or GIF.")
                 return
-            if attachment.size > 256 * 1024:
-                await ctx.send("Image is too large (max 256KB).")
+            if attachment.size > MAX_EMOJI_BYTES:
+                await ctx.send(f"Image is too large (max {MAX_EMOJI_BYTES // 1024}KB).")
                 return
             try:
                 image_data = await attachment.read()
@@ -282,22 +328,11 @@ class CustomEmoji(commands.Cog):
             await ctx.send(f"{user.display_name} has no custom emojis.")
             return
 
-        valid_emojis = []
-        cleanup_ids = []
-
-        for eid in user_emoji_ids:
-            emoji = ctx.guild.get_emoji(int(eid))
-            if emoji:
-                valid_emojis.append(emoji)
-            else:
-                cleanup_ids.append(eid)
-
-        # Cleanup stale entries
-        if cleanup_ids:
-            async with self.config.guild(ctx.guild).emoji_ownership() as ownership:
-                for eid in cleanup_ids:
-                    if eid in ownership:
-                        del ownership[eid]
+        # Stale records are dropped as part of the lookup
+        live_ownership = await self.get_live_ownership(ctx.guild)
+        valid_emojis = [
+            emoji for eid in user_emoji_ids if eid in live_ownership and (emoji := ctx.guild.get_emoji(int(eid)))
+        ]
 
         if not valid_emojis:
             await ctx.send(f"{user.display_name} has no valid custom emojis (some may have been deleted manually).")

@@ -1,5 +1,6 @@
 """Unit, async, and dpytest integration tests for the CustomEmoji cog."""
 
+import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,9 +10,11 @@ import discord.ext.commands as dpy_commands
 import discord.ext.test as dpytest
 import pytest
 import pytest_asyncio
+from aiohttp import web
+from aiohttp.test_utils import TestServer
 from redbot.core import Config
 
-from customemoji.customemoji import CustomEmoji
+from customemoji.customemoji import MAX_EMOJI_BYTES, CustomEmoji
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -44,7 +47,6 @@ def _acm(backing_dict: dict) -> object:
 
 @pytest.fixture
 def bot_mock() -> MagicMock:
-    # Don't use spec=Red here so we can set arbitrary attributes like .session
     bot = MagicMock()
     bot.owner_ids = {111}
     bot.is_mod = AsyncMock(return_value=False)
@@ -140,29 +142,169 @@ async def test_get_user_emoji_count(cog: Any, config_mock: MagicMock) -> None:
     assert result == 2
 
 
+async def _serve(routes: dict) -> TestServer:
+    app = web.Application()
+    for path, handler in routes.items():
+        app.router.add_get(path, handler)
+    server = TestServer(app)
+    await server.start_server()
+    return server
+
+
+async def _png(request: web.Request) -> web.Response:
+    return web.Response(body=b"\x89PNG small", content_type="image/png")
+
+
+async def _missing(request: web.Request) -> web.Response:
+    return web.Response(status=404)
+
+
+async def _declared_huge(request: web.Request) -> web.Response:
+    return web.Response(body=b"x" * (MAX_EMOJI_BYTES + 1), content_type="image/png")
+
+
+async def _endless_stream(request: web.Request) -> web.StreamResponse:
+    """Streams without a Content-Length and never ends, so only a cap applied while reading can stop it."""
+    response = web.StreamResponse()
+    response.enable_chunked_encoding()
+    await response.prepare(request)
+    while True:
+        await response.write(b"x" * 16 * 1024)
+
+
 @pytest.mark.asyncio
-async def test_download_image_too_large(cog: Any, bot_mock: MagicMock) -> None:
-    response_mock = MagicMock()
-    response_mock.status = 200
-    response_mock.read = AsyncMock(return_value=b"x" * (257 * 1024))
-    response_mock.__aenter__ = AsyncMock(return_value=response_mock)
-    response_mock.__aexit__ = AsyncMock(return_value=False)
-    bot_mock.session.get = MagicMock(return_value=response_mock)
+async def test_download_image_success(cog: Any) -> None:
+    server = await _serve({"/ok.png": _png})
+    try:
+        data = await cog.download_image(str(server.make_url("/ok.png")))
+    finally:
+        await cog.cog_unload()
+        await server.close()
 
-    with pytest.raises(ValueError, match="too large"):
-        await cog.download_image("https://example.com/image.png")
+    assert data == b"\x89PNG small"
 
 
 @pytest.mark.asyncio
-async def test_download_image_non_200(cog: Any, bot_mock: MagicMock) -> None:
-    response_mock = MagicMock()
-    response_mock.status = 404
-    response_mock.__aenter__ = AsyncMock(return_value=response_mock)
-    response_mock.__aexit__ = AsyncMock(return_value=False)
-    bot_mock.session.get = MagicMock(return_value=response_mock)
+async def test_download_image_non_200(cog: Any) -> None:
+    server = await _serve({"/missing.png": _missing})
+    try:
+        with pytest.raises(ValueError, match="Failed to download"):
+            await cog.download_image(str(server.make_url("/missing.png")))
+    finally:
+        await cog.cog_unload()
+        await server.close()
 
-    with pytest.raises(ValueError, match="Failed to download"):
-        await cog.download_image("https://example.com/image.png")
+
+@pytest.mark.asyncio
+async def test_download_image_rejects_declared_size(cog: Any) -> None:
+    server = await _serve({"/huge.png": _declared_huge})
+    try:
+        with pytest.raises(ValueError, match="too large"):
+            await cog.download_image(str(server.make_url("/huge.png")))
+    finally:
+        await cog.cog_unload()
+        await server.close()
+
+
+@pytest.mark.asyncio
+async def test_download_image_caps_while_reading(cog: Any) -> None:
+    server = await _serve({"/endless.png": _endless_stream})
+    try:
+        with pytest.raises(ValueError, match="too large"):
+            await asyncio.wait_for(cog.download_image(str(server.make_url("/endless.png"))), timeout=5)
+    finally:
+        await cog.cog_unload()
+        await server.close()
+
+
+@pytest.mark.asyncio
+async def test_download_image_does_not_use_bot_session(cog: Any, bot_mock: MagicMock) -> None:
+    """Red has no bot.session; the cog must not depend on it."""
+    del bot_mock.session
+    server = await _serve({"/ok.png": _png})
+    try:
+        assert await cog.download_image(str(server.make_url("/ok.png")))
+    finally:
+        await cog.cog_unload()
+        await server.close()
+
+
+@pytest.mark.asyncio
+async def test_cog_unload_closes_session(cog: Any) -> None:
+    session = cog._get_session()
+    assert not session.closed
+
+    await cog.cog_unload()
+
+    assert session.closed
+
+
+# ---------------------------------------------------------------------------
+# Stale ownership records
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_count_ignores_and_prunes_deleted_emojis(cog: Any, config_mock: MagicMock) -> None:
+    ownership: dict = {"1001": 42, "1002": 42}
+    config_mock.guild.return_value.emoji_ownership = MagicMock(return_value=_acm(ownership))
+    guild = MagicMock(spec=discord.Guild)
+    guild.get_emoji = MagicMock(side_effect=lambda emoji_id: MagicMock() if emoji_id == 1001 else None)
+
+    assert await cog.get_user_emoji_count(guild, 42) == 1
+    assert ownership == {"1001": 42}
+
+
+@pytest.mark.asyncio
+async def test_create_allowed_after_emoji_deleted_outside_bot(
+    cog: Any, bot_mock: MagicMock, config_mock: MagicMock
+) -> None:
+    """A slot freed by deleting an emoji through Discord is usable right away, without ce list."""
+    ownership: dict = {"1001": 500, "1002": 500}
+    guild_group = config_mock.guild.return_value
+    guild_group.emoji_ownership = MagicMock(return_value=_acm(ownership))
+    guild_group.user_limits = AsyncMock(return_value={})
+
+    attachment = MagicMock(spec=discord.Attachment)
+    attachment.filename = "new.png"
+    attachment.size = 1024
+    attachment.read = AsyncMock(return_value=b"png")
+    ctx = _make_ctx(bot_mock, author_id=500, attachments=[attachment])
+    ctx.guild.get_emoji = MagicMock(side_effect=lambda emoji_id: MagicMock() if emoji_id == 1001 else None)
+    new_emoji = MagicMock()
+    new_emoji.id = 2002
+    ctx.guild.create_custom_emoji = AsyncMock(return_value=new_emoji)
+
+    await cog.ce_create.callback(cog, ctx, "new")
+
+    ctx.guild.create_custom_emoji.assert_awaited_once()
+    assert ownership == {"1001": 500, "2002": 500}
+
+
+def _emoji(emoji_id: int) -> MagicMock:
+    emoji = MagicMock(spec=discord.Emoji)
+    emoji.id = emoji_id
+    return emoji
+
+
+@pytest.mark.asyncio
+async def test_emoji_deleted_through_discord_frees_slot(cog: Any, config_mock: MagicMock) -> None:
+    ownership: dict = {"1001": 42, "1002": 42}
+    config_mock.guild.return_value.emoji_ownership = MagicMock(return_value=_acm(ownership))
+
+    await cog.on_guild_emojis_update(MagicMock(spec=discord.Guild), [_emoji(1001), _emoji(1002)], [_emoji(1001)])
+
+    assert ownership == {"1001": 42}
+
+
+@pytest.mark.asyncio
+async def test_untracked_emoji_changes_do_not_write_config(cog: Any, config_mock: MagicMock) -> None:
+    config_mock.guild.return_value.emoji_ownership = AsyncMock(return_value={"1001": 42})
+
+    await cog.on_guild_emojis_update(MagicMock(spec=discord.Guild), [_emoji(1001), _emoji(3003)], [_emoji(1001)])
+    await cog.on_guild_emojis_update(MagicMock(spec=discord.Guild), [_emoji(1001)], [_emoji(1001), _emoji(4004)])
+
+    config_mock.guild.return_value.emoji_ownership.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
