@@ -1,12 +1,23 @@
 import asyncio
 import contextlib
+import logging
+import re
+import shutil
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 
 import discord
 from redbot.core import Config, commands
+from redbot.core.data_manager import cog_data_path
 from redbot.core.utils.chat_formatting import box, pagify
+
+log = logging.getLogger("red.kirin_cogs.customcommand")
+
+MESSAGE_LIMIT = 2000
+# Attachments are stored on disk and re-uploaded; keep them under the bot's upload limit
+MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
 
 
 @dataclass
@@ -23,6 +34,9 @@ class CustomCommand(commands.Cog):
     """
 
     LOG_CHANNEL_ID = 757582829571014737
+    # Saved attachments live here (set in cog_load), one folder per guild and trigger.
+    # A Discord attachment link dies with its message, so the file itself is kept.
+    attachments_root: Path | None = None
 
     def __init__(self, bot):
         self.bot = bot
@@ -60,6 +74,7 @@ class CustomCommand(commands.Cog):
                 for trigger in owned:
                     if isinstance(trigger, str):
                         commands_data.pop(trigger, None)
+                        await self._delete_attachment(guild_id, trigger)
                 limits.pop(user_key, None)
                 limits.pop(user_id, None)
                 current["command_owners"] = owners
@@ -88,8 +103,38 @@ class CustomCommand(commands.Cog):
             if entry.holders == 0 and self._guild_locks.get(guild_id) is entry:
                 del self._guild_locks[guild_id]
 
+    def _attachment_dir(self, guild_id: int, trigger: str) -> Path | None:
+        if self.attachments_root is None:
+            return None
+        # Triggers are lowercase letters, digits and spaces, so this name is safe and unique
+        return self.attachments_root / str(guild_id) / trigger.replace(" ", "_")
+
+    async def _delete_attachment(self, guild_id: int, trigger: str) -> None:
+        folder = self._attachment_dir(guild_id, trigger)
+        if folder is not None:
+            await asyncio.to_thread(shutil.rmtree, folder, True)
+
+    async def _save_attachment(self, guild_id: int, trigger: str, filename: str, data: bytes) -> None:
+        folder = self._attachment_dir(guild_id, trigger)
+        if folder is None:
+            raise RuntimeError("Attachment storage is not available")
+
+        def write() -> None:
+            shutil.rmtree(folder, ignore_errors=True)
+            folder.mkdir(parents=True)
+            (folder / filename).write_bytes(data)
+
+        await asyncio.to_thread(write)
+
+    def _stored_attachment(self, guild_id: int, trigger: str) -> Path | None:
+        folder = self._attachment_dir(guild_id, trigger)
+        if folder is None or not folder.is_dir():
+            return None
+        return next((path for path in folder.iterdir() if path.is_file()), None)
+
     async def cog_load(self):
         """Pre-populate the cache on cog load."""
+        self.attachments_root = cog_data_path(self) / "attachments"
         all_guilds_data = await self.config.all_guilds()
         for guild_id, guild_data in all_guilds_data.items():
             self.command_cache[guild_id] = guild_data.get("commands", {})
@@ -184,6 +229,8 @@ class CustomCommand(commands.Cog):
 
             for trigger in triggers:
                 response = all_commands.get(trigger, "Response not found (Error)")
+                if self._stored_attachment(ctx.guild.id, trigger) is not None:
+                    response = f"{response}\n[Attachment]".strip()
                 text += f"Trigger: {trigger}\nOwner: {username}\nResponse: {response}\n\n"
 
         if not text:
@@ -212,16 +259,16 @@ class CustomCommand(commands.Cog):
             await ctx.send("You don't have the required role to create a custom command.")
             return
 
-        # Handle attachments
-        if ctx.message.attachments:
-            attachment_url = ctx.message.attachments[0].url
-            if response:
-                response = f"{response}\n{attachment_url}"
-            else:
-                response = attachment_url
-
-        if not response:
+        response = response or ""
+        if not response and not ctx.message.attachments:
             await ctx.send("Please provide a response or attach an image.")
+            return
+
+        if len(response) > MESSAGE_LIMIT:
+            await ctx.send(
+                f"Responses can be at most {MESSAGE_LIMIT} characters (yours is {len(response)}), "
+                "because that's the most the bot can send in one message."
+            )
             return
 
         # Prevent bot triggers
@@ -236,6 +283,22 @@ class CustomCommand(commands.Cog):
         if self.bot.get_command(trigger.lower()):
             await ctx.send("A command with this name already exists.")
             return
+
+        # The attachment itself is saved: its link stops working once the original message is deleted
+        attachment_file: tuple[str, bytes] | None = None
+        if ctx.message.attachments:
+            attachment = ctx.message.attachments[0]
+            if attachment.size > MAX_ATTACHMENT_BYTES:
+                await ctx.send(f"Attachments can be at most {MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB.")
+                return
+            try:
+                data = await attachment.read()
+            except discord.HTTPException:
+                log.exception("Could not download a custom command attachment")
+                await ctx.send("I couldn't download that attachment. Please try again.")
+                return
+            filename = re.sub(r"[^A-Za-z0-9._-]", "_", Path(attachment.filename).name).lstrip(".") or "attachment"
+            attachment_file = (filename, data)
 
         is_owner = await self.bot.is_owner(author)
 
@@ -270,12 +333,23 @@ class CustomCommand(commands.Cog):
 
             guild_data["commands"] = commands_map
             guild_data["command_owners"] = owners_map
-            await guild_group.set(guild_data)
+            try:
+                if attachment_file is not None:
+                    await self._save_attachment(guild.id, trigger.lower(), *attachment_file)
+                else:
+                    await self._delete_attachment(guild.id, trigger.lower())
+                await guild_group.set(guild_data)
+            except Exception:
+                await self._delete_attachment(guild.id, trigger.lower())
+                raise
 
         # Update cache
         self.command_cache.setdefault(guild.id, {})[trigger.lower()] = response
 
-        await self.log_action(ctx, "Created", trigger.lower(), response)
+        log_response = response
+        if attachment_file is not None:
+            log_response = f"{response}\n[Attachment: {attachment_file[0]}]".strip()
+        await self.log_action(ctx, "Created", trigger.lower(), log_response)
         await ctx.send(f"Custom command `{trigger}` has been created.")
 
     @customcommand.command(name="delete")
@@ -319,6 +393,7 @@ class CustomCommand(commands.Cog):
                 # Cleanup cooldown
                 if (guild.id, trigger) in self.trigger_cooldowns:
                     del self.trigger_cooldowns[(guild.id, trigger)]
+                await self._delete_attachment(guild.id, trigger)
 
                 if owner_found:
                     triggers = command_owners[owner_found]
@@ -373,6 +448,7 @@ class CustomCommand(commands.Cog):
         # Cleanup cooldown
         if (guild.id, trigger) in self.trigger_cooldowns:
             del self.trigger_cooldowns[(guild.id, trigger)]
+        await self._delete_attachment(guild.id, trigger)
 
         user_commands.remove(trigger)
         if not user_commands:
@@ -407,7 +483,16 @@ class CustomCommand(commands.Cog):
                 return
             response = guild_commands[trigger]
             # Stored responses are user-controlled text: never let them ping.
-            await message.channel.send(response, allowed_mentions=discord.AllowedMentions.none())
+            no_pings = discord.AllowedMentions.none()
+            # Responses saved before the length check could exceed one message; send those in parts
+            parts = list(pagify(response, page_length=MESSAGE_LIMIT)) if len(response) > MESSAGE_LIMIT else [response]
+            stored = self._stored_attachment(message.guild.id, trigger)
+            for part in parts[:-1]:
+                await message.channel.send(part, allowed_mentions=no_pings)
+            if stored is not None:
+                await message.channel.send(parts[-1] or None, file=discord.File(stored), allowed_mentions=no_pings)
+            else:
+                await message.channel.send(parts[-1], allowed_mentions=no_pings)
 
 
 async def setup(bot):

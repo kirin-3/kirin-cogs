@@ -315,3 +315,55 @@ async def test_modal_submit_refuses_muted_member(cog: RulesAccept) -> None:
     interaction.response.send_message.assert_awaited_once_with(
         "You can't accept the rules while you're muted.", ephemeral=True
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("answer", ["I agree to the rules.", "nope"])
+async def test_modal_submit_replies_before_the_log_is_sent(
+    cog: RulesAccept, config_mock: MagicMock, answer: str
+) -> None:
+    """Discord gives 3 seconds to reply; a slow log channel must not use them up."""
+    modal = rulesacceptModal(cog)
+    modal.answer._value = answer
+
+    guild = MagicMock(spec=discord.Guild)
+    _configure_role_permissions(guild)
+    guild.get_role.return_value = _manageable_role()
+    member = MagicMock(spec=discord.Member)
+    member.id = 555
+    member.mention = "<@555>"
+    member.get_role.return_value = None
+    member.add_roles = AsyncMock()
+    interaction = _make_interaction(member=member, guild=guild)
+    config_mock.guild.return_value.member_role_id = AsyncMock(return_value=42)
+
+    order: list[str] = []
+    interaction.response.send_message = AsyncMock(side_effect=lambda *a, **k: order.append("reply"))
+    log_channel = MagicMock(spec=discord.TextChannel)
+    log_channel.send = AsyncMock(side_effect=lambda *a, **k: order.append("log"))
+    cog.bot.get_channel = MagicMock(return_value=log_channel)
+
+    await modal.on_submit(interaction)
+
+    assert order == ["reply", "log"]
+
+
+@pytest.mark.asyncio
+async def test_modal_submit_still_logs_when_the_reply_fails(cog: RulesAccept) -> None:
+    modal = rulesacceptModal(cog)
+    modal.answer._value = "nope"
+    member = MagicMock(spec=discord.Member)
+    member.id = 555
+    member.mention = "<@555>"
+    interaction = _make_interaction(member=member, guild=MagicMock(spec=discord.Guild))
+    interaction.response.send_message = AsyncMock(
+        side_effect=discord.NotFound(MagicMock(status=404, reason="Not Found"), "Unknown interaction")
+    )
+    log_channel = MagicMock(spec=discord.TextChannel)
+    log_channel.send = AsyncMock()
+    cog.bot.get_channel = MagicMock(return_value=log_channel)
+
+    with pytest.raises(discord.NotFound):
+        await modal.on_submit(interaction)
+
+    log_channel.send.assert_awaited_once()

@@ -3,6 +3,7 @@
 import asyncio
 import copy
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,7 +15,7 @@ import pytest_asyncio
 from redbot.core import Config
 from redbot.core.bot import Red
 
-from customcommand.customcommand import CustomCommand
+from customcommand.customcommand import MAX_ATTACHMENT_BYTES, MESSAGE_LIMIT, CustomCommand
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -399,12 +400,16 @@ async def test_create_success(cog: Any, bot_mock: MagicMock, config_mock: MagicM
 
 
 @pytest.mark.asyncio
-async def test_create_with_attachment(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+async def test_create_with_attachment(cog: Any, bot_mock: MagicMock, config_mock: MagicMock, tmp_path: Any) -> None:
+    cog.attachments_root = tmp_path
     role = MagicMock(spec=discord.Role)
     role.id = cog.role_id
 
     attachment = MagicMock(spec=discord.Attachment)
     attachment.url = "https://cdn.discord.com/image.png"
+    attachment.filename = "image.png"
+    attachment.size = 3
+    attachment.read = AsyncMock(return_value=b"png")
 
     ctx = _make_ctx(bot_mock, author_id=500, author_roles=[role], guild_id=1, attachments=[attachment])
 
@@ -413,7 +418,9 @@ async def test_create_with_attachment(cog: Any, bot_mock: MagicMock, config_mock
     await cog.customcommand_create.callback(cog, ctx, "img", None)
 
     ctx.send.assert_called_once_with("Custom command `img` has been created.")
-    assert cog.command_cache[1]["img"] == attachment.url
+    # The file is kept, not the link: the link dies when the original message is deleted
+    assert cog.command_cache[1]["img"] == ""
+    assert (tmp_path / "1" / "img" / "image.png").read_bytes() == b"png"
 
 
 # ---------------------------------------------------------------------------
@@ -847,3 +854,170 @@ async def test_dpytest_unknown_trigger_no_response(dpytest_bot: dpy_commands.Bot
         await asyncio.gather(*pending, return_exceptions=True)
 
     channel_mock.send.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Responses fit one message; attachments are kept as files, not links
+# ---------------------------------------------------------------------------
+
+
+def _creator_ctx(cog: Any, bot_mock: MagicMock, attachments: list | None = None) -> Any:
+    role = MagicMock(spec=discord.Role)
+    role.id = cog.role_id
+    return _make_ctx(bot_mock, author_id=500, author_roles=[role], guild_id=1, attachments=attachments)
+
+
+def _attachment(*, size: int = 3, data: bytes = b"png", filename: str = "cat.png") -> MagicMock:
+    attachment = MagicMock(spec=discord.Attachment)
+    attachment.url = "https://cdn.discordapp.com/attachments/1/2/cat.png?ex=abc"
+    attachment.filename = filename
+    attachment.size = size
+    attachment.read = AsyncMock(return_value=data)
+    return attachment
+
+
+def _trigger_message(content: str) -> MagicMock:
+    message = MagicMock(spec=discord.Message)
+    message.author.bot = False
+    message.guild = MagicMock(spec=discord.Guild, id=1)
+    message.content = content
+    message.channel = MagicMock()
+    message.channel.id = 10
+    message.channel.send = AsyncMock()
+    return message
+
+
+@pytest.mark.asyncio
+async def test_response_longer_than_one_message_is_refused(cog: Any, bot_mock: MagicMock, config_mock: Any) -> None:
+    ctx = _creator_ctx(cog, bot_mock)
+    cog.log_action = AsyncMock()
+
+    await cog.customcommand_create.callback(cog, ctx, "long", "x" * (MESSAGE_LIMIT + 1))
+
+    assert "at most 2000 characters (yours is 2001)" in ctx.send.call_args.args[0]
+    assert config_mock.guild.return_value._store["commands"] == {}
+
+
+@pytest.mark.asyncio
+async def test_response_of_exactly_one_message_is_allowed(cog: Any, bot_mock: MagicMock) -> None:
+    ctx = _creator_ctx(cog, bot_mock)
+    cog.log_action = AsyncMock()
+
+    await cog.customcommand_create.callback(cog, ctx, "long", "x" * MESSAGE_LIMIT)
+
+    ctx.send.assert_called_once_with("Custom command `long` has been created.")
+
+
+@pytest.mark.asyncio
+async def test_saved_long_response_is_sent_in_parts(cog: Any) -> None:
+    cog.command_cache[1] = {"long": "word " * 900}
+    message = _trigger_message("long")
+
+    await cog.on_message_without_command(message)
+
+    sent = [call.args[0] for call in message.channel.send.await_args_list]
+    assert len(sent) == 3
+    assert all(len(part) <= MESSAGE_LIMIT for part in sent)
+    assert "".join(sent).split() == ["word"] * 900
+    assert all(call.kwargs["allowed_mentions"].everyone is False for call in message.channel.send.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_attachment_is_sent_as_a_file_not_a_link(cog: Any, bot_mock: MagicMock, tmp_path: Path) -> None:
+    cog.attachments_root = tmp_path
+    ctx = _creator_ctx(cog, bot_mock, [_attachment(data=b"cat-bytes")])
+    cog.log_action = AsyncMock()
+
+    await cog.customcommand_create.callback(cog, ctx, "cat", "Look")
+    message = _trigger_message("cat")
+    await cog.on_message_without_command(message)
+
+    call = message.channel.send.await_args
+    assert call.args[0] == "Look"
+    assert "cdn.discordapp.com" not in call.args[0]
+    file = call.kwargs["file"]
+    assert file.filename == "cat.png"
+    assert file.fp.read() == b"cat-bytes"
+    assert call.kwargs["allowed_mentions"].everyone is False
+    assert cog.log_action.call_args.args[3] == "Look\n[Attachment: cat.png]"
+
+
+@pytest.mark.asyncio
+async def test_attachment_only_command_sends_just_the_file(cog: Any, bot_mock: MagicMock, tmp_path: Path) -> None:
+    cog.attachments_root = tmp_path
+    ctx = _creator_ctx(cog, bot_mock, [_attachment()])
+    cog.log_action = AsyncMock()
+
+    await cog.customcommand_create.callback(cog, ctx, "cat", None)
+    message = _trigger_message("cat")
+    await cog.on_message_without_command(message)
+
+    call = message.channel.send.await_args
+    assert call.args[0] is None
+    assert call.kwargs["file"].filename == "cat.png"
+
+
+@pytest.mark.asyncio
+async def test_unsafe_attachment_name_stays_inside_the_command_folder(
+    cog: Any, bot_mock: MagicMock, tmp_path: Path
+) -> None:
+    cog.attachments_root = tmp_path
+    ctx = _creator_ctx(cog, bot_mock, [_attachment(filename="../../evil name.png")])
+    cog.log_action = AsyncMock()
+
+    await cog.customcommand_create.callback(cog, ctx, "cat", None)
+
+    assert [path.name for path in (tmp_path / "1" / "cat").iterdir()] == ["evil_name.png"]
+
+
+@pytest.mark.asyncio
+async def test_too_large_attachment_is_refused(cog: Any, bot_mock: MagicMock, config_mock: Any, tmp_path: Path) -> None:
+    cog.attachments_root = tmp_path
+    attachment = _attachment(size=MAX_ATTACHMENT_BYTES + 1)
+    ctx = _creator_ctx(cog, bot_mock, [attachment])
+
+    await cog.customcommand_create.callback(cog, ctx, "cat", None)
+
+    assert ctx.send.call_args.args[0] == "Attachments can be at most 8 MB."
+    attachment.read.assert_not_awaited()
+    assert config_mock.guild.return_value._store["commands"] == {}
+
+
+@pytest.mark.asyncio
+async def test_failed_config_write_removes_the_saved_file(
+    cog: Any, bot_mock: MagicMock, config_mock: Any, tmp_path: Path
+) -> None:
+    cog.attachments_root = tmp_path
+    config_mock.guild.return_value.set = AsyncMock(side_effect=RuntimeError("disk full"))
+    ctx = _creator_ctx(cog, bot_mock, [_attachment()])
+
+    with pytest.raises(RuntimeError):
+        await cog.customcommand_create.callback(cog, ctx, "cat", None)
+
+    assert not (tmp_path / "1" / "cat").exists()
+
+
+@pytest.mark.asyncio
+async def test_deleting_the_command_deletes_its_file(cog: Any, bot_mock: MagicMock, tmp_path: Path) -> None:
+    cog.attachments_root = tmp_path
+    cog.log_action = AsyncMock()
+    await cog.customcommand_create.callback(cog, _creator_ctx(cog, bot_mock, [_attachment()]), "cat", None)
+    assert (tmp_path / "1" / "cat").exists()
+
+    await cog.customcommand_delete.callback(cog, _creator_ctx(cog, bot_mock), "cat")
+
+    assert not (tmp_path / "1" / "cat").exists()
+
+
+@pytest.mark.asyncio
+async def test_data_deletion_removes_the_owners_files(cog: Any, config_mock: Any, tmp_path: Path) -> None:
+    cog.attachments_root = tmp_path
+    (tmp_path / "1" / "cat").mkdir(parents=True)
+    (tmp_path / "1" / "cat" / "cat.png").write_bytes(b"png")
+    store = {"commands": {"cat": ""}, "command_owners": {"500": ["cat"]}, "user_limits": {}}
+    config_mock.all_guilds = AsyncMock(return_value={1: store})
+    config_mock.guild_from_id = MagicMock(return_value=MagicMock(all=AsyncMock(return_value=store), set=AsyncMock()))
+
+    await cog.red_delete_data_for_user(requester="user", user_id=500)
+
+    assert not (tmp_path / "1" / "cat").exists()
