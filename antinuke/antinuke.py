@@ -8,7 +8,6 @@ from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import inline
 
 from .actions import QuarantineActions
-from .audit import AuditLogHelper
 from .constants import CONFIG_IDENTIFIER, DEFAULT_GLOBAL, DEFAULT_GUILD, SETTINGS_AUTHORITY_USER_ID
 from .events import EventHandlers
 from .migrations import migrate_guild_schemas
@@ -18,12 +17,12 @@ log = logging.getLogger("red.kirin-cogs.antinuke")
 
 
 async def _settings_authority(ctx: commands.Context) -> bool:
-    """Allow only the guild owner or the designated user to change critical settings."""
+    """Allow only the guild owner or the designated user to use AntiNuke commands."""
     guild = ctx.guild
     if guild is not None and ctx.author.id in (guild.owner_id, SETTINGS_AUTHORITY_USER_ID):
         return True
     raise commands.UserFeedbackCheckFailure(
-        "❌ Only the server owner or the designated AntiNuke manager can change this setting."
+        "❌ Only the server owner or the designated AntiNuke manager can use AntiNuke commands."
     )
 
 
@@ -66,14 +65,8 @@ class AntiNuke(
 
         # Initialize components
         self.action_cache = ActionCache()
-        self.audit_helper = AuditLogHelper(bot, self.config)
         self.quarantine_actions = QuarantineActions(bot, self.config)
-        self.event_handlers = EventHandlers(
-            bot, self.config, self.action_cache, self.audit_helper, self.quarantine_actions
-        )
-
-        # Event listener references
-        self._listeners_registered = False
+        self.event_handlers = EventHandlers(bot, self.config, self.action_cache, self.quarantine_actions)
 
     async def cog_load(self) -> None:
         """Called when the cog is loaded."""
@@ -128,59 +121,9 @@ class AntiNuke(
     # ==================== Event Listeners ====================
 
     @commands.Cog.listener()
-    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> None:
-        """Handle channel deletion events."""
-        await self.event_handlers.on_guild_channel_delete(channel)
-
-    @commands.Cog.listener()
-    async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> None:
-        """Handle channel creation events."""
-        await self.event_handlers.on_guild_channel_create(channel)
-
-    @commands.Cog.listener()
-    async def on_guild_role_delete(self, role: discord.Role) -> None:
-        """Handle role deletion events."""
-        await self.event_handlers.on_guild_role_delete(role)
-
-    @commands.Cog.listener()
-    async def on_guild_role_create(self, role: discord.Role) -> None:
-        """Handle role creation events."""
-        await self.event_handlers.on_guild_role_create(role)
-
-    @commands.Cog.listener()
-    async def on_guild_role_update(self, before: discord.Role, after: discord.Role) -> None:
-        """Handle role update events."""
-        await self.event_handlers.on_guild_role_update(before, after)
-
-    @commands.Cog.listener()
-    async def on_member_ban(self, guild: discord.Guild, user: discord.User) -> None:
-        """Handle member ban events."""
-        await self.event_handlers.on_member_ban(guild, user)
-
-    @commands.Cog.listener()
-    async def on_member_remove(self, member: discord.Member) -> None:
-        """Handle member remove events."""
-        await self.event_handlers.on_member_remove(member)
-
-    @commands.Cog.listener()
-    async def on_webhooks_update(self, channel: discord.abc.GuildChannel) -> None:
-        """Handle webhook update events."""
-        await self.event_handlers.on_webhooks_update(channel)
-
-    @commands.Cog.listener()
-    async def on_guild_update(self, before: discord.Guild, after: discord.Guild) -> None:
-        """Handle guild update events."""
-        await self.event_handlers.on_guild_update(before, after)
-
-    @commands.Cog.listener()
-    async def on_member_join(self, member: discord.Member) -> None:
-        """Handle member join events."""
-        await self.event_handlers.on_member_join(member)
-
-    @commands.Cog.listener()
-    async def on_audit_log_entry(self, entry: discord.AuditLogEntry) -> None:
-        """Handle audit log entry events."""
-        await self.event_handlers.on_audit_log_entry(entry)
+    async def on_audit_log_entry_create(self, entry: discord.AuditLogEntry) -> None:
+        """Handle audit log entries; every monitored action is detected from here."""
+        await self.event_handlers.on_audit_log_entry_create(entry)
 
     # ==================== Helper Methods ====================
 
@@ -203,9 +146,12 @@ class AntiNuke(
 
     @commands.group(name="antinuke", aliases=["an"])  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
-    @commands.admin_or_permissions(manage_guild=True)
+    @commands.check(_settings_authority)
     async def antinuke(self, ctx: commands.Context) -> None:
-        """AntiNuke configuration commands."""
+        """AntiNuke configuration commands.
+
+        Only the server owner and the designated AntiNuke manager can use these commands.
+        """
         pass
 
     @antinuke.command(name="enable")
@@ -218,7 +164,6 @@ class AntiNuke(
         await ctx.send("✅ AntiNuke has been **enabled** for this server.")
 
     @antinuke.command(name="disable")
-    @commands.check(_settings_authority)
     async def antinuke_disable(self, ctx: commands.Context) -> None:
         """Disable AntiNuke for this server."""
         guild = ctx.guild
@@ -450,16 +395,15 @@ class AntiNuke(
         pass
 
     @antinuke_trust.command(name="adduser")
-    @commands.check(_settings_authority)
     async def trust_adduser(self, ctx: commands.Context, user: discord.Member) -> None:
-        """Add a user to the trusted list."""
+        """Add a user or bot to the trusted list.
+
+        Untrusted bots that exceed a threshold are kicked, so trust bots that legitimately
+        ban, kick, or manage channels and roles in bulk.
+        """
         guild = ctx.guild
         if not guild:
             return
-        if user.bot:
-            await ctx.send("❌ Bots cannot be added to the trusted list.")
-            return
-
         if user.id == guild.owner_id:
             await ctx.send("Info: The server owner is always trusted by default.")
             return
@@ -473,7 +417,6 @@ class AntiNuke(
         await ctx.send(f"✅ {user.mention} has been added to the trusted list.")
 
     @antinuke_trust.command(name="removeuser", aliases=["deluser", "rmuser"])
-    @commands.check(_settings_authority)
     async def trust_removeuser(self, ctx: commands.Context, user: discord.Member) -> None:
         """Remove a user from the trusted list."""
         guild = ctx.guild
@@ -488,7 +431,6 @@ class AntiNuke(
         await ctx.send(f"✅ {user.mention} has been removed from the trusted list.")
 
     @antinuke_trust.command(name="addrole")
-    @commands.check(_settings_authority)
     async def trust_addrole(self, ctx: commands.Context, role: discord.Role) -> None:
         """Add a role to the trusted list."""
         guild = ctx.guild
@@ -507,7 +449,6 @@ class AntiNuke(
         await ctx.send(f"✅ {role.mention} has been added to the trusted roles.")
 
     @antinuke_trust.command(name="removerole", aliases=["delrole", "rmrole"])
-    @commands.check(_settings_authority)
     async def trust_removerole(self, ctx: commands.Context, role: discord.Role) -> None:
         """Remove a role from the trusted list."""
         guild = ctx.guild
@@ -570,7 +511,6 @@ class AntiNuke(
         await ctx.send("\n".join(lines))
 
     @antinuke_trust.command(name="clear")
-    @commands.check(_settings_authority)
     async def trust_clear(self, ctx: commands.Context) -> None:
         """Clear all trusted users and roles."""
         guild = ctx.guild

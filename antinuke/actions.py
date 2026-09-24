@@ -115,7 +115,7 @@ class QuarantineActions:
         bool
             True if successful (or already quarantined), False otherwise.
         """
-        # Bot accounts are never quarantine targets (includes this bot and moderation bots).
+        # Bots keep their permissions on a managed role that cannot be stripped; see remove_bot.
         if user.bot:
             log.info(f"Skipping quarantine of bot account {user.id} in guild {guild.id}")
             return False
@@ -306,7 +306,62 @@ class QuarantineActions:
             log.error(f"Failed to restore user {user.id} in guild {guild.id}: {e}")
             return False
 
-    async def kick_bot(self, guild: discord.Guild, bot_user: discord.Member) -> bool:
+    async def remove_bot(
+        self,
+        guild: discord.Guild,
+        bot_member: discord.Member,
+        trigger_action: str,
+        action_cache=None,
+    ) -> bool:
+        """
+        Kick a bot that exceeded a threshold.
+
+        Quarantine cannot contain a bot because its permissions come from its
+        managed integration role, so the bot is removed from the guild instead.
+
+        Parameters
+        ----------
+        guild : discord.Guild
+            The guild the bot acted in.
+        bot_member : discord.Member
+            The offending bot.
+        trigger_action : str
+            The action that triggered the removal.
+        action_cache : Optional[ActionCache]
+            The action cache to clear after removal.
+
+        Returns
+        -------
+        bool
+            True if the bot was kicked (or is already gone), False otherwise.
+        """
+        if bot_member.id == guild.me.id:
+            return False
+
+        if not is_above_in_hierarchy(guild.me, bot_member):
+            await self.notify_owner_hierarchy_issue(guild, bot_member, trigger_action)
+            return False
+
+        async with self._quarantine_lock(guild.id, bot_member.id):
+            if guild.get_member(bot_member.id) is None:
+                return True
+
+            reason = f"AntiNuke: {ACTION_NAMES.get(trigger_action, trigger_action)} threshold exceeded"
+            if not await self.kick_bot(guild, bot_member, reason=reason):
+                return False
+
+            if action_cache:
+                action_cache.clear_user(guild.id, bot_member.id)
+
+            self._create_task(self.log_bot_removal(guild, bot_member, trigger_action))
+            return True
+
+    async def kick_bot(
+        self,
+        guild: discord.Guild,
+        bot_user: discord.abc.Snowflake,
+        reason: str = "AntiNuke: Unauthorized bot addition",
+    ) -> bool:
         """
         Kick a bot from the guild.
 
@@ -314,8 +369,10 @@ class QuarantineActions:
         ----------
         guild : discord.Guild
             The guild to kick the bot from.
-        bot_user : discord.Member
-            The bot member to kick.
+        bot_user : discord.abc.Snowflake
+            The bot to kick; a bare ID object works when the member is not cached yet.
+        reason : str
+            The audit log reason.
 
         Returns
         -------
@@ -323,10 +380,11 @@ class QuarantineActions:
             True if successful, False otherwise.
         """
         try:
-            await guild.kick(
-                bot_user,
-                reason="AntiNuke: Unauthorized bot addition",
-            )
+            # Every AntiNuke kick goes through here, so this is the one guard against kicking ourselves.
+            if bot_user.id == guild.me.id:
+                log.warning(f"Refusing to kick this bot from guild {guild.id}")
+                return False
+            await guild.kick(bot_user, reason=reason)
             return True
         except discord.Forbidden:
             log.warning(f"Failed to kick bot {bot_user.id} in guild {guild.id}: missing permissions")
@@ -382,6 +440,47 @@ class QuarantineActions:
             inline=True,
         )
 
+        embed.set_footer(text=f"Guild: {guild.name}")
+
+        try:
+            await log_channel.send(embed=embed)
+        except discord.Forbidden:
+            log.warning(f"Cannot send to log channel {log_channel_id} in guild {guild.id}")
+
+    async def log_bot_removal(
+        self,
+        guild: discord.Guild,
+        bot_member: discord.Member,
+        trigger_action: str,
+    ) -> None:
+        """
+        Log a bot removal to the designated log channel.
+
+        Parameters
+        ----------
+        guild : discord.Guild
+            The guild the bot was removed from.
+        bot_member : discord.Member
+            The bot that was kicked.
+        trigger_action : str
+            The action that triggered the removal.
+        """
+        log_channel_id = await self.config.guild(guild).log_channel()
+        if not log_channel_id:
+            return
+
+        log_channel = guild.get_channel(log_channel_id)
+        if not isinstance(log_channel, discord.TextChannel):
+            return
+
+        embed = discord.Embed(
+            title="🛡️ AntiNuke Bot Removed",
+            description=f"{bot_member.mention} was kicked for exceeding an AntiNuke threshold.",
+            color=discord.Color.red(),
+            timestamp=datetime.datetime.now(datetime.UTC),
+        )
+        embed.add_field(name="Bot", value=f"{bot_member} (`{bot_member.id}`)", inline=True)
+        embed.add_field(name="Trigger", value=bold(ACTION_NAMES.get(trigger_action, trigger_action)), inline=True)
         embed.set_footer(text=f"Guild: {guild.name}")
 
         try:

@@ -31,15 +31,15 @@ All commands are prefix-only (no slash commands).
 
 ### Advanced Features
 - **RAM-Based Action Tracking**: High-performance in-memory action counting with automatic cleanup
-- **Hybrid Event Detection**: Combines Gateway events (instant detection) with Audit Log lookups (actor identification)
+- **Audit Log Detection**: Every monitored action is read from Discord's audit log event, which names the actor exactly
 - **Per-Action Thresholds and Timeframes**: Each action type has its own threshold and time window
 - **Atomic Quarantine**: Single API call replaces all roles with the quarantine role
 - **Role Restoration**: Full role snapshot is retained and restored when the user is unquarantined
-- **Bot Kick**: Optionally auto-kicks bot accounts added to the server
+- **Bot Kick**: Optionally auto-kicks bot accounts added to the server, and always kicks bots that exceed a threshold
 - **Trust System**: Whitelist users and roles to bypass monitoring
 - **Logging Channel**: Dedicated channel for all AntiNuke alerts, with owner DMs as fallback
 
-Quarantine is the only enforcement action. Bots that trigger protection are quarantined too; enabling bot kick additionally kicks newly added unauthorized bots.
+People who exceed a threshold are quarantined. Bots that exceed a threshold are kicked instead, because a bot's permissions live on its managed integration role, which quarantine cannot remove. Only this bot itself is exempt, so trust any other bot that legitimately bans, kicks, or manages channels and roles in bulk. Enabling bot kick also kicks newly added bots when the member who added them is acted on.
 
 ## Installation
 
@@ -48,8 +48,8 @@ Quarantine is the only enforcement action. Bots that trigger protection are quar
 - Python 3.11+
 - Bot must have the following permissions:
   - `manage_roles` - For quarantine role management
-  - `view_audit_log` - For actor identification
-  - `kick_members` - For auto-kicking unauthorized bots (optional)
+  - `view_audit_log` - Required: every action is detected from the audit log
+  - `kick_members` - For kicking rogue and unauthorized bots
   - Send/Embed permissions in the configured log channel
 
 ### Install Steps
@@ -89,7 +89,7 @@ Quarantine is the only enforcement action. Bots that trigger protection are quar
    [p]antinuke enable
    ```
 
-> The `[p]antinuke disable` command and trust management commands are restricted to the **guild owner**.
+> Every `[p]antinuke` command is restricted to the **server owner** and the designated AntiNuke manager (user ID `140186220255903746`).
 
 ### Default Thresholds
 
@@ -97,7 +97,8 @@ Out of the box, every action type is monitored with these defaults:
 
 | Action Types | Threshold | Timeframe |
 |---|---|---|
-| `channel_create`, `channel_delete`, `role_create`, `role_delete` | 3 | 60 seconds |
+| `channel_create`, `role_create` | 3 | 60 seconds |
+| `channel_delete`, `role_delete` | 2 | 60 seconds |
 | `ban`, `kick` | 3 | 120 seconds |
 | `webhook_create`, `webhook_delete` | 2 | 60 seconds |
 | `dangerous_permission_add`, `vanity_change`, `bot_add` | 1 | 60 seconds |
@@ -109,17 +110,17 @@ Out of the box, every action type is monitored with these defaults:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Discord Gateway Events                      │
-│      (on_guild_channel_delete, on_member_ban, audit logs)        │
+│                   Discord Audit Log Event                        │
+│                (on_audit_log_entry_create)                       │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                       Event Handlers                             │
-│  • Instant event detection                                       │
-│  • Audit Log lookup for actor identification                     │
+│                       Event Handler                              │
+│  • Map the entry to a monitored action type                      │
+│  • Actor taken straight from the entry                           │
 │  • Trust bypass check                                            │
-│  • Action cache increment                                        │
+│  • Action cache increment for that actor                         │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -133,7 +134,7 @@ Out of the box, every action type is monitored with these defaults:
 ┌─────────────────────────────────────────────────────────────────┐
 │                   Threshold Check & Quarantine                   │
 │  • Compare action count against configured threshold             │
-│  • Atomic role replacement with quarantine role                  │
+│  • Atomic role replacement with quarantine role (bots: kick)     │
 │  • Role snapshot saved for restoration                           │
 │  • Log channel notification (+ owner DM fallback)                │
 │  • Bot kick for unauthorized bots (if enabled)                   │
@@ -142,12 +143,12 @@ Out of the box, every action type is monitored with these defaults:
 
 ### Event Detection Flow
 
-1. **Gateway Event Received**: Discord sends an event (e.g., channel deleted)
-2. **Audit Log Lookup**: Bot fetches audit logs to identify who performed the action
-3. **Trust Check**: If the actor is trusted (owner or whitelisted), skip
-4. **Action Recording**: Increment the action counter for this user
-5. **Threshold Check**: If count exceeds the threshold within the timeframe, trigger quarantine
-6. **Quarantine Execution**: Roles are replaced with the quarantine role; snapshot is saved
+1. **Audit Log Entry Received**: Discord sends the new audit log entry (e.g., channel deleted) together with who did it
+2. **Classification**: The entry is mapped to a monitored action type; unrelated entries are ignored
+3. **Trust Check**: If the actor is this bot or trusted (owner or whitelisted), skip
+4. **Action Recording**: Increment the action counter for this actor
+5. **Threshold Check**: If the count reaches the threshold within the timeframe, act
+6. **Enforcement**: People have their roles replaced with the quarantine role (snapshot saved); bots are kicked
 7. **Logging**: Send detailed alert to the configured log channel
 
 ### Time Window System
@@ -160,14 +161,14 @@ Each action type has its own timeframe (default: 60 seconds, or 120 seconds for 
 
 ## Commands Reference
 
-All commands are under the `[p]antinuke` group (alias: `[p]an`). The group requires **Administrator** or **Manage Server** permission and only works in servers.
+All commands are under the `[p]antinuke` group (alias: `[p]an`). Every command, including the read-only ones, can only be used by the **server owner** and the designated AntiNuke manager (user ID `140186220255903746`), and only in servers.
 
 ### Configuration Commands
 
 | Command | Description |
 |---------|-------------|
 | `[p]antinuke enable` | Enable AntiNuke for this server |
-| `[p]antinuke disable` | Disable AntiNuke (guild owner only) |
+| `[p]antinuke disable` | Disable AntiNuke |
 | `[p]antinuke logchannel <channel>` | Set the log channel for AntiNuke alerts |
 | `[p]antinuke quarantinerole <role>` | Set the quarantine role (must be below the bot's top role) |
 | `[p]antinuke settings` (alias `show`) | Show current AntiNuke settings |
@@ -187,14 +188,12 @@ All commands are under the `[p]antinuke` group (alias: `[p]an`). The group requi
 | Command | Description |
 |---------|-------------|
 | `[p]antinuke trust` (alias `trusted`) | Manage trusted users and roles |
-| `[p]antinuke trust adduser <user>` | Add a user to the trust list (bots rejected) |
+| `[p]antinuke trust adduser <user>` | Add a user or bot to the trust list |
 | `[p]antinuke trust removeuser <user>` | Remove a user from the trust list |
 | `[p]antinuke trust addrole <role>` | Add a role to the trust list |
 | `[p]antinuke trust removerole <role>` | Remove a role from the trust list |
 | `[p]antinuke trust list` (alias `show`) | Show all trusted users and roles |
 | `[p]antinuke trust clear` | Clear all trusted users and roles |
-
-> `adduser`, `removeuser`, `addrole`, `removerole`, and `clear` are restricted to the **guild owner**.
 
 ### Quarantine Management Commands
 
@@ -219,10 +218,11 @@ The trust system allows you to whitelist certain users and roles that will bypas
 ### Adding Trusted Users
 
 ```bash
-# Trust a specific user (guild owner only)
+# Trust a specific user or bot
 [p]antinuke trust adduser @AdminUser
+[p]antinuke trust adduser @ModerationBot
 
-# Trust all members with a specific role (guild owner only)
+# Trust all members with a specific role
 [p]antinuke trust addrole @Administrators
 ```
 
@@ -247,7 +247,7 @@ When a user triggers AntiNuke:
 1. **Role Snapshot**: All of the user's current roles are saved to Config
 2. **Atomic Strip**: The user's roles are replaced with only the quarantine role in a single API call
 3. **Notification**: Alert is sent to the log channel (and the owner by DM if no log channel is set)
-4. **Bot Handling**: If the offender is a bot, it is quarantined as well
+4. **Bot Handling**: If the offender is a bot, it is kicked instead, since quarantine cannot strip a bot's managed role
 
 Quarantine operations are serialized per user and tracked with a pending/completed/failed state, so failed operations stay retryable.
 
@@ -278,9 +278,9 @@ This will:
 | Action Type | Description | Default Threshold / Timeframe |
 |-------------|-------------|-------------------------------|
 | `channel_create` | Channels created | 3 / 60s |
-| `channel_delete` | Channels deleted | 3 / 60s |
+| `channel_delete` | Channels deleted | 2 / 60s |
 | `role_create` | Roles created | 3 / 60s |
-| `role_delete` | Roles deleted | 3 / 60s |
+| `role_delete` | Roles deleted | 2 / 60s |
 | `ban` | Members banned | 3 / 120s |
 | `kick` | Members kicked | 3 / 120s |
 | `webhook_create` | Webhooks created | 2 / 60s |
@@ -305,7 +305,7 @@ The `dangerous_permission_add` action triggers when any of these permissions is 
 - `mention_everyone`
 - `view_audit_log`
 
-**Note**: Vanity URL changes are detected via the `on_guild_update` event. This is highly sensitive as vanity URL theft is a common attack vector.
+**Note**: Vanity URL changes are detected from the server-update audit log entry. This is highly sensitive as vanity URL theft is a common attack vector.
 
 ## Best Practices
 
@@ -347,7 +347,7 @@ After configuration, test with a trusted user:
 Prepare for false positives:
 1. Know how to quickly unquarantine users: `[p]antinuke quarantine restore`
 2. Have a backup communication channel
-3. Document `[p]antinuke disable` for emergencies (guild owner only)
+3. Document `[p]antinuke disable` for emergencies (server owner or the designated manager)
 
 ### 6. Role Hierarchy
 
@@ -386,17 +386,16 @@ Quarantine Role (Lowest, above @everyone)
 
 **Solutions**:
 1. Increase thresholds/timeframes: `[p]antinuke monitor threshold <action> <count> <seconds>`
-2. Trust the user/role: `[p]antinuke trust adduser @User` (guild owner only)
+2. Trust the user/role/bot: `[p]antinuke trust adduser @User`
 3. Disable monitoring for that action: `[p]antinuke monitor disable <action>`
 
 ### Audit Log Not Working
 
-**Symptoms**: Actions detected but actor not identified
+**Symptoms**: Nothing is detected at all
 
 **Checks**:
-1. Does bot have `view_audit_log` permission?
-2. Is the bot's role high enough in hierarchy?
-3. Are audit logs enabled in server settings?
+1. Does the bot have the `view_audit_log` permission? Discord only sends audit log events to bots that have it.
+2. Is the bot running with the `moderation` intent? Red enables it by default.
 
 ### Quarantine Role Not Applied
 
@@ -438,10 +437,10 @@ A: Currently, only triggered events are logged. Partial counts are not persisted
 ### Configuration Questions
 
 **Q: Can violators be kicked or banned instead of quarantined?**  
-A: No. Quarantine is the only enforcement action; it strips roles so you can review. Enable `[p]antinuke monitor botkick on` to auto-kick newly added unauthorized bots.
+A: People are always quarantined, which strips roles so you can review. Bots are kicked, because quarantine cannot remove a bot's managed role. Enable `[p]antinuke monitor botkick on` to also auto-kick newly added unauthorized bots.
 
 **Q: Should I enable bot kicking?**  
-A: Yes, unless you have bots that legitimately perform administrative actions. Rogue bots are a common attack vector.
+A: Yes. Rogue bots are a common attack vector. Trust any bot that legitimately performs administrative actions in bulk, or it will be kicked when it exceeds a threshold.
 
 **Q: What timeframes should I use?**  
 A: The defaults (60s, 120s for bans/kicks) suit most servers. Shorter windows catch burst attacks but risk false positives during bulk moderation.
@@ -496,4 +495,4 @@ This cog is provided under the same license as the kirin-cogs repository.
 
 ## Recovery and retention
 
-Quarantine changes are serialized per guild/member. The first role snapshot is retained until Discord confirms the edit, and failed operations remain retryable. Unloading the cog cancels and inspects investigator/quarantine tasks. Trusted IDs and quarantine snapshots are removed through Red's user-data deletion hook.
+Quarantine changes are serialized per guild/member. The first role snapshot is retained until Discord confirms the edit, and failed operations remain retryable. Unloading the cog cancels and inspects enforcement/quarantine tasks. Trusted IDs and quarantine snapshots are removed through Red's user-data deletion hook.

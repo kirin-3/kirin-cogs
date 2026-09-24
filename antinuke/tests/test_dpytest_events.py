@@ -29,6 +29,7 @@ def config_mock() -> MagicMock:
                 "kick_bot": False,
             },
             "channel_delete": {"enabled": True, "threshold": 2, "timeframe": 60},
+            "guild_prune": {"enabled": True, "threshold": 0, "timeframe": 60},
         },
         "trusted_users": [],
         "trusted_roles": [],
@@ -71,12 +72,7 @@ async def bot() -> AsyncGenerator[dpy_commands.Bot, None]:
     await dpytest.empty_queue()
 
 
-@pytest.mark.asyncio
-async def test_member_join_bot_add(
-    bot: dpy_commands.Bot,
-    config_mock: MagicMock,
-) -> None:
-    """on_member_join fires for a bot member and calls get_bot_add_culprit."""
+def _load_cog(bot: dpy_commands.Bot, config_mock: MagicMock) -> AntiNuke:
     with pytest.MonkeyPatch().context() as mp:
         mp.setattr(
             "antinuke.antinuke.Config.get_conf",
@@ -86,70 +82,69 @@ async def test_member_join_bot_add(
 
     cog.config = config_mock
     cog.event_handlers.config = config_mock
-    cog.event_handlers.audit_helper.config = config_mock
     cog.event_handlers.quarantine_actions.config = config_mock
+    return cog
 
-    cog.event_handlers.audit_helper.get_bot_add_culprit = AsyncMock(return_value=None)
+
+async def _drain() -> None:
+    await dpytest.run_all_events()
+    pending = [t for t in asyncio.all_tasks() if not t.done() and t != asyncio.current_task()]
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+
+def _audit_entry(guild: discord.Guild, action: discord.AuditLogAction, user_id: int) -> MagicMock:
+    entry = MagicMock(spec=discord.AuditLogEntry)
+    entry.guild = guild
+    entry.action = action
+    entry.user_id = user_id
+    entry.before = discord.AuditLogDiff()
+    entry.after = discord.AuditLogDiff()
+    entry.target = None
+    return entry
+
+
+@pytest.mark.asyncio
+async def test_audit_log_entry_create_event_reaches_cog(
+    bot: dpy_commands.Bot,
+    config_mock: MagicMock,
+) -> None:
+    """discord.py's audit_log_entry_create event is wired to the cog and a prune is acted on."""
+    cog = _load_cog(bot, config_mock)
     cog.event_handlers.quarantine_actions.execute_quarantine = AsyncMock()
-
     await bot.add_cog(cog)
 
     guild = dpytest.get_config().guilds[0]
+    member = dpytest.get_config().members[0]
 
-    # Create the user and mark as bot BEFORE joining so the cog sees member.bot == True.
-    bot_user = dpytest.back.make_user("TestBot", "9999")
-    bot_user.bot = True  # type: ignore[misc]
-    await dpytest.member_join(guild=guild, user=bot_user)
+    bot.dispatch("audit_log_entry_create", _audit_entry(guild, discord.AuditLogAction.member_prune, member.id))
+    await _drain()
 
-    # Drain all dispatched _run_event tasks (replaces fragile asyncio.sleep)
-    await dpytest.run_all_events()
-
-    # Drain any remaining tasks created inside event handlers (e.g. create_task)
-    pending = [t for t in asyncio.all_tasks() if not t.done() and t != asyncio.current_task()]
-    if pending:
-        await asyncio.gather(*pending, return_exceptions=True)
-
-    cog.event_handlers.audit_helper.get_bot_add_culprit.assert_called_once_with(guild, bot_user.id, 60)
+    cog.event_handlers.quarantine_actions.execute_quarantine.assert_awaited_once()
+    await_args = cog.event_handlers.quarantine_actions.execute_quarantine.await_args
+    assert await_args is not None
+    args = await_args.args
+    assert args[1].id == member.id
+    assert args[2] == "guild_prune"
 
 
 @pytest.mark.asyncio
-async def test_guild_channel_delete_via_event(
+async def test_channel_deletes_via_event_hit_threshold(
     bot: dpy_commands.Bot,
     config_mock: MagicMock,
 ) -> None:
-    """on_guild_channel_delete dispatched through the cog triggers investigation at threshold."""
-    with pytest.MonkeyPatch().context() as mp:
-        mp.setattr(
-            "antinuke.antinuke.Config.get_conf",
-            lambda *a, **kw: config_mock,
-        )
-        cog = AntiNuke(bot)  # type: ignore[arg-type]
-
-    cog.config = config_mock
-    cog.event_handlers.config = config_mock
-    cog.event_handlers.audit_helper.config = config_mock
-    cog.event_handlers.quarantine_actions.config = config_mock
-
-    investigate_mock = AsyncMock()
-    cog.event_handlers._investigate_channel_deletion = investigate_mock
-
+    """Two channel deletions by one member through the dispatched event quarantine that member once."""
+    cog = _load_cog(bot, config_mock)
+    cog.event_handlers.quarantine_actions.execute_quarantine = AsyncMock()
     await bot.add_cog(cog)
 
-    channel = dpytest.get_config().channels[0]
+    guild = dpytest.get_config().guilds[0]
+    member = dpytest.get_config().members[0]
 
-    # Helper: dispatch an event then drain all pending _run_event coroutines.
-    async def _dispatch(event: str, *args: object) -> None:
-        bot.dispatch(event, *args)
-        await dpytest.run_all_events()
+    bot.dispatch("audit_log_entry_create", _audit_entry(guild, discord.AuditLogAction.channel_delete, member.id))
+    await _drain()
+    cog.event_handlers.quarantine_actions.execute_quarantine.assert_not_awaited()
 
-    # Dispatch twice — threshold is 2, so investigation fires on the second call.
-    await _dispatch("guild_channel_delete", channel)
-    await _dispatch("guild_channel_delete", channel)
-
-    # Drain any create_task coroutines spawned inside the event handlers.
-    pending = [t for t in asyncio.all_tasks() if not t.done() and t != asyncio.current_task()]
-    if pending:
-        await asyncio.gather(*pending, return_exceptions=True)
-
-    # _investigate_channel_deletion should be scheduled exactly once at threshold.
-    investigate_mock.assert_called_once()
+    bot.dispatch("audit_log_entry_create", _audit_entry(guild, discord.AuditLogAction.channel_delete, member.id))
+    await _drain()
+    cog.event_handlers.quarantine_actions.execute_quarantine.assert_awaited_once()

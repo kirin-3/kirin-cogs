@@ -5,7 +5,7 @@ from typing import Any
 # Config identifier - unique int for this cog
 CONFIG_IDENTIFIER = 789234561
 
-# Besides the guild owner, the only user who may change the trust list or disable AntiNuke
+# Besides the guild owner, the only user who may use AntiNuke commands
 SETTINGS_AUTHORITY_USER_ID = 140186220255903746
 
 # Dangerous permissions that trigger monitoring
@@ -132,20 +132,6 @@ DEFAULT_GUILD: dict[str, Any] = {
 
 # Global config (if needed for bot-wide settings)
 DEFAULT_GLOBAL: dict[str, Any] = {}
-
-# Action type to AuditLogAction mapping
-AUDIT_LOG_ACTION_MAP = {
-    "channel_create": "channel_create",
-    "channel_delete": "channel_delete",
-    "role_create": "role_create",
-    "role_delete": "role_delete",
-    "ban": "ban",
-    "kick": "kick",
-    "webhook_create": "webhook_create",
-    "webhook_delete": "webhook_delete",
-    "guild_prune": "guild_prune",
-    "bot_add": "bot_add",
-}
 
 # Human-readable action names
 ACTION_NAMES = {

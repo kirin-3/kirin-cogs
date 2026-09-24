@@ -1,8 +1,10 @@
-"""Unit tests for the EventHandlers class."""
+"""Unit tests for audit-log-driven detection in EventHandlers."""
 
-import time
-from typing import cast
-from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio
+import copy
+from collections.abc import Coroutine, Iterator
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
@@ -10,9 +12,15 @@ from redbot.core import Config
 from redbot.core.bot import Red
 
 from antinuke.actions import QuarantineActions
-from antinuke.audit import AuditLogHelper
-from antinuke.events import EventHandlers
+from antinuke.constants import DEFAULT_GUILD
+from antinuke.events import AUDIT_ACTION_TYPES, EventHandlers
 from antinuke.utils import ActionCache
+
+GUILD_ID = 1
+OWNER_ID = 10
+BOT_SELF_ID = 900
+ROGUE_ID = 20
+OTHER_ID = 30
 
 
 @pytest.fixture
@@ -22,127 +30,299 @@ def config_mock() -> MagicMock:
     guild_group.enabled = AsyncMock(return_value=True)
     guild_group.trusted_users = AsyncMock(return_value=[])
     guild_group.trusted_roles = AsyncMock(return_value=[])
-    guild_group.monitor = AsyncMock(return_value={})
+    guild_group.monitor = AsyncMock(return_value=copy.deepcopy(DEFAULT_GUILD["monitor"]))
     return config
 
 
 @pytest.fixture
 def event_handlers(config_mock: MagicMock) -> EventHandlers:
-    bot = MagicMock(spec=Red)
-    action_cache = MagicMock(spec=ActionCache)
-    audit_helper = MagicMock(spec=AuditLogHelper)
-    quarantine_actions = MagicMock(spec=QuarantineActions)
-    return EventHandlers(bot, config_mock, action_cache, audit_helper, quarantine_actions)
+    handlers = EventHandlers(MagicMock(spec=Red), config_mock, ActionCache(), MagicMock(spec=QuarantineActions))
+    return handlers
 
 
-@pytest.mark.asyncio
-async def test_on_guild_channel_delete_below_threshold(
-    event_handlers: EventHandlers,
-) -> None:
-    """Below threshold: action is recorded but no investigation is spawned."""
-    channel = MagicMock(spec=discord.abc.GuildChannel)
-    guild = MagicMock(spec=discord.Guild)
-    guild.id = 1
-    channel.guild = guild
-
-    # Return count = 1 (below default threshold of 2)
-    cast(MagicMock, event_handlers.action_cache).record_action.return_value = 1
-
-    def close_scheduled(coroutine):
+@pytest.fixture
+def scheduled(event_handlers: EventHandlers) -> Iterator[list[Coroutine[Any, Any, Any]]]:
+    tasks: list[Coroutine[Any, Any, Any]] = []
+    event_handlers._create_task = tasks.append  # type: ignore[method-assign]
+    yield tasks
+    for coroutine in tasks:
         coroutine.close()
-        return MagicMock()
 
-    with patch("antinuke.events.asyncio.create_task", side_effect=close_scheduled) as mock_create_task:
-        await event_handlers.on_guild_channel_delete(channel)
-        cast(MagicMock, mock_create_task).assert_not_called()
 
-    cast(MagicMock, event_handlers.action_cache).record_action.assert_called_once_with(1, 0, "channel_delete", 60)
+def _member(user_id: int, *, bot: bool = False) -> MagicMock:
+    member = MagicMock(spec=discord.Member)
+    member.id = user_id
+    member.bot = bot
+    member.roles = []
+    return member
+
+
+@pytest.fixture
+def guild() -> MagicMock:
+    guild = MagicMock(spec=discord.Guild)
+    guild.id = GUILD_ID
+    guild.owner_id = OWNER_ID
+    members = {
+        OWNER_ID: _member(OWNER_ID),
+        BOT_SELF_ID: _member(BOT_SELF_ID, bot=True),
+        ROGUE_ID: _member(ROGUE_ID),
+        OTHER_ID: _member(OTHER_ID),
+    }
+    guild.me = members[BOT_SELF_ID]
+    guild.get_member.side_effect = members.get
+    guild.members_by_id = members
+    return guild
+
+
+def _entry(
+    guild: MagicMock,
+    action: discord.AuditLogAction,
+    user_id: int | None = ROGUE_ID,
+    *,
+    before: object = None,
+    after: object = None,
+    target: object = None,
+) -> MagicMock:
+    entry = MagicMock(spec=discord.AuditLogEntry)
+    entry.guild = guild
+    entry.action = action
+    entry.user_id = user_id
+    entry.before = before if before is not None else discord.AuditLogDiff()
+    entry.after = after if after is not None else discord.AuditLogDiff()
+    entry.target = target
+    return entry
+
+
+def _diff(**attrs: Any) -> discord.AuditLogDiff:
+    diff = discord.AuditLogDiff()
+    for key, value in attrs.items():
+        setattr(diff, key, value)
+    return diff
+
+
+def _quarantined(handlers: EventHandlers) -> list[tuple[Any, ...]]:
+    return [c.args for c in cast(MagicMock, handlers.quarantine_actions.execute_quarantine).call_args_list]
+
+
+# --- classification ---
+
+
+@pytest.mark.parametrize(("action", "action_type"), list(AUDIT_ACTION_TYPES.items()))
+def test_classify_direct_actions(guild: MagicMock, action: discord.AuditLogAction, action_type: str) -> None:
+    assert EventHandlers.classify(_entry(guild, action), {}) == action_type
+
+
+def test_classify_role_update_needs_a_new_dangerous_permission(guild: MagicMock) -> None:
+    granted = _entry(
+        guild,
+        discord.AuditLogAction.role_update,
+        before=_diff(permissions=discord.Permissions.none()),
+        after=_diff(permissions=discord.Permissions(ban_members=True)),
+    )
+    harmless = _entry(
+        guild,
+        discord.AuditLogAction.role_update,
+        before=_diff(permissions=discord.Permissions.none()),
+        after=_diff(permissions=discord.Permissions(send_messages=True)),
+    )
+    renamed = _entry(guild, discord.AuditLogAction.role_update, after=_diff(name="new"))
+
+    assert EventHandlers.classify(granted, {}) == "dangerous_permission_add"
+    assert EventHandlers.classify(harmless, {}) is None
+    assert EventHandlers.classify(renamed, {}) is None
+
+
+def test_classify_role_update_respects_configured_permissions(guild: MagicMock) -> None:
+    entry = _entry(
+        guild,
+        discord.AuditLogAction.role_update,
+        before=_diff(permissions=discord.Permissions.none()),
+        after=_diff(permissions=discord.Permissions(ban_members=True)),
+    )
+    monitor = {"dangerous_permission_add": {"permissions": ["administrator"]}}
+
+    assert EventHandlers.classify(entry, monitor) is None
+
+
+def test_classify_guild_update_only_for_vanity(guild: MagicMock) -> None:
+    vanity = _entry(guild, discord.AuditLogAction.guild_update, after=_diff(vanity_url_code="stolen"))
+    renamed = _entry(guild, discord.AuditLogAction.guild_update, after=_diff(name="new"))
+
+    assert EventHandlers.classify(vanity, {}) == "vanity_change"
+    assert EventHandlers.classify(renamed, {}) is None
+    assert EventHandlers.classify(_entry(guild, discord.AuditLogAction.message_delete), {}) is None
+
+
+# --- thresholds ---
 
 
 @pytest.mark.asyncio
-async def test_on_guild_channel_delete_above_threshold(
-    event_handlers: EventHandlers,
+async def test_actions_below_threshold_do_nothing(
+    event_handlers: EventHandlers, guild: MagicMock, scheduled: list
 ) -> None:
-    """At threshold: record_action is called and create_task schedules an investigation."""
-    channel = MagicMock(spec=discord.abc.GuildChannel)
-    guild = MagicMock(spec=discord.Guild)
-    guild.id = 1
-    channel.guild = guild
+    # channel_delete defaults to 2 within 60s
+    await event_handlers.on_audit_log_entry_create(_entry(guild, discord.AuditLogAction.channel_delete))
 
-    # Return count = 2 (hits default threshold of 2)
-    cast(MagicMock, event_handlers.action_cache).record_action.return_value = 2
-
-    def close_scheduled(coroutine):
-        coroutine.close()
-        return MagicMock()
-
-    with patch("antinuke.events.asyncio.create_task", side_effect=close_scheduled) as mock_create_task:
-        await event_handlers.on_guild_channel_delete(channel)
-        # A task must have been scheduled for the investigation coroutine
-        cast(MagicMock, mock_create_task).assert_called_once()
-
-    cast(MagicMock, event_handlers.action_cache).record_action.assert_called_once_with(1, 0, "channel_delete", 60)
+    assert scheduled == []
 
 
 @pytest.mark.asyncio
-async def test_investigate_channel_deletion_quarantines_culprit(
-    event_handlers: EventHandlers,
+async def test_threshold_quarantines_the_actor(
+    event_handlers: EventHandlers, guild: MagicMock, scheduled: list
 ) -> None:
-    """_investigate_channel_deletion calls audit helper then schedules quarantine via create_task."""
-    guild = MagicMock(spec=discord.Guild)
-    guild.owner_id = 999
+    for _ in range(2):
+        await event_handlers.on_audit_log_entry_create(_entry(guild, discord.AuditLogAction.channel_delete))
 
-    culprit = MagicMock(spec=discord.Member)
-    culprit.id = 123
-    culprit.roles = []
-
-    audit_mock = cast(MagicMock, event_handlers.audit_helper)
-    audit_mock.get_channel_delete_culprit = AsyncMock(return_value=[(culprit, 3)])
-
-    # Culprit is not trusted (owner_id doesn't match, no trusted roles/users)
-    guild_group = event_handlers.config.guild.return_value  # type: ignore[union-attr]
-    guild_group.trusted_users = AsyncMock(return_value=[])
-    guild_group.trusted_roles = AsyncMock(return_value=[])
-
-    config = {"threshold": 2, "timeframe": 60}
-
-    def close_scheduled(coroutine):
-        coroutine.close()
-        return MagicMock()
-
-    with patch("antinuke.events.asyncio.create_task", side_effect=close_scheduled) as mock_create_task:
-        await event_handlers._investigate_channel_deletion(guild, config)
-
-    audit_mock.get_channel_delete_culprit.assert_called_once_with(guild, 60, 2)
-    # Quarantine should be scheduled as a task for the untrusted culprit
-    cast(MagicMock, mock_create_task).assert_called_once()
+    assert _quarantined(event_handlers) == [
+        (guild, guild.members_by_id[ROGUE_ID], "channel_delete", event_handlers.action_cache)
+    ]
 
 
 @pytest.mark.asyncio
-async def test_investigate_channel_deletion_skips_trusted(
-    event_handlers: EventHandlers,
+async def test_actions_are_counted_per_actor(event_handlers: EventHandlers, guild: MagicMock, scheduled: list) -> None:
+    await event_handlers.on_audit_log_entry_create(_entry(guild, discord.AuditLogAction.channel_delete, ROGUE_ID))
+    await event_handlers.on_audit_log_entry_create(_entry(guild, discord.AuditLogAction.channel_delete, OTHER_ID))
+
+    assert scheduled == []
+
+
+@pytest.mark.asyncio
+async def test_prune_is_instant(event_handlers: EventHandlers, guild: MagicMock, scheduled: list) -> None:
+    await event_handlers.on_audit_log_entry_create(_entry(guild, discord.AuditLogAction.member_prune))
+
+    assert _quarantined(event_handlers) == [
+        (guild, guild.members_by_id[ROGUE_ID], "guild_prune", event_handlers.action_cache)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_dangerous_permission_grant_is_instant(
+    event_handlers: EventHandlers, guild: MagicMock, scheduled: list
 ) -> None:
-    """_investigate_channel_deletion does NOT quarantine a trusted culprit."""
-    guild = MagicMock(spec=discord.Guild)
-    guild.owner_id = 999
+    entry = _entry(
+        guild,
+        discord.AuditLogAction.role_update,
+        before=_diff(permissions=discord.Permissions.none()),
+        after=_diff(permissions=discord.Permissions(administrator=True)),
+    )
+    await event_handlers.on_audit_log_entry_create(entry)
 
-    trusted_culprit = MagicMock(spec=discord.Member)
-    trusted_culprit.id = 42
-    trusted_culprit.roles = []
+    assert [args[2] for args in _quarantined(event_handlers)] == ["dangerous_permission_add"]
 
-    audit_mock = cast(MagicMock, event_handlers.audit_helper)
-    audit_mock.get_channel_delete_culprit = AsyncMock(return_value=[(trusted_culprit, 3)])
-    # Mark culprit as trusted by ID
-    guild_group = event_handlers.config.guild.return_value  # type: ignore[union-attr]
-    guild_group.trusted_users = AsyncMock(return_value=[42])
-    guild_group.trusted_roles = AsyncMock(return_value=[])
 
-    config = {"threshold": 2, "timeframe": 60}
+# --- who is exempt ---
 
-    with patch("antinuke.events.asyncio.create_task") as mock_create_task:
-        await event_handlers._investigate_channel_deletion(guild, config)
 
-    cast(MagicMock, mock_create_task).assert_not_called()
+@pytest.mark.asyncio
+async def test_trusted_actor_is_skipped(
+    event_handlers: EventHandlers, config_mock: MagicMock, guild: MagicMock, scheduled: list
+) -> None:
+    config_mock.guild.return_value.trusted_users = AsyncMock(return_value=[ROGUE_ID])
+
+    await event_handlers.on_audit_log_entry_create(_entry(guild, discord.AuditLogAction.member_prune))
+
+    assert scheduled == []
+
+
+@pytest.mark.asyncio
+async def test_owner_is_skipped(event_handlers: EventHandlers, guild: MagicMock, scheduled: list) -> None:
+    await event_handlers.on_audit_log_entry_create(_entry(guild, discord.AuditLogAction.member_prune, OWNER_ID))
+
+    assert scheduled == []
+
+
+@pytest.mark.asyncio
+async def test_this_bot_is_never_a_culprit(event_handlers: EventHandlers, guild: MagicMock, scheduled: list) -> None:
+    """The bot's own bans (e.g. honeypot enforcement) must never lead to acting against the bot."""
+    for _ in range(5):
+        await event_handlers.on_audit_log_entry_create(_entry(guild, discord.AuditLogAction.ban, BOT_SELF_ID))
+
+    assert scheduled == []
+
+
+@pytest.mark.asyncio
+async def test_disabled_monitor_or_cog_does_nothing(
+    event_handlers: EventHandlers, config_mock: MagicMock, guild: MagicMock, scheduled: list
+) -> None:
+    monitor = copy.deepcopy(DEFAULT_GUILD["monitor"])
+    monitor["guild_prune"]["enabled"] = False
+    config_mock.guild.return_value.monitor = AsyncMock(return_value=monitor)
+    await event_handlers.on_audit_log_entry_create(_entry(guild, discord.AuditLogAction.member_prune))
+
+    config_mock.guild.return_value.monitor = AsyncMock(return_value=copy.deepcopy(DEFAULT_GUILD["monitor"]))
+    config_mock.guild.return_value.enabled = AsyncMock(return_value=False)
+    await event_handlers.on_audit_log_entry_create(_entry(guild, discord.AuditLogAction.member_prune))
+
+    assert scheduled == []
+
+
+# --- bots as culprits ---
+
+
+@pytest.mark.asyncio
+async def test_rogue_bot_is_removed_not_quarantined(
+    event_handlers: EventHandlers, guild: MagicMock, scheduled: list
+) -> None:
+    rogue_bot = _member(555, bot=True)
+    guild.get_member.side_effect = {**guild.members_by_id, 555: rogue_bot}.get
+
+    for _ in range(3):
+        await event_handlers.on_audit_log_entry_create(_entry(guild, discord.AuditLogAction.ban, 555))
+
+    cast(MagicMock, event_handlers.quarantine_actions.remove_bot).assert_called_once_with(
+        guild, rogue_bot, "ban", event_handlers.action_cache
+    )
+    cast(MagicMock, event_handlers.quarantine_actions.execute_quarantine).assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trusted_bot_is_skipped(
+    event_handlers: EventHandlers, config_mock: MagicMock, guild: MagicMock, scheduled: list
+) -> None:
+    mod_bot = _member(556, bot=True)
+    guild.get_member.side_effect = {**guild.members_by_id, 556: mod_bot}.get
+    config_mock.guild.return_value.trusted_users = AsyncMock(return_value=[556])
+
+    for _ in range(5):
+        await event_handlers.on_audit_log_entry_create(_entry(guild, discord.AuditLogAction.ban, 556))
+
+    assert scheduled == []
+
+
+# --- bot additions ---
+
+
+@pytest.mark.asyncio
+async def test_bot_add_quarantines_adder_and_kicks_bot(
+    event_handlers: EventHandlers, guild: MagicMock, scheduled: list
+) -> None:
+    await event_handlers.on_audit_log_entry_create(
+        _entry(guild, discord.AuditLogAction.bot_add, target=discord.Object(id=777))
+    )
+
+    assert [args[2] for args in _quarantined(event_handlers)] == ["bot_add"]
+    kick = cast(MagicMock, event_handlers.quarantine_actions.kick_bot)
+    kick.assert_called_once()
+    assert kick.call_args.args[1].id == 777
+
+
+@pytest.mark.asyncio
+async def test_bot_add_without_botkick_leaves_bot(
+    event_handlers: EventHandlers, config_mock: MagicMock, guild: MagicMock, scheduled: list
+) -> None:
+    monitor = copy.deepcopy(DEFAULT_GUILD["monitor"])
+    monitor["bot_add"]["kick_bot"] = False
+    config_mock.guild.return_value.monitor = AsyncMock(return_value=monitor)
+
+    await event_handlers.on_audit_log_entry_create(
+        _entry(guild, discord.AuditLogAction.bot_add, target=discord.Object(id=777))
+    )
+
+    assert [args[2] for args in _quarantined(event_handlers)] == ["bot_add"]
+    cast(MagicMock, event_handlers.quarantine_actions.kick_bot).assert_not_called()
+
+
+# --- trust ---
 
 
 @pytest.mark.asyncio
@@ -174,47 +354,17 @@ async def test_is_trusted(event_handlers: EventHandlers) -> None:
 
 
 @pytest.mark.asyncio
-async def test_bans_by_this_bot_past_threshold_schedule_no_quarantine(config_mock: MagicMock) -> None:
-    """The bot's own bans (e.g. honeypot enforcement) must never lead to quarantining the bot."""
-    config_mock.guild.return_value.monitor = AsyncMock(
-        return_value={"ban": {"enabled": True, "threshold": 2, "timeframe": 60}}
+async def test_bot_add_naming_this_bot_does_not_kick_it(
+    event_handlers: EventHandlers, config_mock: MagicMock, guild: MagicMock
+) -> None:
+    """Even when the adder is punished, the kick of the added bot never targets this bot."""
+    event_handlers.quarantine_actions = QuarantineActions(MagicMock(spec=Red), config_mock)
+    event_handlers.quarantine_actions.execute_quarantine = AsyncMock(return_value=True)  # type: ignore[method-assign]
+    guild.kick = AsyncMock()
+
+    await event_handlers.on_audit_log_entry_create(
+        _entry(guild, discord.AuditLogAction.bot_add, target=discord.Object(id=BOT_SELF_ID))
     )
-    guild = MagicMock(spec=discord.Guild)
-    guild.id = 1
-    guild.owner_id = 1
-    bot_self = MagicMock(spec=discord.Member)
-    bot_self.id = 900
-    bot_self.bot = True
-    guild.me = bot_self
-    guild.get_member.side_effect = lambda user_id: bot_self if user_id == 900 else None
+    await asyncio.gather(*event_handlers._background_tasks)
 
-    async def audit_logs(*args, **kwargs):
-        for _ in range(3):
-            entry = MagicMock(spec=discord.AuditLogEntry)
-            entry.user = bot_self
-            entry.created_at.timestamp.return_value = time.time()
-            yield entry
-
-    guild.audit_logs = audit_logs
-    quarantine_actions = MagicMock(spec=QuarantineActions)
-    handlers = EventHandlers(
-        MagicMock(spec=Red),
-        config_mock,
-        ActionCache(),
-        AuditLogHelper(MagicMock(spec=Red), config_mock),
-        quarantine_actions,
-    )
-    scheduled: list = []
-    handlers._create_task = scheduled.append  # type: ignore[method-assign]
-
-    for _ in range(3):
-        await handlers.on_member_ban(guild, MagicMock(spec=discord.User))
-
-    investigations = list(scheduled)
-    assert investigations, "ban threshold should trigger an investigation"
-    scheduled.clear()
-    for coroutine in investigations:
-        await coroutine
-
-    assert scheduled == []
-    cast(MagicMock, quarantine_actions.execute_quarantine).assert_not_called()
+    guild.kick.assert_not_awaited()
