@@ -105,10 +105,12 @@ async def test_dismissed_modal_changes_nothing() -> None:
         ("18", 18),
         (" 30 ", 30),
         ("100", 100),
+        ("17", 17),
+        ("1", 1),
+        ("250", 250),
         ("0", None),
+        ("000", None),
         ("-5", None),
-        ("17", None),
-        ("101", None),
         ("abc", None),
         ("", None),
         ("2_5", None),
@@ -120,7 +122,7 @@ def test_parse_age(text: str, expected: int | None) -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("text", ["0", "-5", "17"])
+@pytest.mark.parametrize("text", ["0", "-5", "abc"])
 async def test_builder_rejects_invalid_age(text: str) -> None:
     view = ProfileBuilderView(_make_member(), {"age": 25})
     modal_interaction = _modal_interaction()
@@ -142,8 +144,22 @@ async def test_builder_stores_valid_age_as_int() -> None:
 
 
 @pytest.mark.asyncio
+async def test_builder_accepts_under_18_so_staff_can_see_it() -> None:
+    view = ProfileBuilderView(_make_member(), {"name": "A", "location": "EU", "gender": "x", "sexuality": "y"})
+    modal_interaction = _modal_interaction()
+
+    await _fill(view, "age", "16", modal_interaction)
+    assert view.data.get("age") == 16
+    modal_interaction.followup.send.assert_not_awaited()
+
+    interaction = _make_interaction(cast(MagicMock, view.user))
+    await view.submit_callback(interaction)
+    assert view.submitted is True
+
+
+@pytest.mark.asyncio
 async def test_submit_rejects_invalid_stored_age() -> None:
-    data = {"name": "A", "age": 5, "location": "EU", "gender": "x", "sexuality": "y"}
+    data = {"name": "A", "age": -3, "location": "EU", "gender": "x", "sexuality": "y"}
     view = ProfileBuilderView(_make_member(), data)  # type: ignore[arg-type]
     interaction = _make_interaction(cast(MagicMock, view.user))
 

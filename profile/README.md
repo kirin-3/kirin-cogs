@@ -18,7 +18,7 @@ The following fields can be included in a user's profile:
 
 ### Required Fields (marked with *)
 - **Name**: What name the user goes by
-- **Age**: User's age (a whole number from 18 to 100)
+- **Age**: User's age (any positive whole number; under-18 ages are accepted and shown on the post so staff can act on them)
 - **Location**: Where the user is from (country or continent)
 - **Gender**: User's gender identity
 - **Sexuality**: User's sexuality
