@@ -3,12 +3,13 @@ XP and Leveling system for Unicornia
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 import random
 import time
 from collections import OrderedDict
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any
 
 import discord
@@ -43,6 +44,8 @@ class XPSystem:
         self._message_xp_task = None
         self._shutdown_task: asyncio.Task[None] | None = None
         self._background_tasks: set[asyncio.Task[Any]] = set()
+        # (guild_id, user_id) -> (lock, tasks using it); level rewards for one member are applied in order
+        self._reward_locks: dict[tuple[int, int], tuple[asyncio.Lock, int]] = {}
 
         # Initialize XP card generator
         # Pass the cog root directory (parent of 'systems')
@@ -480,7 +483,10 @@ class XPSystem:
         new_level: int,
     ) -> None:
         """Grant the rewards of every level passed, then announce the new level in channel (if any)."""
-        footer_texts = await self._grant_level_rewards(member, guild, old_level, new_level)
+        # Tasks for one member reach this in the order their level-ups happened, and take turns here,
+        # so a later level's role removal can't run before an earlier level's role is added
+        async with self._member_reward_lock(guild.id, member.id):
+            footer_texts = await self._grant_level_rewards(member, guild, old_level, new_level)
         if channel is None:
             return
 
@@ -493,6 +499,21 @@ class XPSystem:
             embed.set_footer(text=" • ".join(footer_texts))
 
         await channel.send(embed=embed)
+
+    @contextlib.asynccontextmanager
+    async def _member_reward_lock(self, guild_id: int, user_id: int) -> AsyncIterator[None]:
+        key = (guild_id, user_id)
+        lock, users = self._reward_locks.get(key, (asyncio.Lock(), 0))
+        self._reward_locks[key] = (lock, users + 1)
+        try:
+            async with lock:
+                yield
+        finally:
+            lock, users = self._reward_locks[key]
+            if users == 1:
+                del self._reward_locks[key]
+            else:
+                self._reward_locks[key] = (lock, users - 1)
 
     async def _grant_level_rewards(
         self, member: discord.Member, guild: discord.Guild, old_level: int, new_level: int
@@ -513,6 +534,11 @@ class XPSystem:
             if old_level < level <= new_level:
                 role_changes[role_id] = (level, bool(remove))
 
+        if role_changes:
+            # The cached member only learns about role changes when Discord sends the update, which can
+            # be after an earlier level-up's change, so read the roles the member holds right now
+            with contextlib.suppress(discord.HTTPException):
+                member = await guild.fetch_member(member.id)
         held = {role.id for role in member.roles}
         for role_id, (level, remove) in role_changes.items():
             role = guild.get_role(role_id)

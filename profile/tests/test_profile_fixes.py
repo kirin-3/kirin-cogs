@@ -362,6 +362,27 @@ async def test_leaving_member_record_kept_when_post_cannot_be_deleted() -> None:
 
 
 @pytest.mark.asyncio
+async def test_leaving_member_record_kept_when_profile_channel_is_missing() -> None:
+    cog, config, _ = _cog_with_channel()
+    record = _member_record(config, 456)
+    cog.get_profile_channel = AsyncMock(return_value=None)  # type: ignore[method-assign]
+
+    assert await cog._remove_profile(MagicMock(spec=discord.Guild, id=1), 123) is False
+    record.profile_data.clear.assert_not_awaited()
+    record.message_id.clear.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_leaving_member_without_a_post_is_cleared_even_without_a_channel() -> None:
+    cog, config, _ = _cog_with_channel()
+    record = _member_record(config, None)
+    cog.get_profile_channel = AsyncMock(return_value=None)  # type: ignore[method-assign]
+
+    assert await cog._remove_profile(MagicMock(spec=discord.Guild, id=1), 123) is True
+    record.profile_data.clear.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_cleanup_removes_profiles_of_people_who_left() -> None:
     cog, config, _ = _cog_with_channel()
     guild = MagicMock(spec=discord.Guild, id=1, chunked=True)

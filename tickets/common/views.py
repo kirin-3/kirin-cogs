@@ -452,7 +452,16 @@ class VerificationModal(discord.ui.Modal):
         if not cog or not isinstance(cog, TicketFunctions):
             return await interaction.followup.send("Tickets cog not loaded!", ephemeral=True)
 
-        answers = {label: text_input.value for label, text_input in self.questions if text_input.value}
+        answers: dict[str, str] = {}
+        for label, text_input in self.questions:
+            if not text_input.value:
+                continue
+            # Two fields can share a label; number the repeats so neither answer is dropped
+            key, n = label, 1
+            while key in answers:
+                n += 1
+                key = f"{label} ({n})"
+            answers[key] = text_input.value
         result = await cog.create_ticket_for_user(self.user, answers=answers)
 
         # Post image to the new ticket channel

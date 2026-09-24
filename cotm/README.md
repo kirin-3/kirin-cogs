@@ -32,8 +32,10 @@ A Discord bot cog that manages the Cutie of the Month contest on the Unicornia s
 
 - `[p]cotmreward <channel> [contest_number]`
   - Counts votes in the specified channel and pays the currency rewards for the places listed in `data/prizes.txt` (1st to 9th, amounts in `COTM_REWARDS`)
-  - Each winner is paid at most once per contest (`cotm:<contest>:<user>` Unicornia operation key), so running it again only pays deposits that failed before
-  - `contest_number` defaults to the number set with `[p]contest`; make sure it is the current contest, or winners of an earlier contest with the same number are reported as already paid
+  - The first run saves the places and amounts for that contest number before paying anyone. Running it again (for example after a failed deposit) pays those same saved places, only what is still missing, even if votes changed since
+  - Each winner is paid at most once per contest (`cotm:<contest>:<user>` Unicornia operation key)
+  - Once a contest's places are saved, running it for that contest number on a different channel is refused
+  - `contest_number` defaults to the number set with `[p]contest`; make sure it is the current contest, or the saved results of an earlier contest with the same number are used
   - Requires the Unicornia cog to be loaded for currency distribution
   - Restricted to bot owners only
 

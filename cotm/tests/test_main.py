@@ -21,7 +21,10 @@ from cotm.main import ContestCog
 
 @pytest_asyncio.fixture
 async def cog(bot_mock: MagicMock) -> ContestCog:
-    return ContestCog(bot_mock)
+    cog = ContestCog(bot_mock)
+    # Red's test config is shared across tests, so saved contest results would leak between them
+    await cog.config.payouts.clear()
+    return cog
 
 
 @pytest.fixture
@@ -175,6 +178,7 @@ async def test_cotmreward(cog: ContestCog, ctx_mock: MagicMock, bot_mock: MagicM
     cog._contest_number = 4
 
     channel_mock = MagicMock(spec=discord.TextChannel)
+    channel_mock.id = 900
     channel_mock.mention = "#test-channel"
 
     msg1 = MagicMock(spec=discord.Message)
@@ -288,8 +292,9 @@ def _entry(author: MagicMock, votes: dict[str, list[MagicMock]]) -> MagicMock:
     return message
 
 
-def _channel(messages: list[MagicMock]) -> MagicMock:
+def _channel(messages: list[MagicMock], channel_id: int = 900) -> MagicMock:
     channel = MagicMock(spec=discord.TextChannel)
+    channel.id = channel_id
     channel.mention = "#entries"
 
     def history(limit: int | None = None) -> AsyncGenerator[MagicMock, None]:
@@ -441,6 +446,87 @@ async def test_cotmreward_keeps_paying_after_one_deposit_fails(
 
     assert set(ledger.paid) == {"cotm:1:2"}
     assert "Failed to deposit" in _payout_log(ctx_mock)
+
+
+@pytest.mark.asyncio
+async def test_cotmreward_rerun_pays_the_saved_places_after_votes_change(
+    cog: ContestCog, ctx_mock: MagicMock, bot_mock: MagicMock
+) -> None:
+    ledger = _Ledger()
+    real_apply = ledger.apply_operation
+
+    async def second_place_fails_once(**kwargs: Any) -> SimpleNamespace:
+        if kwargs["user_id"] == 2 and not any(c["user_id"] == 2 for c in ledger.calls):
+            ledger.calls.append(kwargs)
+            raise RuntimeError("database locked")
+        return await real_apply(**kwargs)
+
+    bot_mock.get_cog.return_value = SimpleNamespace(apply_operation=second_place_fails_once)
+    ctx_mock.guild = MagicMock(id=555)
+    emote = const.COTM_VOTE_EMOJI
+    first, second, late = _person(1), _person(2), _person(3)
+    before = _channel([_entry(first, {emote: _voters(5)}), _entry(second, {emote: _voters(3, 2000)})])
+    # Between runs a new entry overtakes everyone and the second-place entry loses its votes
+    after = _channel(
+        [
+            _entry(late, {emote: _voters(9, 5000)}),
+            _entry(first, {emote: _voters(5)}),
+            _entry(second, {emote: _voters(1, 2000)}),
+        ]
+    )
+
+    await cog.cotmreward.callback(cog, ctx_mock, before, 8)  # type: ignore[arg-type]
+    await cog.cotmreward.callback(cog, ctx_mock, after, 8)  # type: ignore[arg-type]
+
+    assert ledger.paid == {"cotm:8:1": (1, const.COTM_REWARDS[0]), "cotm:8:2": (2, const.COTM_REWARDS[1])}
+    after.history.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cotmreward_refuses_a_different_channel_for_a_decided_contest(
+    cog: ContestCog, ctx_mock: MagicMock, bot_mock: MagicMock
+) -> None:
+    ledger = _Ledger()
+    bot_mock.get_cog.return_value = ledger
+    ctx_mock.guild = MagicMock(id=555)
+    emote = const.COTM_VOTE_EMOJI
+    await cog.cotmreward.callback(cog, ctx_mock, _channel([_entry(_person(1), {emote: _voters(2)})], 900), 9)  # type: ignore[arg-type]
+    other = _channel([_entry(_person(4), {emote: _voters(2)})], 901)
+
+    await cog.cotmreward.callback(cog, ctx_mock, other, 9)  # type: ignore[arg-type]
+
+    assert set(ledger.paid) == {"cotm:9:1"}
+    assert "already decided from <#900>" in ctx_mock.send.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_deleted_winner_is_forgotten_and_not_paid_on_rerun(
+    cog: ContestCog, ctx_mock: MagicMock, bot_mock: MagicMock
+) -> None:
+    ledger = _Ledger()
+    real_apply = ledger.apply_operation
+
+    async def winner_fails(**kwargs: Any) -> SimpleNamespace:
+        if kwargs["user_id"] == 1:
+            raise RuntimeError("database locked")
+        return await real_apply(**kwargs)
+
+    bot_mock.get_cog.return_value = SimpleNamespace(apply_operation=winner_fails)
+    ctx_mock.guild = MagicMock(id=555)
+    emote = const.COTM_VOTE_EMOJI
+    channel = _channel(
+        [_entry(_person(1, "alice"), {emote: _voters(3)}), _entry(_person(2), {emote: _voters(2, 2000)})]
+    )
+    await cog.cotmreward.callback(cog, ctx_mock, channel, 6)  # type: ignore[arg-type]
+
+    await cog.red_delete_data_for_user(requester="user", user_id=1)
+    await cog.cotmreward.callback(cog, ctx_mock, channel, 6)  # type: ignore[arg-type]
+
+    saved = (await cog.config.payouts())["6"]["placements"]
+    assert saved[0] == {"user_id": None, "name": "Deleted user", "votes": 3, "amount": const.COTM_REWARDS[0]}
+    assert "alice" not in str(await cog.config.payouts())
+    assert set(ledger.paid) == {"cotm:6:2"}
+    assert "#1 Deleted user**: not paid, their data was deleted" in _payout_log(ctx_mock)
 
 
 @pytest.mark.asyncio

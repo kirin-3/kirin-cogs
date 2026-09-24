@@ -774,9 +774,17 @@ def reward_guild(xp: XPSystem, *, held: tuple[int, ...] = ()) -> tuple[MagicMock
         role.name = f"role{role_id}"
     member = MagicMock(spec=discord.Member, id=USER, mention=f"<@{USER}>")
     member.roles = [roles[role_id] for role_id in held]
-    member.add_roles = AsyncMock()
-    member.remove_roles = AsyncMock()
+    # Discord's side: role changes land here at once, but the cached member.roles only on fetch
+    on_discord = set(held)
+    member.add_roles = AsyncMock(side_effect=lambda role, **_: on_discord.add(role.id))
+    member.remove_roles = AsyncMock(side_effect=lambda role, **_: on_discord.discard(role.id))
+
+    async def fetch_member(user_id: int) -> MagicMock:
+        member.roles = [roles[role_id] for role_id in sorted(on_discord)]
+        return member
+
     guild = MagicMock(spec=discord.Guild, id=GUILD)
+    guild.fetch_member = AsyncMock(side_effect=fetch_member)
     guild.get_member.side_effect = lambda user_id: member if user_id == USER else None
     guild.get_role.side_effect = roles.get
     xp.bot.get_guild.side_effect = lambda guild_id: guild if guild_id == GUILD else None
@@ -880,6 +888,36 @@ async def test_level_rewards_are_not_granted_twice(xp: XPSystem) -> None:
     assert await xp.db.economy.get_user_currency(USER) == 20
     assert isinstance(xp._handle_level_up, AsyncMock)
     xp._handle_level_up.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_overlapping_level_ups_apply_role_changes_in_level_order(xp: XPSystem) -> None:
+    await xp.db.xp.add_xp(USER, GUILD, 197)  # level 3
+    await configure_rewards(xp)
+    member, roles = reward_guild(xp)
+    real_rewards = xp.db.xp.get_all_xp_role_rewards
+    first_read_started, release_first_read = asyncio.Event(), asyncio.Event()
+
+    async def first_read_is_slow(guild_id: int) -> list[Any]:
+        if not first_read_started.is_set():
+            first_read_started.set()
+            await release_first_read.wait()
+        return await real_rewards(guild_id)
+
+    async with asyncio.timeout(5):
+        with patch.object(xp.db.xp, "get_all_xp_role_rewards", side_effect=first_read_is_slow):
+            # Level 4 (gives role A) is still loading its rewards when level 11 (removes role A) starts
+            await xp._award_voice_xp([(USER, GUILD, 1)])
+            await first_read_started.wait()
+            second = asyncio.create_task(xp.award_xp(USER, GUILD, 700))
+            await asyncio.sleep(0.05)
+            release_first_read.set()
+            assert await second
+            await asyncio.gather(*xp._background_tasks)
+
+    member.add_roles.assert_awaited_once_with(roles[ROLE_A], reason="XP level 4 role reward")
+    member.remove_roles.assert_awaited_once_with(roles[ROLE_A], reason="XP level 10 role removal")
+    assert xp._reward_locks == {}
 
 
 @pytest.mark.asyncio

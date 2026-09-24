@@ -161,7 +161,10 @@ class Profile(commands.Cog):
                 failed += 1
         text = f"Removed {removed} profile(s) of people who left."
         if failed:
-            text += f" {failed} post(s) could not be deleted; check my permissions in the profile channel."
+            text += (
+                f" {failed} post(s) could not be deleted; check that the profile channel is set"
+                " and that I can manage messages there."
+            )
         await ctx.send(text)
 
     async def handle_create_edit(self, interaction: discord.Interaction):
@@ -242,20 +245,22 @@ class Profile(commands.Cog):
         """Delete a member's profile post and stored answers.
 
         The deletion cooldown is kept. Returns False, keeping the record so a later cleanup can retry,
-        if the post exists but could not be deleted.
+        if the post may still exist: it could not be deleted, or the profile channel can't be found.
         """
         member_group = self.config.member_from_ids(guild.id, user_id)
         message_id = await member_group.message_id()
         if message_id:
             channel = await self.get_profile_channel(guild)
-            if channel is not None:
-                try:
-                    await channel.get_partial_message(message_id).delete()
-                except discord.NotFound:
-                    pass
-                except discord.HTTPException as e:
-                    log.error(f"Failed to delete profile message of departed user {user_id}: {e}")
-                    return False
+            if channel is None:
+                log.warning(f"Profile channel not found; keeping the profile of departed user {user_id} for cleanup")
+                return False
+            try:
+                await channel.get_partial_message(message_id).delete()
+            except discord.NotFound:
+                pass
+            except discord.HTTPException as e:
+                log.error(f"Failed to delete profile message of departed user {user_id}: {e}")
+                return False
         await member_group.profile_data.clear()
         await member_group.message_id.clear()
         return True

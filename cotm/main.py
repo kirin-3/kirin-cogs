@@ -36,9 +36,11 @@ class ContestCog(commands.Cog):
         # Shared "Check Standings" result: (monotonic time, ranked entries, tallied at)
         self._standings_cache: tuple[float, list[dict[str, Any]], datetime] | None = None
         self._standings_lock = asyncio.Lock()
+        self._reward_lock = asyncio.Lock()
 
         self.config = Config.get_conf(self, identifier=906144832, force_registration=True)
-        self.config.register_global(contest_number=1)
+        # payouts: contest number -> {"channel_id", "placements"}, saved before the first deposit
+        self.config.register_global(contest_number=1, payouts={})
 
         self.logger.info("-" * 32)
         self.logger.info(f"{self.__class__.__name__} v({__version__}) initialized!")
@@ -295,6 +297,41 @@ class ContestCog(commands.Cog):
         container = self._build_standings_container(top_entries, "Contest Leaderboard", channel, show_invalid)
         await cast(discord.TextChannel, ctx.channel).send(view=StandingsView(container))
 
+    async def red_delete_data_for_user(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, *, requester, user_id: int
+    ) -> None:
+        """Forget a winner in saved contest results; their place stays, so the other places keep their amounts."""
+        async with self.config.payouts() as payouts:
+            for saved in payouts.values():
+                for placement in saved["placements"]:
+                    if placement["user_id"] == user_id:
+                        placement["user_id"] = None
+                        placement["name"] = "Deleted user"
+
+    async def _reward_placements(self, contest: int, channel: discord.TextChannel) -> list[dict[str, Any]] | int | None:
+        """The paid places for a contest, decided once and then reused.
+
+        The first run tallies the channel and saves the places before any deposit, so a rerun
+        pays the same people the same amounts even if votes changed in between. Returns None
+        when there is nothing to pay, or the saved channel ID when `channel` is a different one.
+        """
+        saved = (await self.config.payouts()).get(str(contest))
+        if saved is not None:
+            if saved["channel_id"] != channel.id:
+                return saved["channel_id"]
+            return saved["placements"]
+
+        entries = [entry for entry in await self._tally_entries(channel) if entry["valid_votes"] > 0]
+        if not entries:
+            return None
+        placements = [
+            {"user_id": entry["user"].id, "name": entry["name"], "votes": entry["valid_votes"], "amount": amount}
+            for entry, amount in zip(entries, const.COTM_REWARDS, strict=False)
+        ]
+        async with self.config.payouts() as payouts:
+            payouts[str(contest)] = {"channel_id": channel.id, "placements": placements}
+        return placements
+
     @commands.guild_only()
     @commands.is_owner()
     @commands.command()
@@ -308,8 +345,9 @@ class ContestCog(commands.Cog):
         Pays the tiered Unicornia currency rewards to the top contestants in a contest channel.
 
         Places are ranked by author using the contest vote emoji, and only the places in
-        prizes.txt are paid. Each winner is paid at most once per contest, so running this
-        again (for example after a failed deposit) only pays what is still missing.
+        prizes.txt are paid. The first run saves the places, so running this again (for example
+        after a failed deposit) pays the same winners and only what is still missing, even if
+        the votes have changed since.
         `contest_number` defaults to the number set with `[p]contest`.
 
         This command is restricted to bot owners.
@@ -324,28 +362,39 @@ class ContestCog(commands.Cog):
 
         contest = contest_number if contest_number is not None else self._contest_number
 
-        async with ctx.typing():
-            entries = [entry for entry in await self._tally_entries(channel) if entry["valid_votes"] > 0]
-            if not entries:
+        async with self._reward_lock, ctx.typing():
+            placements = await self._reward_placements(contest, channel)
+            if placements is None:
                 await ctx.send(f"No valid entries found for channel {channel.mention}")
                 return
+            if isinstance(placements, int):
+                await ctx.send(
+                    f"❌ Rewards for contest {contest} were already decided from <#{placements}>. "
+                    "Run the command on that channel, or pass the right contest number."
+                )
+                return
 
-            top_entries = entries[: len(const.COTM_REWARDS)]
             contest_label = strings.add_ordinal_suffix(contest)
             container = self._build_standings_container(
-                top_entries, f"Contest Rewards — {contest_label} Cutie of the Month", channel, show_invalid=False
+                [{"name": p["name"], "valid_votes": p["votes"]} for p in placements],
+                f"Contest Rewards — {contest_label} Cutie of the Month",
+                channel,
+                show_invalid=False,
             )
 
             # Add a separator and the payout logs
             container.add_item(ui.Separator())
             payout_text = "### 💸 Payout Log\n"
 
-            for rank, (entry, reward_amount) in enumerate(zip(top_entries, const.COTM_REWARDS, strict=False), 1):
-                user = entry["user"]
+            for rank, placement in enumerate(placements, 1):
+                user_id, name, reward_amount = placement["user_id"], placement["name"], placement["amount"]
+                if user_id is None:
+                    payout_text += f"**#{rank} {name}**: not paid, their data was deleted\n"
+                    continue
                 try:
                     outcome = await unicornia.apply_operation(
-                        key=f"cotm:{contest}:{user.id}",
-                        user_id=user.id,
+                        key=f"cotm:{contest}:{user_id}",
+                        user_id=user_id,
                         amount=reward_amount,
                         direction="credit",
                         source="ContestCog",
@@ -353,16 +402,16 @@ class ContestCog(commands.Cog):
                         reason=f"COTM {contest_label} Reward (Rank {rank})",
                     )
                 except Exception:
-                    self.logger.exception(f"COTM {contest} payout to {user.id} failed")
+                    self.logger.exception(f"COTM {contest} payout to {user_id} failed")
                     outcome = None
                 state = getattr(outcome, "state", None)
 
                 if state == "settled":
-                    payout_text += f"**#{rank} {entry['name']}**: +{reward_amount:,} <:slut:686148402941001730>\n"
+                    payout_text += f"**#{rank} {name}**: +{reward_amount:,} <:slut:686148402941001730>\n"
                 elif state == "duplicate":
-                    payout_text += f"**#{rank} {entry['name']}**: already paid for this contest\n"
+                    payout_text += f"**#{rank} {name}**: already paid for this contest\n"
                 else:
-                    payout_text += f"**#{rank} {entry['name']}**: ❌ Failed to deposit\n"
+                    payout_text += f"**#{rank} {name}**: ❌ Failed to deposit\n"
 
             container.add_item(ui.TextDisplay(content=payout_text))
 

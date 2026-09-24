@@ -202,6 +202,29 @@ async def test_verification_modal_submits_answers() -> None:
     cog.create_ticket_for_user.assert_awaited_once_with(member, answers={"Filled": "yes"})
 
 
+@pytest.mark.asyncio
+async def test_verification_modal_keeps_answers_to_fields_with_the_same_label() -> None:
+    guild = _guild({})
+    conf = _state(modal={"a": _field("Age"), "b": _field("Age"), "c": _field("Age")})
+    member = _member(guild)
+    cog = MagicMock()
+    cog.create_ticket_for_user = AsyncMock(return_value="Ticket has been created!")
+    bot = MagicMock()
+    bot.get_cog.return_value = cog
+    modal = VerificationModal(bot, guild, cast(Any, _Config(conf)), member, conf)
+    for (_, text_input), value in zip(modal.questions, ["20", "21", "22"], strict=True):
+        text_input._value = value
+    interaction = MagicMock()
+    interaction.data = {}
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
+
+    with patch("tickets.common.functions.Functions", new=MagicMock):
+        await modal.on_submit(interaction)
+
+    cog.create_ticket_for_user.assert_awaited_once_with(member, answers={"Age": "20", "Age (2)": "21", "Age (3)": "22"})
+
+
 # --- ticket creation ---
 
 
