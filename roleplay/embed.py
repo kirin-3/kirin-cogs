@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import aiohttp
 import discord
 
-from .unicornia.web import DOWNLOAD_TIMEOUT
+from .unicornia.web import fetch_image
 
 
 class Embed:
@@ -26,8 +26,7 @@ class Embed:
         if cache_path.exists():
             return cache_path
 
-        async with session.get(url, timeout=DOWNLOAD_TIMEOUT, raise_for_status=True) as response:
-            content = await response.read()
+        content = await fetch_image(session, url)
 
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_bytes(content)

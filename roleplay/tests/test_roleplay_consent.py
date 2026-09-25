@@ -246,8 +246,11 @@ def test_actions_are_found_by_alias_in_any_case() -> None:
 
 
 class _Response:
-    def __init__(self, content: bytes) -> None:
+    def __init__(self, content: bytes, content_type: str) -> None:
         self.content = content
+        self.content_type = content_type
+        self.request_info = None
+        self.history = ()
 
     async def __aenter__(self) -> "_Response":
         return self
@@ -263,8 +266,11 @@ class _Session:
     """Stands in for aiohttp.ClientSession, answering every GET with ``content``, or
     raising ``error``."""
 
-    def __init__(self, content: bytes = b"gif", error: Exception | None = None) -> None:
+    def __init__(
+        self, content: bytes = b"gif", error: Exception | None = None, content_type: str = "image/gif"
+    ) -> None:
         self.content = content
+        self.content_type = content_type
         self.error = error
         self.urls: list[str] = []
 
@@ -272,7 +278,7 @@ class _Session:
         self.urls.append(url)
         if self.error is not None:
             raise self.error
-        return _Response(self.content)
+        return _Response(self.content, self.content_type)
 
 
 @pytest.mark.asyncio
@@ -293,6 +299,15 @@ async def test_download_reports_connection_errors(tmp_path: Path, error: Excepti
     session: Any = _Session(error=error)
 
     assert await web.save_image_from_url(session, "https://a.example/hug.gif", tmp_path, "hug") is None
+
+
+@pytest.mark.asyncio
+async def test_download_rejects_html_served_as_an_image(tmp_path: Path) -> None:
+    # dead image hosts answer 200 with an HTML page
+    session: Any = _Session(content=b"<head>", content_type="text/html")
+
+    assert await web.save_image_from_url(session, "https://a.example/hug.gif", tmp_path, "hug") is None
+    assert not list((tmp_path / "hug").iterdir())
 
 
 @pytest.mark.asyncio
