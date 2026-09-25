@@ -301,12 +301,16 @@ class Manager:
         """Convert a list of user IDs to a list of display names."""
         display_names = []
         for user_id in user_ids:
-            try:
-                user = await self.bot.fetch_user(user_id)
-                display_names.append(user.display_name)
-            except discord.NotFound:
-                self.logger.error(f"User with ID {user_id} not found.")
-                display_names.append(f"Unknown {user_id}")
+            # only ask Discord for users the bot doesn't already know
+            user = self.bot.get_user(user_id)
+            if user is None:
+                try:
+                    user = await self.bot.fetch_user(user_id)
+                except discord.NotFound:
+                    self.logger.error(f"User with ID {user_id} not found.")
+                    display_names.append(f"Unknown {user_id}")
+                    continue
+            display_names.append(user.display_name)
         return display_names
 
     def get_default_member(self, ctx: commands.GuildContext) -> discord.Member:
@@ -316,20 +320,33 @@ class Manager:
         member = ctx.guild.get_member(member_id) if member_id else None
         return member or ctx.guild.me
 
-    async def get_owner(self, ctx: commands.GuildContext, member: discord.abc.User) -> discord.Member | None:
-        """
+    async def get_owner(
+        self, ctx: commands.GuildContext, member: discord.abc.User, owner_ids: list[int] | None = None
+    ) -> discord.Member | None:
+        """The member's owner, if they have one on this server.
+
+        Args:
+            ctx (commands.GuildContext): The context of the command invocation.
+            member (discord.abc.User): The member whose owner to get.
+            owner_ids (list[int], optional): The member's owners setting, when it has
+                already been read. Read from the config otherwise.
+
         TODO: For now, just using the first owner in the users list. I'm not sure what
         we want to do if there multiples. Which owner should we ask for permission?
         All of them? First? Try to figure out who's online or active?
         """
-        owners = await self.list_users(member, "owners")
+        if owner_ids is None:
+            owner_ids = await self.list_users(member, "owners")
         owner = None
-        if owners:
-            try:
-                owner = await ctx.guild.fetch_member(owners[0])
-            except discord.NotFound:
-                # the owner left the server
-                owner = None
+        if owner_ids:
+            # only ask Discord for members that aren't cached
+            owner = ctx.guild.get_member(owner_ids[0])
+            if owner is None:
+                try:
+                    owner = await ctx.guild.fetch_member(owner_ids[0])
+                except discord.NotFound:
+                    # the owner left the server
+                    owner = None
         self.logger.debug(f"Attempted to get owner from {member}: {owner.display_name if owner else None}")
         return owner
 

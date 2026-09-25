@@ -1,5 +1,6 @@
-"""Covers who gets asked for consent, the consent buttons, action lookup, image
-downloads and reloading the cog."""
+"""Covers asking for consent (the rules themselves are in test_roleplay_decide), the
+consent buttons, looking up members, action lookup, image downloads and reloading
+the cog."""
 
 import logging
 from pathlib import Path
@@ -7,8 +8,9 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
+import aiohttp
+import discord
 import pytest
-import requests
 from discord.ext import commands as dpy_commands
 
 from roleplay import const
@@ -17,6 +19,7 @@ from roleplay import settings as settings_module
 from roleplay.actions import ActionManager
 from roleplay.main import Roleplay
 from roleplay.unicornia import web
+from roleplay.users import Manager
 from roleplay.views import ConsentView
 
 
@@ -32,16 +35,9 @@ def _cog(settings: dict[int, dict[str, Any]], owners: dict[int, _Member]) -> Rol
     """A Roleplay cog whose members have the given settings and owners."""
 
     def user(member: _Member) -> SimpleNamespace:
-        values = settings.get(member.id, {})
-        return SimpleNamespace(
-            **{flag: AsyncMock(return_value=values.get(flag, False)) for flag in ("public", "servant", "selective")}
-        )
+        return SimpleNamespace(all=AsyncMock(return_value=settings.get(member.id, {})))
 
-    async def in_group(member: _Member, user_or_id: Any, group: str) -> bool:
-        user_id = user_or_id if isinstance(user_or_id, int) else user_or_id.id
-        return user_id in settings.get(member.id, {}).get(group, [])
-
-    async def get_owner(_ctx: Any, member: _Member) -> _Member | None:
+    async def get_owner(_ctx: Any, member: _Member, _owner_ids: list[int]) -> _Member | None:
         return owners.get(member.id)
 
     cog = Roleplay.__new__(Roleplay)
@@ -50,10 +46,7 @@ def _cog(settings: dict[int, dict[str, Any]], owners: dict[int, _Member]) -> Rol
     cog.action_manager = ActionManager()
     cog.user_settings = cast(
         Any,
-        SimpleNamespace(
-            config=SimpleNamespace(user=user),
-            users_manager=SimpleNamespace(in_group=in_group, get_owner=get_owner),
-        ),
+        SimpleNamespace(config=SimpleNamespace(user=user), users_manager=SimpleNamespace(get_owner=get_owner)),
     )
     cog.send_action_message = AsyncMock()
     return cog
@@ -101,6 +94,19 @@ async def test_bots_are_not_asked_to_consent(monkeypatch: pytest.MonkeyPatch) ->
 
 
 @pytest.mark.asyncio
+async def test_blocked_members_are_told_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    author, target = _Member(2), _Member(3)
+    cog = _cog({3: {"blocked": [2]}}, {})
+    consent = _consent(monkeypatch)
+
+    result, ctx = await _interact(cog, author, invoker=author, target=target)
+
+    assert result is False
+    consent.assert_not_awaited()
+    assert "can't use that command" in ctx.send.await_args.args[0]
+
+
+@pytest.mark.asyncio
 async def test_selective_member_refuses_members_not_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
     author, target = _Member(2), _Member(3)
     cog = _cog({3: {"selective": True}}, {})
@@ -114,26 +120,29 @@ async def test_selective_member_refuses_members_not_allowed(monkeypatch: pytest.
 
 
 @pytest.mark.asyncio
-async def test_selective_member_still_accepts_allowed_members(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_target_refusal_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     author, target = _Member(2), _Member(3)
-    cog = _cog({3: {"selective": True, "allowed": [2]}}, {})
-    _consent(monkeypatch)
+    cog = _cog({}, {})
+    _consent(monkeypatch, (False, target.id))
 
-    result, _ = await _interact(cog, author, invoker=author, target=target)
+    result, ctx = await _interact(cog, author, invoker=author, target=target)
 
-    assert result is True
+    assert result is False
+    assert ctx.send.await_args.args[0] == f"**{target.display_name}** does not wish to do that."
+    cast(AsyncMock, cog.send_action_message).assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_selective_public_member_accepts_active_actions(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_unanswered_question_names_who_was_asked(monkeypatch: pytest.MonkeyPatch) -> None:
     author, target = _Member(2), _Member(3)
-    cog = _cog({3: {"selective": True, "public": True}}, {})
-    consent = _consent(monkeypatch)
+    author_owner, target_owner = _Member(20), _Member(30)
+    cog = _cog({}, {2: author_owner, 3: target_owner})
+    _consent(monkeypatch, (None, None))
 
-    result, _ = await _interact(cog, author, invoker=author, target=target)
+    result, ctx = await _interact(cog, author, invoker=author, target=target)
 
-    assert result is True
-    consent.assert_not_awaited()
+    assert result is False
+    assert ctx.send.await_args.args[0].startswith("**member20** & **member30** took too long")
 
 
 @pytest.mark.asyncio
@@ -200,22 +209,102 @@ def test_actions_are_found_by_alias_in_any_case() -> None:
     assert manager.get("nonsense") is None
 
 
-def test_download_skips_images_already_saved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    get = MagicMock(return_value=SimpleNamespace(content=b"gif", raise_for_status=lambda: None))
-    monkeypatch.setattr(web.requests, "get", get)
+class _Response:
+    def __init__(self, content: bytes) -> None:
+        self.content = content
 
-    assert web.save_image_from_url("https://a.example/x/tenor.gif", tmp_path, "hug") is True
-    assert web.save_image_from_url("https://a.example/x/tenor.gif", tmp_path, "hug") is False
+    async def __aenter__(self) -> "_Response":
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        return None
+
+    async def read(self) -> bytes:
+        return self.content
+
+
+class _Session:
+    """Stands in for aiohttp.ClientSession, answering every GET with ``content``, or
+    raising ``error``."""
+
+    def __init__(self, content: bytes = b"gif", error: Exception | None = None) -> None:
+        self.content = content
+        self.error = error
+        self.urls: list[str] = []
+
+    def get(self, url: str, **_kwargs: Any) -> _Response:
+        self.urls.append(url)
+        if self.error is not None:
+            raise self.error
+        return _Response(self.content)
+
+
+@pytest.mark.asyncio
+async def test_download_skips_images_already_saved(tmp_path: Path) -> None:
+    session: Any = _Session()
+
+    assert await web.save_image_from_url(session, "https://a.example/x/tenor.gif", tmp_path, "hug") is True
+    assert await web.save_image_from_url(session, "https://a.example/x/tenor.gif", tmp_path, "hug") is False
     # a different URL with the same file name is saved separately
-    assert web.save_image_from_url("https://a.example/y/tenor.gif", tmp_path, "hug") is True
-    assert get.call_count == 2
+    assert await web.save_image_from_url(session, "https://a.example/y/tenor.gif", tmp_path, "hug") is True
+    assert len(session.urls) == 2
     assert len(list((tmp_path / "hug").iterdir())) == 2
 
 
-def test_download_reports_connection_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(web.requests, "get", MagicMock(side_effect=requests.ConnectionError))
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [aiohttp.ClientConnectionError(), TimeoutError()])
+async def test_download_reports_connection_errors(tmp_path: Path, error: Exception) -> None:
+    session: Any = _Session(error=error)
 
-    assert web.save_image_from_url("https://a.example/hug.gif", tmp_path, "hug") is None
+    assert await web.save_image_from_url(session, "https://a.example/hug.gif", tmp_path, "hug") is None
+
+
+@pytest.mark.asyncio
+async def test_spoiler_images_are_cached(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(main_module.Embed, "CACHE_DIR", tmp_path)
+    session: Any = _Session(content=b"lewd")
+
+    first = await main_module.Embed.spoiler_image(session, "https://a.example/x/tenor.gif")
+    second = await main_module.Embed.spoiler_image(session, "https://a.example/x/tenor.gif")
+
+    assert first.spoiler and first.filename == "SPOILER_image.gif"
+    assert first.fp.read() == second.fp.read() == b"lewd"
+    assert len(session.urls) == 1
+
+
+def _guild(members: dict[int, _Member]) -> Any:
+    fetch_member = AsyncMock(side_effect=discord.NotFound(MagicMock(status=404), "Unknown Member"))
+    return SimpleNamespace(get_member=members.get, fetch_member=fetch_member)
+
+
+@pytest.mark.asyncio
+async def test_owner_is_found_without_asking_discord() -> None:
+    owner = _Member(20)
+    ctx: Any = SimpleNamespace(guild=_guild({20: owner}))
+    manager = Manager(MagicMock(), MagicMock())
+
+    assert await manager.get_owner(ctx, cast(Any, _Member(2)), [20]) is owner
+    ctx.guild.fetch_member.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_owner_who_left_the_server_is_ignored() -> None:
+    ctx: Any = SimpleNamespace(guild=_guild({}))
+    manager = Manager(MagicMock(), MagicMock())
+
+    assert await manager.get_owner(ctx, cast(Any, _Member(2)), [20]) is None
+    ctx.guild.fetch_member.assert_awaited_once_with(20)
+
+
+@pytest.mark.asyncio
+async def test_display_names_only_fetch_unknown_users() -> None:
+    bot = MagicMock()
+    bot.get_user = {1: SimpleNamespace(display_name="cached")}.get
+    bot.fetch_user = AsyncMock(return_value=SimpleNamespace(display_name="fetched"))
+    manager = Manager(bot, MagicMock())
+
+    assert await manager.display_names([1, 2]) == ["cached", "fetched"]
+    bot.fetch_user.assert_awaited_once_with(2)
 
 
 class _Bot(dpy_commands.GroupMixin):
@@ -261,3 +350,14 @@ async def test_cog_leaves_other_cogs_commands_alone(bot: _Bot) -> None:
     with pytest.raises(dpy_commands.CommandRegistrationError):
         Roleplay(cast(Any, bot))
     assert bot.all_commands["hug"] is other
+
+
+@pytest.mark.asyncio
+async def test_unloading_closes_the_http_session(bot: _Bot) -> None:
+    cog = Roleplay(cast(Any, bot))
+    session = cog.http_session()
+    assert cog.http_session() is session
+
+    await cog.cog_unload()
+
+    assert session.closed

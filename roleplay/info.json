@@ -16,9 +16,7 @@
     "hidden": true,
     "disabled": false,
     "type": "COG",
-    "requirements": [
-        "requests"
-    ],
+    "requirements": [],
     "tags": [
         "roleplay",
         "consent",

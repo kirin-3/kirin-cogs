@@ -19,7 +19,7 @@ class EmbedView(discord.ui.View):
         self.label = label if label is not None else embed.title
 
         # Create the button with the given label and style
-        self.button = discord.ui.Button(label=label, style=style)
+        self.button = discord.ui.Button(label=self.label, style=style)
         self.button.callback = self.show_settings
         self.add_item(self.button)
 

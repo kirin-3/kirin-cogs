@@ -15,6 +15,10 @@
 - A Public Use target (or a Servant target, for `ask`) is no longer asked for consent after the invoker's Owner has already agreed
 - `ask` accepts action aliases in any case, and lists the valid actions when given an unknown one
 - `admin download` names files after their URL, skips images it has already saved, reports how many it downloaded, skipped or failed, and starts using them right away. Images saved by earlier versions are not recognized, so clear the cog's `images` data folder once before running it again
+- Images are downloaded with aiohttp, which Red already ships, instead of requests. The cog no longer has any requirements of its own
+- The decision of whether an action can go ahead, and who has to be asked, is made in one place (`consent.py`) that is tested on its own
+- Settings are read once per member for each action, and owners and names are looked up in the bot's cache before asking Discord
+- The help messages use the prefix the member typed, including for `roleplay settings help`
 
 ### Fixed
 
@@ -29,6 +33,8 @@
 
 - Role-based denials (`denial` in action files). The configured roles never matched, so no action was ever denied
 - Unused pronoun role lookups and role constants
+- A listener that logged every command error in the bot, from any cog, as an error
+- Unused copies of the settings (`user_settings.yml`), image and font helpers, and the Pillow requirement
 
 ## [2.5.43] - 2025-1-15
 
