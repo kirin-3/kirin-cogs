@@ -20,8 +20,12 @@ restarts. Logging back in takes one click.
 
 - Every route needs a staff session unless it is one of `/login`, `/callback`, `/logged-out`, or a static file.
 - Every POST must carry the session's CSRF token.
-- Pages carry a strict Content-Security-Policy (no scripts), `nosniff`, `no-referrer`, `DENY` framing, `noindex`, and
-  `no-store`. All user text is HTML-escaped by Jinja2.
+- Pages carry a strict Content-Security-Policy, `nosniff`, `no-referrer`, `DENY` framing, `noindex`, and `no-store`.
+  All user text is HTML-escaped by Jinja2.
+- The only script is `static/site.js`. The policy allows the site's own files and nothing else: no inline scripts, no
+  other hosts, and no requests from scripts. It adds conveniences only, such as adding editor rows in place, local
+  times, filter boxes, and delete confirmations. Every page works without it, and every change is still checked by
+  the server. It writes text into the page, never HTML.
 - The login callback sends Discord at most 5 code exchanges per minute per client IP and 30 per minute in total, and
   none at all while Discord is answering 429. This keeps a login flood from getting the bot's shared IP blocked.
 - Cookies use the `__Host-` prefix, so they are never shared with other `unicornia.net` subdomains.

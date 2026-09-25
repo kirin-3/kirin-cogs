@@ -3,7 +3,8 @@
 <label class="check"><input type="checkbox" name="{{ f.name }}" value="on"{% if f.value %} checked{% endif %}> {{ f.label }}</label>
 {% elif f.kind in ("roles", "channels") %}
 <details class="picker">
-  <summary>{{ f.label }} ({{ f.options|selectattr("checked")|list|length }} chosen)</summary>
+  <summary>{{ f.label }}: <span class="chosen">{{ f.options|selectattr("checked")|map(attribute="label")|join(", ") or "none" }}</span></summary>
+  <input type="search" class="filter" placeholder="Filter {{ f.kind }}" aria-label="Filter {{ f.kind }}" hidden>
   <div class="choices">
   {% for o in f.options %}<label><input type="checkbox" name="{{ f.name }}" value="{{ o.value }}"{% if o.checked %} checked{% endif %}> {{ o.label }}</label>{% endfor %}
   </div>
@@ -24,6 +25,17 @@
 {% endif %}
 {%- endmacro %}
 
+{% macro row(section, n, r) -%}
+<div class="row">
+  <div class="row-head">
+    <strong>{{ r.label }}</strong>
+    <button type="submit" name="action" value="remove-{{ section }}-{{ n }}" class="quiet" formnovalidate>Remove</button>
+  </div>
+  <input type="hidden" name="{{ section }}-{{ n }}-type" value="{{ r.type }}">
+  {% for f in r.fields %}{{ field_input(f) }}{% endfor %}
+</div>
+{%- endmacro %}
+
 {% macro editor(action_url, ed, csrf, settings=False) -%}
 <form method="post" action="{{ action_url }}" class="editor">
   {# Enter in a text box presses the form's first button, so the first one saves. #}
@@ -33,16 +45,9 @@
   <label>Name <input type="text" name="name" value="{{ ed.name }}" maxlength="100"></label>
   {% if settings %}<label class="check"><input type="checkbox" name="enabled" value="on"{% if ed.enabled %} checked{% endif %}> Enabled</label>{% endif %}
   {% for section, sec in ed.sections.items() %}
-  <fieldset>
+  <fieldset data-section="{{ section }}">
     <legend>{{ section|capitalize }}</legend>
-    {% for row in sec.rows %}
-    <div class="row">
-      <input type="hidden" name="{{ section }}-{{ loop.index0 }}-type" value="{{ row.type }}">
-      <strong>{{ row.label }}</strong>
-      {% for f in row.fields %}{{ field_input(f) }}{% endfor %}
-      <button type="submit" name="action" value="remove-{{ section }}-{{ loop.index0 }}" formnovalidate>Remove</button>
-    </div>
-    {% endfor %}
+    {% for r in sec.rows %}{{ row(section, loop.index0, r) }}{% endfor %}
     <div class="add">
       <select name="new-{{ section }}" aria-label="New {{ sec.singular }} type">
         {% for key, label in sec.types %}<option value="{{ key }}">{{ label }}</option>{% endfor %}

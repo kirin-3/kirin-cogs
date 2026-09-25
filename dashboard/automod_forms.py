@@ -1,4 +1,4 @@
-"""Scriptless automod editing: HTML form fields to rule rows and back, and read-only descriptions.
+"""Automod editing: HTML form fields to rule rows and back, and read-only descriptions. Works without scripts.
 
 The row types come from the AutoMod cog's registry (`cog.registry`, automod/types.py), so the site never imports
 another cog's package directly.
@@ -133,6 +133,18 @@ def row_view(registry: Any, section: str, n: int, row: dict, names: Names) -> di
             item["options"] = _options(names.lists, chosen, lambda i: names.lists.get(i, f"Deleted list {i}"))
         view["fields"].append(item)
     return view
+
+
+def row_templates(registry: Any, names: Names, sections: tuple[str, ...]) -> dict:
+    """A blank row of every type, which site.js copies to add rows without a round trip."""
+    return {
+        section: [
+            (key, row_view(registry, section, 0, row, names))
+            for key in registry.SECTIONS[section]
+            if (row := new_row(registry, section, key)) is not None
+        ]
+        for section in sections
+    }
 
 
 def editor_view(registry: Any, draft: dict, names: Names, sections: tuple[str, ...]) -> dict:

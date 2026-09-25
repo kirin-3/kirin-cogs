@@ -17,6 +17,7 @@ from typing import Any, cast
 import aiohttp
 import discord
 import jinja2
+import markupsafe
 from aiohttp import web
 from aiohttp.typedefs import Handler
 from redbot.core import commands
@@ -24,7 +25,7 @@ from redbot.core.bot import Red
 from redbot.core.errors import CogLoadError
 from yarl import URL
 
-from .automod_forms import SECTIONS, Names, apply_action, editor_view, parse_rows, row_view
+from .automod_forms import SECTIONS, Names, apply_action, editor_view, parse_rows, row_templates, row_view
 
 GUILD_ID = 684360255798509578
 STAFF_ROLE_ID = 696020813299580940
@@ -64,7 +65,7 @@ HERE = Path(__file__).parent
 COOKIE_FLAGS: dict[str, Any] = {"httponly": True, "secure": True, "samesite": "Lax", "path": "/"}
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
-        "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; "
+        "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; form-action 'self'; "
         "frame-ancestors 'none'; base-uri 'none'"
     ),
     "X-Content-Type-Options": "nosniff",
@@ -89,8 +90,14 @@ def _same(given: str, expected: str) -> bool:
     return hmac.compare_digest(given.encode(), expected.encode())
 
 
-def _when(timestamp: float | None) -> str:
-    return "" if timestamp is None else datetime.fromtimestamp(timestamp, UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+def _when(timestamp: float | None) -> markupsafe.Markup:
+    """A UTC <time> element; site.js rewrites it in the viewer's time zone."""
+    if timestamp is None:
+        return markupsafe.Markup()
+    moment = datetime.fromtimestamp(timestamp, UTC)
+    return markupsafe.Markup('<time datetime="{}">{}</time>').format(
+        moment.isoformat(), moment.strftime("%Y-%m-%d %H:%M:%S UTC")
+    )
 
 
 def _page_number(raw: str) -> int:
@@ -452,6 +459,7 @@ class Dashboard(commands.Cog):
             settings=editor("settings", ruleset, ("conditions",)),
             rules=rules,
             new_rule=editor("new", blank, SECTIONS),
+            row_templates=row_templates(registry, names, SECTIONS),
             is_owner=await self._owner(request),
         )
 
@@ -644,7 +652,9 @@ class Dashboard(commands.Cog):
     # --- rendering ---------------------------------------------------------------------------------
 
     def _render(self, request: web.Request, template: str, *, status: int = 200, **context: Any) -> web.Response:
-        html = self._templates.get_template(template).render(session=request.get("session"), **context)
+        html = self._templates.get_template(template).render(
+            session=request.get("session"), path=request.path, **context
+        )
         return web.Response(text=html, status=status, content_type="text/html")
 
     def _message(

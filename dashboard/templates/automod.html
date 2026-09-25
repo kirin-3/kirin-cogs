@@ -9,11 +9,11 @@
 <p class="notice">Automod is not loaded. Load the AutoMod cog to view its rules.</p>
 {% else %}
 {% if error %}<p class="notice">{{ error }}</p>{% endif %}
-<section class="panel">
-  <p><strong>Dry-run is {{ "on" if dry_run else "off" }}.</strong>
+<section class="panel dry{{ ' live' if not dry_run }}">
+  <p><span class="badge{{ ' warn' if not dry_run }}">Dry-run {{ "on" if dry_run else "off" }}</span>
   {% if dry_run %}Automod logs what it would do without doing it.{% else %}Automod acts on rule matches.{% endif %}</p>
   {% if is_owner %}
-  <form method="post" action="/automod/dryrun">
+  <form method="post" action="/automod/dryrun" data-confirm="{{ 'Switch dry-run off? Automod will start deleting, muting and banning.' if dry_run else 'Switch dry-run on? Automod will only log what it would do.' }}">
     <input type="hidden" name="csrf" value="{{ session.csrf }}">
     <input type="hidden" name="dry_run" value="{{ 'off' if dry_run else 'on' }}">
     <button type="submit">{{ "Switch dry-run off" if dry_run else "Switch dry-run on" }}</button>
@@ -30,7 +30,7 @@
   {% for ruleset in document.rulesets %}
   <tr>
     <td><a href="/automod/rulesets/{{ ruleset.id }}">{{ ruleset.name }}</a></td>
-    <td>{{ "Enabled" if ruleset.enabled else "Disabled" }}</td>
+    <td><span class="badge{{ ' ok' if ruleset.enabled }}">{{ "Enabled" if ruleset.enabled else "Disabled" }}</span></td>
     <td class="num">{{ ruleset.rules|length }}</td>
   </tr>
   {% endfor %}

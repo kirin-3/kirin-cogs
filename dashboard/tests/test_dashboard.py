@@ -194,6 +194,15 @@ async def test_security_headers_on_public_and_protected_pages(site: SimpleNamesp
 
 
 @pytest.mark.asyncio
+async def test_only_the_sites_own_script_may_run(site: SimpleNamespace) -> None:
+    policy = SECURITY_HEADERS["Content-Security-Policy"]
+    assert "script-src 'self';" in policy and "unsafe" not in policy and "connect-src" not in policy
+    # nosniff blocks a script served with the wrong type.
+    script = await site.client.get("/static/site.js")
+    assert script.status == 200 and "javascript" in script.headers["Content-Type"]
+
+
+@pytest.mark.asyncio
 async def test_user_text_is_escaped(site: SimpleNamespace) -> None:
     banlog = _FakeBanLog()
     banlog.bans = [
@@ -213,7 +222,7 @@ async def test_user_text_is_escaped(site: SimpleNamespace) -> None:
     body = await (await site.client.get("/", headers=_log_in(site))).text()
 
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in body
-    assert "<script" not in body and "<b>" not in body
+    assert "<script>" not in body and "<b>" not in body
 
 
 # --- login ---------------------------------------------------------------------------------------

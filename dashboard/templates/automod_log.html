@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Automod log{% endblock %}
 {% block content %}
-<p><a href="/automod">← Automod</a></p>
+<p class="back"><a href="/automod">← Automod</a></p>
 <h1>Automod log</h1>
 {% if missing %}
 <p class="notice">Automod is not loaded. Load the AutoMod cog to view its log.</p>
@@ -9,6 +9,7 @@
 <p class="empty">Automod hasn't matched anything yet.</p>
 {% else %}
 <p class="empty">The newest {{ entries|length }} entries. Message text is never stored.</p>
+<input type="search" class="filter" placeholder="Filter by member, channel, rule or action" aria-label="Filter the log" hidden>
 <div class="scroll">
 <table>
   <thead><tr><th>Time</th><th>Member</th><th>Where</th><th>Rules</th><th>Actions</th></tr></thead>
@@ -24,7 +25,7 @@
     <td><ul class="rows">{% for hit in entry.rules %}<li>{{ hit.ruleset }} / {{ hit.rule }} <small>{{ hit.trigger }}</small></li>{% endfor %}</ul></td>
     <td><ul class="rows">
       {% for action in entry.actions %}
-      <li class="status-{{ action.status }}">{{ action.type }}: {{ {"done": "done", "would": "would have (dry-run)", "skipped": "skipped", "failed": "failed"}.get(action.status, action.status) }}{% if action.error %} <small>{{ action.error }}</small>{% endif %}</li>
+      <li>{{ action.type }}: <span class="badge status-{{ action.status }}">{{ {"done": "done", "would": "would have (dry-run)", "skipped": "skipped", "failed": "failed"}.get(action.status, action.status) }}</span>{% if action.error %} <small>{{ action.error }}</small>{% endif %}</li>
       {% else %}<li>No action</li>{% endfor %}
     </ul></td>
   </tr>

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% from "_automod_editor.html" import editor, rows %}
+{% from "_automod_editor.html" import editor, row, rows %}
 {% block title %}{{ ruleset.name }} · Automod{% endblock %}
 {% block content %}
-<p><a href="/automod">← Automod</a></p>
+<p class="back"><a href="/automod">← Automod</a></p>
 <div class="bar">
   <h1>{{ ruleset.name }}</h1>
-  <span class="tag-plain">{{ "Enabled" if ruleset.enabled else "Disabled" }}</span>
+  <span class="badge{{ ' ok' if ruleset.enabled }}">{{ "Enabled" if ruleset.enabled else "Disabled" }}</span>
 </div>
 
 <section class="panel">
@@ -15,7 +15,7 @@
   <details class="edit"{% if settings.open %} open{% endif %}>
     <summary>Edit ruleset</summary>
     {{ editor("/automod/rulesets/" ~ ruleset.id, settings, session.csrf, settings=True) }}
-    <form method="post" action="/automod/rulesets/{{ ruleset.id }}/delete" class="danger">
+    <form method="post" action="/automod/rulesets/{{ ruleset.id }}/delete" class="danger" data-confirm="Delete the ruleset “{{ ruleset.name }}” and all its rules?">
       <input type="hidden" name="csrf" value="{{ session.csrf }}">
       <button type="submit">Delete this ruleset and its rules</button>
     </form>
@@ -27,17 +27,16 @@
 {% for rule in rules %}
 <article class="panel" id="rule-{{ rule.id }}">
   <h3>{{ rule.name }}</h3>
-  <p class="label">Fires when any of these match</p>
-  {{ rows("triggers", rule.view.triggers) }}
-  <p class="label">and all of these hold</p>
-  {{ rows("conditions", rule.view.conditions) }}
-  <p class="label">Then</p>
-  {{ rows("effects", rule.view.effects) }}
+  <div class="flow">
+    <div><p class="label">Fires when any of these match</p>{{ rows("triggers", rule.view.triggers) }}</div>
+    <div><p class="label">and all of these hold</p>{{ rows("conditions", rule.view.conditions) }}</div>
+    <div><p class="label">Then</p>{{ rows("effects", rule.view.effects) }}</div>
+  </div>
   {% if is_owner %}
   <details class="edit"{% if rule.editor.open %} open{% endif %}>
     <summary>Edit rule</summary>
     {{ editor("/automod/rules/" ~ rule.id, rule.editor, session.csrf) }}
-    <form method="post" action="/automod/rules/{{ rule.id }}/delete" class="danger">
+    <form method="post" action="/automod/rules/{{ rule.id }}/delete" class="danger" data-confirm="Delete the rule “{{ rule.name }}”?">
       <input type="hidden" name="csrf" value="{{ session.csrf }}">
       <button type="submit">Delete this rule</button>
     </form>
@@ -53,5 +52,9 @@
   <summary>Add a rule</summary>
   {{ editor("/automod/rulesets/" ~ ruleset.id ~ "/rules", new_rule, session.csrf) }}
 </details>
+{# Blank rows that site.js copies into an editor when you add a row. #}
+{% for section, types in row_templates.items() %}{% for key, r in types %}
+<template id="tpl-{{ section }}-{{ key }}">{{ row(section, 0, r) }}</template>
+{% endfor %}{% endfor %}
 {% endif %}
 {% endblock %}

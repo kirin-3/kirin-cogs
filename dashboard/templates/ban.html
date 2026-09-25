@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Ban{% endblock %}
 {% block content %}
-<p><a href="/">← All bans</a></p>
+<p class="back"><a href="/">← All bans</a></p>
 {% if missing %}
 <p class="notice">Ban logging is not loaded. Load the BanLog cog to record and view bans.</p>
 {% else %}
@@ -18,7 +18,7 @@
 <article class="message{% if message.deleted_at %} deleted{% endif %}">
   <header>
     <span class="channel">{{ channel_name(message.channel_id) }}</span>
-    <time>{{ message.created_at|when }}</time>
+    {{ message.created_at|when }}
     {% if message.deleted_at %}<span class="tag">Deleted before ban</span>{% endif %}
   </header>
   <p class="content">{{ message.content }}</p>

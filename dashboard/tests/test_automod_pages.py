@@ -127,7 +127,7 @@ async def test_staff_see_rules_without_edit_controls(am: SimpleNamespace) -> Non
     am.bot.is_owner = AsyncMock(return_value=False)
     ids = _ids(await am.automod.document())
     overview = await (await am.client.get("/automod", headers=am.headers)).text()
-    assert "Dry-run is on." in overview
+    assert ">Dry-run on<" in overview
     assert "invite" in overview and "slurs" in overview
     assert "<form" not in overview.split("</header>")[1]
 
@@ -135,7 +135,7 @@ async def test_staff_see_rules_without_edit_controls(am: SimpleNamespace) -> Non
     assert "Member has none of @Gold, Deleted role 424242" in page
     assert "Mute for 1440 min (0 = until unmuted): Invite" in page
     assert "Message contains a word from list “slurs”" in page
-    assert "Edit rule" not in page and 'method="post" action="/automod' not in page
+    assert "Edit rule" not in page and 'method="post" action="/automod' not in page and "<template" not in page
 
     listing = await (await am.client.get("/automod/lists/900", headers=am.headers)).text()
     assert "<li>badword</li>" in listing and "<textarea" not in listing
@@ -163,6 +163,16 @@ async def test_adding_a_row_renders_a_draft_and_stores_nothing(am: SimpleNamespa
     assert 'value="edited"' in text and 'value="changed"' in text
     assert 'name="triggers-2-type" value="words"' in text  # the new row, unsaved
     assert await am.automod.document() == before
+
+
+@pytest.mark.asyncio
+async def test_owners_get_a_blank_row_of_every_type_for_the_script(am: SimpleNamespace) -> None:
+    ids = _ids(await am.automod.document())
+    page = await (await am.client.get(f"/automod/rulesets/{ids['ruleset']}", headers=am.headers)).text()
+    for section, types in am.automod.registry.SECTIONS.items():
+        for key in types:
+            template = page.split(f'<template id="tpl-{section}-{key}">')[1].split("</template>")[0]
+            assert f'name="{section}-0-type" value="{key}"' in template
 
 
 @pytest.mark.asyncio
@@ -258,5 +268,5 @@ async def test_log_page_marks_dry_run_and_failures(am: SimpleNamespace) -> None:
         ]
     )
     text = await (await am.client.get("/automod/log", headers=am.headers)).text()
-    assert "delete: would have (dry-run)" in text
-    assert "mute: failed <small>Too high</small>" in text
+    assert 'delete: <span class="badge status-would">would have (dry-run)</span>' in text
+    assert 'mute: <span class="badge status-failed">failed</span> <small>Too high</small>' in text
