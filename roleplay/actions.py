@@ -11,8 +11,6 @@ from pathlib import Path
 
 import yaml
 
-from . import const
-
 
 @dataclass
 class Denial:
@@ -103,7 +101,6 @@ class ActionManager:
 
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.logger.setLevel(const.LOGGER_LEVEL)
 
         self.actions: list[Action] = []
 

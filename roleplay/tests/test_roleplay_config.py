@@ -1,6 +1,7 @@
 """Guards the Config storage key that existing members' roleplay settings live under,
 plus the data-deletion and consent-reply logic."""
 
+import logging
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -8,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from roleplay import settings as settings_module
+from roleplay.actions import ActionManager
 from roleplay.unicornia.predicates import ExtendedMessagePredicate
 from roleplay.users import Manager
 
@@ -86,3 +88,11 @@ def test_yes_or_no_stops_on_first_no() -> None:
     assert not pred(_message(10, "maybe"))
     assert pred(_message(20, "nope"))
     assert pred.result is False
+
+
+def test_actions_load_with_logger_left_broken_by_pre_port_cog(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The pre-port cog ran `logger.setLevel = LOGGER_LEVEL`; loggers outlive a cog reload
+    logger = logging.getLogger("roleplay.actions.ActionManager")
+    monkeypatch.setattr(logger, "setLevel", 20, raising=False)
+
+    assert ActionManager().actions
