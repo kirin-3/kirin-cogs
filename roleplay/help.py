@@ -32,7 +32,7 @@ class Help:
             description="Here are the available commands for the Roleplay cog:",
             color=const.EMBED_COLOR,
         )
-        embed.set_thumbnail(url=ctx.me.display_avatar.url)
+        embed.set_thumbnail(url=(ctx.me.avatar or ctx.me.default_avatar).url)
         embed.set_footer(text=const.EMBED_FOOTER)
 
         # Subcommands field
@@ -67,7 +67,7 @@ class Help:
         - **Username** - Identifies users uniquely across Discord.\n- **ID** - Unique numerical identifier for users, servers, etc.\n- **Mention** - Directly notify and alert a user within a message.
         """
         embed = discord.Embed(title="Roleplay Settings", description=description, color=const.EMBED_COLOR)
-        embed.set_thumbnail(url=ctx.me.display_avatar.url)
+        embed.set_thumbnail(url=(ctx.me.avatar or ctx.me.default_avatar).url)
         embed.set_footer(text=const.EMBED_FOOTER)
 
         # Subcommands fields

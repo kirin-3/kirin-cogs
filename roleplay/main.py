@@ -441,7 +441,7 @@ class Roleplay(commands.Cog):
         # EMBEDS WON'T SPOILER IMAGES INSIDE THEM
         # Embed.spoiler_image() creates manages a local cache and uses file attachments
         # which makes for a bit nicer presentation
-        embed.set_footer(text=footer, icon_url=ctx.me.display_avatar.url)
+        embed.set_footer(text=footer, icon_url=(ctx.me.avatar or ctx.me.default_avatar).url)
         if is_url and action.spoiler:
             async with ctx.typing():
                 _, file = await asyncio.to_thread(Embed.spoiler_image, image, embed)
