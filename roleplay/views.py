@@ -50,6 +50,8 @@ class ConsentView(discord.ui.View):
 
     @discord.ui.button(label="Yes", style=discord.ButtonStyle.success)
     async def yes(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if await self.already_answered(interaction):
+            return
         self.accepted.add(interaction.user.id)
         if self.accepted != self.responder_ids:
             await interaction.response.send_message("Thanks! Waiting for the others to answer.", ephemeral=True)
@@ -59,9 +61,24 @@ class ConsentView(discord.ui.View):
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
     async def no(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if await self.already_answered(interaction):
+            return
         self.result = False
         self.declined_by = interaction.user.id
         await self.finish(interaction)
+
+    async def already_answered(self, interaction: discord.Interaction) -> bool:
+        """Presses can already be on their way when the answer is decided (or the question
+        times out), and they run afterwards. They mustn't change it, so they're turned
+        away here.
+
+        This only awaits when turning a press away, so nothing else can run between a
+        callback finding the question open and recording its answer.
+        """
+        if self.result is None and not self.is_finished():
+            return False
+        await interaction.response.send_message("This question is closed.", ephemeral=True)
+        return True
 
     async def finish(self, interaction: discord.Interaction) -> None:
         self.stop()

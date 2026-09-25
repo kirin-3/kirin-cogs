@@ -199,6 +199,42 @@ async def test_consent_buttons_stop_on_the_first_no() -> None:
     assert view.is_finished()
 
 
+@pytest.mark.asyncio
+async def test_a_no_is_not_overwritten_by_a_yes_already_queued() -> None:
+    # both presses reached the bot before either callback ran
+    view = ConsentView([_Member(10), _Member(20)])  # type: ignore[list-item]
+    await view.yes.callback(_press(10))
+
+    await view.no.callback(_press(20))
+    late_yes = _press(20)
+    await view.yes.callback(late_yes)
+
+    assert view.result is False
+    assert view.declined_by == 20
+    late_yes.response.edit_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_yes_is_not_overwritten_by_a_no_already_queued() -> None:
+    view = ConsentView([_Member(10)])  # type: ignore[list-item]
+
+    await view.yes.callback(_press(10))
+    await view.no.callback(_press(10))
+
+    assert view.result is True
+    assert view.declined_by is None
+
+
+@pytest.mark.asyncio
+async def test_a_press_after_the_question_timed_out_is_ignored() -> None:
+    view = ConsentView([_Member(10)])  # type: ignore[list-item]
+    view.stop()  # what a timeout does
+
+    await view.yes.callback(_press(10))
+
+    assert view.result is None
+
+
 def test_actions_are_found_by_alias_in_any_case() -> None:
     manager = ActionManager()
 
