@@ -24,8 +24,7 @@ class Help:
         Args:
             ctx (commands.Context): The context of the command invocation.
         """
-        prefix = await ctx.bot.get_valid_prefixes(ctx.guild)
-        prefix = prefix[0] if prefix else "!"  # Use the first valid prefix or default to "!"
+        prefix = ctx.clean_prefix
 
         embed = discord.Embed(
             title="Roleplay Commands",
@@ -36,7 +35,7 @@ class Help:
         embed.set_footer(text=const.EMBED_FOOTER)
 
         # Subcommands field
-        subcommands = f"- **{prefix}roleplay settings**: Show and manage your settings for Roleplay.\nUse `&roleplay settings help` for more detailed help on managing your settings."
+        subcommands = f"- **{prefix}roleplay settings**: Show and manage your settings for Roleplay.\nUse `{prefix}roleplay settings help` for more detailed help on managing your settings."
         embed.add_field(name="Settings", value=subcommands, inline=False)
 
         # Actions field
@@ -57,8 +56,7 @@ class Help:
         Args:
             ctx (commands.Context): The context of the command invocation.
         """
-        prefix = await ctx.bot.get_valid_prefixes(ctx.guild)
-        prefix = prefix[0] if prefix else "!"  # Use the first valid prefix or default to "!"
+        prefix = ctx.clean_prefix
 
         description = f"""
         Here are the available subcommands for the `{prefix}roleplay settings` command.

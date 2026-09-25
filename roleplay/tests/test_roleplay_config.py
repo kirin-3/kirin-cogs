@@ -1,5 +1,5 @@
 """Guards the Config storage key that existing members' roleplay settings live under,
-plus the data-deletion and consent-reply logic."""
+plus the data-deletion logic."""
 
 import logging
 from types import SimpleNamespace
@@ -10,7 +10,6 @@ import pytest
 
 from roleplay import settings as settings_module
 from roleplay.actions import ActionManager
-from roleplay.unicornia.predicates import ExtendedMessagePredicate
 from roleplay.users import Manager
 
 
@@ -63,31 +62,6 @@ async def test_delete_user_data_removes_own_settings_and_references() -> None:
     await manager.delete_user_data(42)
 
     assert users == {7: {"allowed": [8], "blocked": [], "owners": None}, 8: {"allowed": [7]}}
-
-
-def _message(author_id: int, content: str, channel_id: int = 1) -> Any:
-    return SimpleNamespace(
-        author=SimpleNamespace(id=author_id), channel=SimpleNamespace(id=channel_id), content=content
-    )
-
-
-def test_yes_or_no_waits_for_every_user_to_agree() -> None:
-    pred = ExtendedMessagePredicate(channel_id=1, user_ids={10, 20})
-
-    assert not pred(_message(10, "yes", channel_id=2))
-    assert not pred(_message(30, "yes"))
-    assert not pred(_message(10, "Yes"))
-    assert pred.result is None
-    assert pred(_message(20, "sure"))
-    assert pred.result is True
-
-
-def test_yes_or_no_stops_on_first_no() -> None:
-    pred = ExtendedMessagePredicate(channel_id=1, user_ids={10, 20})
-
-    assert not pred(_message(10, "maybe"))
-    assert pred(_message(20, "nope"))
-    assert pred.result is False
 
 
 def test_actions_load_with_logger_left_broken_by_pre_port_cog(monkeypatch: pytest.MonkeyPatch) -> None:

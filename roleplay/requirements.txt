@@ -1,1 +1,0 @@
-git+https://github.com/ruffiana/Unicornia.git@main#egg=unicornia

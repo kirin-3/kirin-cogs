@@ -1,23 +1,24 @@
 """Main module for roleplay bot"""
 
-import asyncio
 import logging
 from pathlib import Path
 from random import choice
 from urllib.parse import urlparse
 
+import aiohttp
 import discord
 from redbot.core import commands
 from redbot.core.bot import Red
 from redbot.core.data_manager import cog_data_path
+from redbot.core.utils.chat_formatting import humanize_list, inline
 
-from . import __version__, const
+from . import __version__, consent, const
 from .actions import Action, ActionManager
 from .embed import Embed
 from .help import Help
 from .settings import Settings
 from .unicornia import strings, web
-from .unicornia.predicates import ExtendedMessagePredicate
+from .views import request_consent
 
 
 class Roleplay(commands.Cog):
@@ -30,6 +31,12 @@ class Roleplay(commands.Cog):
         self.action_manager = ActionManager()
         self.helper = Help(self.action_manager)
         self.user_settings = Settings(bot, self)
+
+        # action commands are added to the bot directly, see create_action_command()
+        self.action_commands: list[commands.Command] = []
+
+        # for downloading action images, see http_session()
+        self.session: aiohttp.ClientSession | None = None
 
         self.create_action_commands()
 
@@ -50,6 +57,23 @@ class Roleplay(commands.Cog):
     async def initialize(self):
         await self.bot.wait_until_red_ready()
         self.action_manager.update(self.images_path)
+
+    def http_session(self) -> aiohttp.ClientSession:
+        """The cog's HTTP session, created on first use (it has to be created while the
+        bot's event loop is running) and closed when the cog is unloaded."""
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+
+    async def cog_unload(self):
+        # the bot only removes the cog's own commands when it's unloaded, so the action
+        # commands added to it directly have to be removed here or reloading will fail
+        for command in self.action_commands:
+            if self.bot.all_commands.get(command.name) is command:
+                self.bot.remove_command(command.name)
+
+        if self.session is not None:
+            await self.session.close()
 
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
         """Remove the user's roleplay settings and their ID from every other member's lists."""
@@ -80,15 +104,28 @@ class Roleplay(commands.Cog):
     async def download(self, ctx: commands.Context):
         """Downloads all action images into the cog's data folder"""
         images_path = self.images_path
+        downloaded = skipped = failed = 0
 
         async with ctx.typing():
             for action in self.action_manager.actions:
-                for image_url in action.images:
-                    await asyncio.to_thread(
-                        web.save_image_from_url, image_url, images_path, action.name, action.spoiler
+                for image_url in action.image_urls:
+                    saved = await web.save_image_from_url(
+                        self.http_session(), image_url, images_path, action.name, action.spoiler
                     )
+                    if saved is None:
+                        failed += 1
+                    elif saved:
+                        downloaded += 1
+                    else:
+                        skipped += 1
 
-        await ctx.send(f"Roleplay action images downloaded to: {images_path}")
+        # start using the images just downloaded
+        self.action_manager.update(images_path)
+
+        await ctx.send(
+            f"Roleplay action images saved to: {images_path}\n"
+            f"Downloaded: {downloaded}, already saved: {skipped}, failed: {failed}"
+        )
 
     @logger_settings.command(aliases=["level", "setlevel"])
     async def logger_set_level(self, ctx: commands.Context, level_name: str):
@@ -120,21 +157,6 @@ class Roleplay(commands.Cog):
     async def settings_help(self, ctx: commands.Context):
         self.logger.debug("Default help for `roleplay settings` command intercepted.")
         return await self.helper.settings(ctx)
-
-    @commands.Cog.listener()
-    async def on_command_error(self, ctx: commands.Context, error: commands.CommandError):
-        """Sets up listener to override default help menu for cog
-
-        Args:
-            ctx (commands.Context): The context of the command invocation.
-            error (commands.CommandError): CommandError passed in as arg
-        """
-        self.logger.error(f"Command Error: {error}")
-        if isinstance(error, commands.CommandNotFound) and ctx.command is None:
-            # don't send the roleplay help otherwise it will spam for
-            # every & command
-            # await self.roleplay_help.roleplay(ctx)
-            pass
 
     def create_action_commands(self):
         """Factory to create command methods roleplay action"""
@@ -197,7 +219,16 @@ class Roleplay(commands.Cog):
         # group (&roleplay hug) but the individual commands do not show up in the redbot
         # help menu under "no category"
         setattr(self, action_name, command)
+
+        # a copy of this command can still be registered from before cog_unload()
+        # cleaned up after itself. Only remove it if it came from this cog's code, so
+        # another cog's command with the same name is left alone
+        existing = self.bot.all_commands.get(action_name)
+        if existing is not None and existing.cog is None and existing.module == command.module:
+            self.bot.remove_command(action_name)
+
         self.bot.add_command(command)
+        self.action_commands.append(command)
         # Add the command to the roleplay group
         self.roleplay.add_command(command)
 
@@ -227,9 +258,15 @@ class Roleplay(commands.Cog):
             target_member = self.user_settings.users_manager.get_default_member(ctx)
             self.logger.debug(f"Action performed by member on themselves. Substituting {target_member}.")
 
+        action = self.action_manager.get(action_name)
+        if action is None:
+            names = humanize_list([inline(name) for name in self.action_manager.list()])
+            await ctx.send(f"{inline(action_name)} isn't a roleplay action. You can ask for: {names}.")
+            return False
+
         return await self.interaction(
             ctx,
-            action_name,
+            action.name,
             invoker_member,
             target_member,
             interaction_type=const.InteractionType.PASSIVE,
@@ -272,106 +309,52 @@ class Roleplay(commands.Cog):
             self.logger.error(f'{self.__class__.__name__}.interaction() called with invalid action "{action_name}"!')
             return False
 
-        # collection settings for invoker and target member
-        target_public = await self.user_settings.config.user(target_member).public()
-        target_servant = await self.user_settings.config.user(target_member).servant()
-        target_selective = await self.user_settings.config.user(target_member).selective()
-        is_blocked = await self.check_blocked(ctx, invoker_member, target_member)
-        is_denied = await self.check_roles(ctx, invoker_member, target_member, action)
-        is_allowed = await self.user_settings.users_manager.in_group(target_member, invoker_member, "allowed")
-        invoker_owner = await self.user_settings.users_manager.get_owner(ctx, invoker_member)
-        target_owner = await self.user_settings.users_manager.get_owner(ctx, target_member)
+        # collect settings and owners for invoker and target member
+        invoker, invoker_owner = await self.get_party(ctx, invoker_member)
+        target, target_owner = await self.get_party(ctx, target_member)
 
+        decision = consent.decide(
+            invoker,
+            target,
+            requester_id=ctx.author.id,
+            passive=interaction_type == const.InteractionType.PASSIVE,
+            consent_required=action.consent.required,
+        )
         self.logger.debug(
-            f"""Ineraction:
+            f"""Interaction:
             action_name : {action_name}
-            invoker_member : {invoker_member}
-            target_member : {target_member}
             interaction_type : {interaction_type.value}
-            target_public : {target_public}
-            target_servant : {target_servant}
-            target_selective : {target_selective}
-            is_blocked : {is_blocked}
-            is_denied : {is_denied}
-            is_allowed : {is_allowed}
-            invoker_owner : {invoker_owner}
-            target_owner : {target_owner}"""
+            invoker : {invoker}
+            target : {target}
+            decision : {decision}"""
         )
 
-        # make sure neither member is blocked by the other
-        if is_blocked:
+        if decision.outcome is consent.Outcome.BLOCKED:
+            await ctx.send(
+                f"**{invoker_member.display_name}**, you can't use that command on **{target_member.display_name}**."
+            )
             self.reset_cooldown(ctx, action_name)
             return False
 
-        # check auto-deny roles
-        if is_denied:
-            self.reset_cooldown(ctx, action_name)
-            return False
-
-        # If the invoker_member owns the target member
-        if invoker_member == target_owner:
-            await self.send_action_message(
-                ctx,
-                invoker_member,
-                target_member,
-                action,
-                interaction_type=interaction_type,
-            )
-            return True
-
-        # If the invoker_member calling the command is in the target's allowed list, execute the command
-        if is_allowed:
-            await self.send_action_message(
-                ctx,
-                invoker_member,
-                target_member,
-                action,
-                interaction_type=interaction_type,
-            )
-            return True
-
-        # if the target has the 'selective user' flag, then decline the command unless:
-        # the invoker is their owner
-        # the interaction is active and they are public use
-        # the interaction is passive and they are servant
-        if all(
-            [
-                target_selective,
-                not invoker_owner,
-                interaction_type == const.InteractionType.ACTIVE and not target_public,
-                interaction_type == const.InteractionType.PASSIVE and not target_servant,
-            ]
-        ):
+        if decision.outcome is consent.Outcome.REFUSED:
             msg = strings.format_string(const.REFUSAL_MESSAGE, target_member=f"**{target_member.display_name}**")
             await ctx.send(msg)
             self.reset_cooldown(ctx, action_name)
             return False
 
-        # Consent is required if:
-        # - The invoker or target has an owner.
-        # - The action is passive and the target is not a servant.
-        # - The action is active, requires consent, and the target is not public use.
-        requires_consent = any(
-            [
-                invoker_owner,
-                target_owner,
-                interaction_type == const.InteractionType.PASSIVE and not target_servant,
-                interaction_type == const.InteractionType.ACTIVE and action.consent.required and not target_public,
-            ]
-        )
-
-        if requires_consent:
+        if decision.outcome is consent.Outcome.ASK:
             self.logger.debug(f"{action_name} consent is required")
+            owners_by_id = {owner.id: owner for owner in (invoker_owner, target_owner) if owner}
             has_consent = await self.ask_for_consent(
                 ctx,
                 invoker_member,
                 target_member,
                 action,
                 interaction_type=interaction_type,
-                invoker_owner=invoker_owner,
-                target_owner=target_owner,
+                owners=[owners_by_id[owner_id] for owner_id in decision.owners],
+                ask_target=decision.ask_target,
             )
-            if has_consent is not True:
+            if not has_consent:
                 self.reset_cooldown(ctx, action_name)
                 return False
 
@@ -384,6 +367,29 @@ class Roleplay(commands.Cog):
             interaction_type=interaction_type,
         )
         return True
+
+    async def get_party(
+        self, ctx: commands.GuildContext, member: discord.Member
+    ) -> tuple[consent.Party, discord.Member | None]:
+        """A member's roleplay settings, and their owner on this server if they have one."""
+        settings = await self.user_settings.config.user(member).all()
+
+        def user_ids(key: str) -> list[int]:
+            value = settings.get(key)
+            return value if isinstance(value, list) else []
+
+        owner = await self.user_settings.users_manager.get_owner(ctx, member, user_ids("owners"))
+        party = consent.Party(
+            id=member.id,
+            bot=member.bot,
+            owner_id=owner.id if owner else None,
+            public=bool(settings.get("public")),
+            servant=bool(settings.get("servant")),
+            selective=bool(settings.get("selective")),
+            allowed=frozenset(user_ids("allowed")),
+            blocked=frozenset(user_ids("blocked")),
+        )
+        return party, owner
 
     async def send_action_message(
         self,
@@ -443,9 +449,15 @@ class Roleplay(commands.Cog):
         # which makes for a bit nicer presentation
         embed.set_footer(text=footer, icon_url=(ctx.me.avatar or ctx.me.default_avatar).url)
         if is_url and action.spoiler:
-            async with ctx.typing():
-                _, file = await asyncio.to_thread(Embed.spoiler_image, image, embed)
-            await ctx.send(description, file=file)
+            try:
+                async with ctx.typing():
+                    file = await Embed.spoiler_image(self.http_session(), image)
+            except (aiohttp.ClientError, TimeoutError):
+                # still show the action, just without its image
+                self.logger.exception(f"Unable to download {image}!")
+                await ctx.send(description)
+            else:
+                await ctx.send(description, file=file)
         elif is_url:
             embed.set_image(url=image)
             await ctx.send(embed=embed)
@@ -459,27 +471,16 @@ class Roleplay(commands.Cog):
                 await ctx.send(embed=embed, file=file)
 
     async def delete_message(self, ctx: commands.Context, delay: int = const.SHORT_DELETE_TIME):
-        """Deletes a message by its ID with exception handling for missing permissions
+        """Deletes the command message after a delay, without making the command wait
+
+        Discord ignores it if the message can't be deleted (missing permissions, already
+        deleted, or in a DM).
 
         Args:
             ctx (commands.Context): The context of the command invocation.
+            delay (int): Seconds to wait before deleting.
         """
-        # Adding a delay before deleting the message
-        await asyncio.sleep(delay)
-
-        try:
-            # Attempt to delete the message
-            await ctx.message.delete()
-            self.logger.debug(f"Message {ctx.message.id} deleted successfully.")
-        except discord.Forbidden:
-            # Handle missing permissions
-            self.logger.debug(f"I don't have permission to delete message {ctx.message.id}")
-        except discord.NotFound:
-            # Handle message not found
-            self.logger.debug(f"Message {ctx.message.id} not found. It may have already been deleted.")
-        except discord.HTTPException as e:
-            # Handle other HTTP exceptions
-            self.logger.debug(f"Failed to delete message {ctx.message.id}: {e}")
+        await ctx.message.delete(delay=delay)
 
     def reset_cooldown(self, ctx: commands.Context, command_name: str):
         """Reset the cooldown for the invoking user."""
@@ -490,67 +491,6 @@ class Roleplay(commands.Cog):
         else:
             self.logger.error(f'Invalid command name: "{command_name}".')
 
-    async def check_roles(
-        self,
-        ctx: commands.GuildContext,
-        invoker_member: discord.Member,
-        target_member: discord.Member,
-        action: Action,
-    ):
-        # If the member has one of the roles that automatically denies the command, send
-        # the denial message. Examples might be "Locked" or "Honorary Chastity"
-        # TODO: This may need more refinement between when a member is calling a command
-        # vs when a command is used on them
-
-        # if no roleIDs are defined, there's nothing to check
-        if action.denial is None or not action.denial.roles:
-            return False
-
-        # check to see if the target member has any of the denial roles
-        # for this action
-        self.logger.debug(f"Auto denial role IDs: {action.denial.roles}")
-        for role_id in action.denial.roles:
-            if await self.user_settings.users_manager.has_role(target_member, role_id):
-                self.logger.debug(f"Role ID:{role_id} in member roles. Action will be auto-denied")
-                deny_message = strings.format_string(
-                    action.denial.message,
-                    invoker_member=f"**{invoker_member.display_name}**",
-                    target_member=f"**{target_member.display_name}**",
-                )
-                self.logger.debug(f"deny_message: {deny_message}")
-                await ctx.send(deny_message)
-                return True
-
-        return False
-
-    async def check_blocked(
-        self,
-        ctx: commands.GuildContext,
-        invoker_member: discord.Member,
-        target_member: discord.Member,
-    ):
-        # If the member calling the command is in the target member's blocked list, or
-        # vice-versa send message that the command can't be used
-        target_member_blocked = await self.user_settings.users_manager.in_group(
-            invoker_member, target_member, "blocked"
-        )
-        invoker_member_blocked = await self.user_settings.users_manager.in_group(
-            target_member, invoker_member, "blocked"
-        )
-        is_blocked = invoker_member_blocked or target_member_blocked
-        self.logger.debug(
-            f"""Checking blocked status:
-                invoker_member_blocked : {invoker_member_blocked}
-                target_member_blocked : {target_member_blocked}
-                is blocked : {is_blocked}"""
-        )
-        if is_blocked:
-            await ctx.send(
-                f"**{invoker_member.display_name}**, you can't use that command on **{target_member.display_name}**."
-            )
-            return True
-        return False
-
     async def ask_for_consent(
         self,
         ctx: commands.GuildContext,
@@ -558,154 +498,73 @@ class Roleplay(commands.Cog):
         target_member: discord.Member,
         action: Action,
         interaction_type: const.InteractionType = const.InteractionType.ACTIVE,
-        invoker_owner: discord.Member | None = None,
-        target_owner: discord.Member | None = None,
-    ):
-        self.logger.debug(
-            f"""get_consent():
-            ctx: {ctx}
-            \tinvoker_member: {invoker_member}
-            \ttarget_member: {target_member}
-            \taction: {action.name}
-            \tinteraction_type={interaction_type}
-            \tinvoker_owner: {invoker_owner}
-            \ttarget_owner: {target_owner}
-            """
-        )
+        owners: list[discord.Member] | None = None,
+        ask_target: bool = True,
+    ) -> bool:
+        """Ask ``owners`` together, then the target member, to consent to the action."""
+        invoker_name = f"**{invoker_member.display_name}**"
+        target_name = f"**{target_member.display_name}**"
 
-        # special-case handler for when the invoker is an admin, and
-        # the target is a bot
-        if invoker_member.guild_permissions.administrator and target_member.bot:
+        if owners:
+            # interaction type is an Enum, so need it's value as string
+            owner_message = getattr(action.consent, f"owner_{interaction_type.value}")
+            question = strings.format_string(
+                f"{owner_message} {const.CONSENT_QUESTION}",
+                owner=" & ".join(owner.mention for owner in owners),
+                invoker_member=invoker_name,
+                target_member=target_name,
+            )
+            if not await self.ask_members(
+                ctx, question, owners, const.OWNER_REFUSAL_MESSAGE, invoker_member, target_member
+            ):
+                return False
+
+        if not ask_target:
             return True
 
-        # collect owners for invoker and target members
-        if not invoker_owner:
-            invoker_owner = await self.user_settings.users_manager.get_owner(ctx, invoker_member)
-        if not target_owner:
-            target_owner = await self.user_settings.users_manager.get_owner(ctx, target_member)
-
-        # interaction type is an Enum, so need it's value as string
-        owner_message = getattr(action.consent, f"owner_{interaction_type.value}")
-
-        # if both invoker and target have owners, ask both for permission
-        if invoker_owner and target_owner:
-            owners_mention = f"**{invoker_owner.mention}** & **{target_owner.mention}**"
-            owners_display_name = f"{invoker_owner.display_name} & {target_owner.display_name}"
-            consent_message = strings.format_string(
-                f"{owner_message} {const.CONSENT_QUESTION}",
-                owner=owners_mention,
-                invoker_member=f"**{invoker_member.display_name}**",
-                target_member=f"**{target_member.display_name}**",
-            )
-            self.logger.debug(f'consent_message : "{consent_message}"')
-            # send the consent message
-            await ctx.send(consent_message)
-
-            # wait for response from owner
-            pred = ExtendedMessagePredicate.yes_or_no(ctx, [invoker_owner, target_owner])
-            try:
-                await self.bot.wait_for("message", timeout=const.TIMEOUT, check=pred)
-            except TimeoutError:
-                await ctx.send(const.TIMEOUT_MESSAGE.format(user=owners_display_name))
-                return False
-
-            # if the either owner declines consent, send this message
-            if not pred.result:
-                refusal_message = const.OWNER_REFUSAL_MESSAGE.format(
-                    owner=target_owner.display_name,
-                    invoker_member=f"**{invoker_member.display_name}**",
-                    target_member=f"**{target_member.display_name}**",
-                )
-                await ctx.send(refusal_message)
-                return False
-            else:
-                return True
-        # if only the invoker has an owner
-        elif invoker_owner and invoker_owner != target_member:
-            consent_message = strings.format_string(
-                f"{owner_message} {const.CONSENT_QUESTION}",
-                owner=invoker_owner.mention,
-                invoker_member=f"**{invoker_member.display_name}**",
-                target_member=f"**{target_member.display_name}**",
-            )
-            self.logger.debug(f'consent_message : "{consent_message}"')
-            await ctx.send(consent_message)
-
-            # wait for response from owner
-            pred = ExtendedMessagePredicate.yes_or_no(ctx, invoker_owner)
-            try:
-                await self.bot.wait_for("message", timeout=const.TIMEOUT, check=pred)
-            except TimeoutError:
-                await ctx.send(const.TIMEOUT_MESSAGE.format(user=f"**{invoker_owner.display_name}**"))
-                return False
-
-            # if the owner declines consent, send this message
-            if not pred.result:
-                refusal_message = const.OWNER_REFUSAL_MESSAGE.format(
-                    owner=invoker_owner.display_name,
-                    invoker_member=f"**{invoker_member.display_name}**",
-                    target_member=f"**{target_member.display_name}**",
-                )
-                await ctx.send(refusal_message)
-                return False
-
-            # don't return True here, as we still need to check the target for consent
-
-        # if only the target has an owner
-        elif target_owner:
-            consent_message = strings.format_string(
-                f"{owner_message} {const.CONSENT_QUESTION}",
-                owner=target_owner.mention,
-                invoker_member=f"**{invoker_member.display_name}**",
-                target_member=f"**{target_member.display_name}**",
-            )
-            self.logger.debug(f'consent_message : "{consent_message}"')
-            await ctx.send(consent_message)
-
-            # wait for response from owner
-            pred = ExtendedMessagePredicate.yes_or_no(ctx, target_owner)
-            try:
-                await self.bot.wait_for("message", timeout=const.TIMEOUT, check=pred)
-            except TimeoutError:
-                await ctx.send(const.TIMEOUT_MESSAGE.format(user=f"**{target_owner.display_name}**"))
-                return False
-
-            # if the owner declines consent, send this message
-            if not pred.result:
-                refusal_message = const.OWNER_REFUSAL_MESSAGE.format(
-                    owner=target_owner.display_name,
-                    invoker_member=f"**{invoker_member.display_name}**",
-                    target_member=f"**{target_member.display_name}**",
-                )
-                await ctx.send(refusal_message)
-                return False
-            # we can return True here as the owner has given consent
-            else:
-                return True
-
-        # Otherwise, no owners are involved and we ask the target member for consent
-        # interaction type is an Enum, so need it's value as string
         consent_message = getattr(action.consent, interaction_type.value)
-        consent_message = f"{consent_message} {const.CONSENT_QUESTION}"
-        consent_message = strings.format_string(
-            consent_message,
-            invoker_member=f"**{invoker_member.display_name}**",
+        question = strings.format_string(
+            f"{consent_message} {const.CONSENT_QUESTION}",
+            invoker_member=invoker_name,
             target_member=target_member.mention,
         )
-        self.logger.debug(f'consent_message : "{consent_message}"')
-        await ctx.send(consent_message)
+        return await self.ask_members(
+            ctx, question, [target_member], const.REFUSAL_MESSAGE, invoker_member, target_member
+        )
 
-        # wait for response from target member
-        pred = ExtendedMessagePredicate.yes_or_no(ctx, target_member)
-        try:
-            await self.bot.wait_for("message", timeout=const.TIMEOUT, check=pred)
-        except TimeoutError:
-            await ctx.send(const.TIMEOUT_MESSAGE.format(user=f"**{target_member.display_name}**"))
+    async def ask_members(
+        self,
+        ctx: commands.GuildContext,
+        question: str,
+        members: list[discord.Member],
+        refusal_message: str,
+        invoker_member: discord.Member,
+        target_member: discord.Member,
+    ) -> bool:
+        """Ask ``members`` a yes/no question, and say so if they decline or don't answer.
+
+        Args:
+            refusal_message (str): Sent when someone declines. ``{owner}`` is replaced
+                with who declined.
+        """
+        self.logger.debug(f'consent_message : "{question}"')
+        view = await request_consent(ctx, question, members)
+
+        if view.result is None:
+            names = " & ".join(f"**{member.display_name}**" for member in members)
+            await ctx.send(const.TIMEOUT_MESSAGE.format(user=names))
             return False
 
-        if not pred.result:
-            refusal_message = const.REFUSAL_MESSAGE.format(target_member=f"**{target_member.display_name}**")
-            await ctx.send(refusal_message)
+        if not view.result:
+            declined_by = next(member for member in members if member.id == view.declined_by)
+            await ctx.send(
+                strings.format_string(
+                    refusal_message,
+                    owner=declined_by.display_name,
+                    invoker_member=f"**{invoker_member.display_name}**",
+                    target_member=f"**{target_member.display_name}**",
+                )
+            )
             return False
-        else:
-            return True
+
+        return True

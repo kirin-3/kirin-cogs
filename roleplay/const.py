@@ -33,14 +33,6 @@ DEFAULT_MEMBER_ID = {
     684360255798509578: 695701050656817172,  # Unicornia Server : Unicorn Bot#0200
 }
 
-# These are used to automatically approve or deny an action based on target member's
-# roles
-LOCKED = 686098381214711837
-HONORARY_CHASTITY = 708022873058574396
-FREE_USE = 6960
-PETPLAY = 9031
-PET = 694788853419999352
-
 # seconds to delete any settings messages sent to user in private message short time
 # would be used in any public-facing channel, to keep them from being too cluttered.
 # long delete times would be used for ephemeral responses or private messages
@@ -58,9 +50,6 @@ class InteractionType(Enum):
     PASSIVE = "passive"
 
 
-# default message for when an action command is denied based on the
-# target's roles
-DENY_MESSAGE = "{invoker_member} can't do that to {target_member} in their current state."
 # default message for when a member denies consent for a roleplay action command.
 REFUSAL_MESSAGE = "{target_member} does not wish to do that."
 # message for when an owner(s) denies consent for an active command.

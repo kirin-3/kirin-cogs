@@ -18,11 +18,9 @@ Functions:
 """
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import discord
-import yaml
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import humanize_list
@@ -42,8 +40,6 @@ class Settings:
     This class dynamically creates settings commands based on the user settings
     configuration.
     """
-
-    PATH_USER_SETTINGS = Path(__file__).parent / "user_settings.yml"
 
     def __init__(self, bot: Red, parent: "Roleplay") -> None:
         """Initializes the Settings cog.
@@ -74,14 +70,6 @@ class Settings:
 
         # Dynamically create commands based on USER_SETTINGS
         self.create_setting_commands()
-
-    def load_user_settings(self) -> dict:
-        with open(self.PATH_USER_SETTINGS, encoding="utf-8") as file:
-            try:
-                return yaml.safe_load(file)
-            except yaml.YAMLError:
-                self.logger.error(f"Error trying to parse {self.PATH_USER_SETTINGS}!")
-                return {}
 
     def create_setting_commands(self) -> None:
         """Creates dynamic commands based on the user settings configuration."""
