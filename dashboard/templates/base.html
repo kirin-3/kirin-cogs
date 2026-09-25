@@ -10,6 +10,7 @@
 <header class="top">
   <a class="brand" href="/">Unicornia staff</a>
   {% if session %}
+  <nav class="nav"><a href="/">Bans</a><a href="/automod">Automod</a></nav>
   <form class="logout" method="post" action="/logout">
     <span>{{ user_name(session.user_id) }}</span>
     <input type="hidden" name="csrf" value="{{ session.csrf }}">

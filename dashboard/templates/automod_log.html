@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Automod log{% endblock %}
+{% block content %}
+<p><a href="/automod">← Automod</a></p>
+<h1>Automod log</h1>
+{% if missing %}
+<p class="notice">Automod is not loaded. Load the AutoMod cog to view its log.</p>
+{% elif not entries %}
+<p class="empty">Automod hasn't matched anything yet.</p>
+{% else %}
+<p class="empty">The newest {{ entries|length }} entries. Message text is never stored.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>Time</th><th>Member</th><th>Where</th><th>Rules</th><th>Actions</th></tr></thead>
+  <tbody>
+  {% for entry in entries %}
+  <tr>
+    <td class="date">{{ entry.at|when }}</td>
+    <td>{{ entry.user }}<small>{{ entry.user_id }}</small></td>
+    <td>
+      {% if entry.channel_id %}{{ channel_name(entry.channel_id) }}{% else %}{{ {"join": "Joined", "name": "Name change"}.get(entry.event, entry.event) }}{% endif %}
+      {% if entry.event == "edit" %}<small>Edited message</small>{% endif %}
+    </td>
+    <td><ul class="rows">{% for hit in entry.rules %}<li>{{ hit.ruleset }} / {{ hit.rule }} <small>{{ hit.trigger }}</small></li>{% endfor %}</ul></td>
+    <td><ul class="rows">
+      {% for action in entry.actions %}
+      <li class="status-{{ action.status }}">{{ action.type }}: {{ {"done": "done", "would": "would have (dry-run)", "skipped": "skipped", "failed": "failed"}.get(action.status, action.status) }}{% if action.error %} <small>{{ action.error }}</small>{% endif %}</li>
+      {% else %}<li>No action</li>{% endfor %}
+    </ul></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

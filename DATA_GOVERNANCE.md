@@ -7,6 +7,7 @@ This document is the per-cog annex to the bot's [Privacy Policy](PRIVACY.md), wh
 | Cog | Persistent or externally processed data | Deletion behavior |
 | --- | --- | --- |
 | AntiNuke | Trusted user IDs; quarantine role snapshots, reasons, and timestamps | Removes trust and quarantine entries |
+| AutoMod | Action log of the newest 250 automod actions (time, member ID and name, channel ID, matched rules, actions taken); no message text. Per-member message counts for spam rules in memory only | Every request removes the user's log entries and in-memory counts; entries also drop out once 250 newer ones exist |
 | BanLog | 7-day copy of every non-bot Unicornia message (author/channel IDs, content, latest edit, attachment filenames, deletion time); permanent ban records with user ID, username, moderator ID, reason, ban/unban times, and the banned user's messages from the week before the ban | Stored messages pruned hourly after 7 days. `user` requests remove stored messages and keep ban records as moderation records; `user_strict`, `owner`, and `discord_deleted_user` also remove the user's ban records and replace them as moderator with placeholder `0xDE1` |
 | Confess | Confession text posted to Discord; author ID/content audit messages sent to bot owners | No local per-user record; Discord retention and deletion tools apply |
 | CustomCommand | User limits, command ownership, triggers, and responses | Removes limits and commands owned by the user |

@@ -209,7 +209,7 @@ async def test_prune_drops_week_old_messages_but_not_ban_records(cog: BanLog) ->
 
 
 def test_parse_moderator_recovers_ban_command_author() -> None:
-    reason = audit_reason(cast(Any, SimpleNamespace(author=_Author())), "spam (again): links")
+    reason = audit_reason(cast(Any, _Author()), "spam (again): links")
 
     assert parse_moderator(BOT_ID, reason, BOT_ID) == (MOD_ID, "spam (again): links")
 
@@ -232,7 +232,7 @@ async def test_ban_snapshots_the_users_recent_messages(cog: BanLog) -> None:
         _message(3, author_id=OTHER_ID, created=now - DAY),
     )
     await cog.on_message(_message(4, created=now - 1, content="last words"))  # still queued at ban time
-    reason = audit_reason(cast(Any, SimpleNamespace(author=_Author())), "spam")
+    reason = audit_reason(cast(Any, _Author()), "spam")
 
     await cog.on_audit_log_entry_create(_entry(discord.AuditLogAction.ban, reason=reason))
 

@@ -1,0 +1,27 @@
+{
+    "name": "AutoMod",
+    "author": [
+        "Kirin"
+    ],
+    "short": "Rule-based automod for Unicornia",
+    "description": "Evaluates owner-defined rulesets on messages, edits, joins and name changes, and punishes through the Moderation cog. Rules are viewed on staff.unicornia.net and edited there by the bot owner.",
+    "install_msg": "AutoMod starts empty and in dry-run. Import rules with `[p]automod import` and an attached JSON file.",
+    "end_user_data_statement": "This cog keeps a log of its last 250 actions: the time, the member's ID and name, the channel, the rules that matched and what was done. It stores no message text. Recent message counts for spam rules are kept in memory only. Red data-deletion requests remove the user's log entries and counts.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "required_cogs": {},
+    "requirements": [
+        "regex"
+    ],
+    "tags": [
+        "moderation",
+        "automod"
+    ]
+}

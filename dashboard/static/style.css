@@ -113,3 +113,40 @@ td small { display: block; color: var(--muted); }
 .edited { color: var(--muted); }
 .files { color: var(--muted); font-size: 0.85rem; }
 .tag { margin-right: 6px; font-size: 0.75rem; font-weight: 600; color: var(--warn); }
+
+/* --- automod --- */
+.nav { display: flex; gap: 16px; margin-right: auto; }
+.panel { margin: 12px 0; padding: 12px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.panel h2 { margin-top: 0; }
+.panel h3 { margin: 0 0 6px; font-size: 1rem; }
+.label { margin: 8px 0 2px; color: var(--muted); font-size: 0.85rem; }
+.rows { margin: 0; padding-left: 1.2rem; overflow-wrap: anywhere; }
+.rows small { color: var(--muted); }
+.tag-plain { color: var(--muted); }
+.inline { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.inline input { flex: 1 1 200px; max-width: 320px; min-width: 0; }
+.edit > summary { cursor: pointer; color: var(--accent); margin-top: 8px; }
+.editor { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.editor label { display: flex; flex-direction: column; gap: 2px; font-size: 0.9rem; }
+.editor label.check { flex-direction: row; align-items: center; gap: 6px; }
+.editor input[type="text"], .editor input[type="number"], .editor textarea, .editor select { width: 100%; }
+textarea, select { font: inherit; padding: 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+.mono, textarea { font-family: ui-monospace, Consolas, monospace; }
+fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-width: 0; }
+legend { color: var(--muted); font-weight: 600; }
+.row { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.row > button { align-self: flex-start; }
+.add { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 8px; }
+.editor .add select { flex: 1 1 180px; width: auto; min-width: 0; }
+.picker summary { cursor: pointer; }
+.choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 2px 12px; max-height: 260px; overflow-y: auto; padding: 6px 0; }
+.editor .choices label { flex-direction: row; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+.actions { margin: 4px 0 0; }
+.actions small { color: var(--muted); }
+.danger { margin-top: 8px; }
+.danger button { color: var(--warn); border-color: var(--warn); }
+.offscreen { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.words { columns: 12rem; overflow-wrap: anywhere; }
+.status-failed { color: var(--warn); }
+.status-would { color: var(--muted); }

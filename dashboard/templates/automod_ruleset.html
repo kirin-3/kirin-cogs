@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_automod_editor.html" import editor, rows %}
+{% block title %}{{ ruleset.name }} · Automod{% endblock %}
+{% block content %}
+<p><a href="/automod">← Automod</a></p>
+<div class="bar">
+  <h1>{{ ruleset.name }}</h1>
+  <span class="tag-plain">{{ "Enabled" if ruleset.enabled else "Disabled" }}</span>
+</div>
+
+<section class="panel">
+  <h2>Conditions for every rule</h2>
+  {{ rows("conditions", conditions) }}
+  {% if is_owner %}
+  <details class="edit"{% if settings.open %} open{% endif %}>
+    <summary>Edit ruleset</summary>
+    {{ editor("/automod/rulesets/" ~ ruleset.id, settings, session.csrf, settings=True) }}
+    <form method="post" action="/automod/rulesets/{{ ruleset.id }}/delete" class="danger">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <button type="submit">Delete this ruleset and its rules</button>
+    </form>
+  </details>
+  {% endif %}
+</section>
+
+<h2>Rules</h2>
+{% for rule in rules %}
+<article class="panel" id="rule-{{ rule.id }}">
+  <h3>{{ rule.name }}</h3>
+  <p class="label">Fires when any of these match</p>
+  {{ rows("triggers", rule.view.triggers) }}
+  <p class="label">and all of these hold</p>
+  {{ rows("conditions", rule.view.conditions) }}
+  <p class="label">Then</p>
+  {{ rows("effects", rule.view.effects) }}
+  {% if is_owner %}
+  <details class="edit"{% if rule.editor.open %} open{% endif %}>
+    <summary>Edit rule</summary>
+    {{ editor("/automod/rules/" ~ rule.id, rule.editor, session.csrf) }}
+    <form method="post" action="/automod/rules/{{ rule.id }}/delete" class="danger">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <button type="submit">Delete this rule</button>
+    </form>
+  </details>
+  {% endif %}
+</article>
+{% else %}
+<p class="empty">This ruleset has no rules.</p>
+{% endfor %}
+
+{% if is_owner %}
+<details class="edit panel" id="rule-new"{% if new_rule.open %} open{% endif %}>
+  <summary>Add a rule</summary>
+  {{ editor("/automod/rulesets/" ~ ruleset.id ~ "/rules", new_rule, session.csrf) }}
+</details>
+{% endif %}
+{% endblock %}

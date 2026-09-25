@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ item.name }} · Automod{% endblock %}
+{% block content %}
+<p><a href="/automod">← Automod</a></p>
+<h1>{{ item.name }}</h1>
+{% if error %}<p class="notice">{{ error }}</p>{% endif %}
+<p class="empty">{{ item.words|length }} entries. {% if users %}Used by {{ users|join(", ") }}.{% else %}No rule uses this list.{% endif %}</p>
+{% if is_owner %}
+<form method="post" action="/automod/lists/{{ item.id }}" class="editor">
+  <input type="hidden" name="csrf" value="{{ session.csrf }}">
+  <label>Name <input type="text" name="name" value="{{ draft.name }}" maxlength="100"></label>
+  <label>Entries, one per line <textarea name="words" rows="16">{{ draft.words|join("\n") }}</textarea></label>
+  <p class="actions"><button type="submit" class="primary">Save</button></p>
+</form>
+<form method="post" action="/automod/lists/{{ item.id }}/delete" class="danger">
+  <input type="hidden" name="csrf" value="{{ session.csrf }}">
+  <button type="submit">Delete this list</button>
+</form>
+{% else %}
+<ul class="words">{% for word in item.words %}<li>{{ word }}</li>{% endfor %}</ul>
+{% endif %}
+{% endblock %}

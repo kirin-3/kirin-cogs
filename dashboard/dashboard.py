@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import aiohttp
+import discord
 import jinja2
 from aiohttp import web
 from aiohttp.typedefs import Handler
@@ -22,6 +23,8 @@ from redbot.core import commands
 from redbot.core.bot import Red
 from redbot.core.errors import CogLoadError
 from yarl import URL
+
+from .automod_forms import SECTIONS, Names, apply_action, editor_view, parse_rows, row_view
 
 GUILD_ID = 684360255798509578
 STAFF_ROLE_ID = 696020813299580940
@@ -37,6 +40,22 @@ STATE_SECONDS = 600
 EXCHANGES_PER_IP = 5  # per minute
 EXCHANGES_TOTAL = 30  # per minute, from all clients
 PUBLIC_PATHS = frozenset({"/login", "/callback", "/logged-out"})
+# POSTs to these routes also need a bot owner; staff can only view automod.
+OWNER_ONLY = frozenset(
+    {
+        "/automod/dryrun",
+        "/automod/rulesets",
+        "/automod/rulesets/{ruleset_id}",
+        "/automod/rulesets/{ruleset_id}/delete",
+        "/automod/rulesets/{ruleset_id}/rules",
+        "/automod/rules/{rule_id}",
+        "/automod/rules/{rule_id}/delete",
+        "/automod/lists",
+        "/automod/lists/{list_id}",
+        "/automod/lists/{list_id}/delete",
+    }
+)
+MAX_WORDS_FORM = 600_000  # characters in a list's textarea
 MAX_PAGE = 10_000
 MAX_QUERY = 100
 DELETED_MODERATOR_ID = 0xDE1
@@ -126,6 +145,21 @@ class Dashboard(commands.Cog):
         app.router.add_post("/logout", self.logout)
         app.router.add_get("/", self.ban_list)
         app.router.add_get(r"/bans/{ban_id:\d{1,18}}", self.ban_detail)
+        ruleset, rule, word_list = r"{ruleset_id:\d{1,18}}", r"{rule_id:\d{1,18}}", r"{list_id:\d{1,18}}"
+        app.router.add_get("/automod", self.automod_overview)
+        app.router.add_get("/automod/log", self.automod_log)
+        app.router.add_get(f"/automod/rulesets/{ruleset}", self.automod_ruleset)
+        app.router.add_get(f"/automod/lists/{word_list}", self.automod_list)
+        app.router.add_post("/automod/dryrun", self.automod_dry_run)
+        app.router.add_post("/automod/rulesets", self.automod_ruleset_create)
+        app.router.add_post(f"/automod/rulesets/{ruleset}", self.automod_ruleset_save)
+        app.router.add_post(f"/automod/rulesets/{ruleset}/delete", self.automod_ruleset_delete)
+        app.router.add_post(f"/automod/rulesets/{ruleset}/rules", self.automod_rule_create)
+        app.router.add_post(f"/automod/rules/{rule}", self.automod_rule_save)
+        app.router.add_post(f"/automod/rules/{rule}/delete", self.automod_rule_delete)
+        app.router.add_post("/automod/lists", self.automod_list_create)
+        app.router.add_post(f"/automod/lists/{word_list}", self.automod_list_save)
+        app.router.add_post(f"/automod/lists/{word_list}/delete", self.automod_list_delete)
         app.router.add_static("/static", HERE / "static")
         return app
 
@@ -145,6 +179,8 @@ class Dashboard(commands.Cog):
         if request.method == "POST":
             form = await request.post()
             if not _same(str(form.get("csrf", "")), session.csrf):
+                raise web.HTTPForbidden()
+            if resource.canonical in OWNER_ONLY and not await self._is_owner(session.user_id):
                 raise web.HTTPForbidden()
         request["session"] = session
         return await handler(request)
@@ -167,6 +203,11 @@ class Dashboard(commands.Cog):
         return member is not None and (
             member.get_role(STAFF_ROLE_ID) is not None or member.guild_permissions.ban_members
         )
+
+    async def _is_owner(self, user_id: int) -> bool:
+        guild = self.bot.get_guild(GUILD_ID)
+        member = guild.get_member(user_id) if guild else None
+        return member is not None and await self.bot.is_owner(member)
 
     def _allow_exchange(self, ip: str) -> bool:
         """Cap code exchanges so a login flood can't get the bot's shared IP banned by Discord."""
@@ -293,6 +334,312 @@ class Dashboard(commands.Cog):
         if ban is None:
             return self._message(request, 404, "Ban not found", "There is no ban record with that number.")
         return self._render(request, "ban.html", ban=ban)
+
+    # --- automod pages -----------------------------------------------------------------------------
+
+    def _automod(self) -> Any:
+        return self.bot.get_cog("AutoMod")
+
+    async def _owner(self, request: web.Request) -> bool:
+        session = request.get("session")
+        return session is not None and await self._is_owner(session.user_id)
+
+    def _names(self, document: dict) -> Names:
+        guild = self.bot.get_guild(GUILD_ID)
+        roles, channels = {}, {}
+        if guild is not None:
+            roles = {r.id: r.name for r in sorted(guild.roles, reverse=True) if not r.is_default()}
+            channels = {
+                c.id: c.name
+                for c in sorted(guild.channels, key=lambda c: c.position)
+                if not isinstance(c, discord.CategoryChannel)
+            }
+        return Names(roles, channels, {item["id"]: item["name"] for item in document["lists"]})
+
+    def _automod_missing(self, request: web.Request) -> web.Response:
+        return self._render(request, "automod.html", missing=True, status=503 if request.method == "POST" else 200)
+
+    async def automod_overview(self, request: web.Request, *, error: str = "", status: int = 200) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        document = await cog.document()
+        return self._render(
+            request,
+            "automod.html",
+            status=status,
+            document=document,
+            dry_run=cog.dry_run,
+            is_owner=await self._owner(request),
+            error=error,
+        )
+
+    async def automod_log(self, request: web.Request) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        return self._render(request, "automod_log.html", entries=await cog.action_log())
+
+    @staticmethod
+    def _find(document: dict, kind: str, item_id: int) -> tuple[dict, dict] | None:
+        """(ruleset, rule) for a rule, (ruleset, ruleset) for a ruleset, (list, list) for a list."""
+        if kind == "list":
+            found = next((item for item in document["lists"] if item["id"] == item_id), None)
+            return (found, found) if found else None
+        for ruleset in document["rulesets"]:
+            if kind == "ruleset" and ruleset["id"] == item_id:
+                return ruleset, ruleset
+            for rule in ruleset["rules"] if kind == "rule" else ():
+                if rule["id"] == item_id:
+                    return ruleset, rule
+        return None
+
+    def _not_found(self, request: web.Request, what: str) -> web.Response:
+        return self._message(request, 404, f"{what} not found", f"There is no automod {what.lower()} with that number.")
+
+    async def automod_ruleset(self, request: web.Request) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        document = await cog.document()
+        found = self._find(document, "ruleset", int(request.match_info["ruleset_id"]))
+        if found is None:
+            return self._not_found(request, "Ruleset")
+        return await self._ruleset_page(request, cog, document, found[0])
+
+    async def _ruleset_page(
+        self,
+        request: web.Request,
+        cog: Any,
+        document: dict,
+        ruleset: dict,
+        *,
+        drafts: dict[Any, tuple[dict, str]] | None = None,
+        status: int = 200,
+    ) -> web.Response:
+        """The ruleset with every rule. `drafts` maps a rule id, "new" or "settings" to (unsaved draft, error)."""
+        registry, names, drafts = cog.registry, self._names(document), drafts or {}
+
+        def editor(key: Any, stored: dict, sections: tuple[str, ...]) -> dict:
+            draft, error = drafts.get(key, (stored, ""))
+            return {
+                "name": draft["name"],
+                "enabled": draft.get("enabled"),
+                "sections": editor_view(registry, draft, names, sections),
+                "error": error,
+                "open": key in drafts,
+            }
+
+        def read_only(item: dict, sections: tuple[str, ...]) -> dict:
+            return {s: [row_view(registry, s, n, row, names) for n, row in enumerate(item[s])] for s in sections}
+
+        blank = {"name": "", "triggers": [], "conditions": [], "effects": []}
+        rules = [
+            {
+                "id": rule["id"],
+                "name": rule["name"],
+                "view": read_only(rule, SECTIONS),
+                "editor": editor(rule["id"], rule, SECTIONS),
+            }
+            for rule in ruleset["rules"]
+        ]
+        return self._render(
+            request,
+            "automod_ruleset.html",
+            status=status,
+            ruleset=ruleset,
+            conditions=read_only(ruleset, ("conditions",))["conditions"],
+            settings=editor("settings", ruleset, ("conditions",)),
+            rules=rules,
+            new_rule=editor("new", blank, SECTIONS),
+            is_owner=await self._owner(request),
+        )
+
+    async def automod_list(
+        self, request: web.Request, *, draft: dict | None = None, error: str = ""
+    ) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        document = await cog.document()
+        found = self._find(document, "list", int(request.match_info["list_id"]))
+        if found is None:
+            return self._not_found(request, "List")
+        return self._render(
+            request,
+            "automod_list.html",
+            status=400 if error else 200,
+            item=found[0],
+            draft=draft or found[0],
+            users=cog.registry.list_users(document, found[0]["id"]),
+            error=error,
+            is_owner=await self._owner(request),
+        )
+
+    # --- automod changes (owner only, see OWNER_ONLY) ------------------------------------------------
+
+    async def _save(self, cog: Any, document: dict) -> str:
+        """Store the document; returns the validation error, or "" when saved."""
+        try:
+            await cog.save(document)
+        except cog.registry.RuleError as e:
+            return str(e)
+        return ""
+
+    async def automod_dry_run(self, request: web.Request) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        form = await request.post()
+        await cog.set_dry_run(form.get("dry_run") == "on")
+        raise web.HTTPFound("/automod")
+
+    async def automod_ruleset_create(self, request: web.Request) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        form = await request.post()
+        document = await cog.document()
+        new_id = document["next_id"]
+        document["next_id"] += 1
+        name = str(form.get("name", "")).strip()
+        document["rulesets"].append({"id": new_id, "name": name, "enabled": True, "conditions": [], "rules": []})
+        if error := await self._save(cog, document):
+            return await self.automod_overview(request, error=error, status=400)
+        raise web.HTTPFound(f"/automod/rulesets/{new_id}")
+
+    async def automod_ruleset_save(self, request: web.Request) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        form = await request.post()
+        document = await cog.document()
+        found = self._find(document, "ruleset", int(request.match_info["ruleset_id"]))
+        if found is None:
+            return self._not_found(request, "Ruleset")
+        ruleset = found[0]
+        draft = {
+            "name": str(form.get("name", "")).strip(),
+            "enabled": "enabled" in form,
+            "conditions": parse_rows(form, cog.registry, "conditions"),
+        }
+        action = str(form.get("action", "save"))
+        if action != "save":
+            apply_action(action, draft, form, cog.registry, ("conditions",))
+            return await self._ruleset_page(request, cog, document, ruleset, drafts={"settings": (draft, "")})
+        ruleset.update(draft)
+        if error := await self._save(cog, document):
+            document = await cog.document()
+            ruleset = self._find(document, "ruleset", ruleset["id"])[0]  # type: ignore[index]
+            return await self._ruleset_page(
+                request, cog, document, ruleset, drafts={"settings": (draft, error)}, status=400
+            )
+        raise web.HTTPFound(f"/automod/rulesets/{ruleset['id']}")
+
+    async def automod_ruleset_delete(self, request: web.Request) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        document = await cog.document()
+        ruleset_id = int(request.match_info["ruleset_id"])
+        document["rulesets"] = [r for r in document["rulesets"] if r["id"] != ruleset_id]
+        if error := await self._save(cog, document):
+            return await self.automod_overview(request, error=error, status=400)
+        raise web.HTTPFound("/automod")
+
+    async def automod_rule_create(self, request: web.Request) -> web.StreamResponse:
+        return await self._rule_submit(request, "ruleset", int(request.match_info["ruleset_id"]))
+
+    async def automod_rule_save(self, request: web.Request) -> web.StreamResponse:
+        return await self._rule_submit(request, "rule", int(request.match_info["rule_id"]))
+
+    async def _rule_submit(self, request: web.Request, kind: str, item_id: int) -> web.StreamResponse:
+        """Save a rule, or rebuild the page with the unsaved draft for add/remove row buttons and errors."""
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        form = await request.post()
+        document = await cog.document()
+        found = self._find(document, kind, item_id)
+        if found is None:
+            return self._not_found(request, "Rule" if kind == "rule" else "Ruleset")
+        ruleset, rule = found[0], found[1] if kind == "rule" else None
+        key = rule["id"] if rule else "new"
+        draft = {"name": str(form.get("name", "")).strip()}
+        draft |= {section: parse_rows(form, cog.registry, section) for section in SECTIONS}
+        action = str(form.get("action", "save"))
+        if action != "save":
+            apply_action(action, draft, form, cog.registry, SECTIONS)
+            return await self._ruleset_page(request, cog, document, ruleset, drafts={key: (draft, "")})
+        if rule is not None:
+            rule.update(draft)
+            rule_id = rule["id"]
+        else:
+            rule_id = document["next_id"]
+            document["next_id"] += 1
+            ruleset["rules"].append({"id": rule_id, **draft})
+        if error := await self._save(cog, document):
+            document = await cog.document()
+            ruleset = self._find(document, "ruleset", ruleset["id"])[0]  # type: ignore[index]
+            return await self._ruleset_page(request, cog, document, ruleset, drafts={key: (draft, error)}, status=400)
+        raise web.HTTPFound(f"/automod/rulesets/{ruleset['id']}#rule-{rule_id}")
+
+    async def automod_rule_delete(self, request: web.Request) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        document = await cog.document()
+        found = self._find(document, "rule", int(request.match_info["rule_id"]))
+        if found is None:
+            return self._not_found(request, "Rule")
+        ruleset, rule = found
+        ruleset["rules"].remove(rule)
+        if error := await self._save(cog, document):
+            return await self.automod_overview(request, error=error, status=400)
+        raise web.HTTPFound(f"/automod/rulesets/{ruleset['id']}")
+
+    async def automod_list_create(self, request: web.Request) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        form = await request.post()
+        document = await cog.document()
+        new_id = document["next_id"]
+        document["next_id"] += 1
+        document["lists"].append({"id": new_id, "name": str(form.get("name", "")).strip(), "words": []})
+        if error := await self._save(cog, document):
+            return await self.automod_overview(request, error=error, status=400)
+        raise web.HTTPFound(f"/automod/lists/{new_id}")
+
+    async def automod_list_save(self, request: web.Request) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        form = await request.post()
+        document = await cog.document()
+        found = self._find(document, "list", int(request.match_info["list_id"]))
+        if found is None:
+            return self._not_found(request, "List")
+        item = found[0]
+        words = str(form.get("words", ""))[:MAX_WORDS_FORM].splitlines()
+        draft = {**item, "name": str(form.get("name", "")).strip(), "words": words}
+        item.update(draft)
+        if error := await self._save(cog, document):
+            return await self.automod_list(request, draft=draft, error=error)
+        raise web.HTTPFound(f"/automod/lists/{item['id']}")
+
+    async def automod_list_delete(self, request: web.Request) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return self._automod_missing(request)
+        document = await cog.document()
+        list_id = int(request.match_info["list_id"])
+        if users := cog.registry.list_users(document, list_id):
+            return await self.automod_list(request, error="This list is used by " + ", ".join(users) + ".")
+        document["lists"] = [item for item in document["lists"] if item["id"] != list_id]
+        if error := await self._save(cog, document):
+            return await self.automod_overview(request, error=error, status=400)
+        raise web.HTTPFound("/automod")
 
     # --- rendering ---------------------------------------------------------------------------------
 

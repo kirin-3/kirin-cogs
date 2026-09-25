@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import random
 import re
 import time
 from collections import defaultdict
@@ -68,6 +69,11 @@ UNMUTE_DM_TITLE = "\N{SPEAKER WITH THREE SOUND WAVES} You have been unmuted"
 UNMUTE_DM = "Your mute in the **Unicornia Server** has ended and your roles have been given back."
 KICK_DM_TITLE = "\N{WOMANS BOOTS} You have been kicked"
 KICK_DM = "You have been kicked from the **Unicornia Server** for the following reason:\n{reason}\n\n" + BAN_WARNING
+TIMEOUT_DM_TITLE = "\N{HOURGLASS WITH FLOWING SAND} You have been timed out"
+TIMEOUT_DM = (
+    "You have been timed out in the **Unicornia Server** for the following reason:\n"
+    "{reason}\n\n**Ends:** {ends}\n\n" + BAN_WARNING
+)
 BAN_DM_TITLE = "\N{NO ENTRY} You have been banned"
 BAN_DM = (
     "You have been banned from the **Unicornia Server** for the following reason:\n"
@@ -171,8 +177,26 @@ def audit_action(entry: discord.AuditLogEntry) -> tuple[str, datetime | None] | 
     return None
 
 
-def audit_reason(ctx: commands.Context, reason: str | None) -> str:
-    return f"{ctx.author} ({ctx.author.id}): {reason or 'No reason given.'}"[:512]
+def audit_reason(moderator: discord.abc.User, reason: str | None) -> str:
+    return f"{moderator} ({moderator.id}): {reason or 'No reason given.'}"[:512]
+
+
+def bot_hierarchy_error(target: discord.Member) -> str | None:
+    """Why the bot can't act on this member, if it can't."""
+    if target == target.guild.owner:
+        return "You can't do that to the server owner."
+    if target.top_role >= target.guild.me.top_role:
+        return "My highest role isn't above theirs."
+    return None
+
+
+def mute_end(current: float | None, new: float | None, keep_longer: bool) -> float | None:
+    """When an already muted member's mute ends after muting again. None means until unmuted."""
+    if not keep_longer:
+        return new
+    if current is None or new is None:
+        return None
+    return max(current, new)
 
 
 def format_warnings(warnings: dict, mod_name: Callable[[int], str | None]) -> list[str]:
@@ -225,6 +249,17 @@ class Moderation(commands.Cog):
         self.warnings_config.register_member(total_points=0, status="", warnings={})
 
     async def cog_load(self) -> None:
+        # Red has no timeout case type; register_casetypes skips it when it already exists.
+        await modlog.register_casetypes(
+            [
+                {
+                    "name": "timeout",
+                    "default_setting": True,
+                    "image": "\N{HOURGLASS WITH FLOWING SAND}",
+                    "case_str": "Timeout",
+                }
+            ]
+        )
         self.expire_mutes.start()
 
     async def cog_unload(self) -> None:
@@ -284,13 +319,16 @@ class Moderation(commands.Cog):
         moderator: discord.abc.User,
         reason: str | None,
         until: datetime | None = None,
+        *,
+        public: bool = True,
     ) -> None:
         """Red modlog case plus the public mod-log post, for every action this cog takes."""
         try:
             await modlog.create_case(self.bot, guild, discord.utils.utcnow(), action, user, moderator, reason, until)
         except Exception:
             log.exception("Could not create %s modlog case in %s", action, guild.id)
-        await self._public_log(guild, log_embed(action, user, moderator, reason, until))
+        if public:
+            await self._public_log(guild, log_embed(action, user, moderator, reason, until))
 
     @staticmethod
     async def _public_log(guild: discord.Guild, embed: discord.Embed) -> None:
@@ -339,9 +377,7 @@ class Moderation(commands.Cog):
             return "You can't do that to the server owner."
         if isinstance(author, discord.Member) and author != guild.owner and target.top_role >= author.top_role:
             return "They have the same or a higher role than you."
-        if target.top_role >= guild.me.top_role:
-            return "My highest role isn't above theirs."
-        return None
+        return bot_hierarchy_error(target)
 
     @staticmethod
     async def _find_member(guild: discord.Guild, user_id: int) -> discord.Member | None:
@@ -455,6 +491,71 @@ class Moderation(commands.Cog):
         if before.roles != after.roles:
             await self._enforce(after)
 
+    async def mute_member(
+        self,
+        member: discord.Member,
+        until: datetime | None,
+        reason: str | None,
+        moderator: discord.abc.User,
+        *,
+        keep_longer: bool = False,
+    ) -> str | None:
+        """Role-strip mute until `until` (None: until unmuted). Returns why it failed, or None.
+
+        With `keep_longer`, an existing mute is never shortened.
+        """
+        error, _already, _notes = await self._mute(member, until, reason, moderator, keep_longer=keep_longer)
+        return error
+
+    async def _mute(
+        self,
+        member: discord.Member,
+        until: datetime | None,
+        reason: str | None,
+        moderator: discord.abc.User,
+        *,
+        keep_longer: bool = False,
+    ) -> tuple[str | None, bool, str]:
+        """(error, was already muted, notes for the moderator)."""
+        if error := bot_hierarchy_error(member):
+            return error, False, ""
+        guild = member.guild
+        muted_role = guild.get_role(MUTED_ROLE_ID)
+        if muted_role is None or not muted_role.is_assignable():
+            return "The Muted role is missing or above my highest role.", False, ""
+        audit = audit_reason(moderator, reason)
+        group = self.config.member(member)
+        async with self._lock(member):
+            record = await group.mute()
+            already = isinstance(record, dict)
+            if isinstance(record, dict):
+                record["until"] = mute_end(record.get("until"), until.timestamp() if until else None, keep_longer)
+                await group.mute.set(record)
+            else:
+                keep, strip = split_roles(member.roles)
+                # Save first, so a crash between these two steps never loses the member's roles.
+                await group.mute.set({"roles": strip, "until": until.timestamp() if until else None})
+                try:
+                    await member.edit(roles=[*keep, muted_role], reason=audit)
+                except discord.HTTPException:
+                    await group.mute.clear()
+                    return "I couldn't change their roles.", False, ""
+        if already:
+            await self._enforce(member)
+            return None, True, ""
+
+        notes = ""
+        if member.voice is not None and member.voice.channel is not None:
+            try:
+                await member.move_to(None, reason=audit)
+            except discord.HTTPException:
+                notes += " They're in voice and I couldn't disconnect them (I need Move Members)."
+        body = MUTE_DM.format(reason=quote(reason), ends=self._ends(until))
+        if not await self._dm(member, notice(guild, MUTE_DM_TITLE, body, discord.Color.dark_orange())):
+            notes += " I couldn't DM them."
+        await self._case(guild, "smute", member, moderator, reason, until)
+        return None, False, notes
+
     @commands.command(usage="<member> [duration] [reason]")  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
     @staff_or(manage_roles=True)
@@ -476,45 +577,47 @@ class Moderation(commands.Cog):
         if error := self._hierarchy_error(ctx, member):
             await ctx.send(error)
             return
-        muted_role = ctx.guild.get_role(MUTED_ROLE_ID)
-        if muted_role is None or not muted_role.is_assignable():
-            await ctx.send("The Muted role is missing or above my highest role.")
-            return
         until = discord.utils.utcnow() + duration if isinstance(duration, timedelta) else None
+        error, already, notes = await self._mute(member, until, reason, ctx.author)
+        if error:
+            await ctx.send(error)
+            return
         ends = f"until {discord.utils.format_dt(until, 'F')}" if until else "until someone unmutes them"
-        group = self.config.member(member)
-        async with self._lock(member):
-            record = await group.mute()
-            already = isinstance(record, dict)
-            if isinstance(record, dict):
-                record["until"] = until.timestamp() if until else None
-                await group.mute.set(record)
-            else:
-                keep, strip = split_roles(member.roles)
-                # Save first, so a crash between these two steps never loses the member's roles.
-                await group.mute.set({"roles": strip, "until": until.timestamp() if until else None})
-                try:
-                    await member.edit(roles=[*keep, muted_role], reason=audit_reason(ctx, reason))
-                except discord.HTTPException:
-                    await group.mute.clear()
-                    await ctx.send("I couldn't change their roles.")
-                    return
         if already:
-            await self._enforce(member)
             await ctx.send(f"**{member}** was already muted. They're now muted {ends}.")
             return
-
-        notes = ""
-        if member.voice is not None and member.voice.channel is not None:
-            try:
-                await member.move_to(None, reason=audit_reason(ctx, reason))
-            except discord.HTTPException:
-                notes += " They're in voice and I couldn't disconnect them (I need Move Members)."
-        body = MUTE_DM.format(reason=quote(reason), ends=self._ends(until))
-        if not await self._dm(member, notice(ctx.guild, MUTE_DM_TITLE, body, discord.Color.dark_orange())):
-            notes += " I couldn't DM them."
-        await self._case(ctx.guild, "smute", member, ctx.author, reason, until)
         await ctx.send(f"\N{SPEAKER WITH CANCELLATION STROKE} Muted **{member}** {ends}.{notes}")
+
+    async def timeout_member(
+        self, member: discord.Member, until: datetime, reason: str | None, moderator: discord.abc.User
+    ) -> str | None:
+        """Discord timeout with a DM, modlog case and public log. Returns why it failed, or None."""
+        if error := bot_hierarchy_error(member):
+            return error
+        try:
+            await member.timeout(until, reason=audit_reason(moderator, reason))
+        except discord.HTTPException:
+            return "I couldn't time them out."
+        body = TIMEOUT_DM.format(reason=quote(reason), ends=self._ends(until))
+        await self._dm(member, notice(member.guild, TIMEOUT_DM_TITLE, body, discord.Color.gold()))
+        await self._case(member.guild, "timeout", member, moderator, reason, until)
+        return None
+
+    async def warn_member(self, member: discord.Member, reason: str | None, moderator: discord.abc.User) -> str | None:
+        """Save a 1-point warning in Red's Warnings storage and DM it. Returns why it failed, or None."""
+        if error := bot_hierarchy_error(member):
+            return error
+        # Red keys warnings by the [p]warn message's snowflake; random low bits keep same-millisecond keys apart.
+        key = str(discord.utils.time_snowflake(discord.utils.utcnow()) + random.randrange(1 << 22))
+        group = self.warnings_config.member(member)
+        async with group.warnings() as warnings:  # also serializes the total_points update below
+            warnings[key] = {"points": 1, "description": reason, "mod": moderator.id}
+            await group.total_points.set(await group.total_points() + 1)
+        embed = notice(member.guild, WARN_DM_TITLE, WARN_DM.format(reason=quote(reason)), discord.Color.orange())
+        embed.set_footer(text=WARN_DM_FOOTER)
+        await self._dm(member, embed)
+        await self._case(member.guild, "warning", member, moderator, reason, public=False)
+        return None
 
     @commands.command()  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
@@ -538,7 +641,7 @@ class Moderation(commands.Cog):
             )
             return
         try:
-            skipped = await self._unmute(member, audit_reason(ctx, reason))
+            skipped = await self._unmute(member, audit_reason(ctx.author, reason))
         except discord.HTTPException:
             await ctx.send("I couldn't change their roles.")
             return
@@ -567,12 +670,48 @@ class Moderation(commands.Cog):
         body = KICK_DM.format(reason=quote(reason))
         dm_ok = await self._dm(member, notice(ctx.guild, KICK_DM_TITLE, body, discord.Color.red()))
         try:
-            await member.kick(reason=audit_reason(ctx, reason))
+            await member.kick(reason=audit_reason(ctx.author, reason))
         except discord.HTTPException:
             await ctx.send("I couldn't kick them.")
             return
         await self._case(ctx.guild, "kick", member, ctx.author, reason)
         await ctx.send(f"\N{WOMANS BOOTS} Kicked **{member}**." + ("" if dm_ok else " I couldn't DM them."))
+
+    async def ban_user(
+        self,
+        guild: discord.Guild,
+        user: discord.abc.User,
+        reason: str | None,
+        delete_days: int,
+        moderator: discord.abc.User,
+    ) -> str | None:
+        """DM a user, then ban them. Returns why it failed, or None."""
+        error, _notes = await self._ban(guild, user, reason, delete_days, moderator)
+        return error
+
+    async def _ban(
+        self,
+        guild: discord.Guild,
+        user: discord.abc.User,
+        reason: str | None,
+        delete_days: int,
+        moderator: discord.abc.User,
+    ) -> tuple[str | None, str]:
+        """(error, notes for the moderator)."""
+        member = await self._find_member(guild, user.id)
+        dm_ok = False
+        if member is not None:
+            if error := bot_hierarchy_error(member):
+                return error, ""
+            body = BAN_DM.format(reason=quote(reason))
+            dm_ok = await self._dm(member, notice(guild, BAN_DM_TITLE, body, discord.Color.dark_red()))
+        try:
+            await guild.ban(user, reason=audit_reason(moderator, reason), delete_message_seconds=delete_days * 86400)
+        except discord.HTTPException:
+            return "I couldn't ban them.", ""
+        await self.config.member_from_ids(guild.id, user.id).mute.clear()  # a ban replaces any mute
+        await self._case(guild, "ban" if member else "hackban", user, moderator, reason)
+        return None, "" if dm_ok or member is None else " I couldn't DM them."
 
     @commands.command(usage="<user> [days] [reason]")  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
@@ -592,22 +731,14 @@ class Moderation(commands.Cog):
         """
         assert ctx.guild is not None
         member = await self._find_member(ctx.guild, user.id)
-        dm_ok = False
-        if member is not None:
-            if error := self._hierarchy_error(ctx, member):
-                await ctx.send(error)
-                return
-            body = BAN_DM.format(reason=quote(reason))
-            dm_ok = await self._dm(member, notice(ctx.guild, BAN_DM_TITLE, body, discord.Color.dark_red()))
-        try:
-            await ctx.guild.ban(user, reason=audit_reason(ctx, reason), delete_message_seconds=(days or 0) * 86400)
-        except discord.HTTPException:
-            await ctx.send("I couldn't ban them.")
+        if member is not None and (error := self._hierarchy_error(ctx, member)):
+            await ctx.send(error)
             return
-        await self.config.member_from_ids(ctx.guild.id, user.id).mute.clear()  # a ban replaces any mute
-        await self._case(ctx.guild, "ban" if member else "hackban", user, ctx.author, reason)
-        note = "" if dm_ok or member is None else " I couldn't DM them."
-        await ctx.send(f"\N{NO ENTRY} Banned **{user}**.{note}")
+        error, notes = await self._ban(ctx.guild, user, reason, days or 0, ctx.author)
+        if error:
+            await ctx.send(error)
+            return
+        await ctx.send(f"\N{NO ENTRY} Banned **{user}**.{notes}")
 
     @commands.command()  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
@@ -624,7 +755,7 @@ class Moderation(commands.Cog):
             await ctx.send("That user isn't banned.")
             return
         try:
-            await ctx.guild.unban(ban.user, reason=audit_reason(ctx, reason))
+            await ctx.guild.unban(ban.user, reason=audit_reason(ctx.author, reason))
         except discord.HTTPException:
             await ctx.send("I couldn't unban them.")
             return

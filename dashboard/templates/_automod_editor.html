@@ -1,0 +1,60 @@
+{% macro field_input(f) -%}
+{% if f.kind == "bool" %}
+<label class="check"><input type="checkbox" name="{{ f.name }}" value="on"{% if f.value %} checked{% endif %}> {{ f.label }}</label>
+{% elif f.kind in ("roles", "channels") %}
+<details class="picker">
+  <summary>{{ f.label }} ({{ f.options|selectattr("checked")|list|length }} chosen)</summary>
+  <div class="choices">
+  {% for o in f.options %}<label><input type="checkbox" name="{{ f.name }}" value="{{ o.value }}"{% if o.checked %} checked{% endif %}> {{ o.label }}</label>{% endfor %}
+  </div>
+</details>
+{% elif f.kind in ("channel", "list") %}
+<label>{{ f.label }}
+  <select name="{{ f.name }}">
+    {% if f.kind == "list" %}<option value="0">Pick a list</option>{% endif %}
+    {% for o in f.options %}<option value="{{ o.value }}"{% if o.checked %} selected{% endif %}>{{ o.label }}</option>{% endfor %}
+  </select>
+</label>
+{% elif f.kind == "int" %}
+<label>{{ f.label }} <input type="number" name="{{ f.name }}" value="{{ f.value }}" min="{{ f.min }}" max="{{ f.max }}"></label>
+{% elif f.kind == "text" and f.max > 100 %}
+<label>{{ f.label }} <textarea name="{{ f.name }}" maxlength="{{ f.max }}" rows="2">{{ f.value }}</textarea></label>
+{% else %}
+<label>{{ f.label }} <input type="text" name="{{ f.name }}" value="{{ f.value }}"{% if f.kind == "text" %} maxlength="{{ f.max }}"{% else %} class="mono"{% endif %}></label>
+{% endif %}
+{%- endmacro %}
+
+{% macro editor(action_url, ed, csrf, settings=False) -%}
+<form method="post" action="{{ action_url }}" class="editor">
+  {# Enter in a text box presses the form's first button, so the first one saves. #}
+  <button type="submit" name="action" value="save" class="offscreen" tabindex="-1" aria-hidden="true">Save</button>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% if ed.error %}<p class="notice">{{ ed.error }}</p>{% endif %}
+  <label>Name <input type="text" name="name" value="{{ ed.name }}" maxlength="100"></label>
+  {% if settings %}<label class="check"><input type="checkbox" name="enabled" value="on"{% if ed.enabled %} checked{% endif %}> Enabled</label>{% endif %}
+  {% for section, sec in ed.sections.items() %}
+  <fieldset>
+    <legend>{{ section|capitalize }}</legend>
+    {% for row in sec.rows %}
+    <div class="row">
+      <input type="hidden" name="{{ section }}-{{ loop.index0 }}-type" value="{{ row.type }}">
+      <strong>{{ row.label }}</strong>
+      {% for f in row.fields %}{{ field_input(f) }}{% endfor %}
+      <button type="submit" name="action" value="remove-{{ section }}-{{ loop.index0 }}" formnovalidate>Remove</button>
+    </div>
+    {% endfor %}
+    <div class="add">
+      <select name="new-{{ section }}" aria-label="New {{ sec.singular }} type">
+        {% for key, label in sec.types %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+      </select>
+      <button type="submit" name="action" value="add-{{ section }}" formnovalidate>Add {{ sec.singular }}</button>
+    </div>
+  </fieldset>
+  {% endfor %}
+  <p class="actions"><button type="submit" name="action" value="save" class="primary">Save</button> <small>Unsaved changes are lost when you leave the page.</small></p>
+</form>
+{%- endmacro %}
+
+{% macro rows(section, views) -%}
+{% if views %}<ul class="rows">{% for row in views %}<li>{{ row.text }}</li>{% endfor %}</ul>{% else %}<p class="empty">No {{ section }}.</p>{% endif %}
+{%- endmacro %}

@@ -9,6 +9,9 @@ The bot's [Privacy Policy](PRIVACY.md) covers the whole instance; [DATA_GOVERNAN
 ### AntiNuke
 Server protection against rogue administrators: monitors destructive actions (mass deletions, bans, prunes, permission grants, vanity/bot changes) and automatically quarantines offenders, with a trust system and role restoration.
 
+### AutoMod
+Rule-based automod for Unicornia, replacing YAGPDB's: rulesets of triggers, conditions and effects on messages, edits, joins and name changes, with the harshest punishment winning and a dry-run mode. Staff view the rules and an action log on the staff site, and only the bot owner can edit them. See [automod/README.md](automod/README.md).
+
 ### BanLog
 Keeps a rolling 7-day copy of Unicornia's messages and, on every ban, saves the banned member's messages into a permanent record, so messages purged by a ban can still be reviewed on the staff site. See [banlog/README.md](banlog/README.md).
 

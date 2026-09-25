@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Automod{% endblock %}
+{% block content %}
+<div class="bar">
+  <h1>Automod</h1>
+  <a href="/automod/log">Action log</a>
+</div>
+{% if missing %}
+<p class="notice">Automod is not loaded. Load the AutoMod cog to view its rules.</p>
+{% else %}
+{% if error %}<p class="notice">{{ error }}</p>{% endif %}
+<section class="panel">
+  <p><strong>Dry-run is {{ "on" if dry_run else "off" }}.</strong>
+  {% if dry_run %}Automod logs what it would do without doing it.{% else %}Automod acts on rule matches.{% endif %}</p>
+  {% if is_owner %}
+  <form method="post" action="/automod/dryrun">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <input type="hidden" name="dry_run" value="{{ 'off' if dry_run else 'on' }}">
+    <button type="submit">{{ "Switch dry-run off" if dry_run else "Switch dry-run on" }}</button>
+  </form>
+  {% endif %}
+</section>
+
+<h2>Rulesets</h2>
+{% if document.rulesets %}
+<div class="scroll">
+<table>
+  <thead><tr><th>Ruleset</th><th>State</th><th class="num">Rules</th></tr></thead>
+  <tbody>
+  {% for ruleset in document.rulesets %}
+  <tr>
+    <td><a href="/automod/rulesets/{{ ruleset.id }}">{{ ruleset.name }}</a></td>
+    <td>{{ "Enabled" if ruleset.enabled else "Disabled" }}</td>
+    <td class="num">{{ ruleset.rules|length }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">No rulesets yet.{% if is_owner %} Import rules with <code>[p]automod import</code>, or add a ruleset below.{% endif %}</p>
+{% endif %}
+{% if is_owner %}
+<form class="inline" method="post" action="/automod/rulesets">
+  <input type="hidden" name="csrf" value="{{ session.csrf }}">
+  <input type="text" name="name" maxlength="100" placeholder="New ruleset name" aria-label="New ruleset name" required>
+  <button type="submit">Add ruleset</button>
+</form>
+{% endif %}
+
+<h2>Word lists</h2>
+{% if document.lists %}
+<div class="scroll">
+<table>
+  <thead><tr><th>List</th><th class="num">Entries</th></tr></thead>
+  <tbody>
+  {% for item in document.lists %}
+  <tr><td><a href="/automod/lists/{{ item.id }}">{{ item.name }}</a></td><td class="num">{{ item.words|length }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">No word lists yet.</p>
+{% endif %}
+{% if is_owner %}
+<form class="inline" method="post" action="/automod/lists">
+  <input type="hidden" name="csrf" value="{{ session.csrf }}">
+  <input type="text" name="name" maxlength="100" placeholder="New list name" aria-label="New list name" required>
+  <button type="submit">Add list</button>
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}

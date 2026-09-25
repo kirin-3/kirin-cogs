@@ -1,7 +1,7 @@
 # Dashboard
 
 Dashboard serves Unicornia's staff web site, `staff.unicornia.net`, from inside the bot. It listens on
-`127.0.0.1:8011` only; Caddy exposes it through Cloudflare. Its first pages list the ban records kept by the BanLog cog
+`127.0.0.1:8011` only; Caddy exposes it through Cloudflare. Its pages list the ban records kept by the BanLog cog
 and show the messages each banned member posted in the week before their ban.
 
 ## Who can log in

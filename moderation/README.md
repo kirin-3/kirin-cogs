@@ -114,7 +114,8 @@ Where each entry comes from:
 - **Everything done outside this cog** is read from the server's audit log: bans, kicks, and unbans through
   Discord's own menus or other bots, and **timeouts** added or removed through Discord's Timeout option. These show
   the moderator and reason from the audit log.
-- **Actions by this bot outside the commands** (Honeypot, AntiNuke) are not posted.
+- **AutoMod** mutes, timeouts and bans post directly, with the bot as the moderator.
+- **Other actions by this bot** (Honeypot, AntiNuke) are not posted.
 - **Timeouts from Discord's own AutoMod** use a different audit log entry and are not posted, and timeouts that simply
   run out aren't either.
 
@@ -131,6 +132,7 @@ of `moderation.py`; edit them there to change the wording.
 | Warn | ⚠️ You have been warned | Reason, plus "Further violations of server rules may result in channel restrictions, temporary mute, or permanent ban." Footer: "Use .mywarnings to see your warnings." |
 | Mute | 🔇 You have been muted | Reason, when the mute ends, and "Further violations of server rules may result in a permanent ban." |
 | Unmute | 🔊 You have been unmuted | "Your mute has ended and your roles have been given back." Also sent when a timed mute runs out. |
+| Timeout | ⏳ You have been timed out | Reason, when the timeout ends, and the permanent-ban notice. Sent for AutoMod timeouts. |
 | Kick | 👢 You have been kicked | Reason and the permanent-ban notice. |
 | Ban | ⛔ You have been banned | Reason and the appeal form `https://forms.gle/SdrjyV9ggi3hBQbh8`. |
 | Unban | ✅ You have been unbanned | The one-use invite. |
@@ -138,6 +140,18 @@ of `moderation.py`; edit them there to change the wording.
 Kick and ban DM **before** acting, because the bot can't DM people who have left. The warn DM goes out after
 Red saves the warning. A member kicked or banned by `[p]warnaction` has already left by then, so they usually won't
 get it. When a DM fails, the command reply says so.
+
+## Methods for other cogs
+
+AutoMod punishes through these methods. Each returns an error message, or `None` when it worked, and refuses the
+server owner and anyone at or above the bot's highest role.
+
+| Method | What it does |
+| --- | --- |
+| `mute_member(member, until, reason, moderator, *, keep_longer=False)` | The same mute as `[p]mute`. With `keep_longer`, an existing mute is never shortened. |
+| `timeout_member(member, until, reason, moderator)` | A Discord timeout with a DM, a `timeout` modlog case and a public log post. |
+| `ban_user(guild, user, reason, delete_days, moderator)` | The same ban as `[p]ban`. |
+| `warn_member(member, reason, moderator)` | Saves a 1-point warning in Red's Warnings storage, DMs it and creates a `warning` case. |
 
 ## Warnings list
 
@@ -161,7 +175,7 @@ contain their creation time. Imported warnings got IDs built from the original Y
 - **Manage Roles**, with the bot's highest role above Muted and above every role it should strip.
 - **Move Members**, to disconnect muted members from voice.
 - **View Audit Log**, and **Send Messages** plus **Embed Links** in the public mod-log channel.
-- **Kick Members** and **Ban Members**.
+- **Kick Members** and **Ban Members**, and **Moderate Members** for AutoMod timeouts.
 - **Create Invite** in the rules channel, for unban reinvites.
 - **Embed Links** where the commands are used.
 

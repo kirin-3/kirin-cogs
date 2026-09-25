@@ -45,6 +45,7 @@ Quarantine records retain a snapshot of the roles you held, so that staff can re
 The bot reads message content only for the purposes below. Apart from the 7-day ban-evidence copy, it does not retain messages generally, and it does not build profiles from conversation.
 
 - **Ban evidence.** Every message a member posts in the server is copied to the bot's own database with its channel, time, attachment filenames (not the files), latest edit, and whether it was deleted. Copies are deleted automatically after 7 days. When a member is banned, Discord can erase up to a week of their messages without telling anyone; the bot therefore copies that member's messages from the week before the ban into a ban record, together with the moderator and reason, so staff can see what the ban was for. Ban records are kept as moderation records (see [section 6](#6-retention) and [section 8](#8-your-rights)).
+- **Automod rules.** Every message and edit is checked against rules the bot owner sets, such as word lists, invite links and spam limits, and your nickname, display name and username are checked when you join and when they change. When a rule matches, the bot can delete the message, warn, mute, time out, ban, or change your nickname. It keeps a log of its newest 250 actions with the time, your user ID and name, the channel, the rules that matched and what it did, but **never the message text**. To catch spam, it keeps your recent messages in memory for up to an hour, the longest spam window; they are never written to disk and are discarded on restart.
 - **Automated moderation.** In a staff-selected list of channels, recent messages are held in a short in-memory buffer and scored locally for sentiment. When a buffer crosses a threshold, it is sent to a language model (see [section 5](#5-third-parties)) to classify harassment, hate speech, or targeted abuse. If flagged, moderators receive an alert containing the relevant excerpt. **Buffers are never written to disk and are discarded on restart.**
 - **Channel rules.** In channels restricted to images or to Tenor links, message text and attachments are inspected so that non-conforming posts can be removed.
 - **Raid honeypot.** A hidden channel exists that legitimate members have no reason to post in. Posting there records the message text and attachment filenames into the staff audit log as the evidence supporting the resulting ban or quarantine.
@@ -65,7 +66,7 @@ The bot reads your Discord status and current activity for exactly two features:
 
 ### 3.5 Staff web site
 
-Staff can review ban records on a private web site, `staff.unicornia.net`, after logging in with Discord. The login reads only the staff member's Discord user ID and whether their account has two-factor authentication. The login session is held in memory, never written to disk, and ends after 12 hours, on logout, or when the bot restarts. Members who are not staff cannot log in.
+Staff can review ban records and the automod rules and action log on a private web site, `staff.unicornia.net`, after logging in with Discord. The login reads only the staff member's Discord user ID and whether their account has two-factor authentication. The login session is held in memory, never written to disk, and ends after 12 hours, on logout, or when the bot restarts. Members who are not staff cannot log in.
 
 ### 3.6 Content you submit deliberately
 
@@ -100,6 +101,8 @@ If a new feature introduces a new recipient, this table is updated before that f
 | Deleted-message cache | 30 seconds by default; in memory only |
 | Copies of server messages (ban evidence) | 7 days, then deleted automatically |
 | Ban records, with the banned member's messages from the week before the ban | Kept as moderation records until removed on request (see [section 8](#8-your-rights)) |
+| Automod action log | The newest 250 actions; older entries are dropped automatically |
+| Automod spam history | In memory only; at most one hour, and discarded on restart |
 | Staff web site login sessions | In memory only; at most 12 hours |
 | Presence and activity | Not retained at all |
 | Diagnostic moderation output | Up to one hour, then deleted automatically |

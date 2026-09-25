@@ -3,6 +3,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
@@ -246,3 +247,151 @@ async def test_warnings_command_is_shared_safely_with_reds_warnings_cog() -> Non
     bot.remove_command("warnings")
     await cog.cog_unload()
     assert bot.get_command("warnings") is red_command
+
+
+# --- public methods for other cogs (automod) ----------------------------------------------------
+
+
+def _target(top: int = 1, bot_top: int = 10) -> MagicMock:
+    """A member below (or above) the bot; roles compare by position like discord.Role."""
+    member = MagicMock(spec=discord.Member, id=9, roles=[], top_role=top, voice=None)
+    member.configure_mock(**{"__str__.return_value": "target"})
+    member.guild.id = 1
+    member.guild.owner = object()
+    member.guild.me.top_role = bot_top
+    member.guild.get_member.return_value = member
+    member.guild.get_role.return_value = Role(MUTED_ROLE_ID)
+    member.edit = AsyncMock()
+    member.timeout = AsyncMock()
+    member.send = AsyncMock()
+    return member
+
+
+def last_case(cog: Moderation) -> Any:
+    return cast(AsyncMock, cog._case).await_args
+
+
+def _bot_cog(record: dict | None = None) -> tuple[Moderation, AsyncMock]:
+    mute = AsyncMock(return_value=record)
+    mute.set = AsyncMock()
+    mute.clear = AsyncMock()
+    cog = Moderation.__new__(Moderation)
+    group = SimpleNamespace(mute=mute)
+    cog.config = SimpleNamespace(member=lambda m: group, member_from_ids=lambda g, u: group)  # type: ignore[assignment]
+    cog._locks = defaultdict(asyncio.Lock)
+    cog._enforce = AsyncMock()  # type: ignore[method-assign]
+    cog._case = AsyncMock()  # type: ignore[method-assign]
+    return cog, mute
+
+
+@pytest.mark.asyncio
+async def test_keep_longer_never_shortens_a_mute() -> None:
+    now = discord.utils.utcnow()
+    mod = _user("automod", 1)
+    long_end = (now + timedelta(hours=24)).timestamp()
+
+    cog, mute = _bot_cog({"roles": [2], "until": long_end})
+    assert await cog.mute_member(_target(), now + timedelta(hours=5), "spam", mod, keep_longer=True) is None
+    assert mute.set.await_args.args[0]["until"] == long_end
+
+    cog, mute = _bot_cog({"roles": [2], "until": None})  # until unmuted stays until unmuted
+    await cog.mute_member(_target(), now + timedelta(hours=5), "spam", mod, keep_longer=True)
+    assert mute.set.await_args.args[0]["until"] is None
+
+    cog, mute = _bot_cog({"roles": [2], "until": long_end})  # [p]mute still sets the new end
+    await cog.mute_member(_target(), now + timedelta(hours=5), "spam", mod)
+    assert mute.set.await_args.args[0]["until"] == (now + timedelta(hours=5)).timestamp()
+
+
+@pytest.mark.asyncio
+async def test_new_mute_strips_roles_dms_and_logs() -> None:
+    cog, mute = _bot_cog(None)
+    member = _target()
+    assert await cog.mute_member(member, None, "spam", _user("automod", 1)) is None
+    mute.set.assert_awaited_once_with({"roles": [], "until": None})
+    member.edit.assert_awaited_once()
+    member.send.assert_awaited_once()
+    assert last_case(cog).args[1] == "smute"
+
+
+@pytest.mark.asyncio
+async def test_methods_refuse_members_at_or_above_the_bot() -> None:
+    cog, _ = _bot_cog(None)
+    mod = _user("automod", 1)
+    member = _target(top=10, bot_top=10)
+    member.guild.fetch_member = AsyncMock()
+    member.guild.ban = AsyncMock()
+    until = discord.utils.utcnow() + timedelta(hours=1)
+
+    assert await cog.mute_member(member, until, "x", mod) == "My highest role isn't above theirs."
+    assert await cog.timeout_member(member, until, "x", mod) == "My highest role isn't above theirs."
+    assert await cog.ban_user(member.guild, member, "x", 1, mod) == "My highest role isn't above theirs."
+    member.edit.assert_not_awaited()
+    member.timeout.assert_not_awaited()
+    member.guild.ban.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_timeout_and_ban_act_and_log() -> None:
+    cog, mute = _bot_cog(None)
+    mod = _user("automod", 1)
+    member = _target()
+    member.guild.ban = ban = AsyncMock()
+    until = discord.utils.utcnow() + timedelta(minutes=90)
+
+    assert await cog.timeout_member(member, until, "invite", mod) is None
+    member.timeout.assert_awaited_once()
+    assert member.timeout.await_args.kwargs["reason"] == "automod (1): invite"
+    assert last_case(cog).args[1] == "timeout"
+
+    assert await cog.ban_user(member.guild, member, "bot", 1, mod) is None
+    assert ban.await_args is not None
+    assert ban.await_args.kwargs["delete_message_seconds"] == 86400
+    mute.clear.assert_awaited_once()  # a ban replaces any mute
+    assert last_case(cog).args[1] == "ban"
+
+
+@pytest.mark.asyncio
+async def test_warn_member_saves_a_point_and_dms() -> None:
+    store: dict = {"warnings": {}, "total_points": 2}
+
+    class Value:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def __call__(self):
+            outer = self
+
+            class Ctx:
+                def __await__(self):
+                    async def get():
+                        return store[outer.name]
+
+                    return get().__await__()
+
+                async def __aenter__(self):
+                    return store[outer.name]
+
+                async def __aexit__(self, *exc):
+                    return False
+
+            return Ctx()
+
+        async def set(self, value) -> None:
+            store[self.name] = value
+
+    cog, _ = _bot_cog()
+    cog.warnings_config = SimpleNamespace(  # type: ignore[assignment]
+        member=lambda m: SimpleNamespace(warnings=Value("warnings"), total_points=Value("total_points"))
+    )
+    member = _target()
+    assert await cog.warn_member(member, "Used F- Slur", _user("automod", 1)) is None
+
+    [(_key, warning)] = store["warnings"].items()
+    assert warning == {"points": 1, "description": "Used F- Slur", "mod": 1}
+    assert store["total_points"] == 3
+    # The key is a snowflake, so [p]warnings shows the warning's date.
+    assert format_warnings(store["warnings"], lambda _: None)[0].startswith("**#1** · <t:")
+    assert "Used F- Slur" in member.send.await_args.kwargs["embed"].description
+    assert last_case(cog).args[1] == "warning"
+    assert last_case(cog).kwargs == {"public": False}
