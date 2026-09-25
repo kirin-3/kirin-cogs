@@ -19,9 +19,4 @@ consent:
     active: "{target_member}, {invoker_member} wants to fuck you."
     passive: "{target_member}, {invoker_member} wants you to fuck them."
     owner_active: "{owner}, {invoker_member} wants to fuck {target_member}."
-    owner_passive: "{owner}, {invoker_member} wants {target_member} to fuck them."    
-denial:
-    roles:
-        - const.LOCKED
-        - const.HONORARY_CHASTITY
-    message: "{invoker_member} can't fuck {target_member} in their current state."
+    owner_passive: "{owner}, {invoker_member} wants {target_member} to fuck them."

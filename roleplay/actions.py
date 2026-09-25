@@ -13,25 +13,6 @@ import yaml
 
 
 @dataclass
-class Denial:
-    """Represents the denial properties for an action.
-
-    Attributes:
-        roles (List[int | str]): Role IDs or names that would prevent the action from
-        being completed successfully.
-        message (str): The message displayed when the action is denied.
-        Ex: "{invoker_member} can't ___ {target_member} in their current state."
-    """
-
-    message: str
-    roles: list[int | str] = field(default_factory=list)
-
-    def __post_init__(self):
-        if isinstance(self.roles, int | str):
-            self.roles = [self.roles]
-
-
-@dataclass
 class Consent:
     """Represents the consent properties for an action.
 
@@ -67,7 +48,6 @@ class Action:
         credits (Optional[List[str]]): Optional credits text included in the Embed footer to acknowledge members who came up with the idea.
         spoiler (Optional[bool]): Use for lewd images. This will spoiler the image in a message instead of displaying it in an Embed.
         images (Optional[list]): URL for a gif(s) that represents the action.
-        denial (Optional[Denial]): If this is included, roles can be defined that would prevent the action from being completed successfully.
     """
 
     name: str
@@ -78,7 +58,8 @@ class Action:
     credits: list[str] | None = None
     spoiler: bool = False
     images: list[str] = field(default_factory=list)
-    denial: Denial | None = None
+    # the image URLs from the action's file, kept after images switches to local files
+    image_urls: list[str] = field(init=False, default_factory=list)
 
     def __post_init__(self):
         # YAML gives plain strings and dicts; normalize them to the declared types
@@ -90,10 +71,9 @@ class Action:
             self.aliases = [self.aliases]
         if isinstance(self.images, str):
             self.images = [self.images]
+        self.image_urls = list(self.images)
         if isinstance(self.consent, dict):
             self.consent = Consent(**self.consent)
-        if isinstance(self.denial, dict):
-            self.denial = Denial(**self.denial)
 
 
 class ActionManager:
@@ -149,8 +129,10 @@ class ActionManager:
             self.update_images(action, images_path)
 
     def get(self, action_name: str) -> Action | None:
+        """Find an action by its name or one of its aliases, ignoring case."""
+        key = action_name.lower()
         for action in self.actions:
-            if action.name == action_name:
+            if key == action.name.lower() or key in (alias.lower() for alias in action.aliases):
                 return action
 
         self.logger.warning(f'Unable to find action "{action_name}"!')

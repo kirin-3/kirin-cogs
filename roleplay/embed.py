@@ -1,5 +1,7 @@
+import hashlib
 import io
 from pathlib import Path
+from urllib.parse import urlparse
 
 import discord
 import requests
@@ -36,25 +38,24 @@ class Embed:
 
     @classmethod
     def get_image(cls, url: str) -> Path:
-        cache_path = cls.CACHE_DIR / Path(url).name
+        """Download ``url`` into the cache, or return it from there.
+
+        Raises:
+            requests.RequestException: The image couldn't be downloaded.
+        """
+        # named after a hash of the URL, as different URLs often end in the same file name
+        url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
+        cache_path = cls.CACHE_DIR / f"{url_hash}{Path(urlparse(url).path).suffix}"
 
         if cache_path.exists():
             return cache_path
 
-        try:
-            response = requests.get(url, timeout=30)
-        # put this here to resolve SSLError(SSLCertVerificationError with images on
-        # https://panel.unicornia.net
-        except requests.exceptions.SSLError:
-            response = requests.get(url, verify=False, timeout=30)
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
 
-        if response.status_code == 200:
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(cache_path, "wb") as file:
-                file.write(response.content)
-            return cache_path
-        else:
-            raise Exception(f"Failed to download image: {url}")
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(response.content)
+        return cache_path
 
     @classmethod
     def spoiler_image(cls, url: str, embed: discord.Embed) -> tuple[discord.Embed, discord.File]:

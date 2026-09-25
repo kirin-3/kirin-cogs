@@ -1,7 +1,7 @@
 """Users Module
 
 This module provides a class for managing lists of Discord User IDs in a member's config property.
-It includes functionalities for adding, removing, and listing users, checking roles, and handling
+It includes functionalities for adding, removing, and listing users, and handling
 permissions for actions involving users.
 
 Classes:
@@ -9,7 +9,6 @@ Classes:
 """
 
 import logging
-from dataclasses import dataclass
 from random import choice
 
 import discord
@@ -17,30 +16,12 @@ from redbot.core import Config, commands
 from redbot.core.bot import Red
 
 from . import const
-from .unicornia.predicates import ExtendedMessagePredicate
 from .unicornia.strings import get_indefinite_article
 from .user_settings import USER_SETTINGS
+from .views import request_consent
 
 # Settings whose value is a list of user IDs
 USER_LIST_SETTINGS = [key for key, values in USER_SETTINGS.items() if isinstance(values.get("default"), list)]
-
-
-@dataclass
-class Pronouns:
-    subject: str  # e.g., "they"
-    object: str  # e.g., "them"
-    possessive: str  # e.g., "their"
-
-
-# defined here instead of const to avoid circular import
-PRONOUNS_HE = Pronouns(subject="he", object="him", possessive="his")
-PRONOUNS_SHE = Pronouns(subject="she", object="her", possessive="her")
-PRONOUNS_THEY = Pronouns(subject="they", object="them", possessive="their")
-PRONOUN_ROLES = {
-    686112295155138580: PRONOUNS_HE,
-    686112244609712139: PRONOUNS_SHE,
-    686112332459671600: PRONOUNS_THEY,
-}
 
 
 class Manager:
@@ -104,52 +85,57 @@ class Manager:
 
         label = USER_SETTINGS[users_group].get("label", "users list")
 
+        problem = self.add_user_problem(member, target_user, users_group, await self.list_users(member, users_group))
+        if problem:
+            return await ctx.send(problem, delete_after=const.SHORT_DELETE_TIME)
+
+        # get permission from the prospective member. This waits for an answer, so it
+        # happens before the list is opened for writing, not while it's held open
+        if permission and permission.get("required"):
+            view = await request_consent(
+                ctx,
+                permission["permission_ask"].format(target=target_user.mention, author=member.display_name),
+                [target_user],
+            )
+            if view.result is None:
+                return await ctx.send(const.TIMEOUT_MESSAGE.format(user=target_user.display_name))
+            if not view.result:
+                return await ctx.send(
+                    permission["permission_deny"].format(target=target_user.display_name, author=member.display_name)
+                )
+
         async with self.config.user(member).get_attr(users_group)() as user_ids:
-            # members are only allowed to have 1 owner
-            if users_group == "owners" and user_ids:
-                return await ctx.send(
-                    f"{member.display_name} already has {get_indefinite_article(label)} {label}. {choice(const.INSULTS)}",
-                    delete_after=const.SHORT_DELETE_TIME,
-                )
+            # the list may have changed while we waited for an answer
+            problem = self.add_user_problem(member, target_user, users_group, user_ids)
+            if problem:
+                return await ctx.send(problem, delete_after=const.SHORT_DELETE_TIME)
+            user_ids.append(user_id)
 
-            # already in the list
-            if user_id in user_ids:
-                return await ctx.send(
-                    f"{target_user.display_name} is already {get_indefinite_article(label)} {label} for {member.display_name}. {choice(const.INSULTS)}",
-                    delete_after=const.SHORT_DELETE_TIME,
-                )
+        if permission and permission.get("required"):
+            return await ctx.send(
+                permission["permission_accept"].format(target=target_user.display_name, author=member.display_name)
+            )
+        return await ctx.send(
+            f"{target_user.display_name} has been added as {get_indefinite_article(label)} {label} for {member.display_name}.",
+            delete_after=const.SHORT_DELETE_TIME,
+        )
 
-            # get permission from the prospective member
-            if permission and permission.get("required"):
-                await ctx.send(
-                    permission["permission_ask"].format(target=target_user.mention, author=member.display_name)
-                )
+    @staticmethod
+    def add_user_problem(
+        member: discord.abc.User, target_user: discord.abc.User, users_group: str, user_ids: list[int]
+    ) -> str | None:
+        """Why ``target_user`` can't be added to ``member``'s ``users_group`` list, if they can't."""
+        label = USER_SETTINGS[users_group].get("label", "users list")
 
-                pred = ExtendedMessagePredicate.yes_or_no(ctx, target_user)
-                try:
-                    await self.bot.wait_for("message", timeout=const.TIMEOUT, check=pred)
-                except TimeoutError:
-                    return await ctx.send(const.TIMEOUT_MESSAGE.format(user=target_user.display_name))
+        # members are only allowed to have 1 owner
+        if users_group == "owners" and user_ids:
+            return f"{member.display_name} already has {get_indefinite_article(label)} {label}. {choice(const.INSULTS)}"
 
-                if pred.result:
-                    user_ids.append(user_id)
-                    await ctx.send(
-                        permission["permission_accept"].format(
-                            target=target_user.display_name, author=member.display_name
-                        )
-                    )
-                else:
-                    return await ctx.send(
-                        permission["permission_deny"].format(
-                            target=target_user.display_name, author=member.display_name
-                        )
-                    )
-            else:
-                user_ids.append(user_id)
-                return await ctx.send(
-                    f"{target_user.display_name} has been added as {get_indefinite_article(label)} {label} for {member.display_name}.",
-                    delete_after=const.SHORT_DELETE_TIME,
-                )
+        # already in the list
+        if target_user.id in user_ids:
+            return f"{target_user.display_name} is already {get_indefinite_article(label)} {label} for {member.display_name}. {choice(const.INSULTS)}"
+
+        return None
 
     async def add_user_to_group(
         self,
@@ -323,24 +309,6 @@ class Manager:
                 display_names.append(f"Unknown {user_id}")
         return display_names
 
-    async def has_role(self, member: discord.Member, role_key: int | str) -> bool:
-        """Checks if the given member has the given role by ID or name.
-
-        Args:
-            member (discord.Member): Discord member to check.
-            role_key (int | str): ID or name of the role to check for.
-        """
-        if isinstance(role_key, int):
-            role = member.guild.get_role(role_key)
-        else:
-            role = discord.utils.get(member.guild.roles, name=role_key)
-
-        if role is None:
-            self.logger.warning(f"Role '{role_key}' not found. It may not exist on this server.")
-            return False
-
-        return role in member.roles
-
     def get_default_member(self, ctx: commands.GuildContext) -> discord.Member:
         """The member who stands in when an action has no other target: the server's
         configured roleplay bot if it's here, otherwise this bot."""
@@ -364,12 +332,6 @@ class Manager:
                 owner = None
         self.logger.debug(f"Attempted to get owner from {member}: {owner.display_name if owner else None}")
         return owner
-
-    async def get_pronoun(self, member: discord.Member) -> Pronouns:
-        for role_id, pronouns in PRONOUN_ROLES.items():
-            if await self.has_role(member, role_id):
-                return pronouns
-        return PRONOUNS_THEY
 
     async def delete_user_data(self, user_id: int) -> None:
         """Forget a user: their own settings, and their ID in every other member's lists."""

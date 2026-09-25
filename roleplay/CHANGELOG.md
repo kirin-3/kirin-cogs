@@ -5,6 +5,31 @@
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
  - UI interface for editing settings. This may require creating an app command ('/settings') in order to utilize discords interaction objects and ephemeral messaging
 
+## [2.6.0] - 2026-09-25
+
+### Changed
+
+- Consent questions (actions and becoming someone's Owner) are now answered with Yes/No buttons that only the members being asked can press, instead of typing a reply. Each question has its own buttons, so one answer can no longer answer several questions at once
+- Using an action without a target (or with yourself) no longer asks you to consent to your own request
+- Bots are no longer asked for consent, as they can't answer. This replaces the special case that only let administrators use actions on bots
+- A Public Use target (or a Servant target, for `ask`) is no longer asked for consent after the invoker's Owner has already agreed
+- `ask` accepts action aliases in any case, and lists the valid actions when given an unknown one
+- `admin download` names files after their URL, skips images it has already saved, reports how many it downloaded, skipped or failed, and starts using them right away. Images saved by earlier versions are not recognized, so clear the cog's `images` data folder once before running it again
+
+### Fixed
+
+- The Selective setting never refused anything
+- Settings commands waited 10 seconds before responding
+- Reloading the cog failed because the action commands were left registered
+- When both members' Owners were asked, a refusal always named the target's Owner, even when the other Owner declined
+- Changes to your Owner list made while an Owner request was waiting for an answer could be lost
+- Spoilered images were downloaded with TLS certificate checks turned off, and different images with the same file name overwrote each other in the cache. A spoilered image that can't be downloaded now shows the action without it instead of failing
+
+### Removed
+
+- Role-based denials (`denial` in action files). The configured roles never matched, so no action was ever denied
+- Unused pronoun role lookups and role constants
+
 ## [2.5.43] - 2025-1-15
 
 ### Changed
