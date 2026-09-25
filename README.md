@@ -49,6 +49,9 @@ Syncs patron roles and awards currency from a Google Sheet (Patreon/BuyMeACoffee
 ### Profile
 Create and manage user profiles with interactive modals and sticky messages.
 
+### Roleplay
+Roleplay action commands (`[p]hug`, `[p]ask`, ...) with consent prompts and per-member settings: owners, allowed and blocked lists, and selective, public and servant flags. Ported from the Unicornia repo; its existing member settings carry over unchanged.
+
 ### RulesAccept
 Lets users accept rules via a button and modal, automatically assigning a role upon acceptance.
 

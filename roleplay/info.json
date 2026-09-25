@@ -1,0 +1,27 @@
+{
+    "name": "Roleplay",
+    "author": [
+        "Ruffiana",
+        "Kirin"
+    ],
+    "short": "Redbot cog that allows members to perform roleplay actions",
+    "description": "Perform a command on another user. Ask another user to perform a command on you. Modify settings that determine consent.",
+    "end_user_data_statement": "This cog stores each member's roleplay settings: their public, servant and selective flags, and the Discord user IDs in their owner, allowed and blocked lists. Deletion removes the member's settings and their ID from every other member's lists.",
+    "min_bot_version": "3.5.22",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": true,
+    "disabled": false,
+    "type": "COG",
+    "requirements": [
+        "requests"
+    ],
+    "tags": [
+        "roleplay",
+        "consent",
+        "fun"
+    ]
+}

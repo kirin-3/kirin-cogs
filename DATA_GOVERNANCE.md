@@ -19,6 +19,7 @@ This document is the per-cog annex to the bot's [Privacy Policy](PRIVACY.md), wh
 | NitroAward | Guild/member boost timestamps and legacy boost markers | Clears member and legacy records |
 | Patron | Discord-ID charge dates and annual-payment progress | Removes local tracking; Unicornia financial entries follow its policy |
 | Profile | Questionnaire answers, picture URLs, message IDs, and timestamps | Clears member-scoped and legacy user-scoped records |
+| Roleplay | Per-user settings: public, servant, and selective flags, and the user IDs in each member's owner, allowed, and blocked lists | Removes the user's settings and their ID from every other member's lists |
 | RulesAccept | Acceptance member ID and submitted text posted to a Discord log channel | No local per-user record; Discord log-retention policy applies |
 | Suggest | Author IDs, suggestion text, message IDs, status, and review reason | Removes suggestions authored by the user |
 | Tickets | Owner IDs, answers, channel/message metadata, avatar URL, timestamps, and lifecycle state | Removes ticket tracking and blacklist entries; Discord messages/channels remain subject to server moderation policy |

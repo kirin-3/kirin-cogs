@@ -70,7 +70,7 @@ Staff can review ban records and the automod rules and action log on a private w
 
 ### 3.6 Content you submit deliberately
 
-Profile questionnaire answers, suggestions, confessions, support-ticket answers, custom command triggers and responses, rules-acceptance text, and image-generation prompts are stored or posted as the feature requires. Confessions and rules acceptances are posted to Discord channels rather than retained in a local database; once posted, Discord's retention and your server's moderation policy apply.
+Profile questionnaire answers, suggestions, confessions, support-ticket answers, custom command triggers and responses, rules-acceptance text, and image-generation prompts are stored or posted as the feature requires. Roleplay settings store your consent choices (whether you are public, a servant, or selective) and the user IDs you add as your owner, allowed users, or blocked users. Confessions and rules acceptances are posted to Discord channels rather than retained in a local database; once posted, Discord's retention and your server's moderation policy apply.
 
 ## 4. What we do not do
 
@@ -106,7 +106,7 @@ If a new feature introduces a new recipient, this table is updated before that f
 | Staff web site login sessions | In memory only; at most 12 hours |
 | Presence and activity | Not retained at all |
 | Diagnostic moderation output | Up to one hour, then deleted automatically |
-| XP, currency, inventory, profiles, tickets, warnings | Until you request deletion or the record is no longer needed |
+| XP, currency, inventory, profiles, tickets, warnings, roleplay settings | Until you request deletion or the record is no longer needed |
 | Quarantine role snapshots | Until the quarantine is resolved and the record cleared |
 | Boost timestamps | Retained to prevent duplicate awards for the same boost |
 | Financial transaction records | Retained for ledger integrity; identifiers are removed on deletion (see [section 8](#8-your-rights)) |
