@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Bans{% endblock %}
+{% block content %}
+<div class="bar">
+  <h1>Bans</h1>
+  <form class="search" method="get" action="/">
+    <input type="search" name="q" value="{{ q }}" placeholder="User ID or username" maxlength="100" aria-label="Search bans">
+    <button type="submit">Search</button>
+  </form>
+</div>
+{% if missing %}
+<p class="notice">Ban logging is not loaded. Load the BanLog cog to record and view bans.</p>
+{% elif not bans %}
+<p class="empty">{% if q %}No bans match “{{ q }}”.{% else %}No bans recorded yet.{% endif %}</p>
+{% else %}
+<div class="scroll">
+<table>
+  <thead><tr><th>User</th><th>Moderator</th><th>Reason</th><th>Banned</th><th>Unbanned</th><th class="num">Messages</th></tr></thead>
+  <tbody>
+  {% for ban in bans %}
+  <tr>
+    <td><a href="/bans/{{ ban.id }}">{{ ban.username or "Unknown user" }}</a><small>{{ ban.user_id }}</small></td>
+    <td>{{ user_name(ban.moderator_id) }}</td>
+    <td class="reason">{{ ban.reason or "" }}</td>
+    <td class="date">{{ ban.banned_at|when }}</td>
+    <td class="date">{{ ban.unbanned_at|when }}</td>
+    <td class="num">{{ ban.message_count }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<nav class="pages">
+  {% if page > 0 %}<a href="/?page={{ page - 1 }}&amp;q={{ q|urlencode }}">Newer</a>{% endif %}
+  {% if more %}<a href="/?page={{ page + 1 }}&amp;q={{ q|urlencode }}">Older</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

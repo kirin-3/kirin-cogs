@@ -9,6 +9,9 @@ The bot's [Privacy Policy](PRIVACY.md) covers the whole instance; [DATA_GOVERNAN
 ### AntiNuke
 Server protection against rogue administrators: monitors destructive actions (mass deletions, bans, prunes, permission grants, vanity/bot changes) and automatically quarantines offenders, with a trust system and role restoration.
 
+### BanLog
+Keeps a rolling 7-day copy of Unicornia's messages and, on every ban, saves the banned member's messages into a permanent record, so messages purged by a ban can still be reviewed on the staff site. See [banlog/README.md](banlog/README.md).
+
 ### Confess
 Confess secretly in a confession room using a button and modal system.
 
@@ -23,6 +26,9 @@ Allows users with a specific role to create and manage their own custom emojis.
 
 ### CustomRoleColor
 Allows administrators to assign a role to a user and lets that user customize the color, name, and icon of their assigned role.
+
+### Dashboard
+Serves the staff web site `staff.unicornia.net` from inside the bot, behind Discord login for Unicornia staff with 2FA. Its first pages show BanLog's ban records. See [dashboard/README.md](dashboard/README.md).
 
 ### Honeypot
 Trap channel that automatically bans fresh members or strips roles and times out established members who post in it.

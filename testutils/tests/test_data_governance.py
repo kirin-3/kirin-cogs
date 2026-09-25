@@ -13,6 +13,7 @@ from tickets.tickets import Tickets
 ROOT = Path(__file__).resolve().parents[2]
 PERSISTENT_COGS = {
     "antinuke",
+    "banlog",
     "customcommand",
     "customemoji",
     "customrolecolor",

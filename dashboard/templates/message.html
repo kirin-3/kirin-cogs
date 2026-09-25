@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>{{ title }}</h1>
+  <p>{{ text }}</p>
+  {% if login %}<p><a class="button" href="/login">Log in with Discord</a></p>{% endif %}
+</section>
+{% endblock %}

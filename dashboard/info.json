@@ -1,0 +1,28 @@
+{
+    "name": "Dashboard",
+    "author": [
+        "Kirin"
+    ],
+    "short": "Unicornia's staff web site, behind Discord login",
+    "description": "Serves staff.unicornia.net from inside the bot: Discord login restricted to Unicornia staff with 2FA, and pages for the ban records kept by BanLog.",
+    "install_msg": "Thanks for installing the Dashboard. Follow the README deployment checklist before loading it.",
+    "end_user_data_statement": "This cog does not persistently store data about users. Staff logins read the Discord account's ID and 2FA status once; the resulting session is held in memory only and ends after 12 hours, on logout, or when the cog unloads.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "required_cogs": {},
+    "requirements": [
+        "jinja2"
+    ],
+    "tags": [
+        "dashboard",
+        "web",
+        "moderation"
+    ]
+}

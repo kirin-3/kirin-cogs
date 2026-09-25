@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Ban{% endblock %}
+{% block content %}
+<p><a href="/">← All bans</a></p>
+{% if missing %}
+<p class="notice">Ban logging is not loaded. Load the BanLog cog to record and view bans.</p>
+{% else %}
+<h1>{{ ban.username or "Unknown user" }}</h1>
+<dl class="meta">
+  <dt>User ID</dt><dd>{{ ban.user_id }}</dd>
+  <dt>Moderator</dt><dd>{{ user_name(ban.moderator_id) }}</dd>
+  <dt>Reason</dt><dd>{{ ban.reason or "No reason given" }}</dd>
+  <dt>Banned</dt><dd>{{ ban.banned_at|when }}</dd>
+  {% if ban.unbanned_at %}<dt>Unbanned</dt><dd>{{ ban.unbanned_at|when }}</dd>{% endif %}
+</dl>
+<h2>Messages from the week before the ban ({{ ban.messages|length }})</h2>
+{% for message in ban.messages %}
+<article class="message{% if message.deleted_at %} deleted{% endif %}">
+  <header>
+    <span class="channel">{{ channel_name(message.channel_id) }}</span>
+    <time>{{ message.created_at|when }}</time>
+    {% if message.deleted_at %}<span class="tag">Deleted before ban</span>{% endif %}
+  </header>
+  <p class="content">{{ message.content }}</p>
+  {% if message.edited_content is not none %}
+  <p class="edited"><span class="tag">Edited {{ message.edited_at|when }}</span>{{ message.edited_content }}</p>
+  {% endif %}
+  {% if message.attachments %}<p class="files">Attachments: {{ message.attachments|join(", ") }}</p>{% endif %}
+</article>
+{% else %}
+<p class="empty">No messages were stored for this user in the week before the ban.</p>
+{% endfor %}
+{% endif %}
+{% endblock %}

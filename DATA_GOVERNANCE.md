@@ -7,10 +7,12 @@ This document is the per-cog annex to the bot's [Privacy Policy](PRIVACY.md), wh
 | Cog | Persistent or externally processed data | Deletion behavior |
 | --- | --- | --- |
 | AntiNuke | Trusted user IDs; quarantine role snapshots, reasons, and timestamps | Removes trust and quarantine entries |
+| BanLog | 7-day copy of every non-bot Unicornia message (author/channel IDs, content, latest edit, attachment filenames, deletion time); permanent ban records with user ID, username, moderator ID, reason, ban/unban times, and the banned user's messages from the week before the ban | Stored messages pruned hourly after 7 days. `user` requests remove stored messages and keep ban records as moderation records; `user_strict`, `owner`, and `discord_deleted_user` also remove the user's ban records and replace them as moderator with placeholder `0xDE1` |
 | Confess | Confession text posted to Discord; author ID/content audit messages sent to bot owners | No local per-user record; Discord retention and deletion tools apply |
 | CustomCommand | User limits, command ownership, triggers, and responses | Removes limits and commands owned by the user |
 | CustomEmoji | User limits and emoji ownership | Removes limits and ownership records |
 | CustomRoleColor | User-to-role management assignments | Removes the assignment |
+| Dashboard | Staff login sessions (Discord user ID, CSRF token, expiry) in memory only; page traffic passes through Cloudflare | Nothing persistent; sessions end after 12 hours, on logout, or on unload/restart |
 | Honeypot | Guild-scoped user IDs, prior role IDs, and quarantine timestamps | Removes the user's quarantine records from every guild |
 | Moderation | Guild/member IDs, role IDs removed by a mute, and the mute end time | Removes the user's mute records from every guild |
 | NitroAward | Guild/member boost timestamps and legacy boost markers | Clears member and legacy records |

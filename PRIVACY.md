@@ -4,7 +4,7 @@
 **Operator:** kirin-3
 **Contact:** kirin@unicornia.net
 **Effective:** 16 September 2026
-**Last updated:** 16 September 2026
+**Last updated:** 25 September 2026
 
 ---
 
@@ -12,7 +12,7 @@
 
 Unicornia is a private, self-hosted [Red-DiscordBot](https://github.com/Cog-Creators/Red-DiscordBot) instance operated for a single Discord community. It is not a public bot, it is not listed in any bot directory, and it is not invited to servers other than our own.
 
-The bot stores Discord user IDs linked to whatever you actually use — your XP and currency balance, your profile answers, your support tickets, your warnings. It reads messages in a small number of specific channels for automated moderation. It reads presence information only to name temporary voice channels and to decide whether to offer a mobile spoiler helper.
+The bot stores Discord user IDs linked to whatever you actually use — your XP and currency balance, your profile answers, your support tickets, your warnings. It keeps a copy of messages posted in the server for 7 days, so that messages Discord erases when someone is banned can still be reviewed by staff, and it reads messages in a small number of specific channels for automated moderation. It reads presence information only to name temporary voice channels and to decide whether to offer a mobile spoiler helper.
 
 You can see what is stored about you, export it, and delete it at any time using the commands in [section 8](#8-your-rights), without asking a human.
 
@@ -42,8 +42,9 @@ Quarantine records retain a snapshot of the roles you held, so that staff can re
 
 ### 3.3 Message content
 
-The bot reads message content only for the purposes below. It does not read or retain messages generally, and it does not build profiles from conversation.
+The bot reads message content only for the purposes below. Apart from the 7-day ban-evidence copy, it does not retain messages generally, and it does not build profiles from conversation.
 
+- **Ban evidence.** Every message a member posts in the server is copied to the bot's own database with its channel, time, attachment filenames (not the files), latest edit, and whether it was deleted. Copies are deleted automatically after 7 days. When a member is banned, Discord can erase up to a week of their messages without telling anyone; the bot therefore copies that member's messages from the week before the ban into a ban record, together with the moderator and reason, so staff can see what the ban was for. Ban records are kept as moderation records (see [section 6](#6-retention) and [section 8](#8-your-rights)).
 - **Automated moderation.** In a staff-selected list of channels, recent messages are held in a short in-memory buffer and scored locally for sentiment. When a buffer crosses a threshold, it is sent to a language model (see [section 5](#5-third-parties)) to classify harassment, hate speech, or targeted abuse. If flagged, moderators receive an alert containing the relevant excerpt. **Buffers are never written to disk and are discarded on restart.**
 - **Channel rules.** In channels restricted to images or to Tenor links, message text and attachments are inspected so that non-conforming posts can be removed.
 - **Raid honeypot.** A hidden channel exists that legitimate members have no reason to post in. Posting there records the message text and attachment filenames into the staff audit log as the evidence supporting the resulting ban or quarantine.
@@ -62,7 +63,11 @@ The bot reads your Discord status and current activity for exactly two features:
 
 **Presence and activity data is never stored, logged, or transmitted anywhere.** It is read from the live gateway cache at the moment of the event and then discarded. If you do not want your activity used this way, disable *"Display current activity as a status message"* in your own Discord privacy settings, which removes it from the data Discord sends us at all.
 
-### 3.5 Content you submit deliberately
+### 3.5 Staff web site
+
+Staff can review ban records on a private web site, `staff.unicornia.net`, after logging in with Discord. The login reads only the staff member's Discord user ID and whether their account has two-factor authentication. The login session is held in memory, never written to disk, and ends after 12 hours, on logout, or when the bot restarts. Members who are not staff cannot log in.
+
+### 3.6 Content you submit deliberately
 
 Profile questionnaire answers, suggestions, confessions, support-ticket answers, custom command triggers and responses, rules-acceptance text, and image-generation prompts are stored or posted as the feature requires. Confessions and rules acceptances are posted to Discord channels rather than retained in a local database; once posted, Discord's retention and your server's moderation policy apply.
 
@@ -81,6 +86,7 @@ The bot is hosted on infrastructure we control. The following external services 
 | **AI Horde** | The image prompt you supply | Image generation (free tier) |
 | **Modal** | The image prompt you supply | Image generation (premium tier) |
 | **popcat.xyz** | The target member's Discord avatar URL | Avatar image commands |
+| **Cloudflare** | Traffic to the staff web site, including the ban records staff view there and staff members' IP addresses | Staff web site |
 
 These services process the data to return a result; we do not authorise them to retain it for their own purposes, and we send them no more than the feature requires. Some features fetch content *from* third parties (question prompts, reaction GIFs) without sending any user data; those are not listed above because nothing about you leaves the bot.
 
@@ -92,6 +98,9 @@ If a new feature introduces a new recipient, this table is updated before that f
 | --- | --- |
 | Moderation message buffers | In memory only; discarded on restart |
 | Deleted-message cache | 30 seconds by default; in memory only |
+| Copies of server messages (ban evidence) | 7 days, then deleted automatically |
+| Ban records, with the banned member's messages from the week before the ban | Kept as moderation records until removed on request (see [section 8](#8-your-rights)) |
+| Staff web site login sessions | In memory only; at most 12 hours |
 | Presence and activity | Not retained at all |
 | Diagnostic moderation output | Up to one hour, then deleted automatically |
 | XP, currency, inventory, profiles, tickets, warnings | Until you request deletion or the record is no longer needed |
@@ -118,7 +127,9 @@ Every member can exercise these directly, without contacting staff. Replace `[p]
 
 You can also open a support ticket in the server, or email **kirin@unicornia.net**.
 
-**One limitation, stated plainly:** the in-server economy keeps a transaction ledger. Deleting rows outright would leave the ledger internally inconsistent, so on a deletion request those rows are retained with your user ID and any free-form notes replaced by a non-identifying sentinel. The remaining record cannot be linked back to you. Everything else — balances, XP, inventory, profiles, tickets, relationships, warnings — is removed.
+**One limitation, stated plainly:** the in-server economy keeps a transaction ledger. Deleting rows outright would leave the ledger internally inconsistent, so on a deletion request those rows are retained with your user ID and any free-form notes replaced by a non-identifying sentinel. The remaining record cannot be linked back to you. Everything else — balances, XP, inventory, profiles, tickets, relationships, warnings, and the 7-day message copies — is removed.
+
+**A second limitation:** if you were banned, `[p]mydata forgetme` keeps the ban record, including your messages from the week before the ban, because it is a moderation record. To have it removed, email **kirin@unicornia.net**. When a Discord account is deleted, its ban records are removed automatically.
 
 ## 9. Age
 

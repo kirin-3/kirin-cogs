@@ -1,0 +1,28 @@
+{
+    "name": "BanLog",
+    "author": [
+        "Kirin"
+    ],
+    "short": "Keeps the messages Discord purges when a member is banned",
+    "description": "Stores a rolling 7-day copy of Unicornia's messages and snapshots a banned member's messages into a permanent ban record that staff can read on staff.unicornia.net.",
+    "install_msg": "Thanks for installing BanLog. The bot needs View Audit Log in Unicornia, or bans are not recorded.",
+    "end_user_data_statement": "This cog stores a copy of every non-bot message posted in Unicornia (content, latest edit, attachment filenames, and deletion time) for 7 days. When a member is banned, their messages from that week are copied into a permanent ban record with the moderator and reason. Red data-deletion requests remove the user's stored messages; stricter requests also remove their ban records and replace them as moderator with a placeholder.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "required_cogs": {},
+    "requirements": [
+        "aiosqlite"
+    ],
+    "tags": [
+        "moderation",
+        "logging",
+        "bans"
+    ]
+}
