@@ -1,5 +1,6 @@
 """Automod pages on the staff site: owner-only changes, read-only staff views, and the scriptless editor."""
 
+import asyncio
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
@@ -270,3 +271,27 @@ async def test_log_page_marks_dry_run_and_failures(am: SimpleNamespace) -> None:
     text = await (await am.client.get("/automod/log", headers=am.headers)).text()
     assert 'delete: <span class="badge status-would">would have (dry-run)</span>' in text
     assert 'mute: <span class="badge status-failed">failed</span> <small>Too high</small>' in text
+
+
+@pytest.mark.asyncio
+async def test_concurrent_edits_do_not_overwrite_each_other(am: SimpleNamespace) -> None:
+    read = am.automod.document
+
+    async def slow_read() -> dict:
+        document = await read()
+        await asyncio.sleep(0.01)  # let the other request read the same revision if it isn't locked out
+        return document
+
+    am.automod.document = slow_read
+    responses = await asyncio.gather(
+        _post(am, "/automod/rulesets", {"name": "first"}),
+        _post(am, "/automod/lists", {"name": "second"}),
+        _post(am, "/automod/rulesets", {"name": "third"}),
+    )
+
+    assert [r.status for r in responses] == [302, 302, 302]
+    doc = await read()
+    assert {r["name"] for r in doc["rulesets"]} == {"invite", "first", "third"}
+    assert {item["name"] for item in doc["lists"]} == {"slurs", "second"}
+    ids = [r["id"] for r in doc["rulesets"]] + [item["id"] for item in doc["lists"]]
+    assert len(ids) == len(set(ids))

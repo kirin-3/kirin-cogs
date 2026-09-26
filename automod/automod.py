@@ -39,7 +39,8 @@ class AutoMod(commands.Cog):
         self.snapshot: Snapshot = EMPTY
         self.counts = Counts()
         self.dry_run = True
-        self._save_lock = asyncio.Lock()
+        # Held across document() -> edit -> save() so concurrent editors can't overwrite each other.
+        self.edit_lock = asyncio.Lock()
         self._log_lock = asyncio.Lock()
         self._renamed: dict[int, str] = {}  # member id -> nickname automod just set
 
@@ -73,13 +74,15 @@ class AutoMod(commands.Cog):
         return copy.deepcopy(await self.config.rules())
 
     async def save(self, document: object) -> dict:
-        """Validate and store a whole rules document, then apply it from the next event. Raises RuleError."""
-        async with self._save_lock:
-            clean = validate(document)
-            snapshot = compile_document(clean)
-            await self.config.rules.set(clean)
-            self.snapshot = snapshot
-            return clean
+        """Validate and store a whole rules document, then apply it from the next event. Raises RuleError.
+
+        Callers hold `edit_lock` from the `document()` they edited through this save.
+        """
+        clean = validate(document)
+        snapshot = compile_document(clean)
+        await self.config.rules.set(clean)
+        self.snapshot = snapshot
+        return clean
 
     async def set_dry_run(self, value: bool) -> None:
         await self.config.dry_run.set(value)
@@ -306,7 +309,8 @@ class AutoMod(commands.Cog):
             await ctx.send("I couldn't read that file as JSON.")
             return
         try:
-            document = await self.save(data)
+            async with self.edit_lock:
+                document = await self.save(data)
         except RuleError as e:
             await ctx.send(f"Import failed, nothing changed. {e}")
             return

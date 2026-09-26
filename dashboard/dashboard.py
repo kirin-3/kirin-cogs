@@ -4,15 +4,17 @@ The site listens on loopback only; Caddy exposes it through Cloudflare. Every ro
 listed in PUBLIC_PATHS, and staff status is re-checked against the member cache on every request.
 """
 
+import functools
 import hmac
 import logging
 import secrets
 import time
 from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 import aiohttp
 import discord
@@ -105,6 +107,24 @@ def _page_number(raw: str) -> int:
         return min(max(int(raw), 0), MAX_PAGE)
     except ValueError:
         return 0
+
+
+_Route = TypeVar("_Route", bound=Callable[..., Awaitable[web.StreamResponse]])
+
+
+def _editing(handler: _Route) -> _Route:
+    """Run an automod route's whole read-modify-save under automod's edit lock."""
+
+    @functools.wraps(handler)
+    async def wrapper(self: Any, request: web.Request) -> web.StreamResponse:
+        cog = self._automod()
+        if cog is None:
+            return await handler(self, request)
+        await request.post()  # read the body before locking; aiohttp caches it for the handler
+        async with cog.edit_lock:
+            return await handler(self, request)
+
+    return cast(_Route, wrapper)
 
 
 async def _add_security_headers(request: web.Request, response: web.StreamResponse) -> None:
@@ -502,6 +522,7 @@ class Dashboard(commands.Cog):
         await cog.set_dry_run(form.get("dry_run") == "on")
         raise web.HTTPFound("/automod")
 
+    @_editing
     async def automod_ruleset_create(self, request: web.Request) -> web.StreamResponse:
         cog = self._automod()
         if cog is None:
@@ -516,6 +537,7 @@ class Dashboard(commands.Cog):
             return await self.automod_overview(request, error=error, status=400)
         raise web.HTTPFound(f"/automod/rulesets/{new_id}")
 
+    @_editing
     async def automod_ruleset_save(self, request: web.Request) -> web.StreamResponse:
         cog = self._automod()
         if cog is None:
@@ -544,6 +566,7 @@ class Dashboard(commands.Cog):
             )
         raise web.HTTPFound(f"/automod/rulesets/{ruleset['id']}")
 
+    @_editing
     async def automod_ruleset_delete(self, request: web.Request) -> web.StreamResponse:
         cog = self._automod()
         if cog is None:
@@ -555,9 +578,11 @@ class Dashboard(commands.Cog):
             return await self.automod_overview(request, error=error, status=400)
         raise web.HTTPFound("/automod")
 
+    @_editing
     async def automod_rule_create(self, request: web.Request) -> web.StreamResponse:
         return await self._rule_submit(request, "ruleset", int(request.match_info["ruleset_id"]))
 
+    @_editing
     async def automod_rule_save(self, request: web.Request) -> web.StreamResponse:
         return await self._rule_submit(request, "rule", int(request.match_info["rule_id"]))
 
@@ -592,6 +617,7 @@ class Dashboard(commands.Cog):
             return await self._ruleset_page(request, cog, document, ruleset, drafts={key: (draft, error)}, status=400)
         raise web.HTTPFound(f"/automod/rulesets/{ruleset['id']}#rule-{rule_id}")
 
+    @_editing
     async def automod_rule_delete(self, request: web.Request) -> web.StreamResponse:
         cog = self._automod()
         if cog is None:
@@ -606,6 +632,7 @@ class Dashboard(commands.Cog):
             return await self.automod_overview(request, error=error, status=400)
         raise web.HTTPFound(f"/automod/rulesets/{ruleset['id']}")
 
+    @_editing
     async def automod_list_create(self, request: web.Request) -> web.StreamResponse:
         cog = self._automod()
         if cog is None:
@@ -619,6 +646,7 @@ class Dashboard(commands.Cog):
             return await self.automod_overview(request, error=error, status=400)
         raise web.HTTPFound(f"/automod/lists/{new_id}")
 
+    @_editing
     async def automod_list_save(self, request: web.Request) -> web.StreamResponse:
         cog = self._automod()
         if cog is None:
@@ -636,6 +664,7 @@ class Dashboard(commands.Cog):
             return await self.automod_list(request, draft=draft, error=error)
         raise web.HTTPFound(f"/automod/lists/{item['id']}")
 
+    @_editing
     async def automod_list_delete(self, request: web.Request) -> web.StreamResponse:
         cog = self._automod()
         if cog is None:
