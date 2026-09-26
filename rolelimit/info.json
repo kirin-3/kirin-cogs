@@ -1,0 +1,26 @@
+{
+    "name": "rolelimit",
+    "author": [
+        "jenjam",
+        "kirin"
+    ],
+    "short": "Limit members to one role out of a set.",
+    "description": "Merges jenjam's colourlimit (keep the newest listed role) and rolelimit (keep the highest listed role). Reads the settings the original cogs saved.",
+    "install_msg": "Unload and uninstall jencogs' colourlimit and rolelimit before loading this; their settings carry over.",
+    "end_user_data_statement": "This cog stores no user data.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "requirements": [],
+    "tags": [
+        "role",
+        "colour"
+    ],
+    "license": "MIT"
+}
