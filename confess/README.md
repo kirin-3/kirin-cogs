@@ -1,7 +1,8 @@
 # Confess
 
 > Originally a fork of the confession cog from [Jintaku-Cogs-V3](https://github.com/Jintaku/Jintaku-Cogs-V3)
-> by Jintaku (AGPL-3.0), since rewritten for Unicornia.
+> by Jintaku, since rewritten for Unicornia. Licensed **AGPL-3.0** like the original (see [LICENSE](LICENSE)),
+> unlike the rest of this repo.
 
 Confess is a Discord bot cog that allows users to submit anonymous confessions in a designated confession channel. The cog provides a sticky message with a confession button that stays at the bottom of the channel, making it easy for users to share their secrets or admissions anonymously.
 

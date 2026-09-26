@@ -24,5 +24,6 @@
         "crime",
         "secret",
         "sticky"
-    ]
+    ],
+    "license": "AGPL-3.0"
 }

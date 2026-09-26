@@ -19,7 +19,7 @@ Rule-based automod for Unicornia, replacing YAGPDB's: rulesets of triggers, cond
 Keeps a rolling 7-day copy of Unicornia's messages and, on every ban, saves the banned member's messages into a permanent record, so messages purged by a ban can still be reviewed on the staff site. See [banlog/README.md](banlog/README.md).
 
 ### Confess
-Confess secretly in a confession room using a button and modal system.
+Confess secretly in a confession room using a button and modal system. Fork of Jintaku's confess, licensed AGPL-3.0. See [confess/README.md](confess/README.md).
 
 ### ContestCog
 Posts an interactive dashboard (Components V2) for Unicornia's Cutie of the Month (COTM) contest information, prizes, and voting instructions, with reaction-based vote counting and reward distribution.
@@ -130,5 +130,9 @@ Replace `<cogname>` with the name of the cog you want to install. Each cog folde
 
 ## License
 
-All cogs are released under the MIT License, except [Sticky](sticky/), which is a fork of a GPL-3.0 cog and stays
-GPL-3.0 (see [sticky/LICENSE](sticky/LICENSE)). Forked cogs credit their original authors in their READMEs.
+All cogs are released under the MIT License, except:
+
+- [Sticky](sticky/), a fork of a GPL-3.0 cog, stays GPL-3.0 (see [sticky/LICENSE](sticky/LICENSE)).
+- [Confess](confess/), a fork of an AGPL-3.0 cog, stays AGPL-3.0 (see [confess/LICENSE](confess/LICENSE)).
+
+Forked cogs credit their original authors in their READMEs.

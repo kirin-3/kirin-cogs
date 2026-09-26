@@ -2,7 +2,9 @@
 
 > Fork of [colourlimit](https://github.com/jenjenjam/jencogs/tree/master/colourlimit) and
 > [rolelimit](https://github.com/jenjenjam/jencogs/tree/master/rolelimit) by jenjam
-> ([jencogs](https://github.com/jenjenjam/jencogs)), merged into one cog.
+> ([jencogs](https://github.com/jenjenjam/jencogs)), merged into one cog. Ported and released here under MIT with
+> the permission of our dear friend jenjam, who wrote the originals for our server. jencogs has no license file,
+> which is expected: this cog is covered by that permission.
 
 Keeps members to one role out of a configured set. It has two independent lists:
 
