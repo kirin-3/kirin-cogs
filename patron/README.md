@@ -1,110 +1,69 @@
 # Patron Cog
 
-Syncs Discord roles and awards currency from a Google Sheet (supporting Patreon, BuyMeACoffee, or manual entries).
+Gives supporters a role and monthly currency from **Patreon** (API polled hourly) and **Buy Me a Coffee** (webhooks).
+Requires the Unicornia cog for currency. It works for one hard-coded server (`GUILD_ID` in `patron.py`).
 
-## Features
+## How it works
 
-- **Google Sheets Integration**: Reads data directly from a "Master Sheet" of your donors.
-- **Unified Management**: Handle Patreon, BuyMeACoffee, and PayPal donors in one place.
-- **Smart Role Sync**: 
-  - Automatically grants **Active Role** to active patrons.
-  - Automatically moves expired/cancelled patrons to **Former Role**.
-  - Downgrades users who are removed from the sheet.
-- **Advanced Currency Rewards**:
-  - Automatically calculates rewards based on donation amount.
-  - Supports **Annual Pledges** by distributing the reward monthly over 12 months.
-  - Applies percentage bonuses for higher tiers (5%, 10%, 15%, 20%).
-- **European Currency Support**: Handles `€5,00` and `$5.00` formats correctly.
+- **Patreon**: every hour the cog reads the campaign's members. A new charge with status `Paid` starts a run of
+  periods: one for monthly pledges, twelve for annual ones (a reward every 30 days). The patron's Discord account comes
+  from Patreon's Discord connection.
+- **Buy Me a Coffee memberships and monthly donations**: reward every 30 days from the start while the membership is
+  `active`; yearly memberships pay a twelfth of the amount each period. The role stays until the paid period ends.
+- **Buy Me a Coffee one-time donations**: one reward and the Active role for 30 days. Refunds are posted to the log
+  channel; currency already awarded is not taken back.
+- **Roles**: anyone with an active payment gets the Active role; anyone who paid before gets the Former role instead.
+  Members the cog has no payment record for are never touched.
+- **Linking**: a payment without a Discord account (every Buy Me a Coffee supporter, and patrons who have not connected
+  Discord on Patreon) is announced once in the log channel and held. `[p]patronset link @user <email>` releases it.
 
-## Requirements
+Rewards are 3,000 currency per unit of money (dollar, euro…), with bonuses of 5% from 5, 10% from 10, 15% from 20 and 20%
+from 40. Each payment has its own operation key in Unicornia, so retries and replayed webhooks never pay twice.
 
-- Red-DiscordBot 3.5.0 or higher
-- Python 3.11 or higher
-- Unicornia cog must be loaded and functioning
-- Google Sheets API access (requires service account credentials)
-- Dependencies: gspread, google-auth
+## Setup
 
-## Setup Guide
+1. **Patreon**: register a client at <https://www.patreon.com/portal/registration/register-clients>, then:
+   ```
+   [p]set api patreon access_token,<creator access token>,refresh_token,<creator refresh token>,client_id,<client id>,client_secret,<client secret>
+   ```
+   The cog refreshes the access token itself when it expires. Connect Patreon's Discord integration on your creator
+   page so patrons' Discord IDs are available.
+2. **Webhook host**: point a Cloudflare-proxied hostname at the server and proxy it to the cog:
+   ```
+   hooks.unicornia.net {
+       reverse_proxy 127.0.0.1:8014
+   }
+   ```
+3. **Buy Me a Coffee**: under Integrations → Webhooks, add `https://hooks.unicornia.net/bmc` with the membership,
+   recurring donation and donation events, then:
+   ```
+   [p]set api buymeacoffee webhook_secret,<signing secret>
+   ```
+4. **Roles and log channel**:
+   ```
+   [p]patronset roles @Supporter @FormerSupporter
+   [p]patronset logchannel #supporter-log
+   ```
+   The bot needs Manage Roles and a role above both.
+5. **Existing Buy Me a Coffee members** (once): create a token at <https://developers.buymeacoffee.com>, then
+   ```
+   [p]set api buymeacoffee api_token,<token>
+   [p]patronset bmcimport
+   ```
+   Their current period counts as paid. Link them with `[p]patronset link`.
 
-### 1. Google Cloud Setup (One-time)
-1.  Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2.  Create a new project (e.g., "Discord Bot Sheets").
-3.  Enable the **Google Sheets API**.
-4.  Create a **Service Account** and download the **JSON Key**.
-5.  Rename the key file to `service_account.json`.
-6.  **Upload** this file to your bot's `patron/` folder (`patron/service_account.json`).
+The first Patreon sync records every current charge as already paid, so switching from the Google Sheet does not pay
+anyone twice for the current month.
 
-### 2. Prepare Your Sheet
-Create a Google Sheet with the following headers (order doesn't matter, names must match):
+## Commands (bot owner)
 
-| Column Name | Description | Example |
-|-------------|-------------|---------|
-| `Discord` | The patron's Discord **user ID** (numeric). Legacy username rows are detected but require manual reconciliation | `140186220255903746` |
-| `Patron Status` | Must be "Active patron" to get rewards | `Active patron` |
-| `Pledge Amount` | The donation amount (currency symbol optional) | `€10.00` or `10,00` |
-| `Charge Frequency`| "Monthly" or "Annual" | `Monthly` |
-| `Last Charge Date`| Date string (any format distinct per charge) | `2024-05-01` |
-
-**Share** this sheet (Viewer access is sufficient; the bot only reads) with the **client email** found inside your `service_account.json` file.
-
-### 3. Bot Configuration
-Load the cog and configure the settings. **All `[p]patronset` commands require Bot Owner**:
-
-```
-[p]load patron
-[p]patronset setup <SHEET_ID_FROM_URL>
-[p]patronset roles @ActivePatron @FormerPatron
-[p]patronset logchannel #bot-logs
-```
-
-## Usage
-
-### Automatic Sync
-The bot checks the sheet **every hour**. 
-- It adds roles to new patrons.
-- It removes roles from cancelled patrons.
-- It awards currency if a new charge is detected (or if it's the next month of an annual pledge).
-
-### Commands
-
-#### Setup Commands
-All commands below are **Bot Owner only**.
-```
-[p]patronset setup <SHEET_ID_FROM_URL>    # Set the Google Sheet ID
-[p]patronset roles @ActivePatron @FormerPatron    # Set Active and Former patron roles
-[p]patronset logchannel #bot-logs    # Set channel for reward logs
-[p]patronset creds    # Show instructions for uploading credentials
-[p]patronset sync    # Manually trigger a sync
-[p]patronset unreconciled    # List legacy username-keyed charge records awaiting reconciliation
-```
-
-### Manual Sync
-You can force a sync immediately:
-```
-[p]patronset sync
-```
-
-### Uploading Credentials
-Use the `[p]patronset creds` command to see instructions for uploading the service account JSON file to the bot. This command provides the path where the `service_account.json` file should be placed.
-
-## Reward Logic
-
-**Base Rate:** 3,000 currency per 1 unit (e.g., $1 = 3000).
-
-**Bonuses:**
-- ≥ 5: +5%
-- ≥ 10: +10%
-- ≥ 20: +15%
-- ≥ 40: +20%
-
-**Annual Pledges:**
-If `Charge Frequency` contains "Annual", the bot divides the amount by 12. It then awards this monthly equivalent **every 30 days** for 12 months (or until a new charge date appears).
-
-## Troubleshooting
-
-- **Bot not updating roles?** Ensure the sheet contains the member's immutable Discord ID; unresolved legacy username rows are reported for manual reconciliation.
-- **"Service account not found"?** Ensure `service_account.json` is in the correct folder.
-- **Race conditions?** The bot uses a lock to prevent manual syncs from interfering with background syncs.
-- **Credential setup?** Use `[p]patronset creds` to see where to place your `service_account.json` file.
-
-Rewards use payment-derived idempotency keys and are recorded only after Unicornia settles the transaction. Amounts are parsed with `Decimal`; retrying the same payment cannot credit it twice.
+| Command | What it does |
+| --- | --- |
+| `[p]patronset creds` | Shows the credential and webhook setup |
+| `[p]patronset roles <active> <former>` | Sets the supporter roles |
+| `[p]patronset logchannel <channel>` | Sets the channel for rewards, unlinked payments and refunds |
+| `[p]patronset sync` | Polls Patreon now and pays anything due |
+| `[p]patronset link <user> <email>` | Links a Patreon/Buy Me a Coffee email to a Discord user |
+| `[p]patronset unlink <email>` | Removes a link |
+| `[p]patronset unlinked` | Lists payments not linked to anyone (shows emails, so run it in a staff channel) |
+| `[p]patronset bmcimport` | Imports active Buy Me a Coffee memberships once |

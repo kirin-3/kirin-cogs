@@ -1,937 +1,614 @@
-"""Tests for the Patron cog.
-
-Unit tests cover:
-- parse_amount: localized currency string parsing to exact Decimal values
-- calculate_reward: tier/bonus calculation with Decimal arithmetic
-- _process_sheet_logic: role assignment, idempotent currency awarding, dedup,
-  annual tracking, Discord-ID and legacy-username matching
-- award_currency: Unicornia operation-API integration (settled/duplicate/failure)
-- process_sheet: lock guard
-- Task lifecycle: sync task created in cog_load, cancelled/gathered on unload
-
-dpytest integration tests cover:
-- patronset setup / logchannel / sync commands via bot dispatch
-"""
+"""Tests for the Patron cog: Patreon polling, Buy Me a Coffee webhooks, payouts and role sync."""
 
 import asyncio
-from collections.abc import AsyncGenerator
-from datetime import datetime, timedelta
+import functools
+import hashlib
+import hmac
+import json
 from decimal import Decimal
-from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
-import discord.ext.commands as dpy_commands
-import discord.ext.test as dpytest
 import pytest
-import pytest_asyncio
-from redbot.core import Config
+from aiohttp.test_utils import TestClient, TestServer
 
-from patron.patron import Patron
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-def _build_guild_config(overrides: dict | None = None) -> dict:
-    base = {
-        "sheet_id": "sheet123",
-        "role_active": None,
-        "role_former": None,
-        "log_channel": None,
-        "processed_charges": {},
-        "annual_tracking": {},
-    }
-    if overrides:
-        base.update(overrides)
-    return base
-
-
-def _make_config_attr(value: object) -> MagicMock:
-    """Return an AsyncMock that acts as both ``await attr()`` and ``attr.set(v)``."""
-    attr = AsyncMock(return_value=value)
-    attr.set = AsyncMock()
-    return attr
-
-
-def _make_config_mock(guild_data: dict | None = None) -> MagicMock:
-    """Build a Config mock whose guild group returns the given data dict."""
-    data = _build_guild_config(guild_data)
-    config = MagicMock(spec=Config)
-
-    guild_group = MagicMock()
-    for key, value in data.items():
-        setattr(guild_group, key, _make_config_attr(value))
-
-    config.guild.return_value = guild_group
-    config.register_guild = MagicMock()
-    config.register_user = MagicMock()
-    config.all_guilds = AsyncMock(return_value={})
-    return config
-
-
-def _make_patron_cog(bot: MagicMock | None = None, guild_data: dict | None = None) -> Patron:
-    """Construct a Patron instance with mocked Config and bot.
-
-    The sync task is created in ``cog_load`` (not ``__init__``), so plain
-    construction never touches the event loop.
-    """
-    if bot is None:
-        bot = MagicMock()
-        bot.guilds = []
-
-    config_mock = _make_config_mock(guild_data)
-
-    with patch("patron.patron.Config.get_conf", return_value=config_mock):
-        cog = Patron(bot)  # type: ignore[arg-type]
-
-    cog.config = config_mock
-    return cog
-
-
-def _outcome(state: str = "settled") -> SimpleNamespace:
-    return SimpleNamespace(state=state, new_balance=0, amount=0, result={})
-
-
-# ---------------------------------------------------------------------------
-# parse_amount tests (Decimal, localized inputs)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "raw, expected",
-    [
-        ("5.00", "5.00"),
-        ("$5.00", "5.00"),
-        ("€5,00", "5.00"),
-        ("1,000.00", "1000.00"),
-        ("1.000,00", "1000.00"),
-        ("10", "10"),
-        ("", "0"),
-        ("abc", "0"),
-        ("$0", "0"),
-        ("20.50", "20.50"),
-        ("1.234,56", "1234.56"),
-        ("1,234.56", "1234.56"),
-        ("0.1", "0.1"),
-        ("2,5", "2.5"),
-    ],
+from patron import patron as patron_module
+from patron.api import (
+    ApiError,
+    PatreonClient,
+    PatreonMember,
+    parse_members_page,
+    verify_bmc_signature,
 )
-def test_parse_amount(raw: str, expected: str) -> None:
-    cog = _make_patron_cog()
-    result = cog.parse_amount(raw)
-    assert isinstance(result, Decimal)
-    assert result == Decimal(expected)
+from patron.patron import (
+    GUILD_ID,
+    PERIOD_SECONDS,
+    Patron,
+    apply_bmc_event,
+    calculate_reward,
+    import_bmc_subscriptions,
+    merge_patreon,
+    periods_due,
+    plan_entries,
+)
+from testutils import DictConfig
+
+NOW = 1_800_000_000.0
+DAY = 86400
+SECRET = "whsec"
 
 
-def test_parse_amount_is_exact_not_binary_float() -> None:
-    """0.1 + 0.2 style float errors must not leak into reward math."""
-    cog = _make_patron_cog()
-    assert cog.parse_amount("0.1") + cog.parse_amount("0.2") == Decimal("0.3")
+def _state(**buckets: dict) -> dict[str, dict]:
+    return {key: dict(buckets.get(key, {})) for key in ("links", "patreon_members", "bmc_members", "bmc_tips")}
+
+
+def _member(**overrides: Any) -> PatreonMember:
+    fields: dict[str, Any] = {
+        "id": "m1",
+        "name": "Alice",
+        "email": "alice@example.com",
+        "discord_id": 11,
+        "status": "active_patron",
+        "last_charge_date": "2026-12-15T00:00:00+00:00",
+        "last_charge_status": "Paid",
+        "cents": 500,
+        "cadence": 1,
+    }
+    fields.update(overrides)
+    return PatreonMember(**fields)
 
 
 # ---------------------------------------------------------------------------
-# calculate_reward tests
+# Pure helpers
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
     "amount, expected",
     [
-        ("1.0", 3000),  # 1 * 3000 * 1.0
-        ("4.0", 12000),  # 4 * 3000 * 1.0 (below 5 threshold)
-        ("5.0", 15750),  # 5 * 3000 * 1.05
-        ("9.0", 28350),  # 9 * 3000 * 1.05
-        ("10.0", 33000),  # 10 * 3000 * 1.10
-        ("19.0", 62700),  # 19 * 3000 * 1.10
-        ("20.0", 69000),  # 20 * 3000 * 1.15
-        ("39.0", 134550),  # 39 * 3000 * 1.15
-        ("40.0", 144000),  # 40 * 3000 * 1.20
-        ("100.0", 360000),  # 100 * 3000 * 1.20
-        ("8.33", 26240),  # 8.33 * 3000 * 1.05 = 26239.5 -> half-up 26240
+        ("1.0", 3000),
+        ("4.0", 12000),
+        ("5.0", 15750),
+        ("10.0", 33000),
+        ("20.0", 69000),
+        ("40.0", 144000),
+        ("8.33", 26240),  # 26239.5 rounds half-up
     ],
 )
 def test_calculate_reward(amount: str, expected: int) -> None:
-    cog = _make_patron_cog()
-    assert cog.calculate_reward(Decimal(amount)) == expected
+    assert calculate_reward(Decimal(amount)) == expected
 
 
-# ---------------------------------------------------------------------------
-# award_currency tests (operation API)
-# ---------------------------------------------------------------------------
+def test_periods_due() -> None:
+    assert periods_due(NOW, NOW - 1, None) == 0
+    assert periods_due(NOW, NOW, None) == 1
+    assert periods_due(NOW, NOW + PERIOD_SECONDS, None) == 2
+    assert periods_due(NOW, NOW + 40 * PERIOD_SECONDS, 12) == 12
 
 
-@pytest.mark.asyncio
-async def test_award_currency_calls_unicornia_operation_api() -> None:
-    """award_currency delegates to Unicornia.apply_operation with the payment key."""
-    cog = _make_patron_cog()
+def test_parse_members_page_reads_discord_id_and_tolerates_missing_connections() -> None:
+    payload = {
+        "data": [
+            {
+                "id": "a",
+                "attributes": {"full_name": "A", "email": "A@X.com", "patron_status": "active_patron"},
+                "relationships": {"user": {"data": {"id": "u1", "type": "user"}}},
+            },
+            {"id": "b", "attributes": {}, "relationships": {"user": {"data": {"id": "u2", "type": "user"}}}},
+        ],
+        "included": [
+            {"id": "u1", "type": "user", "attributes": {"social_connections": {"discord": {"user_id": "123"}}}},
+            {"id": "u2", "type": "user", "attributes": {"social_connections": None}},
+        ],
+    }
+    first, second = parse_members_page(payload)
+    assert first.discord_id == 123
+    assert first.email == "a@x.com"
+    assert second.discord_id is None
+    assert second.cadence == 1
 
-    unicornia = MagicMock()
-    unicornia.apply_operation = AsyncMock(return_value=_outcome("settled"))
-    cog.bot.get_cog.return_value = unicornia
 
-    guild = MagicMock(spec=discord.Guild)
-    guild.id = 777
-    guild.get_channel.return_value = None
-    cast(MagicMock, cog.config.guild).return_value.log_channel = AsyncMock(return_value=None)
+def test_verify_bmc_signature() -> None:
+    body = b'{"a":1}'
+    good = hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
+    assert verify_bmc_signature(body, SECRET, good)
+    assert not verify_bmc_signature(body, SECRET, "0" * 64)
+    assert not verify_bmc_signature(body, SECRET, "ünicode")
 
-    member = MagicMock(spec=discord.Member)
-    member.id = 1
-    member.name = "Alice"
 
-    awarded = await cog.award_currency(guild, member, 15000, "Test reason", operation_key="patron:777:1:2024-01-01")
+def test_merge_patreon_baseline_counts_current_charge_as_paid() -> None:
+    records: dict = {}
+    merge_patreon(records, [_member()], NOW, baseline=True)
+    assert records["m1"]["paid"] == 1
 
-    assert awarded is True
-    unicornia.apply_operation.assert_awaited_once_with(
-        key="patron:777:1:2024-01-01",
-        user_id=member.id,
-        amount=15000,
-        direction="credit",
-        source="patron",
-        guild_id=777,
-        reason="Patreon: Test reason",
+    merge_patreon(records, [_member(last_charge_date="2027-02-01T00:00:00+00:00")], NOW, baseline=False)
+    assert records["m1"]["paid"] == 0
+    assert records["m1"]["charge"] == "2027-02-01T00:00:00+00:00"
+
+
+def test_merge_patreon_ignores_unpaid_charges_and_marks_missing_members() -> None:
+    records: dict = {"gone": {"charge": "x", "status": "active_patron"}}
+    merge_patreon(records, [_member(last_charge_status="Declined")], NOW, baseline=False)
+    assert records["m1"]["charge"] is None
+    assert records["gone"]["status"] is None
+
+
+def test_merge_patreon_annual_charge_runs_twelve_periods() -> None:
+    records: dict = {}
+    merge_patreon(records, [_member(cadence=12)], NOW, baseline=False)
+    assert records["m1"]["periods"] == 12
+    assert records["m1"]["paid"] == 0
+
+
+def _event(event_type: str, created: int = int(NOW), **data: Any) -> dict:
+    base = {"id": 7, "supporter_email": "Bob@Example.com", "supporter_name": "Bob", "amount": 5, "status": "active"}
+    base.update(data)
+    return {"type": event_type, "created": created, "live_mode": True, "data": base}
+
+
+def test_membership_started_pays_from_first_period() -> None:
+    state = _state()
+    assert apply_bmc_event(state, _event("membership.started", started_at=int(NOW)), NOW) == "bmc_members"
+    rec = state["bmc_members"]["membership:7"]
+    assert rec["paid"] == 0
+    assert rec["email"] == "bob@example.com"
+
+
+def test_membership_first_seen_mid_life_is_not_back_paid() -> None:
+    state = _state()
+    started = int(NOW - 3 * PERIOD_SECONDS - DAY)
+    apply_bmc_event(state, _event("membership.updated", started_at=started), NOW)
+    assert state["bmc_members"]["membership:7"]["paid"] == 4
+
+
+def test_stale_membership_event_is_ignored() -> None:
+    state = _state()
+    apply_bmc_event(state, _event("membership.cancelled", created=int(NOW), status="canceled"), NOW)
+    assert apply_bmc_event(state, _event("membership.updated", created=int(NOW) - 60), NOW) is None
+    assert state["bmc_members"]["membership:7"]["status"] == "canceled"
+
+
+def test_webhook_adopts_imported_membership() -> None:
+    state = _state(bmc_members={"membership:999": {"email": "bob@example.com", "imported": True, "paid": 3}})
+    apply_bmc_event(state, _event("membership.updated"), NOW)
+    assert "membership:999" not in state["bmc_members"]
+    assert state["bmc_members"]["membership:7"]["paid"] == 3
+
+
+def test_tip_and_refund() -> None:
+    state = _state()
+    apply_bmc_event(state, _event("donation.created", created_at=int(NOW), status="succeeded"), NOW)
+    assert state["bmc_tips"]["7"]["paid"] == 0
+    apply_bmc_event(state, _event("donation.refunded", status="refunded"), NOW)
+    assert state["bmc_tips"]["7"]["refunded"] is True
+    (entry,) = plan_entries(state, NOW)
+    assert not entry.active and not entry.payable
+
+
+def test_unhandled_event_changes_nothing() -> None:
+    assert apply_bmc_event(_state(), _event("extra_purchase.created"), NOW) is None
+
+
+def test_import_bmc_subscriptions_baselines_and_skips_known() -> None:
+    state = _state(bmc_members={"membership:1": {"email": "known@example.com"}})
+    rows = [
+        {
+            "subscription_id": 2,
+            "payer_email": "New@Example.com",
+            "payer_name": "New",
+            "subscription_coffee_price": "5.00",
+            "subscription_coffee_num": 2,
+            "subscription_duration_type": "month",
+            "subscription_created_on": "2026-01-01 00:00:00",
+        },
+        {"subscription_id": 3, "payer_email": "known@example.com", "subscription_created_on": "2026-01-01 00:00:00"},
+        {"subscription_id": 4, "subscription_created_on": "garbage"},
+    ]
+    assert import_bmc_subscriptions(state, rows, NOW) == 1
+    rec = state["bmc_members"]["membership:2"]
+    assert rec["amount"] == "10.00"
+    assert rec["paid"] == periods_due(rec["anchor"], NOW, None)
+
+
+def test_plan_entries_links_by_email_and_splits_yearly() -> None:
+    state = _state(
+        links={"bob@example.com": 22},
+        bmc_members={
+            "membership:7": {
+                "email": "bob@example.com",
+                "amount": "120",
+                "duration": "year",
+                "status": "active",
+                "anchor": NOW,
+                "paid": 0,
+            }
+        },
+        bmc_tips={"9": {"email": "x@example.com", "amount": "5", "created": int(NOW - 31 * DAY), "paid": 0}},
+        patreon_members={"free": {"charge": None, "status": None}},
     )
-
-
-@pytest.mark.asyncio
-async def test_award_currency_no_unicornia_returns_false() -> None:
-    cog = _make_patron_cog()
-    cog.bot.get_cog.return_value = None
-
-    guild = MagicMock(spec=discord.Guild)
-    member = MagicMock(spec=discord.Member)
-    member.id = 1
-    member.name = "Bob"
-
-    awarded = await cog.award_currency(guild, member, 5000, "reason", operation_key="k")
-    assert awarded is False
-
-
-@pytest.mark.asyncio
-async def test_award_currency_duplicate_is_advanceable_but_not_announced() -> None:
-    """A duplicate settlement allows advancement without a second channel log."""
-    cog = _make_patron_cog()
-
-    unicornia = MagicMock()
-    unicornia.apply_operation = AsyncMock(return_value=_outcome("duplicate"))
-    cog.bot.get_cog.return_value = unicornia
-
-    log_channel = MagicMock(spec=discord.TextChannel)
-    log_channel.send = AsyncMock()
-
-    guild = MagicMock(spec=discord.Guild)
-    guild.id = 1
-    guild.get_channel.return_value = log_channel
-    cast(MagicMock, cog.config.guild).return_value.log_channel = AsyncMock(return_value=999)
-
-    member = MagicMock(spec=discord.Member)
-    member.id = 2
-    member.name = "Carol"
-    member.mention = "<@2>"
-
-    awarded = await cog.award_currency(guild, member, 9000, "Monthly", operation_key="k2")
-
-    assert awarded is True
-    log_channel.send.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_award_currency_logs_to_channel_when_settled() -> None:
-    """When a log channel is configured and found, a message is sent on fresh settles."""
-    cog = _make_patron_cog()
-
-    unicornia = MagicMock()
-    unicornia.apply_operation = AsyncMock(return_value=_outcome("settled"))
-    cog.bot.get_cog.return_value = unicornia
-
-    log_channel = MagicMock(spec=discord.TextChannel)
-    log_channel.send = AsyncMock()
-
-    guild = MagicMock(spec=discord.Guild)
-    guild.id = 5
-    guild.get_channel.return_value = log_channel
-    cast(MagicMock, cog.config.guild).return_value.log_channel = AsyncMock(return_value=999)
-
-    member = MagicMock(spec=discord.Member)
-    member.id = 2
-    member.name = "Carol"
-    member.mention = "<@2>"
-
-    awarded = await cog.award_currency(guild, member, 9000, "Monthly", operation_key="k3")
-
-    assert awarded is True
-    log_channel.send.assert_awaited_once()
-    sent_text: str = log_channel.send.call_args[0][0]
-    assert "9000" in sent_text
-    assert "Monthly" in sent_text
-
-
-@pytest.mark.asyncio
-async def test_award_currency_not_ready_returns_false() -> None:
-    cog = _make_patron_cog()
-    unicornia = MagicMock()
-    unicornia.apply_operation = AsyncMock(return_value=None)
-    cog.bot.get_cog.return_value = unicornia
-
-    member = MagicMock(spec=discord.Member)
-    member.id = 1
-    member.name = "Dave"
-
-    awarded = await cog.award_currency(MagicMock(spec=discord.Guild), member, 100, "r", operation_key="k4")
-    assert awarded is False
+    sub, tip = plan_entries(state, NOW)
+    assert sub.user_id == 22
+    assert sub.reward == calculate_reward(Decimal("10.00"))
+    assert tip.user_id is None
+    assert tip.active is False  # tip role lasts 30 days
+    assert tip.payable is True
 
 
 # ---------------------------------------------------------------------------
-# _process_sheet_logic tests
+# Settle: payouts and roles against a dict-backed Config
 # ---------------------------------------------------------------------------
 
 
-def _make_guild(members: list[discord.Member] | None = None) -> MagicMock:
-    guild = MagicMock(spec=discord.Guild)
-    guild.id = 4242
-    guild.name = "TestGuild"
-    guild.members = members or []
-    guild.get_role.return_value = None
-    guild.get_member.side_effect = lambda uid: discord.utils.get(guild.members, id=uid)
-    return guild
+@functools.total_ordering
+class FakeRole:
+    def __init__(self, role_id: int, position: int) -> None:
+        self.id = role_id
+        self.position = position
+
+    def __lt__(self, other: "FakeRole") -> bool:
+        return self.position < other.position
+
+    def __eq__(self, other: object) -> bool:
+        return self is other
+
+    __hash__ = object.__hash__
 
 
-def _make_member_obj(name: str, uid: int = 1, roles: list | None = None) -> MagicMock:
-    m = MagicMock(spec=discord.Member)
-    m.id = uid
-    m.name = name
-    m.roles = roles or []
-    m.add_roles = AsyncMock()
-    m.remove_roles = AsyncMock()
-    return m
+def _discord_member(user_id: int, roles: list | None = None) -> MagicMock:
+    member = MagicMock()
+    member.id = user_id
+    member.mention = f"<@{user_id}>"
+    member.roles = list(roles or [])
+
+    async def add_roles(role: FakeRole, reason: str = "") -> None:
+        member.roles.append(role)
+
+    async def remove_roles(role: FakeRole, reason: str = "") -> None:
+        member.roles.remove(role)
+
+    member.add_roles = AsyncMock(side_effect=add_roles)
+    member.remove_roles = AsyncMock(side_effect=remove_roles)
+    return member
 
 
-def _configure_sheet_cfg(cog: Patron, *, charges: dict | None = None, tracking: dict | None = None) -> MagicMock:
-    cfg = cast(MagicMock, cog.config.guild).return_value
-    cfg.role_active = AsyncMock(return_value=None)
-    cfg.role_former = AsyncMock(return_value=None)
-    cfg.processed_charges = AsyncMock(return_value=dict(charges or {}))
-    cfg.annual_tracking = AsyncMock(return_value=dict(tracking or {}))
-    cfg.processed_charges.set = AsyncMock()
-    cfg.annual_tracking.set = AsyncMock()
-    return cfg
+class World:
+    """A cog wired to a DictConfig, a fake guild and a recording Unicornia."""
+
+    def __init__(self, guild_data: dict | None = None, members: list | None = None) -> None:
+        self.role_active = FakeRole(1, 5)
+        self.role_former = FakeRole(2, 4)
+        self.channel = MagicMock(spec=discord.TextChannel)
+        self.channel.send = AsyncMock()
+        self.members = {m.id: m for m in members or []}
+        self.guild = MagicMock()
+        self.guild.id = GUILD_ID
+        self.guild.get_member.side_effect = self.members.get
+        self.guild.get_role.side_effect = {1: self.role_active, 2: self.role_former}.get
+        self.guild.get_channel.side_effect = {50: self.channel}.get
+        self.guild.me.guild_permissions.manage_roles = True
+        self.guild.me.top_role = FakeRole(3, 10)
+
+        data = {"role_active": 1, "role_former": 2, "log_channel": 50}
+        data.update(guild_data or {})
+        self.config = DictConfig({"guild": {GUILD_ID: data}})
+
+        self.keys: list[str] = []
+        self.unicornia = MagicMock()
+
+        async def apply_operation(**kwargs: Any) -> SimpleNamespace:
+            state = "duplicate" if kwargs["key"] in self.keys else "settled"
+            self.keys.append(kwargs["key"])
+            return SimpleNamespace(state=state)
+
+        self.unicornia.apply_operation = AsyncMock(side_effect=apply_operation)
+
+        bot = MagicMock()
+        bot.get_guild.side_effect = {GUILD_ID: self.guild}.get
+        bot.get_cog.return_value = self.unicornia
+        bot.get_shared_api_tokens = AsyncMock(return_value={"webhook_secret": SECRET})
+        with patch("patron.patron.Config.get_conf", return_value=MagicMock()):
+            self.cog = Patron(bot)
+        self.cog.config = self.config  # type: ignore[assignment]
+
+    def stored(self, key: str) -> Any:
+        return self.config.guild_from_id(GUILD_ID).raw()[key]
 
 
 @pytest.mark.asyncio
-async def test_process_sheet_logic_adds_active_role() -> None:
-    """An active-patron row whose member has no active role gets the role added."""
-    cog = _make_patron_cog()
-
-    role_active = MagicMock(spec=discord.Role)
-    role_active.id = 10
-    role_active.members = []
-
-    role_former = MagicMock(spec=discord.Role)
-    role_former.id = 20
-
-    member = _make_member_obj("alice", uid=1, roles=[])
-    guild = _make_guild(members=[member])
-    guild.get_role.side_effect = lambda rid: role_active if rid == 10 else role_former
-
-    records = [
+async def test_settle_pays_due_periods_once_and_sets_roles() -> None:
+    alice = _discord_member(11)
+    world = World(
         {
-            "Discord": "alice",
-            "Patron Status": "Active Patron",
-            "Last Charge Date": "2024-01-01",
-            "Pledge Amount": "5",
-            "Charge Frequency": "monthly",
-        }
-    ]
-
-    cfg = _configure_sheet_cfg(cog)
-    cfg.role_active = AsyncMock(return_value=10)
-    cfg.role_former = AsyncMock(return_value=20)
-    cfg.log_channel = AsyncMock(return_value=None)
-
-    cog.connect_to_sheet = AsyncMock(return_value=(records, None))
-    cog.award_currency = AsyncMock(return_value=True)
-
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    member.add_roles.assert_awaited_once_with(role_active, reason="Patron Sync: Active")
-    cog.award_currency.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_process_sheet_logic_resolves_discord_id_rows() -> None:
-    """A row whose Discord column holds a member ID resolves without username matching."""
-    cog = _make_patron_cog()
-
-    member = _make_member_obj("alice_renamed", uid=123456789, roles=[])
-    guild = _make_guild(members=[member])
-
-    records = [
-        {
-            "Discord": "123456789",
-            "Patron Status": "Active Patron",
-            "Last Charge Date": "2024-01-01",
-            "Pledge Amount": "5",
-            "Charge Frequency": "monthly",
-        }
-    ]
-
-    cfg = _configure_sheet_cfg(cog)
-    cog.connect_to_sheet = AsyncMock(return_value=(records, None))
-    cog.award_currency = AsyncMock(return_value=True)
-
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    # Charge recorded under the canonical member-ID key
-    cfg.processed_charges.set.assert_awaited_once()
-    written = cfg.processed_charges.set.call_args[0][0]
-    assert written == {"123456789": "2024-01-01"}
-
-    # Payment identity key: patron:{guild}:{member}:{charge_date}
-    operation_key = cog.award_currency.call_args.kwargs["operation_key"]
-    assert operation_key == "patron:4242:123456789:2024-01-01"
-
-
-@pytest.mark.asyncio
-async def test_process_sheet_logic_legacy_username_charge_lookup() -> None:
-    """Legacy username-keyed charge records still dedup and are adopted to ID keys."""
-    cog = _make_patron_cog()
-
-    member = _make_member_obj("carol", uid=3)
-    guild = _make_guild(members=[member])
-
-    records = [
-        {
-            "Discord": "carol",
-            "Patron Status": "Active Patron",
-            "Last Charge Date": "2024-01-01",
-            "Pledge Amount": "5",
-            "Charge Frequency": "monthly",
-        }
-    ]
-
-    # Legacy record keyed by username suppresses a duplicate award
-    _configure_sheet_cfg(cog, charges={"carol": "2024-01-01"})
-
-    cog.connect_to_sheet = AsyncMock(return_value=(records, None))
-    cog.award_currency = AsyncMock(return_value=True)
-
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    cog.award_currency.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_process_sheet_logic_removes_active_role_on_lapse() -> None:
-    """A former-patron row removes the active role and adds the former role."""
-    cog = _make_patron_cog()
-
-    role_active = MagicMock(spec=discord.Role)
-    role_active.id = 10
-    role_active.members = []
-
-    role_former = MagicMock(spec=discord.Role)
-    role_former.id = 20
-
-    member = _make_member_obj("bob", uid=2, roles=[role_active])
-    guild = _make_guild(members=[member])
-    guild.get_role.side_effect = lambda rid: role_active if rid == 10 else role_former
-
-    records = [
-        {
-            "Discord": "bob",
-            "Patron Status": "Former Patron",
-            "Last Charge Date": "",
-            "Pledge Amount": "5",
-            "Charge Frequency": "monthly",
-        }
-    ]
-
-    cfg = _configure_sheet_cfg(cog)
-    cfg.role_active = AsyncMock(return_value=10)
-    cfg.role_former = AsyncMock(return_value=20)
-
-    cog.connect_to_sheet = AsyncMock(return_value=(records, None))
-    cog.award_currency = AsyncMock(return_value=True)
-
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    member.remove_roles.assert_awaited_once_with(role_active, reason="Patron Sync: No longer Active")
-    member.add_roles.assert_awaited_once_with(role_former, reason="Patron Sync: No longer Active")
-
-
-@pytest.mark.asyncio
-async def test_process_sheet_logic_skips_empty_identifier() -> None:
-    """Rows with no Discord identifier are silently skipped."""
-    cog = _make_patron_cog()
-
-    guild = _make_guild(members=[])
-
-    records = [
-        {
-            "Discord": "",
-            "Patron Status": "Active Patron",
-            "Last Charge Date": "2024-01-01",
-            "Pledge Amount": "5",
-            "Charge Frequency": "monthly",
-        }
-    ]
-
-    _configure_sheet_cfg(cog)
-
-    cog.connect_to_sheet = AsyncMock(return_value=(records, None))
-    cog.award_currency = AsyncMock(return_value=True)
-
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    cog.award_currency.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_process_sheet_logic_skips_member_not_in_guild() -> None:
-    """If the identifier doesn't match any guild member, no action is taken."""
-    cog = _make_patron_cog()
-
-    guild = _make_guild(members=[])  # empty — no match
-
-    records = [
-        {
-            "Discord": "ghost",
-            "Patron Status": "Active Patron",
-            "Last Charge Date": "2024-01-01",
-            "Pledge Amount": "5",
-            "Charge Frequency": "monthly",
-        }
-    ]
-
-    _configure_sheet_cfg(cog)
-
-    cog.connect_to_sheet = AsyncMock(return_value=(records, None))
-    cog.award_currency = AsyncMock(return_value=True)
-
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    cog.award_currency.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_process_sheet_logic_aborts_on_sheet_error() -> None:
-    """If connect_to_sheet returns an error, _process_sheet_logic returns early."""
-    cog = _make_patron_cog()
-    guild = _make_guild()
-
-    cog.connect_to_sheet = AsyncMock(return_value=(None, "connection refused"))
-    cog.award_currency = AsyncMock(return_value=True)
-
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    cog.award_currency.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_process_sheet_logic_no_advance_when_unsettled() -> None:
-    """If Unicornia cannot settle, the charge stays unprocessed for the next sync."""
-    cog = _make_patron_cog()
-
-    member = _make_member_obj("zoe", uid=9)
-    guild = _make_guild(members=[member])
-
-    records = [
-        {
-            "Discord": "zoe",
-            "Patron Status": "Active Patron",
-            "Last Charge Date": "2024-01-01",
-            "Pledge Amount": "5",
-            "Charge Frequency": "monthly",
-        }
-    ]
-
-    cfg = _configure_sheet_cfg(cog)
-
-    cog.connect_to_sheet = AsyncMock(return_value=(records, None))
-    cog.award_currency = AsyncMock(return_value=False)  # Unicornia unavailable/failed
-
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    cog.award_currency.assert_awaited_once()
-    cfg.processed_charges.set.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_process_sheet_logic_crash_window_retry_marks_processed_once() -> None:
-    """Crash after Unicornia commit but before Config write: retry advances without double credit."""
-    cog = _make_patron_cog()
-
-    member = _make_member_obj("mia", uid=11)
-    guild = _make_guild(members=[member])
-
-    records = [
-        {
-            "Discord": "mia",
-            "Patron Status": "Active Patron",
-            "Last Charge Date": "2024-01-01",
-            "Pledge Amount": "5",
-            "Charge Frequency": "monthly",
-        }
-    ]
-
-    cfg = _configure_sheet_cfg(cog)
-
-    # First sync: Unicornia settles, but the Config write crashes.
-    cog.connect_to_sheet = AsyncMock(return_value=(records, None))
-    cog.award_currency = AsyncMock(return_value=True)
-    cfg.processed_charges.set = AsyncMock(side_effect=RuntimeError("config store crashed"))
-
-    await cog._process_sheet_logic(guild, "sheet123")
-    assert cog.award_currency.await_count == 1
-
-    # Second sync: award_currency (now backed by the idempotent API) reports
-    # the operation as a duplicate settlement and the charge is recorded.
-    cfg = _configure_sheet_cfg(cog)
-    cog.award_currency = AsyncMock(return_value=True)
-
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    assert cog.award_currency.await_count == 1
-    cfg.processed_charges.set.assert_awaited_once()
-    written = cfg.processed_charges.set.call_args[0][0]
-    assert written == {"11": "2024-01-01"}
-
-
-@pytest.mark.asyncio
-async def test_process_sheet_logic_annual_monthly_distribution() -> None:
-    """For an annual patron with prior tracking, award if 30 days have elapsed."""
-    cog = _make_patron_cog()
-
-    member = _make_member_obj("dave", uid=4)
-    guild = _make_guild(members=[member])
-
-    # Anchor 31 days ago — next due has passed, last award 31 days ago (safe)
-    anchor = (datetime.utcnow() - timedelta(days=31)).isoformat()
-    last_award = (datetime.utcnow() - timedelta(days=31)).isoformat()
-
-    records = [
-        {
-            "Discord": "dave",
-            "Patron Status": "Active Patron",
-            "Last Charge Date": "2024-01-01",
-            "Pledge Amount": "120",
-            "Charge Frequency": "Annual",
-        }
-    ]
-
-    _configure_sheet_cfg(
-        cog,
-        charges={"4": "2024-01-01"},
-        tracking={"4": {"anchor_date": anchor, "months_paid": 1, "last_award": last_award}},
+            "patreon_members": {
+                "m1": {
+                    "charge": "c1",
+                    "anchor": NOW - 1,
+                    "periods": 12,
+                    "paid": 0,
+                    "cents": 500,
+                    "status": "active_patron",
+                    "discord_id": 11,
+                }
+            }
+        },
+        [alice],
     )
+    with patch("patron.patron.time.time", return_value=NOW + PERIOD_SECONDS):
+        await world.cog._settle()
+        await world.cog._settle()
 
-    cog.connect_to_sheet = AsyncMock(return_value=(records, None))
-    cog.award_currency = AsyncMock(return_value=True)
-
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    cog.award_currency.assert_awaited_once()
-    call_args = cog.award_currency.call_args
-    assert "Month 2/12" in call_args[0][3]
-    assert call_args.kwargs["operation_key"] == "patron:4242:4:2024-01-01:m2"
+    assert world.keys == ["patron:patreon:m1:c1:m1", "patron:patreon:m1:c1:m2"]
+    assert world.stored("patreon_members")["m1"]["paid"] == 2
+    assert alice.roles == [world.role_active]
 
 
 @pytest.mark.asyncio
-async def test_process_sheet_logic_annual_skips_if_awarded_recently() -> None:
-    """Annual recurring award is skipped if last_award was less than 25 days ago."""
-    cog = _make_patron_cog()
-
-    member = _make_member_obj("eve", uid=5)
-    guild = _make_guild(members=[member])
-
-    anchor = (datetime.utcnow() - timedelta(days=35)).isoformat()
-    last_award = (datetime.utcnow() - timedelta(days=10)).isoformat()  # too recent
-
-    records = [
-        {
-            "Discord": "eve",
-            "Patron Status": "Active Patron",
-            "Last Charge Date": "2024-01-01",
-            "Pledge Amount": "120",
-            "Charge Frequency": "Annual",
-        }
-    ]
-
-    _configure_sheet_cfg(
-        cog,
-        charges={"5": "2024-01-01"},
-        tracking={"5": {"anchor_date": anchor, "months_paid": 1, "last_award": last_award}},
+async def test_settle_downgrades_known_supporters_only() -> None:
+    lapsed = _discord_member(11)
+    stranger = _discord_member(99)
+    world = World(
+        {"patreon_members": {"m1": {"charge": "c1", "status": "former_patron", "discord_id": 11, "paid": 1}}},
+        [lapsed, stranger],
     )
+    lapsed.roles.append(world.role_active)
+    stranger.roles.append(world.role_active)
 
-    cog.connect_to_sheet = AsyncMock(return_value=(records, None))
-    cog.award_currency = AsyncMock(return_value=True)
+    await world.cog._settle()
 
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    cog.award_currency.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_process_sheet_logic_reverse_sync_downgrades_absent_member() -> None:
-    """Members with active role not found in the active sheet list get downgraded."""
-    cog = _make_patron_cog()
-
-    role_active = MagicMock(spec=discord.Role)
-    role_active.id = 10
-
-    role_former = MagicMock(spec=discord.Role)
-    role_former.id = 20
-
-    # frank has the active role but is NOT in the sheet at all
-    frank = _make_member_obj("frank", uid=6, roles=[role_active])
-    role_active.members = [frank]
-
-    guild = _make_guild(members=[frank])
-    guild.get_role.side_effect = lambda rid: role_active if rid == 10 else role_former
-
-    # Sheet has no rows (empty)
-    records: list[dict] = []
-
-    cfg = _configure_sheet_cfg(cog)
-    cfg.role_active = AsyncMock(return_value=10)
-    cfg.role_former = AsyncMock(return_value=20)
-
-    cog.connect_to_sheet = AsyncMock(return_value=(records, None))
-    cog.award_currency = AsyncMock(return_value=True)
-
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    frank.remove_roles.assert_awaited_once_with(role_active, reason="Patron Sync: Not in Active list")
-    frank.add_roles.assert_awaited_once_with(role_former, reason="Patron Sync: Not in Active list")
+    assert lapsed.roles == [world.role_former]
+    assert stranger.roles == [world.role_active]
 
 
 @pytest.mark.asyncio
-async def test_reverse_sync_keeps_role_for_legacy_username_row() -> None:
-    """A member matched by legacy username is not downgraded by reverse sync."""
-    cog = _make_patron_cog()
+async def test_settle_holds_unlinked_payment_and_notifies_once_then_link_pays() -> None:
+    bob = _discord_member(22)
+    world = World(
+        {"bmc_tips": {"9": {"email": "bob@example.com", "name": "Bob", "amount": "5", "created": int(NOW), "paid": 0}}},
+        [bob],
+    )
+    with patch("patron.patron.time.time", return_value=NOW):
+        await world.cog._settle()
+        await world.cog._settle()
+        assert world.keys == []
+        assert world.channel.send.await_count == 1
+        assert "bob@example.com" in world.channel.send.call_args[0][0]
 
-    role_active = MagicMock(spec=discord.Role)
-    role_active.id = 10
+        ctx = MagicMock()
+        ctx.send = AsyncMock()
+        user = MagicMock(spec=discord.User)
+        user.id = 22
+        user.mention = "<@22>"
+        await Patron.link.callback(world.cog, ctx, user, "Bob@Example.com")  # type: ignore[arg-type]
 
-    role_former = MagicMock(spec=discord.Role)
-    role_former.id = 20
+    assert world.keys == ["patron:bmc-tip:9:m1"]
+    assert bob.roles == [world.role_active]
 
-    grace = _make_member_obj("grace", uid=7, roles=[role_active])
-    role_active.members = [grace]
 
-    guild = _make_guild(members=[grace])
-    guild.get_role.side_effect = lambda rid: role_active if rid == 10 else role_former
-
-    records = [
+@pytest.mark.asyncio
+async def test_settle_retries_when_unicornia_does_not_settle() -> None:
+    alice = _discord_member(11)
+    world = World(
         {
-            "Discord": "grace",  # legacy username row, still active
-            "Patron Status": "Active Patron",
-            "Last Charge Date": "",
-            "Pledge Amount": "5",
-            "Charge Frequency": "monthly",
+            "patreon_members": {
+                "m1": {
+                    "charge": "c1",
+                    "anchor": NOW,
+                    "periods": 1,
+                    "paid": 0,
+                    "cents": 500,
+                    "status": "active_patron",
+                    "discord_id": 11,
+                }
+            }
+        },
+        [alice],
+    )
+    world.unicornia.apply_operation = AsyncMock(return_value=None)
+    with patch("patron.patron.time.time", return_value=NOW):
+        await world.cog._settle()
+    assert world.stored("patreon_members")["m1"]["paid"] == 0
+
+
+@pytest.mark.asyncio
+async def test_roles_skipped_without_hierarchy() -> None:
+    alice = _discord_member(11)
+    world = World(
+        {"patreon_members": {"m1": {"charge": "c1", "status": "active_patron", "discord_id": 11, "paid": 1}}},
+        [alice],
+    )
+    world.guild.me.top_role = FakeRole(3, 1)
+    await world.cog._settle()
+    alice.add_roles.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_award_currency_duplicate_is_not_announced() -> None:
+    world = World()
+    world.keys.append("k")
+    assert await world.cog.award_currency(world.guild, _discord_member(1), 100, "r", operation_key="k")
+    world.channel.send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_award_currency_without_unicornia_returns_false() -> None:
+    world = World()
+    world.cog.bot.get_cog.return_value = None
+    assert not await world.cog.award_currency(world.guild, _discord_member(1), 100, "r", operation_key="k")
+
+
+# ---------------------------------------------------------------------------
+# Patreon sync and baseline
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_first_sync_baselines_then_new_charge_pays() -> None:
+    alice = _discord_member(11)
+    world = World({}, [alice])
+    world.cog.patreon = MagicMock()
+    world.cog.patreon.members = AsyncMock(return_value=[_member()])
+
+    with patch("patron.patron.time.time", return_value=NOW):
+        assert await world.cog.sync() is None
+        assert world.keys == []
+        assert alice.roles == [world.role_active]
+
+        world.cog.patreon.members.return_value = [_member(last_charge_date="2027-01-10T00:00:00+00:00")]
+        await world.cog.sync()
+
+    assert world.keys == ["patron:patreon:m1:2027-01-10T00:00:00+00:00:m1"]
+
+
+@pytest.mark.asyncio
+async def test_sync_reports_patreon_error_but_still_settles() -> None:
+    world = World()
+    world.cog.patreon = MagicMock()
+    world.cog.patreon.members = AsyncMock(side_effect=ApiError("nope"))
+    world.cog._settle = AsyncMock()  # type: ignore[method-assign]
+    assert await world.cog.sync() == "nope"
+    world.cog._settle.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_empty_patreon_response_keeps_stored_members() -> None:
+    world = World({"patreon_members": {"m1": {"charge": "c1", "status": "active_patron"}}})
+    await world.cog._merge_patreon([])
+    assert world.stored("patreon_members")["m1"]["status"] == "active_patron"
+
+
+class _Resp:
+    def __init__(self, status: int, body: Any = None) -> None:
+        self.status = status
+        self.body = body
+
+    async def json(self) -> Any:
+        return self.body
+
+    async def __aenter__(self) -> "_Resp":
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_patreon_client_refreshes_expired_token() -> None:
+    tokens = {"access_token": "old", "refresh_token": "r", "client_id": "c", "client_secret": "s"}
+    bot = MagicMock()
+    bot.get_shared_api_tokens = AsyncMock(side_effect=lambda _: dict(tokens))
+
+    async def set_tokens(_service: str, **new: str) -> None:
+        tokens.update(new)
+
+    bot.set_shared_api_tokens = AsyncMock(side_effect=set_tokens)
+    session = MagicMock()
+    session.get.side_effect = lambda url, **kw: (
+        _Resp(401) if kw["headers"]["Authorization"] == "Bearer old" else _Resp(200, {"data": [{"id": "camp"}]})
+    )
+    session.post.return_value = _Resp(200, {"access_token": "new", "refresh_token": "r2"})
+
+    client = PatreonClient(bot, session)
+    assert await client._campaign() == "camp"
+    assert tokens["refresh_token"] == "r2"
+
+
+@pytest.mark.asyncio
+async def test_patreon_client_without_tokens_raises() -> None:
+    bot = MagicMock()
+    bot.get_shared_api_tokens = AsyncMock(return_value={})
+    with pytest.raises(ApiError):
+        await PatreonClient(bot, MagicMock()).members()
+
+
+# ---------------------------------------------------------------------------
+# Webhook endpoint
+# ---------------------------------------------------------------------------
+
+
+def _signed(event: dict) -> tuple[bytes, dict[str, str]]:
+    body = json.dumps(event).encode()
+    return body, {"x-signature-sha256": hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()}
+
+
+@pytest.mark.asyncio
+async def test_webhook_rejects_bad_signature_and_ignores_test_events() -> None:
+    world = World()
+    async with TestClient(TestServer(world.cog.make_app())) as client:
+        resp = await client.post("/bmc", data=b"{}", headers={"x-signature-sha256": "bad"})
+        assert resp.status == 401
+
+        event = _event("donation.created")
+        event["live_mode"] = False
+        body, headers = _signed(event)
+        resp = await client.post("/bmc", data=body, headers=headers)
+        assert resp.status == 200
+    assert "bmc_tips" not in world.config.guild_from_id(GUILD_ID).raw()
+
+
+@pytest.mark.asyncio
+async def test_webhook_tip_is_stored_paid_and_refund_logged() -> None:
+    bob = _discord_member(22)
+    world = World({"links": {"bob@example.com": 22}}, [bob])
+    async with TestClient(TestServer(world.cog.make_app())) as client:
+        body, headers = _signed(_event("donation.created", created_at=int(NOW), status="succeeded"))
+        with patch("patron.patron.time.time", return_value=NOW):
+            assert (await client.post("/bmc", data=body, headers=headers)).status == 200
+            # BMC retries deliver the same event again
+            assert (await client.post("/bmc", data=body, headers=headers)).status == 200
+            body, headers = _signed(_event("donation.refunded", status="refunded"))
+            assert (await client.post("/bmc", data=body, headers=headers)).status == 200
+
+    assert world.keys == ["patron:bmc-tip:7:m1"]
+    assert world.stored("bmc_tips")["7"]["refunded"] is True
+    assert "refund" in world.channel.send.call_args[0][0]
+    assert bob.roles == [world.role_former]
+
+
+# ---------------------------------------------------------------------------
+# Data deletion and lifecycle
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_red_delete_data_removes_links_and_records() -> None:
+    world = World(
+        {
+            "links": {"bob@example.com": 22, "other@example.com": 33},
+            "bmc_tips": {"9": {"email": "bob@example.com"}, "10": {"email": "other@example.com"}},
+            "patreon_members": {"m1": {"discord_id": 22}, "m2": {"discord_id": 33}},
+            "processed_charges": {"22": "2024-01-01"},
         }
-    ]
-
-    cfg = _configure_sheet_cfg(cog)
-    cfg.role_active = AsyncMock(return_value=10)
-    cfg.role_former = AsyncMock(return_value=20)
-
-    cog.connect_to_sheet = AsyncMock(return_value=(records, None))
-    cog.award_currency = AsyncMock(return_value=True)
-
-    await cog._process_sheet_logic(guild, "sheet123")
-
-    grace.remove_roles.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
-# process_sheet lock guard test
-# ---------------------------------------------------------------------------
+    )
+    await world.cog.red_delete_data_for_user(requester="user", user_id=22)
+    assert world.stored("links") == {"other@example.com": 33}
+    assert list(world.stored("bmc_tips")) == ["10"]
+    assert list(world.stored("patreon_members")) == ["m2"]
+    assert world.stored("processed_charges") == {}
 
 
 @pytest.mark.asyncio
-async def test_process_sheet_skips_when_locked() -> None:
-    """process_sheet returns immediately if the lock is already held."""
-    cog = _make_patron_cog()
-    cog._process_sheet_logic = AsyncMock()
+async def test_cog_load_starts_webhook_and_task_and_unload_stops_them() -> None:
+    world = World()
 
-    guild = MagicMock(spec=discord.Guild)
-
-    async with cog.lock:
-        # Lock is held — process_sheet should bail out without calling logic
-        await cog.process_sheet(guild, "sheet123")
-
-    cog._process_sheet_logic.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
-# connect_to_sheet: missing credentials
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_connect_to_sheet_missing_creds_returns_error() -> None:
-    """connect_to_sheet returns (None, error_msg) when service_account.json is absent."""
-    cog = _make_patron_cog()
-
-    with patch.object(Path, "exists", return_value=False):
-        result, error = await cog.connect_to_sheet("sheet123")
-
-    assert result is None
-    assert error is not None
-    assert "service_account.json" in error
-
-
-# ---------------------------------------------------------------------------
-# Task lifecycle (cog_load / cog_unload)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_cog_load_creates_sync_task_and_unload_cancels_it() -> None:
-    """The sync task is owned: created in cog_load, cancelled and gathered on unload."""
-    cog = _make_patron_cog()
-
-    async def _never_ending():
+    async def never_ending() -> None:
         await asyncio.Event().wait()
 
-    cog.sync_loop = _never_ending  # type: ignore[method-assign]
-
-    await cog.cog_load()
-    assert cog.bg_task is not None
-    assert not cog.bg_task.done()
-
-    await cog.cog_unload()
-    assert cog.bg_task is None
-
-
-@pytest.mark.asyncio
-async def test_bg_task_done_callback_logs_exceptions() -> None:
-    """A failing background task has its exception retrieved and logged."""
-    cog = _make_patron_cog()
-
-    async def _failing():
-        raise RuntimeError("boom")
-
-    logged: list[str] = []
-    with patch("patron.patron.log.error", side_effect=lambda *a, **kw: logged.append(str(a))):
-        await cog.cog_load()
-        # cog_load created a task for the real sync_loop; cancel it first
-        assert cog.bg_task is not None
-        cog.bg_task.cancel()
-        await asyncio.gather(cog.bg_task, return_exceptions=True)
-
-        task = asyncio.create_task(_failing())
-        task.add_done_callback(cog._on_bg_task_done)
-        await asyncio.gather(task, return_exceptions=True)
-
-    assert any("boom" in entry for entry in logged)
-
-
-# ---------------------------------------------------------------------------
-# dpytest integration tests — bot commands
-# ---------------------------------------------------------------------------
-
-
-@pytest_asyncio.fixture
-async def dpytest_bot() -> AsyncGenerator[dpy_commands.Bot, None]:
-    intents = discord.Intents.default()
-    intents.members = True
-    intents.guilds = True
-
-    real_bot = dpy_commands.Bot(command_prefix="!", intents=intents)
-    await real_bot._async_setup_hook()  # type: ignore[attr-defined]
-    dpytest.configure(real_bot)
-
-    yield real_bot
-
-    await dpytest.empty_queue()
+    world.cog.sync_loop = never_ending  # type: ignore[method-assign]
+    with patch.object(patron_module, "WEBHOOK_PORT", 0):
+        await world.cog.cog_load()
+    assert world.cog.bg_task is not None and not world.cog.bg_task.done()
+    await world.cog.cog_unload()
+    assert world.cog.bg_task is None
+    assert world.cog._http.closed
 
 
 @pytest.mark.asyncio
-async def test_dpytest_patronset_setup_sets_sheet_id(dpytest_bot: dpy_commands.Bot) -> None:
-    """set_sheet_id stores the sheet_id in config when called directly.
-
-    Note: invoking Redbot owner-gated commands via dpytest.message fails because
-    the bare dpy_commands.Bot context lacks ``permission_state``.  We call the
-    command callback directly, matching the pattern used across this project.
-    """
-    config_mock = _make_config_mock()
-    config_mock.guild.return_value.sheet_id.set = AsyncMock()
-
-    with patch("patron.patron.Config.get_conf", return_value=config_mock):
-        cog = Patron(dpytest_bot)  # type: ignore[arg-type]
-    cog.config = config_mock
-
-    await dpytest_bot.add_cog(cog)
-    # cog_load created the real sync task on the running loop; cancel it.
-    assert cog.bg_task is not None
-    cog.bg_task.cancel()
-
-    guild = dpytest.get_config().guilds[0]
+async def test_manual_sync_reports_busy_lock() -> None:
+    world = World()
     ctx = MagicMock()
-    ctx.guild = guild
     ctx.send = AsyncMock()
-
-    await cog.set_sheet_id(ctx, "mysheet42")  # type: ignore[arg-type]
-
-    config_mock.guild.return_value.sheet_id.set.assert_awaited_once_with("mysheet42")
-    ctx.send.assert_awaited_once()
-    assert "mysheet42" in ctx.send.call_args[0][0]
-
-
-@pytest.mark.asyncio
-async def test_dpytest_patronset_sync_no_sheet_id(dpytest_bot: dpy_commands.Bot) -> None:
-    """manual_sync sends 'Sheet ID not set' when no sheet_id is configured."""
-    config_mock = _make_config_mock()
-    config_mock.guild.return_value.sheet_id = AsyncMock(return_value=None)
-
-    with patch("patron.patron.Config.get_conf", return_value=config_mock):
-        cog = Patron(dpytest_bot)  # type: ignore[arg-type]
-    cog.config = config_mock
-
-    await dpytest_bot.add_cog(cog)
-    assert cog.bg_task is not None
-    cog.bg_task.cancel()
-
-    guild = dpytest.get_config().guilds[0]
-    ctx = MagicMock()
-    ctx.guild = guild
-    ctx.send = AsyncMock()
-    ctx.typing = MagicMock()
-    ctx.typing.return_value.__aenter__ = AsyncMock(return_value=None)
-    ctx.typing.return_value.__aexit__ = AsyncMock(return_value=False)
-
-    await cog.manual_sync(ctx)  # type: ignore[arg-type]
-
-    # First call: "Starting sync process...", second: "Sheet ID not set."
-    assert ctx.send.await_count == 2
-    messages = [call[0][0] for call in ctx.send.call_args_list]
-    assert any("Sheet ID not set" in m for m in messages)
-
-
-@pytest.mark.asyncio
-async def test_dpytest_patronset_sync_already_locked(dpytest_bot: dpy_commands.Bot) -> None:
-    """manual_sync sends 'already in progress' when the lock is held."""
-    config_mock = _make_config_mock()
-
-    with patch("patron.patron.Config.get_conf", return_value=config_mock):
-        cog = Patron(dpytest_bot)  # type: ignore[arg-type]
-    cog.config = config_mock
-
-    await dpytest_bot.add_cog(cog)
-    assert cog.bg_task is not None
-    cog.bg_task.cancel()
-
-    ctx = MagicMock()
-    ctx.guild = dpytest.get_config().guilds[0]
-    ctx.send = AsyncMock()
-
-    async with cog.lock:
-        await cog.manual_sync(ctx)  # type: ignore[arg-type]
-
-    ctx.send.assert_awaited_once()
-    assert "already in progress" in ctx.send.call_args[0][0].lower()
+    async with world.cog.lock:
+        await Patron.manual_sync.callback(world.cog, ctx)  # type: ignore[arg-type]
+    assert "already in progress" in ctx.send.call_args[0][0]

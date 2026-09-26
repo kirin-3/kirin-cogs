@@ -2,8 +2,6 @@
 aiohttp
 aiosqlite
 chromadb
-google-auth
-gspread
 jinja2
 modal
 nltk>=3.8.0

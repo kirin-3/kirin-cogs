@@ -3,10 +3,10 @@
     "author": [
         "Kirin"
     ],
-    "short": "Syncs Discord roles and awards currency from a Google Sheet (Patreon/BMC)",
-    "description": "Connects to a Google Sheet to manage Patreon/BuyMeACoffee rewards. automatically manages roles and sends monthly currency rewards based on donation tiers. Requires 'Unicornia' cog for economy features.",
-    "install_msg": "Thanks for installing the Patron cog! Use `[p]help patronset` to see all available commands. Make sure to place your `service_account.json` in the cog folder.",
-    "end_user_data_statement": "This cog stores Discord user IDs with processed charge dates and annual-payment tracking. Patron sheet data is read from Google Sheets and rewards are recorded in Unicornia. Red data-deletion requests remove local tracking records.",
+    "short": "Supporter roles and currency from Patreon and Buy Me a Coffee",
+    "description": "Polls the Patreon API and receives Buy Me a Coffee webhooks to manage supporter roles and pay monthly currency rewards through Unicornia. Requires the 'Unicornia' cog for economy features.",
+    "install_msg": "Thanks for installing the Patron cog! Run `[p]patronset creds` for the API credentials and webhook setup, then `[p]help patronset`.",
+    "end_user_data_statement": "This cog stores supporters' Patreon and Buy Me a Coffee names, email addresses, pledge amounts and payment progress, and the Discord IDs they are linked to. Rewards are recorded in Unicornia. Red data-deletion requests remove these records.",
     "min_bot_version": "3.5.0",
     "min_python_version": [
         3,
@@ -17,15 +17,12 @@
     "disabled": false,
     "type": "COG",
     "required_cogs": {},
-    "requirements": [
-        "gspread",
-        "google-auth"
-    ],
+    "requirements": [],
     "tags": [
         "patreon",
+        "buymeacoffee",
         "donation",
-        "sheet",
-        "gspread",
+        "webhook",
         "award",
         "economy"
     ]

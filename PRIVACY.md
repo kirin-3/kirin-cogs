@@ -72,9 +72,13 @@ Staff can review ban records and the automod rules and action log on a private w
 
 Profile questionnaire answers, suggestions, confessions, support-ticket answers, custom command triggers and responses, rules-acceptance text, and image-generation prompts are stored or posted as the feature requires. Roleplay settings store your consent choices (whether you are public, a servant, or selective) and the user IDs you add as your owner, allowed users, or blocked users. Confessions and rules acceptances are posted to Discord channels rather than retained in a local database; once posted, Discord's retention and your server's moderation policy apply.
 
+### 3.7 Supporter payments
+
+If you support the server on Patreon or Buy Me a Coffee, the bot receives your name there, your email address, your pledge amount and status, and your charge dates, from the Patreon API and Buy Me a Coffee's webhooks. It links them to your Discord account (from Patreon's Discord connection, or by staff matching your email) to give you the supporter role and currency rewards. Payment card details never reach the bot.
+
 ## 4. What we do not do
 
-We do not sell, rent, or share your data for advertising. We do not use it to train AI models. We do not combine it with data from outside Discord. We do not access your direct messages except where you send one to the bot itself.
+We do not sell, rent, or share your data for advertising. We do not use it to train AI models. We do not combine it with data from outside Discord, except linking supporter payments to your account (section 3.7). We do not access your direct messages except where you send one to the bot itself.
 
 ## 5. Third parties
 
@@ -87,7 +91,7 @@ The bot is hosted on infrastructure we control. The following external services 
 | **AI Horde** | The image prompt you supply | Image generation (free tier) |
 | **Modal** | The image prompt you supply | Image generation (premium tier) |
 | **popcat.xyz** | The target member's Discord avatar URL | Avatar image commands |
-| **Cloudflare** | Traffic to the staff web site, including the ban records staff view there and staff members' IP addresses | Staff web site |
+| **Cloudflare** | Traffic to the staff web site, including the ban records staff view there and staff members' IP addresses; Buy Me a Coffee payment notifications on their way to the bot | Staff web site; supporter rewards |
 
 These services process the data to return a result; we do not authorise them to retain it for their own purposes, and we send them no more than the feature requires. Some features fetch content *from* third parties (question prompts, reaction GIFs) without sending any user data; those are not listed above because nothing about you leaves the bot.
 
@@ -109,6 +113,7 @@ If a new feature introduces a new recipient, this table is updated before that f
 | XP, currency, inventory, profiles, tickets, warnings, roleplay settings | Until you request deletion or the record is no longer needed |
 | Quarantine role snapshots | Until the quarantine is resolved and the record cleared |
 | Boost timestamps | Retained to prevent duplicate awards for the same boost |
+| Supporter payment records (section 3.7) | Until you request deletion |
 | Financial transaction records | Retained for ledger integrity; identifiers are removed on deletion (see [section 8](#8-your-rights)) |
 
 Content posted into Discord channels — confessions, suggestions, moderation logs, honeypot evidence — persists as Discord messages and is governed by Discord's retention and by server moderation policy, not by this bot.
