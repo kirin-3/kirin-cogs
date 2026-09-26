@@ -1,0 +1,26 @@
+{
+    "name": "sticky",
+    "author": [
+        "Tobotimus",
+        "kirin"
+    ],
+    "short": "Sticky messages for your channels!",
+    "description": "Port of Tobo-Cogs' sticky. Sticks a message to the bottom of a channel by reposting it below new messages. Reads the stickies the original cog saved. Licensed GPL-3.0, like the original.",
+    "install_msg": "Unload and uninstall Tobo-Cogs' sticky before loading this; every channel's sticky carries over.",
+    "end_user_data_statement": "This cog stores no user data.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "requirements": [],
+    "tags": [
+        "moderation",
+        "channeltools"
+    ],
+    "license": "GPL-3.0"
+}
