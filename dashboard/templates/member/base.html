@@ -15,8 +15,10 @@
   {% if session %}
   <nav class="nav">
     <a href="/roleplay"{% if path == "/roleplay" %} class="on"{% endif %}>Roleplay</a>
-    {% if nav and nav.supporter %}
+    {% if nav and nav.commands %}
     <a href="/commands"{% if path.startswith("/commands") %} class="on"{% endif %}>Commands</a>
+    {% endif %}
+    {% if nav and nav.emojis %}
     <a href="/emojis"{% if path.startswith("/emojis") %} class="on"{% endif %}>Emojis</a>
     {% endif %}
     {% if nav and nav.role %}

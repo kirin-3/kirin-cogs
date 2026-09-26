@@ -58,11 +58,19 @@ class MemberSite:
         app.router.add_post("/role/mentionable", self.role_mentionable)
 
     async def sections(self, member: discord.Member) -> dict[str, bool]:
-        """Which sections the member sees, from their roles right now."""
-        supporter = any(role.id in SUPPORTER_ROLES for role in member.roles)
-        crc = self.cog.bot.get_cog("CustomRoleColor")
-        has_role = supporter and crc is not None and await crc.assigned_role(member) is not None  # type: ignore[attr-defined]
-        return {"supporter": supporter, "role": has_role}
+        """Which sections the member sees, from their roles and items right now.
+
+        Commands and emojis show to supporters who can create them, or who still have some to look after:
+        a legacy (inactive) supporter with nothing left would only see an empty page.
+        """
+        if not any(role.id in SUPPORTER_ROLES for role in member.roles):
+            return {"commands": False, "emojis": False, "role": False}
+        cc, ce, crc = self._cog("CustomCommand"), self._cog("CustomEmoji"), self._cog("CustomRoleColor")
+        return {
+            "commands": cc is not None and (cc.can_create(member) or bool(await cc.commands_for(member))),
+            "emojis": ce is not None and (await ce.can_create(member) or bool(await ce.emojis_for(member))),
+            "role": crc is not None and await crc.assigned_role(member) is not None,
+        }
 
     # --- helpers ---------------------------------------------------------------------------------
 
@@ -76,10 +84,14 @@ class MemberSite:
 
     def _require(self, request: web.Request, section: str) -> discord.Member:
         if not request["nav"][section]:
-            if section == "supporter":
-                self._refuse(request, 403, "Supporters only", "This page is for Unicornia supporters.")
-            self._refuse(request, 403, "No custom role", "You don't have a custom role to manage.")
+            if section == "role":
+                self._refuse(request, 403, "No custom role", "You don't have a custom role to manage.")
+            self._refuse(request, 403, "Supporters only", "This page is for Unicornia supporters.")
         return request["member"]
+
+    async def _back(self, member: discord.Member, section: str, path: str) -> NoReturn:
+        """Back to the section's page, or home once deleting the last item has hidden the section."""
+        raise web.HTTPFound(path if (await self.sections(member))[section] else "/")
 
     def _cog(self, name: str) -> Any:
         return self.cog.bot.get_cog(name)
@@ -133,7 +145,7 @@ class MemberSite:
     # --- custom commands -------------------------------------------------------------------------
 
     async def commands(self, request: web.Request, *, error: str = "", status: int = 200, **draft: str) -> web.Response:
-        member = self._require(request, "supporter")
+        member = self._require(request, "commands")
         cc = self._cog("CustomCommand")
         if cc is None:
             return self._render(request, "commands.html", missing=True)
@@ -149,7 +161,7 @@ class MemberSite:
         )
 
     async def command_create(self, request: web.Request) -> web.StreamResponse:
-        member = self._require(request, "supporter")
+        member = self._require(request, "commands")
         cc = self._cog("CustomCommand")
         if cc is None:
             self._missing(request, "Custom commands")
@@ -164,7 +176,7 @@ class MemberSite:
         raise web.HTTPFound("/commands")
 
     async def command_edit(self, request: web.Request) -> web.StreamResponse:
-        member = self._require(request, "supporter")
+        member = self._require(request, "commands")
         cc = self._cog("CustomCommand")
         if cc is None:
             self._missing(request, "Custom commands")
@@ -187,7 +199,7 @@ class MemberSite:
         raise web.HTTPFound("/commands")
 
     async def command_delete(self, request: web.Request) -> web.StreamResponse:
-        member = self._require(request, "supporter")
+        member = self._require(request, "commands")
         cc = self._cog("CustomCommand")
         if cc is None:
             self._missing(request, "Custom commands")
@@ -195,12 +207,12 @@ class MemberSite:
             await cc.delete_command(member, _text(await request.post(), "trigger"), source="web")
         except ValueError as e:
             return await self.commands(request, error=str(e), status=400)
-        raise web.HTTPFound("/commands")
+        await self._back(member, "commands", "/commands")
 
     # --- custom emojis ---------------------------------------------------------------------------
 
     async def emojis(self, request: web.Request, *, error: str = "", status: int = 200) -> web.Response:
-        member = self._require(request, "supporter")
+        member = self._require(request, "emojis")
         ce = self._cog("CustomEmoji")
         if ce is None:
             return self._render(request, "emojis.html", missing=True)
@@ -217,7 +229,7 @@ class MemberSite:
         )
 
     async def _emoji_cog(self, request: web.Request, *, needs_role: bool) -> tuple[discord.Member, Any]:
-        member = self._require(request, "supporter")
+        member = self._require(request, "emojis")
         ce = self._cog("CustomEmoji")
         if ce is None:
             self._missing(request, "Custom emojis")
@@ -259,7 +271,7 @@ class MemberSite:
             await ce.delete_emoji(member, emoji)
         except ValueError as e:
             return await self.emojis(request, error=str(e), status=400)
-        raise web.HTTPFound("/emojis")
+        await self._back(member, "emojis", "/emojis")
 
     # --- custom role -----------------------------------------------------------------------------
 

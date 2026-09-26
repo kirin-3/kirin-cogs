@@ -6,6 +6,7 @@
 <p class="notice">Custom emojis are unavailable right now. Try again later.</p>
 {% else %}
 <p class="sub"><span class="badge">{{ used }} of {{ limit }} slots used</span></p>
+{% if not can_create %}<p class="note">Only active supporters can create new emojis or rename existing ones. You can still delete yours.</p>{% endif %}
 {% if emojis %}
 <div class="emoji-grid">
   {% for emoji in emojis %}

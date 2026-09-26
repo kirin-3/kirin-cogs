@@ -249,6 +249,7 @@ input[type="file"]::file-selector-button { margin-right: 10px; padding: 6px 14px
 
 .notice { padding: 12px 18px; border-radius: 1rem; background: var(--warn-bg); color: var(--warn); font-weight: 600; }
 .empty { color: var(--muted); }
+.note { padding: 12px 18px; border-radius: 1rem; background: var(--accent-soft); color: var(--text); border-left: 4px solid var(--accent); }
 
 .badge {
   display: inline-block;

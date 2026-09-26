@@ -92,6 +92,7 @@ class _FakeCustomCommand:
         if trigger not in self.owned.get(member.id, []):
             raise ValueError("You don't own a command with that name.")
         self.deleted.append((member.id, trigger, source))
+        self.owned[member.id].remove(trigger)
 
 
 class _UserConfig:
@@ -452,15 +453,31 @@ async def test_member_pages_may_show_discord_images_and_nothing_else_changes(ms:
 @pytest.mark.asyncio
 async def test_navigation_follows_the_members_roles(ms: SimpleNamespace) -> None:
     _, regular = await _get(ms, REGULAR, "/")
-    _, inactive = await _get(ms, INACTIVE, "/")
+    _, active = await _get(ms, ACTIVE, "/")
     ms.custom_role.id = CUSTOM_ROLE_ID
     ms.members[INACTIVE].roles.append(ms.custom_role)
     ms.assignments[str(INACTIVE)] = CUSTOM_ROLE_ID
     _, with_role = await _get(ms, INACTIVE, "/")
 
     assert 'href="/roleplay"' in regular and 'href="/commands"' not in regular and 'href="/role"' not in regular
-    assert 'href="/commands"' in inactive and 'href="/emojis"' in inactive and 'href="/role"' not in inactive
+    assert 'href="/commands"' in active and 'href="/emojis"' in active and 'href="/role"' not in active
     assert 'href="/role"' in with_role
+
+
+@pytest.mark.asyncio
+async def test_legacy_supporters_see_only_the_sections_they_have_items_in(ms: SimpleNamespace) -> None:
+    _, nothing = await _get(ms, INACTIVE, "/")
+    statuses = [(await _get(ms, INACTIVE, path))[0] for path in ("/commands", "/emojis")]
+    ms.cc.owned[INACTIVE] = ["mine"]
+    _, with_command = await _get(ms, INACTIVE, "/")
+    ms.emojis[777] = MagicMock(spec=discord.Emoji, id=777)
+    ms.ownership["777"] = INACTIVE
+    _, with_both = await _get(ms, INACTIVE, "/")
+
+    assert 'href="/commands"' not in nothing and 'href="/emojis"' not in nothing
+    assert statuses == [403, 403]
+    assert 'href="/commands"' in with_command and 'href="/emojis"' not in with_command
+    assert 'href="/commands"' in with_both and 'href="/emojis"' in with_both
 
 
 @pytest.mark.parametrize("path", ["/commands", "/emojis", "/role"])
@@ -473,6 +490,7 @@ async def test_regular_members_get_403_on_supporter_pages(ms: SimpleNamespace, p
 
 @pytest.mark.asyncio
 async def test_losing_the_supporter_role_mid_session_refuses_the_page(ms: SimpleNamespace) -> None:
+    ms.cc.owned[INACTIVE] = ["mine"]
     headers = _log_in(ms, INACTIVE)
     assert (await ms.client.get("/commands", headers=headers)).status == 200
 
@@ -506,10 +524,14 @@ async def test_empty_file_field_creates_without_a_file(ms: SimpleNamespace) -> N
 
 @pytest.mark.asyncio
 async def test_inactive_supporter_cannot_create_commands(ms: SimpleNamespace) -> None:
+    ms.cc.owned[INACTIVE] = ["mine"]
     status, page = await _get(ms, INACTIVE, "/commands")
+    _, active_page = await _get(ms, ACTIVE, "/commands")
     response = await _post(ms, INACTIVE, "/commands", {"trigger": "hi", "response": "there"})
 
     assert status == 200 and "New command" not in page
+    assert "Only active supporters can create new commands or edit existing ones." in page
+    assert "Only active supporters" not in active_page
     assert response.status == 403
     assert ms.cc.created == []
 
@@ -522,7 +544,7 @@ async def test_deleting_someone_elses_command_shows_the_error(ms: SimpleNamespac
     done = await _post(ms, INACTIVE, "/commands/delete", {"trigger": "mine"})
 
     assert refused.status == 400 and "You don&#39;t own a command with that name." in await refused.text()
-    assert done.status == 302
+    assert done.status == 302 and done.headers["Location"] == "/"  # that was their last command
     assert ms.cc.deleted == [(INACTIVE, "mine", "web")]
 
 
@@ -565,6 +587,7 @@ async def test_emoji_page_lists_own_emojis_with_cdn_previews(ms: SimpleNamespace
     assert 'src="https://cdn.discordapp.com/emojis/777.png"' in page and ":party_cat:" in page
     assert "1 of 2 slots used" in page
     assert "Rename" not in page and "New emoji" not in page
+    assert "Only active supporters can create new emojis or rename existing ones." in page
 
 
 @pytest.mark.asyncio
@@ -580,7 +603,7 @@ async def test_inactive_supporter_cannot_rename_but_can_delete(ms: SimpleNamespa
 
     assert renamed.status == 403
     emoji.edit.assert_not_awaited()
-    assert deleted.status == 302
+    assert deleted.status == 302 and deleted.headers["Location"] == "/"
     emoji.delete.assert_awaited_once()
     assert ms.ownership == {}
 
@@ -719,3 +742,12 @@ async def test_editing_someone_elses_command_shows_the_error(ms: SimpleNamespace
     response = await _post(ms, ACTIVE, "/commands/edit", {"old": "theirs", "trigger": "mine", "response": "x"})
 
     assert response.status == 400 and "You don&#39;t own a command with that name." in await response.text()
+
+
+@pytest.mark.asyncio
+async def test_active_supporter_stays_on_the_page_after_deleting_their_last_command(ms: SimpleNamespace) -> None:
+    ms.cc.owned[ACTIVE] = ["mine"]
+
+    response = await _post(ms, ACTIVE, "/commands/delete", {"trigger": "mine"})
+
+    assert response.headers["Location"] == "/commands"

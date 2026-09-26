@@ -14,12 +14,14 @@
     <h2>Roleplay</h2>
     <p>Your consent settings for roleplay commands.</p>
   </a>
-  {% if nav.supporter %}
+  {% if nav.commands %}
   <a class="tile washi tone-sky" href="/commands">
     <span class="sticker" aria-hidden="true">💬</span>
     <h2>Custom commands</h2>
     <p>The commands you've made for the server.</p>
   </a>
+  {% endif %}
+  {% if nav.emojis %}
   <a class="tile washi tone-butter" href="/emojis">
     <span class="sticker" aria-hidden="true">😺</span>
     <h2>Custom emojis</h2>

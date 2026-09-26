@@ -29,7 +29,8 @@ at the time of each request:
 | Section | Who sees it |
 | --- | --- |
 | Roleplay | Everyone |
-| Custom commands, custom emojis | The active (`700121551483437128`) or inactive (`1458440559713718466`) supporter role |
+| Custom commands | The active supporter role (`700121551483437128`), or the inactive one (`1458440559713718466`) while the member still has commands |
+| Custom emojis | A supporter role who can create emojis (the `[p]ce setrole` role), or who still has emojis |
 | Custom role | Either supporter role, plus a role assigned with `[p]assignrole` |
 
 The pages follow the same rules as the bot's commands, because they call the same cog methods. Only active supporters

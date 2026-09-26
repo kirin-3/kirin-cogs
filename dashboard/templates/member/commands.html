@@ -6,6 +6,7 @@
 <p class="notice">Custom commands are unavailable right now. Try again later.</p>
 {% else %}
 <p class="sub"><span class="badge">{{ commands|length }} of {{ limit }} used</span></p>
+{% if not can_create %}<p class="note">Only active supporters can create new commands or edit existing ones. You can still delete yours.</p>{% endif %}
 {% if commands %}
 {% for command in commands %}
 <article class="panel command">
