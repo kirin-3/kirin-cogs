@@ -18,7 +18,11 @@ from .embed import Embed
 from .help import Help
 from .settings import Settings
 from .unicornia import strings, web
+from .user_settings import USER_SETTINGS
 from .views import request_consent
+
+# The settings the member site may change; the user lists stay command-only
+WEB_TOGGLES = ("selective", "public", "servant")
 
 
 class Roleplay(commands.Cog):
@@ -78,6 +82,28 @@ class Roleplay(commands.Cog):
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
         """Remove the user's roleplay settings and their ID from every other member's lists."""
         await self.user_settings.users_manager.delete_user_data(user_id)
+
+    # --- For the member site ---
+
+    async def settings_for(self, user_id: int) -> dict[str, dict]:
+        """A member's own settings, keyed like USER_SETTINGS, each with its label,
+        description, emoji and value (a bool, or a list of user IDs)."""
+        data = await self.user_settings.config.user_from_id(user_id).all()
+        return {
+            key: {
+                "label": values["label"],
+                "description": values["description"],
+                "emoji": values["emoji"],
+                "value": data.get(key, values["default"]),
+            }
+            for key, values in USER_SETTINGS.items()
+        }
+
+    async def set_toggle(self, user_id: int, key: str, value: bool) -> None:
+        """Turn one of the on/off settings on or off. The lists are managed in Discord only."""
+        if key not in WEB_TOGGLES:
+            raise ValueError(f"{key!r} can't be changed here.")
+        await self.user_settings.config.user_from_id(user_id).get_attr(key).set(bool(value))
 
     @commands.group(invoke_without_command=True)
     async def roleplay(self, ctx: commands.Context):

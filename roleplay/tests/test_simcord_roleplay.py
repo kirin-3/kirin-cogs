@@ -304,3 +304,32 @@ async def test_settings_cannot_be_read_for_others_without_admin(red_env: simcord
     assert "is not allowed to use this command on" in denied.content
     assert not any("Click the button" in (m.content or "") for m in _bot_messages(channel, bot))
     simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_toggle_set_for_the_member_site_shows_in_settings(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    cog = _cog(red_env)
+
+    await cog.set_toggle(member.id, "public", True)
+    for key in ("allowed", "owners", "nonsense"):
+        with pytest.raises(ValueError):
+            await cog.set_toggle(member.id, key, True)
+
+    settings = await cog.settings_for(member.id)
+    assert settings["public"]["value"] is True
+    assert settings["public"]["label"] == "Public Use Slut"
+    assert settings["allowed"]["value"] == []
+
+    await member.send(channel, "!roleplay settings")
+    prompt = _find_message(channel, bot, "Click the button to view your Roleplay settings.")
+    shown = await member.click(prompt, label="Show Settings")
+    assert shown.response is not None
+    fields = [field.name for field in shown.response.embeds[0].fields]
+    assert f"Public Use Slut {const.TRUE_EMOJI}" in fields
+    assert f"Selective {const.FALSE_EMOJI}" in fields
+    simcord.assert_no_errors(red_env)
