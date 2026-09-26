@@ -1,0 +1,62 @@
+{% extends "member/base.html" %}
+{% block title %}Stocks{% endblock %}
+{% block content %}
+{% include "member/_account.html" %}
+<h1>Stocks</h1>
+{% set totals = portfolio.totals %}
+{% if portfolio.holdings %}
+<div class="stats">
+  <div class="panel">
+    <h2>Total value</h2>
+    <p class="big">{{ "{:,.0f}".format(totals.value) }}</p>
+    <p class="sub">{{ currency }} · cost {{ "{:,.0f}".format(totals.cost) }}</p>
+  </div>
+  <div class="panel">
+    <h2>Profit / loss</h2>
+    <p class="big">{{ "{:+,.0f}".format(totals.profit) }}</p>
+    <p class="sub">{{ "{:+.1f}".format(totals.profit_pct) }}% against what you paid</p>
+  </div>
+</div>
+<h2>Holdings</h2>
+<div class="scroll">
+  <table>
+    <thead><tr><th>Stock</th><th class="num">Shares</th><th class="num">Avg. cost</th><th class="num">Price</th><th class="num">Value</th><th class="num">P/L</th></tr></thead>
+    <tbody>
+      {% for h in portfolio.holdings %}
+      <tr>
+        <td>{{ h.emoji }} <strong>{{ h.symbol }}</strong><small>{{ h.name }}</small></td>
+        <td class="num">{{ "{:,}".format(h.amount) }}</td>
+        <td class="num">{{ "{:,.1f}".format(h.average_cost) }}</td>
+        <td class="num">{{ "{:,.2f}".format(h.current_price) }}</td>
+        <td class="num">{{ "{:,.0f}".format(h.value) }}</td>
+        <td class="num">{{ "{:+,.0f}".format(h.profit) }} <small>{{ "{:+.1f}".format(h.profit_pct) }}%</small></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty">You don't hold any shares.</p>
+{% endif %}
+<h2>Dividends</h2>
+{% if portfolio.dividends %}
+<div class="scroll">
+  <table>
+    <thead><tr><th>Period end</th><th>Stock</th><th class="num">Weight</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+      {% for d in portfolio.dividends %}
+      <tr>
+        <td class="date">{{ d.period_end }}</td>
+        <td>{{ d.symbol }}</td>
+        <td class="num">{{ "{:,.3f}".format(d.weight) }}</td>
+        <td class="num">{{ "{:,}".format(d.amount) }} {{ currency }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty">You haven't received any dividends.</p>
+{% endif %}
+<p class="empty">Buy and sell with the bot's <code>stock</code> commands in Discord.</p>
+{% endblock %}

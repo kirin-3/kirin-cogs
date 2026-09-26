@@ -199,36 +199,53 @@ def mute_end(current: float | None, new: float | None, keep_longer: bool) -> flo
     return max(current, new)
 
 
-def format_warnings(warnings: dict, mod_name: Callable[[int], str | None]) -> list[str]:
-    """Render Red warnings as embed text, newest first; #1 is the oldest.
+def parse_warnings(warnings: dict) -> list[dict]:
+    """Red warnings oldest first, malformed entries read as empty.
 
-    Each key is the snowflake of the warn message (imports build it from the YAGPDB date),
-    so the key is the warning's date.
+    Each key is the snowflake of the warn message (imports build it from the YAGPDB date), so the key gives the
+    warning's `timestamp` (None when it isn't one). `reason` has the YAGPDB suffix removed; its moderator is `yag_mod`.
     """
     ordered = sorted(warnings.items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0)
     out = []
-    for num, (key, w) in enumerate(ordered, 1):
+    for key, w in ordered:
         w = w if isinstance(w, dict) else {}
         reason = str(w.get("description") or "")
-        mod_id = w.get("mod")
+        yag_mod = None
+        if m := YAG_SUFFIX.search(reason):
+            reason, yag_mod = reason[: m.start()], m["mod"]
+        points = w.get("points")
+        out.append(
+            {
+                "key": key,
+                "timestamp": ((int(key) >> 22) + discord.utils.DISCORD_EPOCH) // 1000 if key.isdigit() else None,
+                "reason": reason.strip(),
+                "mod": w.get("mod"),
+                "yag_mod": yag_mod,
+                "points": points if isinstance(points, int) else 0,
+            }
+        )
+    return out
+
+
+def format_warnings(warnings: dict, mod_name: Callable[[int], str | None]) -> list[str]:
+    """Render Red warnings as embed text, newest first; #1 is the oldest."""
+    out = []
+    for num, w in enumerate(parse_warnings(warnings), 1):
+        mod_id = w["mod"]
         mod = "Deleted moderator" if mod_id == DELETED_MOD else mod_name(mod_id) if isinstance(mod_id, int) else None
         tags = []
-        if m := YAG_SUFFIX.search(reason):
-            reason = reason[: m.start()]
-            mod = mod or m["mod"]
+        if w["yag_mod"] is not None:
+            mod = mod or w["yag_mod"]
             tags.append("YAGPDB")
-        if isinstance(points := w.get("points"), int) and points:
+        if points := w["points"]:
             tags.append(f"{points} point{'s' if points != 1 else ''}")
 
-        quoted = "\n".join(f"> {line}" for line in (reason.strip() or "No reason given.").splitlines())
+        quoted = "\n".join(f"> {line}" for line in (w["reason"] or "No reason given.").splitlines())
         if len(quoted) > MAX_REASON:
             quoted = quoted[: MAX_REASON - 1] + "…"
-        if key.isdigit():
-            ts = ((int(key) >> 22) + discord.utils.DISCORD_EPOCH) // 1000
-            when = f"<t:{ts}:D> (<t:{ts}:R>)"
-        else:
-            when = "unknown date"
-        meta = " · ".join([f"Mod: {mod or f'Unknown ({mod_id})'}", *tags, f"ID `{key}`"])
+        ts = w["timestamp"]
+        when = "unknown date" if ts is None else f"<t:{ts}:D> (<t:{ts}:R>)"
+        meta = " · ".join([f"Mod: {mod or f'Unknown ({mod_id})'}", *tags, f"ID `{w['key']}`"])
         out.append(f"**#{num}** · {when}\n{quoted}\n{meta}")
     out.reverse()
     return out
@@ -247,6 +264,19 @@ class Moderation(commands.Cog):
         # Red's core Warnings cog storage; same defaults it registers.
         self.warnings_config = Config.get_conf(None, identifier=5757575755, cog_name="Warnings")
         self.warnings_config.register_member(total_points=0, status="", warnings={})
+
+    async def warnings_for(self, guild_id: int, user_id: int) -> list[dict]:
+        """A member's own warnings for the member site, newest first: date (a timestamp or None), reason and points.
+
+        Never the moderator: neither the `mod` field nor the YAGPDB suffix's name.
+        """
+        warnings = await self.warnings_config.member_from_ids(guild_id, user_id).warnings()
+        if not isinstance(warnings, dict):
+            return []
+        return [
+            {"date": w["timestamp"], "reason": w["reason"], "points": w["points"]}
+            for w in reversed(parse_warnings(warnings))
+        ]
 
     async def cog_load(self) -> None:
         # Red has no timeout case type; register_casetypes skips it when it already exists.

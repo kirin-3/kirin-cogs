@@ -20,10 +20,32 @@
     <h2>Backgrounds</h2>
     <p>Buy and equip your rank card's background.</p>
   </a>
+  <a class="tile washi tone-mint" href="/me/stocks">
+    <span class="sticker" aria-hidden="true">📈</span>
+    <h2>Stocks</h2>
+    <p>Your shares, profit and dividends.</p>
+  </a>
+  <a class="tile washi tone-sky" href="/me/club">
+    <span class="sticker" aria-hidden="true">🛡️</span>
+    <h2>Club</h2>
+    <p>Your club and its members, or your invitations.</p>
+  </a>
+  <a class="tile washi tone-pink" href="/me/waifu">
+    <span class="sticker" aria-hidden="true">💕</span>
+    <h2>Waifu</h2>
+    <p>Your price, owner, affinity, waifus and gifts.</p>
+  </a>
   <a class="tile washi tone-butter" href="/leaderboard">
     <span class="sticker" aria-hidden="true">🏆</span>
     <h2>Leaderboard</h2>
     <p>The server's XP ranking.</p>
+  </a>
+  {% endif %}
+  {% if nav.warnings %}
+  <a class="tile washi tone-lavender" href="/me/warnings">
+    <span class="sticker" aria-hidden="true">📋</span>
+    <h2>Warnings</h2>
+    <p>Your warnings, with their dates, reasons and points.</p>
   </a>
   {% endif %}
   <a class="tile washi tone-pink" href="/roleplay">
@@ -34,7 +56,7 @@
   <a class="tile washi tone-mint" href="/settings">
     <span class="sticker" aria-hidden="true">⚙️</span>
     <h2>Settings</h2>
-    <p>Choose which of the bot's auto-replies you get.</p>
+    <p>Your auto-reply and AI settings.</p>
   </a>
   {% if nav.commands %}
   <a class="tile washi tone-sky" href="/commands">

@@ -1,0 +1,12 @@
+<nav class="subnav" aria-label="Your account">
+  {% if nav.unicornia %}
+  <a href="/me"{% if path == "/me" %} class="on"{% endif %}>Profile</a>
+  <a href="/me/backgrounds"{% if path == "/me/backgrounds" %} class="on"{% endif %}>Backgrounds</a>
+  <a href="/me/stocks"{% if path == "/me/stocks" %} class="on"{% endif %}>Stocks</a>
+  <a href="/me/club"{% if path == "/me/club" %} class="on"{% endif %}>Club</a>
+  <a href="/me/waifu"{% if path == "/me/waifu" %} class="on"{% endif %}>Waifu</a>
+  {% endif %}
+  {% if nav.warnings %}
+  <a href="/me/warnings"{% if path == "/me/warnings" %} class="on"{% endif %}>Warnings</a>
+  {% endif %}
+</nav>

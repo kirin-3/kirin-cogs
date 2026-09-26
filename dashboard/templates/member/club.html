@@ -1,0 +1,40 @@
+{% extends "member/base.html" %}
+{% block title %}Club{% endblock %}
+{% macro picture(link, what) %}
+{% if link.image %}<img class="club-{{ what }}" src="{{ link.url }}" alt="">{% else %}<a href="{{ link.url }}" rel="noreferrer noopener" target="_blank">Club {{ what }}</a>{% endif %}
+{% endmacro %}
+{% block content %}
+{% include "member/_account.html" %}
+{% if club %}
+<h1>{{ club.name }}</h1>
+{% if club.banner %}<p>{{ picture(club.banner, "banner") }}</p>{% endif %}
+<p class="sub">{% if club.icon %}{{ picture(club.icon, "icon") }} {% endif %}{{ club.description or "No description." }}</p>
+<div class="stats">
+  <div class="panel"><h2>XP</h2><p class="big">{{ "{:,}".format(club.xp) }}</p></div>
+  <div class="panel"><h2>Rank</h2><p class="big">#{{ club.rank }}</p><p class="sub">among all clubs</p></div>
+  <div class="panel"><h2>Owner</h2><p class="big">{{ club.owner }}</p></div>
+</div>
+<section class="panel">
+  <h2>Members ({{ club.members|length }})</h2>
+  <ul class="rows">
+    {% for m in club.members %}
+    <li>{{ m.name }}{% if m.owner %} <span class="badge ok">Owner</span>{% elif m.admin %} <span class="badge">Admin</span>{% endif %} <small>{{ "{:,}".format(m.xp) }} XP</small></li>
+    {% endfor %}
+  </ul>
+</section>
+{% else %}
+<h1>Club</h1>
+<p class="empty">You're not in a club.</p>
+{% if invitations %}
+<section class="panel">
+  <h2>Invitations</h2>
+  <ul class="rows">
+    {% for club in invitations %}<li><strong>{{ club.name }}</strong>{% if club.description %} <small>{{ club.description }}</small>{% endif %}</li>{% endfor %}
+  </ul>
+</section>
+{% else %}
+<p class="empty">You have no club invitations.</p>
+{% endif %}
+{% endif %}
+<p class="empty">Join, leave and manage clubs with the bot's <code>club</code> commands in Discord.</p>
+{% endblock %}

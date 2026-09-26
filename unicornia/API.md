@@ -137,6 +137,9 @@ that change anything; the rest never write to the database.
 | `house_stats() -> dict` | The `[p]unicornia yieldstats` figures as numbers: per-game RTP against the target, the yield pool and recent dividend runs. |
 | `config_snapshot(guild) -> dict` | The settings, channels, whitelists and level rewards, without the Nadeko migration path, market message ID or on/off switches. |
 | `stocks() -> list[dict]` | Every listed stock. |
+| `portfolio(user_id) -> dict` | `holdings` (biggest first, each with `value`, `cost`, `profit` and `profit_pct`), `totals` computed as `stock portfolio` does, and every `dividends` payout, newest first. |
+| `club_for(user_id) -> dict` | `{"club": ..., "invitations": [...]}`. `club` has the name, description, image and banner URLs, XP, `owner_id`, rank and `members` (`user_id`, stored `name`, `xp`, `owner`, `admin`; owner, then admins, then by XP), or is `None`, when `invitations` lists the inviting clubs' names and descriptions. |
+| `waifu_status(user_id) -> dict` | What `waifu info` shows, as IDs and numbers, without its limits: `price` (50 without a record), `claimer_id`, `affinity_id`, `affinity_from`, `waifus` and aggregated `gifts`. |
 
 ## Best Practices
 

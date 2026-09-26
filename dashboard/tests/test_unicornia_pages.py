@@ -12,8 +12,19 @@ from unittest.mock import AsyncMock
 import pytest
 
 from dashboard.dashboard import SESSION_COOKIE, Session
-from dashboard.tests.test_member_site import ACTIVE, CSRF, REGULAR, STAFF, _get, _log_in, _post, ms  # noqa: F401
+from dashboard.tests.test_member_site import (  # noqa: F401
+    ACTIVE,
+    CSRF,
+    INACTIVE,
+    REGULAR,
+    STAFF,
+    _get,
+    _log_in,
+    _post,
+    ms,
+)
 from unicornia.database import DatabaseManager
+from unicornia.market_views import portfolio_totals
 
 BACKGROUNDS = [("default", "Default", 0, False), ("astolfo", "Astolfo", 20_000, False), ("aki", "Aki", 20_000, True)]
 FORMER = 400000000000000009
@@ -29,7 +40,14 @@ class _FakeUnicornia:
         self.transactions: list[dict[str, Any]] = []
         self.equipped_calls: list[list[int]] = []
         self.changes: list[tuple[str, int, str]] = []
-        self.config = SimpleNamespace(currency_name=AsyncMock(return_value="Slut points"))
+        self.holdings: list[dict[str, Any]] = []
+        self.dividends: list[dict[str, Any]] = []
+        self.clubs: dict[int, dict[str, Any]] = {}
+        self.invitations: list[dict[str, Any]] = []
+        self.waifus: dict[int, dict[str, Any]] = {}
+        self.config = SimpleNamespace(
+            currency_name=AsyncMock(return_value="Slut points"), currency_symbol=AsyncMock(return_value="$")
+        )
 
     level_stats = staticmethod(DatabaseManager.calculate_level_stats)
 
@@ -121,6 +139,22 @@ class _FakeUnicornia:
     async def stocks(self) -> list[dict[str, Any]]:
         return [{"symbol": "UNI", "name": "Unicorn", "price": 12.5, "previous_price": 10.0}]
 
+    async def portfolio(self, user_id: int) -> dict[str, Any]:
+        holdings = self.holdings if user_id == REGULAR else []
+        return {
+            "holdings": [{**h, **portfolio_totals([h])} for h in holdings],
+            "totals": portfolio_totals(holdings),
+            "dividends": self.dividends if user_id == REGULAR else [],
+        }
+
+    async def club_for(self, user_id: int) -> dict[str, Any]:
+        club = self.clubs.get(user_id)
+        return {"club": club, "invitations": [] if club else list(self.invitations)}
+
+    async def waifu_status(self, user_id: int) -> dict[str, Any]:
+        empty = {"claimer_id": None, "affinity_id": None, "affinity_from": [], "waifus": [], "gifts": []}
+        return self.waifus.get(user_id, {"price": 50, **empty})
+
 
 @pytest.fixture
 def uni(ms: SimpleNamespace) -> _FakeUnicornia:  # noqa: F811
@@ -142,18 +176,19 @@ def uni(ms: SimpleNamespace) -> _FakeUnicornia:  # noqa: F811
 async def test_every_member_sees_the_unicornia_pages(ms: SimpleNamespace, uni: _FakeUnicornia) -> None:  # noqa: F811
     _, home = await _get(ms, REGULAR, "/")
 
-    for path in ('href="/me"', 'href="/me/backgrounds"', 'href="/leaderboard"'):
-        assert path in home
+    for path in ("/me", "/me/backgrounds", "/me/stocks", "/me/club", "/me/waifu", "/leaderboard"):
+        assert f'href="{path}"' in home
 
 
 @pytest.mark.asyncio
 async def test_unicornia_pages_hide_and_refuse_when_the_cog_is_unloaded(ms: SimpleNamespace) -> None:  # noqa: F811
     _, home = await _get(ms, REGULAR, "/")
-    statuses = [(await _get(ms, REGULAR, path))[0] for path in ("/me", "/me/backgrounds", "/leaderboard")]
+    paths = ("/me", "/me/backgrounds", "/me/stocks", "/me/club", "/me/waifu", "/leaderboard")
+    statuses = [(await _get(ms, REGULAR, path))[0] for path in paths]
     buy = await _post(ms, REGULAR, "/me/backgrounds/buy", {"key": "astolfo"})
 
-    assert 'href="/me"' not in home and 'href="/leaderboard"' not in home
-    assert statuses == [503, 503, 503] and buy.status == 503
+    assert 'href="/me' not in home and 'href="/leaderboard"' not in home
+    assert statuses == [503] * 6 and buy.status == 503
 
 
 @pytest.mark.asyncio
@@ -275,6 +310,110 @@ async def test_empty_leaderboard(ms: SimpleNamespace, uni: _FakeUnicornia) -> No
     status, page = await _get(ms, REGULAR, "/leaderboard")
 
     assert status == 200 and "Nobody has any XP yet." in page and "Not ranked yet" in page
+
+
+@pytest.mark.asyncio
+async def test_account_tabs_on_every_me_page(ms: SimpleNamespace, uni: _FakeUnicornia) -> None:  # noqa: F811
+    for path in ("/me", "/me/backgrounds", "/me/stocks", "/me/club", "/me/waifu"):
+        _, page = await _get(ms, REGULAR, path)
+        assert f'<a href="{path}" class="on">' in page and 'aria-label="Your account"' in page, path
+        assert 'href="/me/stocks"' in page and 'href="/me/warnings"' not in page, path  # Moderation isn't loaded
+
+
+@pytest.mark.asyncio
+async def test_stocks_page_shows_holdings_totals_and_dividends(ms: SimpleNamespace, uni: _FakeUnicornia) -> None:  # noqa: F811
+    uni.holdings = [
+        {"symbol": "UNI", "name": "Unicorn", "emoji": "🦄", "amount": 10, "average_cost": 100, "current_price": 120}
+    ]
+    uni.dividends = [
+        {"period_end": "2026-09-02", "symbol": "UNI", "weight": 0.5, "amount": 30, "date": ""},
+        {"period_end": "2026-09-01", "symbol": "UNI", "weight": 0.25, "amount": 15, "date": ""},
+    ]  # fmt: skip
+
+    status, page = await _get(ms, REGULAR, "/me/stocks")
+    _, empty = await _get(ms, ACTIVE, "/me/stocks")
+
+    assert status == 200 and "Unicorn" in page and "1,200" in page and "+200" in page and "+20.0%" in page
+    assert page.index("2026-09-02") < page.index("2026-09-01") and "0.250" in page
+    assert "You don't hold any shares." in empty and "You haven't received any dividends." in empty
+
+
+@pytest.mark.asyncio
+async def test_club_page_lists_members_with_owner_and_admins(ms: SimpleNamespace, uni: _FakeUnicornia) -> None:  # noqa: F811
+    members = [
+        {"user_id": ACTIVE, "name": "stale", "xp": 900, "owner": True, "admin": False},
+        {"user_id": FORMER, "name": "gone_user", "xp": 50, "owner": False, "admin": True},
+        {"user_id": FORMER + 1, "name": None, "xp": 5, "owner": False, "admin": False},
+        {"user_id": REGULAR, "name": "me", "xp": 10, "owner": False, "admin": False},
+    ]
+    uni.clubs[REGULAR] = {
+        "name": "Sparkles", "description": "Shiny", "xp": 12_345, "owner_id": ACTIVE, "rank": 3, "members": members,
+        "image_url": "https://cdn.discordapp.com/icons/1/a.png", "banner_url": "https://i.imgur.com/banner.png",
+    }  # fmt: skip
+
+    status, page = await _get(ms, REGULAR, "/me/club")
+
+    assert status == 200 and "Sparkles" in page and "12,345" in page and "#3" in page
+    assert ms.members[ACTIVE].display_name in page and "stale" not in page
+    assert "gone_user" in page and "Unknown user" in page and "Owner" in page and "Admin" in page
+    assert '<img class="club-icon" src="https://cdn.discordapp.com/icons/1/a.png"' in page
+    assert '<a href="https://i.imgur.com/banner.png" rel="noreferrer noopener"' in page
+    assert 'src="https://i.imgur.com' not in page
+
+
+@pytest.mark.asyncio
+async def test_club_page_without_a_club(ms: SimpleNamespace, uni: _FakeUnicornia) -> None:  # noqa: F811
+    _, nothing = await _get(ms, REGULAR, "/me/club")
+    uni.invitations = [{"name": "Sparkles", "description": "Shiny"}]
+    _, invited = await _get(ms, REGULAR, "/me/club")
+
+    assert "not in a club." in nothing and "You have no club invitations." in nothing
+    assert "Invitations" in invited and "Sparkles" in invited
+
+
+@pytest.mark.parametrize(
+    "url", ["javascript:alert(1)", "https://unicornia.net.evil.example/a.png", "http://unicornia.net/a.png"]
+)
+@pytest.mark.asyncio
+async def test_club_images_load_only_from_allowed_https_hosts(
+    ms: SimpleNamespace,  # noqa: F811
+    uni: _FakeUnicornia,
+    url: str,
+) -> None:
+    uni.clubs[REGULAR] = {
+        "name": "Sparkles", "description": "", "xp": 0, "owner_id": REGULAR, "rank": 1, "members": [],
+        "image_url": url, "banner_url": "",
+    }  # fmt: skip
+
+    _, page = await _get(ms, REGULAR, "/me/club")
+
+    assert f'src="{url}' not in page and "javascript:" not in page
+
+
+@pytest.mark.asyncio
+async def test_waifu_page_of_a_claimed_member(ms: SimpleNamespace, uni: _FakeUnicornia) -> None:  # noqa: F811
+    uni.waifus[REGULAR] = {
+        "price": 500,
+        "claimer_id": ACTIVE,
+        "affinity_id": INACTIVE,
+        "affinity_from": [INACTIVE, FORMER],
+        "waifus": [{"user_id": 500_000_000_000_000_000 + n, "price": 70 + n} for n in range(14)],
+        "gifts": [{"name": "Rose", "emoji": "🌹", "count": 3}, {"name": "Cake", "emoji": "🍰", "count": 1}],
+    }
+
+    status, page = await _get(ms, REGULAR, "/me/waifu")
+
+    assert status == 200 and "$500" in page
+    assert ms.members[ACTIVE].display_name in page and ms.members[INACTIVE].display_name in page
+    assert "Your waifus (14)" in page and page.count("Unknown user") == 15 and "$83" in page
+    assert "🌹 Rose <small>\N{MULTIPLICATION SIGN}3</small>" in page and "Gifts received (4)" in page
+
+
+@pytest.mark.asyncio
+async def test_waifu_page_of_a_member_never_claimed(ms: SimpleNamespace, uni: _FakeUnicornia) -> None:  # noqa: F811
+    status, page = await _get(ms, REGULAR, "/me/waifu")
+
+    assert status == 200 and "$50" in page and page.count(">Nobody</p>") == 2 and "Your waifus (0)" in page
 
 
 # --- staff site ----------------------------------------------------------------------------------

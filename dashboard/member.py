@@ -7,6 +7,7 @@ can't drift apart. Their methods raise ValueError with a message for the member;
 import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, NoReturn
+from urllib.parse import urlsplit
 
 import discord
 from aiohttp import web
@@ -20,6 +21,14 @@ SUPPORTER_ROLES = frozenset({ACTIVE_SUPPORTER, INACTIVE_SUPPORTER})
 TOGGLE_STATES = {"on": True, "off": False}
 LEADERBOARD_PAGE = 25
 TRANSACTIONS = 20
+# The hosts the member site's img-src allows; any other image URL is shown as a link, never loaded.
+IMAGE_HOSTS = frozenset({"cdn.discordapp.com", "unicornia.net"})
+# /settings sections: key → (cog, heading, the Discord command that changes the same settings). Fixed, so a POST
+# can only ever reach these cogs.
+SETTINGS = {
+    "responder": ("ResponderCog", "Auto-replies", "daddyoptout"),
+    "unicornai": ("UnicornAI", "UnicornAI", "aioptout"),
+}
 
 
 async def _upload(form: Any, name: str) -> tuple[str, bytes] | None:
@@ -42,6 +51,16 @@ def _timestamp(value: object) -> float | None:
         return datetime.fromisoformat(str(value)).replace(tzinfo=UTC).timestamp()
     except ValueError:
         return None
+
+
+def _link(url: object) -> dict[str, Any] | None:
+    """A club image as {url, image}: `image` when img-src already allows it, else it's only linked. None if unusable."""
+    if not isinstance(url, str) or not url:
+        return None
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https"):
+        return None
+    return {"url": url, "image": parts.scheme == "https" and parts.netloc.lower() in IMAGE_HOSTS}
 
 
 def _rank(rank: int | None, ranked: int) -> str:
@@ -80,6 +99,10 @@ class MemberSite:
         app.router.add_get("/me/backgrounds", self.backgrounds)
         app.router.add_post("/me/backgrounds/buy", self.background_buy)
         app.router.add_post("/me/backgrounds/use", self.background_use)
+        app.router.add_get("/me/stocks", self.stocks)
+        app.router.add_get("/me/club", self.club)
+        app.router.add_get("/me/waifu", self.waifu)
+        app.router.add_get("/me/warnings", self.warnings)
         app.router.add_get("/leaderboard", self.leaderboard)
 
     async def sections(self, member: discord.Member) -> dict[str, bool]:
@@ -88,12 +111,12 @@ class MemberSite:
         Commands and emojis show to supporters who can create them, or who still have some to look after:
         a legacy (inactive) supporter with nothing left would only see an empty page.
         """
-        unicornia = self._cog("Unicornia") is not None
+        everyone = {"unicornia": self._cog("Unicornia") is not None, "warnings": self._cog("Moderation") is not None}
         if not any(role.id in SUPPORTER_ROLES for role in member.roles):
-            return {"unicornia": unicornia, "commands": False, "emojis": False, "role": False}
+            return {**everyone, "commands": False, "emojis": False, "role": False}
         cc, ce, crc = self._cog("CustomCommand"), self._cog("CustomEmoji"), self._cog("CustomRoleColor")
         return {
-            "unicornia": unicornia,
+            **everyone,
             "commands": cc is not None and (cc.can_create(member) or bool(await cc.commands_for(member))),
             "emojis": ce is not None and (await ce.can_create(member) or bool(await ce.emojis_for(member))),
             "role": crc is not None and await crc.assigned_role(member) is not None,
@@ -169,25 +192,29 @@ class MemberSite:
             raise web.HTTPBadRequest() from None
         raise web.HTTPFound("/roleplay")
 
-    # --- settings: the Responder cog's per-member switches ----------------------------------------
+    # --- settings: per-member switches, one section per cog -------------------------------------
 
     async def settings(self, request: web.Request) -> web.StreamResponse:
-        responder = self._cog("ResponderCog")
-        if responder is None:
-            return self._render(request, "settings.html", missing=True)
-        toggles = [{"key": key, **item} for key, item in (await responder.settings_for(request["member"].id)).items()]
-        return self._render(request, "settings.html", toggles=toggles)
+        sections = []
+        for key, (cog_name, title, command) in SETTINGS.items():
+            cog = self._cog(cog_name)
+            toggles = None
+            if cog is not None:
+                toggles = [{"key": k, **item} for k, item in (await cog.settings_for(request["member"].id)).items()]
+            sections.append({"key": key, "title": title, "command": command, "toggles": toggles})
+        return self._render(request, "settings.html", sections=sections)
 
     async def settings_toggle(self, request: web.Request) -> web.StreamResponse:
-        responder = self._cog("ResponderCog")
-        if responder is None:
-            self._missing(request, "Settings")
         form = await request.post()
+        section = SETTINGS.get(_text(form, "section"))
         state = TOGGLE_STATES.get(_text(form, "value"))
-        if state is None:
+        if section is None or state is None:
             raise web.HTTPBadRequest()
+        cog = self._cog(section[0])
+        if cog is None:
+            self._missing(request, "These settings")
         try:
-            await responder.set_toggle(request["member"].id, _text(form, "key"), state)
+            await cog.set_toggle(request["member"].id, _text(form, "key"), state)
         except ValueError:
             raise web.HTTPBadRequest() from None
         raise web.HTTPFound("/settings")
@@ -197,7 +224,7 @@ class MemberSite:
     def _unicornia(self, request: web.Request) -> tuple[discord.Member, Any]:
         uni = self._cog("Unicornia")
         if uni is None:
-            self._missing(request, "Profiles, backgrounds and the leaderboard")
+            self._missing(request, "Profiles, stocks, clubs, waifus and the leaderboard")
         return request["member"], uni
 
     async def me(self, request: web.Request) -> web.StreamResponse:
@@ -241,6 +268,62 @@ class MemberSite:
 
     async def background_use(self, request: web.Request) -> web.StreamResponse:
         return await self._background_change(request, "use_background")
+
+    async def stocks(self, request: web.Request) -> web.StreamResponse:
+        member, uni = self._unicornia(request)
+        return self._render(
+            request, "stocks.html", portfolio=await uni.portfolio(member.id), currency=await uni.config.currency_name()
+        )
+
+    def _stored_name(self, user_id: object, stored: object) -> str:
+        """Display name in the guild, else the name Unicornia stored, else "Unknown user"."""
+        member = self.cog.member(user_id) if isinstance(user_id, int) else None
+        if member is not None:
+            return member.display_name
+        return stored if isinstance(stored, str) and stored else "Unknown user"
+
+    async def club(self, request: web.Request) -> web.StreamResponse:
+        member, uni = self._unicornia(request)
+        result = await uni.club_for(member.id)
+        club = result["club"]
+        if club is not None:
+            stored = {m["user_id"]: m["name"] for m in club["members"]}
+            club = {
+                **club,
+                "owner": self._stored_name(club["owner_id"], stored.get(club["owner_id"])),
+                "icon": _link(club["image_url"]),
+                "banner": _link(club["banner_url"]),
+                "members": [{**m, "name": self._stored_name(m["user_id"], m["name"])} for m in club["members"]],
+            }
+        return self._render(request, "club.html", club=club, invitations=result["invitations"])
+
+    async def waifu(self, request: web.Request) -> web.StreamResponse:
+        member, uni = self._unicornia(request)
+        status = await uni.waifu_status(member.id)
+
+        def name(user_id: object) -> str:
+            return "Nobody" if user_id is None else self._name(user_id)
+
+        return self._render(
+            request,
+            "waifu.html",
+            waifu=status,
+            owner=name(status["claimer_id"]),
+            affinity=name(status["affinity_id"]),
+            affinity_from=[self._name(user_id) for user_id in status["affinity_from"]],
+            waifus=[{**w, "name": self._name(w["user_id"])} for w in status["waifus"]],
+            currency=await uni.config.currency_symbol(),
+        )
+
+    # --- warnings: the member's own, never the moderator ------------------------------------------
+
+    async def warnings(self, request: web.Request) -> web.StreamResponse:
+        moderation = self._cog("Moderation")
+        if moderation is None:
+            self._missing(request, "Warnings")
+        member = request["member"]
+        warnings = await moderation.warnings_for(member.guild.id, member.id)
+        return self._render(request, "warnings.html", warnings=warnings, points=sum(w["points"] for w in warnings))
 
     async def leaderboard(self, request: web.Request) -> web.StreamResponse:
         member, uni = self._unicornia(request)

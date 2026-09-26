@@ -2,13 +2,15 @@
 {% block title %}Settings{% endblock %}
 {% block content %}
 <h1>Settings</h1>
-{% if missing %}
-<p class="notice">Settings are unavailable right now. Try again later.</p>
-{% else %}
+{% for section in sections %}
 <section class="panel">
+  <h2>{{ section.title }}</h2>
+  {% if section.toggles is none %}
+  <p class="notice">These settings are unavailable right now. Try again later.</p>
+  {% else %}
   <table>
     <tbody>
-    {% for toggle in toggles %}
+    {% for toggle in section.toggles %}
     <tr>
       <td>{{ toggle.emoji }} <strong>{{ toggle.label }}</strong><small>{{ toggle.description }}</small></td>
       <td class="num">
@@ -17,6 +19,7 @@
       <td class="num">
         <form method="post" action="/settings">
           <input type="hidden" name="csrf" value="{{ session.csrf }}">
+          <input type="hidden" name="section" value="{{ section.key }}">
           <input type="hidden" name="key" value="{{ toggle.key }}">
           <input type="hidden" name="value" value="{{ 'off' if toggle.value else 'on' }}">
           <button type="submit">Turn {{ "off" if toggle.value else "on" }}</button>
@@ -26,7 +29,8 @@
     {% endfor %}
     </tbody>
   </table>
+  <p class="empty">You can also change this with the bot's <code>{{ section.command }}</code> command in Discord.</p>
+  {% endif %}
 </section>
-<p class="empty">Daddy replies can also be switched with the bot's <code>daddyoptout</code> command in Discord.</p>
-{% endif %}
+{% endfor %}
 {% endblock %}

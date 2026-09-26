@@ -11,6 +11,14 @@ def format_stock_price(value: float) -> str:
     return f"{float(value):,.2f}"
 
 
+def portfolio_totals(holdings: list[dict]) -> dict[str, float]:
+    """Value, cost, profit and profit % (0 without a cost) of holdings, as `stock portfolio` shows them."""
+    value = sum(h["amount"] * h["current_price"] for h in holdings)
+    cost = sum(h["amount"] * h["average_cost"] for h in holdings)
+    profit = value - cost
+    return {"value": value, "cost": cost, "profit": profit, "profit_pct": profit / cost * 100 if cost > 0 else 0}
+
+
 # --- Step 3: Final Transaction Modal (Amount Only) ---
 class StockAmountModal(ui.Modal):
     def __init__(self, market_system, transaction_type: str, symbol: str):
@@ -295,10 +303,8 @@ class StockPortfolioView(ui.LayoutView):
             self.add_item(container)
             return
 
-        total_value = sum(h["amount"] * h["current_price"] for h in self.holdings)
-        total_cost = sum(h["amount"] * h["average_cost"] for h in self.holdings)
-        total_profit = total_value - total_cost
-        total_profit_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0
+        totals = portfolio_totals(self.holdings)
+        total_value, total_profit, total_profit_pct = totals["value"], totals["profit"], totals["profit_pct"]
         currency = self.market_system.currency_symbol
 
         # Header
@@ -320,13 +326,10 @@ class StockPortfolioView(ui.LayoutView):
             symbol = h["symbol"]
             amount = h["amount"]
             avg_cost = h["average_cost"]
-            current_price = h["current_price"]
             emoji = h["emoji"]
 
-            value = amount * current_price
-            cost = amount * avg_cost
-            profit = value - cost
-            profit_pct = (profit / cost * 100) if cost > 0 else 0
+            figures = portfolio_totals([h])
+            value, profit, profit_pct = figures["value"], figures["profit"], figures["profit_pct"]
             arrow = "🟢" if profit >= 0 else "🔴"
 
             stock_info = f"{emoji} **{symbol}**: {amount:,} shares\n"

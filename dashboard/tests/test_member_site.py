@@ -5,6 +5,7 @@ import secrets
 import socket
 import time
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -33,6 +34,7 @@ from dashboard.dashboard import (
 )
 from dashboard.member import ACTIVE_SUPPORTER, INACTIVE_SUPPORTER
 from dashboard.tests.test_dashboard import _callback, _FakeDiscord, _FakeResponse, _free_port
+from moderation.moderation import Moderation
 from roleplay.main import Roleplay
 
 REGULAR, ACTIVE, INACTIVE, STAFF = 300000000000000001, 300000000000000002, 300000000000000003, 300000000000000004
@@ -393,6 +395,7 @@ async def test_discord_429_on_either_site_pauses_both(ms: SimpleNamespace, first
 @pytest.mark.asyncio
 async def test_every_member_route_rejects_anonymous_visitors(ms: SimpleNamespace) -> None:
     checked = 0
+    paths = set()
     for route in ms.client.app.router.routes():
         resource = route.resource
         if resource is None or isinstance(resource, web.StaticResource) or resource.canonical in PUBLIC_PATHS:
@@ -404,7 +407,9 @@ async def test_every_member_route_rejects_anonymous_visitors(ms: SimpleNamespace
         else:
             assert response.status == 401, path
         checked += 1
+        paths.add(path)
     assert checked >= 20
+    assert {"/me/stocks", "/me/club", "/me/waifu", "/me/warnings", "/settings"} <= paths
 
 
 @pytest.mark.asyncio
@@ -713,68 +718,174 @@ async def test_roleplay_page_explains_when_the_cog_is_unloaded(ms: SimpleNamespa
 # --- settings ------------------------------------------------------------------------------------
 
 
-class _FakeResponder:
-    """Responder's settings_for/set_toggle; the real ones are tested with the cog."""
+class _FakeToggles:
+    """A cog's settings_for/set_toggle with one switch, on by default; the real ones are tested with the cogs."""
 
-    def __init__(self) -> None:
-        self.daddy: dict[int, bool] = {}
+    def __init__(self, key: str, label: str) -> None:
+        self.key, self.label = key, label
+        self.values: dict[int, bool] = {}
 
     async def settings_for(self, user_id: int) -> dict[str, dict]:
-        item = {"label": "Daddy replies", "description": "Hi, I'm your daddy", "emoji": "👨"}
-        return {"daddy": {**item, "value": self.daddy.get(user_id, True)}}
+        item = {"label": self.label, "description": "What it does", "emoji": "*"}
+        return {self.key: {**item, "value": self.values.get(user_id, True)}}
 
     async def set_toggle(self, user_id: int, key: str, value: bool) -> None:
-        if key != "daddy":
+        if key != self.key:
             raise ValueError(key)
-        self.daddy[user_id] = value
+        self.values[user_id] = value
+
+
+def _settings_cogs(ms: SimpleNamespace) -> tuple[_FakeToggles, _FakeToggles]:
+    responder = ms.cogs["ResponderCog"] = _FakeToggles("daddy", "Daddy replies")
+    ai = ms.cogs["UnicornAI"] = _FakeToggles("read_messages", "Let the AI read my messages")
+    return responder, ai
 
 
 @pytest.mark.asyncio
 async def test_settings_page_turns_daddy_replies_off_and_on(ms: SimpleNamespace) -> None:
-    responder = ms.cogs["ResponderCog"] = _FakeResponder()
+    responder, _ = _settings_cogs(ms)
 
     _, home = await _get(ms, REGULAR, "/")
     status, page = await _get(ms, REGULAR, "/settings")
     assert 'href="/settings"' in home
-    assert status == 200 and "Daddy replies" in page and "Turn off" in page
+    assert status == 200 and "Daddy replies" in page and "Turn off" in page and "daddyoptout" in page
 
-    response = await _post(ms, REGULAR, "/settings", {"key": "daddy", "value": "off"})
+    response = await _post(ms, REGULAR, "/settings", {"section": "responder", "key": "daddy", "value": "off"})
     _, page = await _get(ms, REGULAR, "/settings")
     assert response.status == 302 and response.headers["Location"] == "/settings"
-    assert responder.daddy == {REGULAR: False} and "Turn on" in page
+    assert responder.values == {REGULAR: False} and "Turn on" in page
 
-    await _post(ms, REGULAR, "/settings", {"key": "daddy", "value": "on"})
-    assert responder.daddy == {REGULAR: True}
+    await _post(ms, REGULAR, "/settings", {"section": "responder", "key": "daddy", "value": "on"})
+    assert responder.values == {REGULAR: True}
 
 
-@pytest.mark.parametrize("form", [{"key": "nope", "value": "off"}, {"key": "daddy", "value": "maybe"}])
 @pytest.mark.asyncio
-async def test_settings_rejects_unknown_keys_and_values(ms: SimpleNamespace, form: dict) -> None:
-    responder = ms.cogs["ResponderCog"] = _FakeResponder()
+async def test_settings_page_turns_the_ai_off_for_the_member_only(ms: SimpleNamespace) -> None:
+    responder, ai = _settings_cogs(ms)
+    ai.values[REGULAR] = False
+
+    _, page = await _get(ms, REGULAR, "/settings")
+    response = await _post(ms, ACTIVE, "/settings", {"section": "unicornai", "key": "read_messages", "value": "off"})
+
+    assert "Let the AI read my messages" in page and "aioptout" in page
+    assert response.status == 302 and ai.values == {REGULAR: False, ACTIVE: False} and responder.values == {}
+
+
+@pytest.mark.parametrize(
+    "form",
+    [
+        {"section": "responder", "key": "nope", "value": "off"},
+        {"section": "responder", "key": "daddy", "value": "maybe"},
+        {"section": "unicornai", "key": "daddy", "value": "off"},
+        {"section": "roleplay", "key": "daddy", "value": "off"},
+        {"key": "daddy", "value": "off"},
+    ],
+)
+@pytest.mark.asyncio
+async def test_settings_rejects_unknown_sections_keys_and_values(ms: SimpleNamespace, form: dict) -> None:
+    responder, ai = _settings_cogs(ms)
 
     response = await _post(ms, REGULAR, "/settings", form)
 
-    assert response.status == 400 and responder.daddy == {}
+    assert response.status == 400 and responder.values == {} and ai.values == {}
 
 
 @pytest.mark.asyncio
 async def test_settings_needs_the_csrf_token(ms: SimpleNamespace) -> None:
-    responder = ms.cogs["ResponderCog"] = _FakeResponder()
+    responder, _ = _settings_cogs(ms)
 
     response = await ms.client.post(
-        "/settings", data={"key": "daddy", "value": "off"}, headers=_log_in(ms, REGULAR), allow_redirects=False
+        "/settings",
+        data={"section": "responder", "key": "daddy", "value": "off"},
+        headers=_log_in(ms, REGULAR),
+        allow_redirects=False,
     )
 
-    assert response.status == 403 and responder.daddy == {}
+    assert response.status == 403 and responder.values == {}
 
 
 @pytest.mark.asyncio
-async def test_settings_page_explains_when_the_cog_is_unloaded(ms: SimpleNamespace) -> None:
-    status, page = await _get(ms, REGULAR, "/settings")
-    response = await _post(ms, REGULAR, "/settings", {"key": "daddy", "value": "off"})
+async def test_settings_unloaded_cog_hides_only_its_own_section(ms: SimpleNamespace) -> None:
+    responder = ms.cogs["ResponderCog"] = _FakeToggles("daddy", "Daddy replies")
 
-    assert status == 200 and "Settings are unavailable" in page
-    assert response.status == 503
+    status, page = await _get(ms, REGULAR, "/settings")
+    ai = await _post(ms, REGULAR, "/settings", {"section": "unicornai", "key": "read_messages", "value": "off"})
+    daddy = await _post(ms, REGULAR, "/settings", {"section": "responder", "key": "daddy", "value": "off"})
+
+    assert status == 200 and page.count("These settings are unavailable") == 1 and "Daddy replies" in page
+    assert ai.status == 503 and daddy.status == 302 and responder.values == {REGULAR: False}
+
+
+# --- warnings ------------------------------------------------------------------------------------
+
+
+def _snowflake(y: int, m: int, d: int) -> str:
+    return str(discord.utils.time_snowflake(datetime(y, m, d, tzinfo=UTC)))
+
+
+def _moderation(ms: SimpleNamespace, stored: dict[int, dict]) -> list[tuple[int, int]]:
+    """The real Moderation.warnings_for over fake storage; returns the (guild, user) pairs it read."""
+    reads: list[tuple[int, int]] = []
+
+    def member_from_ids(guild_id: int, user_id: int) -> SimpleNamespace:
+        reads.append((guild_id, user_id))
+        return SimpleNamespace(warnings=AsyncMock(return_value=stored.get(user_id, {})))
+
+    mod = SimpleNamespace(warnings_config=SimpleNamespace(member_from_ids=member_from_ids))
+    mod.warnings_for = lambda guild_id, user_id: Moderation.warnings_for(mod, guild_id, user_id)  # type: ignore[arg-type]
+    ms.cogs["Moderation"] = mod
+    return reads
+
+
+@pytest.mark.asyncio
+async def test_warnings_page_lists_own_warnings_without_the_moderator(ms: SimpleNamespace) -> None:
+    reads = _moderation(
+        ms,
+        {
+            REGULAR: {
+                _snowflake(2023, 4, 1): {"points": 1, "description": "spamming (YAGPDB, 2023-04-01, by modname#0001)", "mod": 42},
+                _snowflake(2024, 3, 11): {"points": 1, "description": "<b>rude</b>", "mod": STAFF},
+            },
+            ACTIVE: {_snowflake(2025, 1, 1): {"points": 3, "description": "someone else's", "mod": STAFF}},
+        },
+    )  # fmt: skip
+
+    status, page = await _get(ms, REGULAR, f"/me/warnings?user={ACTIVE}")
+
+    assert status == 200 and "2 warnings · 2 points" in page
+    assert page.index("2024-03-11") < page.index("2023-04-01")
+    assert "&lt;b&gt;rude&lt;/b&gt;" in page and "spamming" in page and "someone else" not in page
+    for moderator in ("modname", "YAGPDB", str(STAFF), ms.members[STAFF].display_name, "42"):
+        assert moderator not in page
+    assert reads == [(dashboard_module.GUILD_ID, REGULAR)]
+
+
+@pytest.mark.asyncio
+async def test_warnings_page_for_a_member_never_warned(ms: SimpleNamespace) -> None:
+    _moderation(ms, {})
+
+    _, home = await _get(ms, REGULAR, "/")
+    status, page = await _get(ms, REGULAR, "/me/warnings")
+
+    assert 'href="/me/warnings"' in home and status == 200 and "No warnings" in page
+
+
+@pytest.mark.asyncio
+async def test_warnings_page_is_gone_while_moderation_is_unloaded(ms: SimpleNamespace) -> None:
+    _, home = await _get(ms, REGULAR, "/")
+    status, _ = await _get(ms, REGULAR, "/me/warnings")
+
+    assert 'href="/me/warnings"' not in home and status == 503
+
+
+@pytest.mark.asyncio
+async def test_profile_link_falls_back_to_warnings_without_unicornia(ms: SimpleNamespace) -> None:
+    _moderation(ms, {})
+
+    _, page = await _get(ms, REGULAR, "/me/warnings")
+
+    assert '<a href="/me/warnings" class="on">Profile</a>' in page
+    assert 'href="/me"' not in page and 'href="/me/stocks"' not in page
 
 
 @pytest.mark.asyncio

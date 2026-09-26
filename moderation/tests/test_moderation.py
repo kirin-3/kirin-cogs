@@ -44,6 +44,45 @@ def test_format_orders_dates_and_strips_yagpdb_suffix() -> None:
     assert third == "**#1** · unknown date\n> No reason given.\nMod: Deleted moderator · ID `junk`"
 
 
+def _warnings_cog(warnings: object) -> Moderation:
+    class Member:
+        async def warnings(self) -> object:
+            return warnings
+
+    cog = Moderation.__new__(Moderation)
+    cog.warnings_config = SimpleNamespace(member_from_ids=lambda g, u: Member())  # type: ignore[assignment]
+    return cog
+
+
+@pytest.mark.asyncio
+async def test_warnings_for_the_member_site_never_name_the_moderator() -> None:
+    bot, yag, blank = key(2024, 3, 11), key(2023, 4, 1), key(2025, 1, 1)
+    cog = _warnings_cog(
+        {
+            yag: {"points": 1, "description": "spamming (YAGPDB, 2023-04-01, by modname#0001)", "mod": 99},
+            bot: {"points": 2, "description": "native warn", "mod": 5},
+            blank: {"points": 1, "description": None, "mod": 5},
+            "junk": "not a warning",
+        }
+    )
+
+    warnings = await cog.warnings_for(1, 2)
+
+    assert warnings == [
+        {"date": 1735689600, "reason": "", "points": 1},
+        {"date": 1710115200, "reason": "native warn", "points": 2},
+        {"date": 1680307200, "reason": "spamming", "points": 1},
+        {"date": None, "reason": "", "points": 0},
+    ]
+    assert "modname" not in repr(warnings) and "mod" not in {k for w in warnings for k in w}
+
+
+@pytest.mark.parametrize("stored", [{}, None, "broken"])
+@pytest.mark.asyncio
+async def test_warnings_for_a_member_without_warnings(stored: object) -> None:
+    assert await _warnings_cog(stored).warnings_for(1, 2) == []
+
+
 @pytest.mark.asyncio
 async def test_warnings_replies_for_user_without_warnings() -> None:
     sent: list[dict] = []

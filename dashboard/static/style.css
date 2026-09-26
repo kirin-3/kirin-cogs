@@ -467,10 +467,12 @@ progress::-moz-progress-bar { background: linear-gradient(90deg, var(--pink), va
 .lb-xp small { display: block; color: var(--muted); font: 400 0.8rem var(--body); }
 .pages span { color: var(--muted); }
 
-/* Staff: the Unicornia section's own tabs */
+/* Tabs: the staff Unicornia section and the member account pages */
 .subnav { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
 .subnav a { padding: 4px 12px; border-radius: 999px; text-decoration: none; font: 600 0.9rem var(--heading); color: var(--muted); border: 1px solid var(--line); }
 .subnav a.on, .subnav a:hover { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.club-banner { display: block; max-width: 100%; max-height: 240px; border-radius: 12px; }
+.club-icon { width: 48px; height: 48px; border-radius: 50%; vertical-align: middle; object-fit: cover; }
 
 @media (max-width: 520px) {
   .lb-row { gap: 10px; padding: 10px 12px; }

@@ -100,6 +100,16 @@ def normalize_endpoint(url: str) -> str | None:
     return url
 
 
+READ_MESSAGES = {
+    "label": "Let the AI read my messages",
+    "description": (
+        "Include your messages in what the AI personas read before they reply. "
+        "Applies in every server the bot shares with you."
+    ),
+    "emoji": "🤖",
+}
+
+
 def retry_delay(interval: int, failures: int) -> int:
     """Seconds to wait before the next scheduled run after ``failures`` consecutive failed runs."""
     if failures <= 0:
@@ -182,6 +192,21 @@ class UnicornAI(commands.Cog):
     ) -> None:
         """Delete the user's persistent AI opt-out preference."""
         await self.config.user_from_id(user_id).clear()
+
+    async def settings_for(self, user_id: int) -> dict[str, dict]:
+        """The member site's switch, shaped like Responder's: `read_messages` is the inverse of `opt_out`."""
+        opted_out = await self.config.user_from_id(user_id).opt_out()
+        return {"read_messages": {**READ_MESSAGES, "value": opted_out is not True}}
+
+    async def set_toggle(self, user_id: int, key: str, value: bool) -> None:
+        if key != "read_messages":
+            raise ValueError(f"{key!r} isn't a setting.")
+        group = self.config.user_from_id(user_id)
+        if value:
+            # Opted in is the default: keep no record of the member at all
+            await group.clear()
+        else:
+            await group.opt_out.set(True)
 
     def _track_task(self, coroutine) -> None:
         task = asyncio.create_task(coroutine)

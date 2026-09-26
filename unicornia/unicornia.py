@@ -30,8 +30,9 @@ from .commands import (
 )
 from .database import DatabaseManager
 from .db.economy import OperationDirection, OperationOutcome
+from .db.waifu import DEFAULT_WAIFU_PRICE
 from .errors import SystemNotReadyError, UnicorniaError
-from .market_views import StockDashboardView
+from .market_views import StockDashboardView, portfolio_totals
 from .systems import (
     ClubSystem,
     CurrencyDecay,
@@ -569,6 +570,64 @@ class Unicornia(
     async def stocks(self) -> list[dict[str, Any]]:
         """Every listed stock (symbol, name, emoji, price, previous_price, ...)."""
         return await self.db.stock.get_all_stocks()
+
+    async def portfolio(self, user_id: int) -> dict[str, Any]:
+        """A member's holdings (biggest first, each with value and P/L), totals, and every dividend, newest first."""
+        holdings = sorted(
+            await self.db.stock.get_user_holdings(user_id), key=lambda h: h["amount"] * h["current_price"], reverse=True
+        )
+        return {
+            "holdings": [{**h, **portfolio_totals([h])} for h in holdings],
+            "totals": portfolio_totals(holdings),
+            # SQLite reads LIMIT -1 as no limit
+            "dividends": await self.db.economy.get_dividend_history(user_id, limit=-1),
+        }
+
+    async def club_for(self, user_id: int) -> dict[str, Any]:
+        """A member's club with its rank and members (owner, then admins, then by XP), or None and their invitations."""
+        row = await self.db.club.get_club_by_member(user_id)
+        if row is None:
+            invitations = await self.db.club.get_user_invitations(user_id)
+            return {
+                "club": None,
+                "invitations": [{"name": name, "description": about} for _, name, about, *_ in invitations],
+            }
+        club_id, name, description, image_url, banner_url, xp, owner_id, _added = row
+        members = [
+            {"user_id": uid, "name": username, "xp": total_xp or 0, "owner": uid == owner_id, "admin": bool(admin)}
+            for uid, username, _avatar, total_xp, admin in await self.db.club.get_club_members(club_id)
+        ]
+        members.sort(key=lambda m: (not m["owner"], not m["admin"], -m["xp"]))
+        club = {
+            "name": name,
+            "description": description,
+            "image_url": image_url,
+            "banner_url": banner_url,
+            "xp": xp,
+            "owner_id": owner_id,
+            "rank": await self.db.club.get_club_rank(club_id),
+            "members": members,
+        }
+        return {"club": club, "invitations": []}
+
+    async def waifu_status(self, user_id: int) -> dict[str, Any]:
+        """What `waifu info` shows about a member, as IDs and numbers, without its list limits."""
+        info = await self.db.waifu.get_waifu_info(user_id)
+        _, claimer_id, price, affinity_id, _added = info or (user_id, None, DEFAULT_WAIFU_PRICE, None, None)
+        return {
+            "price": price,
+            "claimer_id": claimer_id,
+            "affinity_id": affinity_id,
+            "affinity_from": [uid for (uid,) in await self.db.waifu.get_affinity_towards(user_id)],
+            "waifus": [
+                {"user_id": uid, "price": waifu_price}
+                for uid, waifu_price, _, _ in await self.db.waifu.get_user_waifus(user_id)
+            ],
+            "gifts": [
+                {"name": name, "emoji": emoji, "count": count}
+                for name, emoji, count in await self.db.waifu.get_waifu_gifts_aggregated(user_id)
+            ],
+        }
 
     async def cog_check(self, ctx: commands.Context) -> bool:  # type: ignore[override]
         """Global check for all commands in this cog"""

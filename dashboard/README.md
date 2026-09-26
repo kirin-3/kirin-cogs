@@ -8,9 +8,9 @@ Cloudflare. They share the login code but keep separate sessions and cookies.
   word lists, including its action log and the dry-run switch. Its Unicornia pages show, read-only, any member's
   economy and XP, the house economy, the cog's configuration and the stock market. Its Modmail pages show every
   thread the modmail bot has kept since October 2020, read-only.
-- **Member site**, `my.unicornia.net` on `127.0.0.1:8012`. Every member can see their Unicornia profile, buy and equip
-  rank-card backgrounds, see the XP leaderboard, and turn their roleplay settings (Selective, Public and Servant) and the bot's daddy replies
-  on or off. Supporters also manage their custom commands, custom emojis and, if they
+- **Member site**, `my.unicornia.net` on `127.0.0.1:8012`. Every member can see their Unicornia profile, stocks, club
+  and waifu standing, buy and equip rank-card backgrounds, see the XP leaderboard and their own warnings, and turn
+  their roleplay settings (Selective, Public and Servant), the bot's daddy replies and the UnicornAI opt-out on or off. Supporters also manage their custom commands, custom emojis and, if they
   were given one with `[p]assignrole`, their custom role.
 
 ## Who can log in
@@ -31,7 +31,8 @@ at the time of each request:
 
 | Section | Who sees it |
 | --- | --- |
-| Profile, Backgrounds, Leaderboard | Everyone, while the Unicornia cog is loaded |
+| Profile, Backgrounds, Stocks, Club, Waifu, Leaderboard | Everyone, while the Unicornia cog is loaded |
+| Warnings | Everyone, while the Moderation cog is loaded |
 | Roleplay, Settings | Everyone |
 | Custom commands | The active supporter role (`700121551483437128`), or the inactive one (`1458440559713718466`) while the member still has commands |
 | Custom emojis | A supporter role who can create emojis (the `[p]ce setrole` role), or who still has emojis |
@@ -44,18 +45,38 @@ only upload new emojis, not copy existing ones, and it can't add people to or re
 
 ## Settings page
 
-`/settings` on the member site lists the Responder cog's per-member switches; today that is only daddy replies,
-the same switch as `[p]daddyoptout`. It shows a notice while Responder isn't loaded.
+`/settings` on the member site has one section per cog, from a fixed list:
+
+- **Auto-replies** (Responder): daddy replies, the same switch as `[p]daddyoptout`.
+- **UnicornAI**: "Let the AI read my messages", the inverse of `[p]aioptout`. Turning it back on deletes the stored
+  opt-out, so opted-in members have no record.
+
+A section whose cog isn't loaded shows a notice, and changes to it get 503; the other section keeps working. A POST
+names the section, key and new state; anything unknown gets 400.
+
+## Warnings page
+
+`/me/warnings` lists the member's own warnings in Unicornia, newest first, with the date, reason and points, and their
+count and total. It never shows who gave a warning: the moderator field is left out, and so is the
+`(YAGPDB, <date>, by <moderator>)` suffix on imported warnings. Mutes and other moderation records aren't shown. Every
+member sees the page, "No warnings" included, while the Moderation cog is loaded; otherwise it answers 503. When
+Unicornia isn't loaded, the top bar's Profile link goes here instead of `/me`.
 
 ## Unicornia pages
 
-On the member site:
+On the member site, where every `/me` page has a tab bar (Profile · Backgrounds · Stocks · Club · Waifu · Warnings):
 
 - `/me`: wallet, bank, level and progress, rank, club, the equipped background (animated) and the last 20
   transactions. Only the member's own.
 - `/me/backgrounds`: every buyable background, plus hidden ones the member owns. Buying asks for confirmation with the
   name and price; the purchase itself follows `xpshop buy`'s rules and charges at most once. Equipping follows
   `xpshop use`.
+- `/me/stocks`: holdings with value and profit or loss, totals computed as `stock portfolio` does, and every dividend
+  payout, newest first.
+- `/me/club`: the member's club with its XP, rank, owner and every member (owner and admins marked), or their club
+  invitations. Icons and banners are loaded only from `https://cdn.discordapp.com` or `https://unicornia.net`, the
+  hosts the Content-Security-Policy already allows; any other URL is a `noreferrer` link, and non-web URLs are dropped.
+- `/me/waifu`: what `waifu info` shows (price, owner, affinity, affinity from, waifus, gifts), without its list limits.
 - `/leaderboard?page=N`: the guild's current members by XP, 25 a page, each with their background as a still that
   animates while the row is hovered or focused. The member's own row is highlighted, and their rank is always shown.
   Like `level leaderboard`, only the top 300 are ranked, and the ranking is rebuilt at most once a minute.

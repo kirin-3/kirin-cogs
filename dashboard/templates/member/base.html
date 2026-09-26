@@ -15,9 +15,10 @@
   {% if session %}
   <nav class="nav">
     {% if nav and nav.unicornia %}
-    <a href="/me"{% if path == "/me" %} class="on"{% endif %}>Profile</a>
-    <a href="/me/backgrounds"{% if path.startswith("/me/") %} class="on"{% endif %}>Backgrounds</a>
+    <a href="/me"{% if path == "/me" or path.startswith("/me/") %} class="on"{% endif %}>Profile</a>
     <a href="/leaderboard"{% if path == "/leaderboard" %} class="on"{% endif %}>Leaderboard</a>
+    {% elif nav and nav.warnings %}
+    <a href="/me/warnings"{% if path.startswith("/me/") %} class="on"{% endif %}>Profile</a>
     {% endif %}
     <a href="/roleplay"{% if path == "/roleplay" %} class="on"{% endif %}>Roleplay</a>
     <a href="/settings"{% if path == "/settings" %} class="on"{% endif %}>Settings</a>
