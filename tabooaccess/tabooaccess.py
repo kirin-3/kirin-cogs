@@ -21,6 +21,16 @@ class TabooAccess(commands.Cog):
             return "I can't assign that role (it's higher than or equal to my top role)."
         return None
 
+    def _setter_error(self, author: discord.Member, role: discord.Role) -> str | None:
+        """The button grants this role to anyone, so only let people pick roles they could grant themselves."""
+        if author.id == author.guild.owner_id:
+            return None
+        if not author.guild_permissions.manage_roles:
+            return "You need the Manage Roles permission to choose this role."
+        if role >= author.top_role:
+            return "You can't choose a role that is higher than or equal to your top role."
+        return None
+
     async def cog_load(self):
         self.bot.add_view(TabooAccessView(self))
 
@@ -37,6 +47,10 @@ class TabooAccess(commands.Cog):
     @commands.admin_or_permissions(manage_guild=True)
     async def settaboorole(self, ctx, role: discord.Role):
         """Set the role to be assigned for taboo access."""
+        error_msg = self._setter_error(ctx.author, role) or self._preflight_role_edit(ctx.guild, role)
+        if error_msg:
+            await ctx.send(error_msg)
+            return
         await self.config.guild(ctx.guild).taboo_role_id.set(role.id)
         await ctx.send(f"Taboo access role set to {role.name}.")
 

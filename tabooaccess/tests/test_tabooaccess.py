@@ -53,6 +53,15 @@ async def cog(bot_mock: MagicMock, config_mock: MagicMock) -> TabooAccess:
 def ctx_mock() -> Context:
     ctx = MagicMock(spec=Context)
     ctx.guild = MagicMock(spec=discord.Guild)
+    ctx.guild.owner_id = 1
+    ctx.guild.me = MagicMock(spec=discord.Member)
+    ctx.guild.me.guild_permissions.manage_roles = True
+    ctx.guild.me.top_role = MagicMock(spec=discord.Role)
+    ctx.author = MagicMock(spec=discord.Member)
+    ctx.author.id = 2
+    ctx.author.guild = ctx.guild
+    ctx.author.guild_permissions.manage_roles = True
+    ctx.author.top_role = MagicMock(spec=discord.Role)
     ctx.send = AsyncMock()
     return ctx
 
@@ -94,8 +103,7 @@ async def test_sendtaboo(cog: TabooAccess, ctx_mock: MagicMock) -> None:
 
 @pytest.mark.asyncio
 async def test_settaboorole(cog: TabooAccess, ctx_mock: MagicMock, config_mock: MagicMock) -> None:
-    role = MagicMock(spec=discord.Role)
-    role.id = 987654321
+    role = _manageable_role(987654321)
     role.name = "TestTabooRole"
 
     await getattr(cog.settaboorole, "callback")(cog, ctx_mock, role)  # noqa: B009
@@ -104,6 +112,43 @@ async def test_settaboorole(cog: TabooAccess, ctx_mock: MagicMock, config_mock: 
     guild_group.taboo_role_id.set.assert_called_once_with(987654321)
 
     ctx_mock.send.assert_called_once_with("Taboo access role set to TestTabooRole.")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("manage_roles", "reply"),
+    [
+        (True, "You can't choose a role that is higher than or equal to your top role."),
+        (False, "You need the Manage Roles permission to choose this role."),
+    ],
+)
+async def test_settaboorole_refuses_roles_the_author_could_not_grant(
+    cog: TabooAccess, ctx_mock: MagicMock, config_mock: MagicMock, manage_roles: bool, reply: str
+) -> None:
+    """Manage Server alone must not let someone point "Let me in" at a role above them."""
+    ctx_mock.author.guild_permissions.manage_roles = manage_roles
+    role = _manageable_role()
+    role.__ge__.side_effect = lambda other: other is ctx_mock.author.top_role
+
+    await getattr(cog.settaboorole, "callback")(cog, ctx_mock, role)  # noqa: B009
+
+    config_mock.guild(ctx_mock.guild).taboo_role_id.set.assert_not_called()
+    ctx_mock.send.assert_called_once_with(reply)
+
+
+@pytest.mark.asyncio
+async def test_settaboorole_lets_the_owner_pick_any_role_the_bot_can_grant(
+    cog: TabooAccess, ctx_mock: MagicMock, config_mock: MagicMock
+) -> None:
+    ctx_mock.author.id = ctx_mock.guild.owner_id
+    ctx_mock.author.guild_permissions.manage_roles = False
+    role = _manageable_role()
+    role.__ge__.side_effect = lambda other: other is ctx_mock.author.top_role
+    role.name = "Admin"
+
+    await getattr(cog.settaboorole, "callback")(cog, ctx_mock, role)  # noqa: B009
+
+    config_mock.guild(ctx_mock.guild).taboo_role_id.set.assert_called_once_with(123456789)
 
 
 # --- View & Button Tests ---

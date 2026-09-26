@@ -56,6 +56,20 @@ def _configure_role_permissions(guild: MagicMock) -> None:
     guild.me.top_role = MagicMock(spec=discord.Role)
 
 
+def _setrole_ctx(*, manage_roles: bool = True, owner: bool = False) -> MagicMock:
+    ctx = MagicMock()
+    ctx.guild = MagicMock(spec=discord.Guild)
+    ctx.guild.owner_id = 1
+    _configure_role_permissions(ctx.guild)
+    ctx.author = MagicMock(spec=discord.Member)
+    ctx.author.id = 1 if owner else 2
+    ctx.author.guild = ctx.guild
+    ctx.author.guild_permissions.manage_roles = manage_roles
+    ctx.author.top_role = MagicMock(spec=discord.Role)
+    ctx.send = AsyncMock()
+    return ctx
+
+
 @pytest.fixture
 def bot_mock() -> MagicMock:
     bot = MagicMock()
@@ -102,9 +116,7 @@ async def test_sendrules_sends_message_with_view(cog: RulesAccept) -> None:
 
 @pytest.mark.asyncio
 async def test_setrole_updates_config(cog: RulesAccept, config_mock: MagicMock) -> None:
-    ctx = MagicMock()
-    ctx.guild = MagicMock(spec=discord.Guild)
-    ctx.send = AsyncMock()
+    ctx = _setrole_ctx()
 
     role = _manageable_role()
     role.name = "Members"
@@ -367,3 +379,37 @@ async def test_modal_submit_still_logs_when_the_reply_fails(cog: RulesAccept) ->
         await modal.on_submit(interaction)
 
     log_channel.send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("manage_roles", "reply"),
+    [
+        (True, "You can't choose a role that is higher than or equal to your top role."),
+        (False, "You need the Manage Roles permission to choose this role."),
+    ],
+)
+async def test_setrole_refuses_roles_the_author_could_not_grant(
+    cog: RulesAccept, config_mock: MagicMock, manage_roles: bool, reply: str
+) -> None:
+    """Manage Server alone must not let someone point the accept button at a role above them."""
+    ctx = _setrole_ctx(manage_roles=manage_roles)
+    role = _manageable_role()
+    role.__ge__.side_effect = lambda other: other is ctx.author.top_role
+
+    await cog.setrole.callback(cog, ctx, role)  # type: ignore[arg-type]
+
+    config_mock.guild.return_value.member_role_id.set.assert_not_awaited()
+    ctx.send.assert_awaited_once_with(reply)
+
+
+@pytest.mark.asyncio
+async def test_setrole_lets_the_owner_pick_any_role_the_bot_can_grant(cog: RulesAccept, config_mock: MagicMock) -> None:
+    ctx = _setrole_ctx(manage_roles=False, owner=True)
+    role = _manageable_role()
+    role.__ge__.side_effect = lambda other: other is ctx.author.top_role
+    role.name = "Admin"
+
+    await cog.setrole.callback(cog, ctx, role)  # type: ignore[arg-type]
+
+    config_mock.guild.return_value.member_role_id.set.assert_awaited_once_with(42)
