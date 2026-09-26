@@ -90,18 +90,21 @@ class Functions(MixinMeta):
         *args,
         answers: dict[str, str] | None = None,
         **kwargs,
-    ) -> str:
+    ) -> tuple[str, discord.TextChannel | None]:
         """Create a ticket for the given member.
 
         Args:
             user (discord.Member): User the ticket is for.
             answers (dict[str, str] | None): Answers to the ticket modal questions, keyed by question label.
+
+        Returns:
+            The message for the user, and the ticket channel if one was created.
         """
 
         guild = user.guild
         conf = await self.config.guild(guild).all()
         if conf["suspended_msg"]:
-            return f"Tickets are suspended: {conf['suspended_msg']}"
+            return f"Tickets are suspended: {conf['suspended_msg']}", None
 
         logchannel_raw = guild.get_channel(conf["log_channel"]) if conf["log_channel"] else None
         logchannel = logchannel_raw if isinstance(logchannel_raw, discord.TextChannel) else None
@@ -109,9 +112,9 @@ class Functions(MixinMeta):
         channel = guild.get_channel(conf["channel_id"]) if conf["channel_id"] else None
 
         if not isinstance(category, discord.CategoryChannel):
-            return "The category for this panel is missing!"
+            return "The category for this panel is missing!", None
         if not channel:
-            return "The channel required for this ticket panel is missing!"
+            return "The channel required for this ticket panel is missing!", None
 
         # Serialize reservations for this member while allowing different members
         # to create tickets concurrently.
@@ -128,12 +131,12 @@ class Functions(MixinMeta):
             if uid in opened:
                 active_count = len(opened[uid])
                 if max_tickets <= active_count:
-                    return "This user has reached the maximum number of open tickets allowed!"
+                    return "This user has reached the maximum number of open tickets allowed!", None
 
             # Verify that the member has the required roles to open a ticket from the specified panel
             required_roles = conf.get("required_roles", [])
             if required_roles and not any(role.id in required_roles for role in user.roles):
-                return "This user does not have the required roles to open this ticket."
+                return "This user does not have the required roles to open this ticket.", None
 
             # Allocate ticket_num under lock
             async with self._num_lock(guild.id):  # pyright: ignore[reportAttributeAccessIssue]
@@ -232,7 +235,7 @@ class Functions(MixinMeta):
                     del opened_data[uid][pending_key]
                     if not opened_data[uid]:
                         del opened_data[uid]
-            return "Missing requried permissions to create the ticket!"
+            return "Missing requried permissions to create the ticket!", None
 
         except Exception as e:
             log.error("Error creating ticket channel", exc_info=e)
@@ -242,7 +245,7 @@ class Functions(MixinMeta):
                     del opened_data[uid][pending_key]
                     if not opened_data[uid]:
                         del opened_data[uid]
-            return f"ERROR: {e}"
+            return f"ERROR: {e}", None
 
         # Persist the Discord side effect immediately. If later message/log writes
         # fail or the process exits, startup reconciliation can recover this channel.
@@ -381,4 +384,4 @@ class Functions(MixinMeta):
 
         txt = f"Ticket has been created!\nChannel mention: {channel_or_thread.mention}"
 
-        return txt
+        return txt, channel_or_thread

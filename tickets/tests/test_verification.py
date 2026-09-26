@@ -136,6 +136,55 @@ async def test_verification_buttons_reject_non_staff() -> None:
         staff_interaction.response.send_message.assert_not_awaited()
 
 
+VERIFIED_ROLE_ID = 1267157222530748439
+
+
+def _verified_setup(role: MagicMock | None) -> tuple[VerificationStatusView, MagicMock, MagicMock]:
+    state, guild, channel, owner, staff = _ticket_setup()
+    guild.get_role.side_effect = {VERIFIED_ROLE_ID: role}.get
+    owner.add_roles = AsyncMock()
+    view = VerificationStatusView(MagicMock(), cast(Any, _Config(state)), USER_ID, channel, state)
+    interaction = _interaction(guild, staff, channel)
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
+    return view, interaction, owner
+
+
+@pytest.mark.asyncio
+async def test_verified_closes_after_granting_the_role() -> None:
+    role = MagicMock(spec=discord.Role)
+    view, interaction, owner = _verified_setup(role)
+
+    with patch("tickets.common.views.close_ticket", new=AsyncMock()) as close:
+        await view.verified.callback(interaction)
+
+    owner.add_roles.assert_awaited_once_with(role, reason="Ticket Verified")
+    close.assert_awaited_once()
+    assert close.await_args is not None
+    assert close.await_args.kwargs["status"] == "Verified"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["role_missing", "forbidden", "http", "owner_left"])
+async def test_verified_keeps_the_ticket_open_when_the_role_is_not_granted(failure: str) -> None:
+    view, interaction, owner = _verified_setup(None if failure == "role_missing" else MagicMock(spec=discord.Role))
+    if failure == "forbidden":
+        owner.add_roles.side_effect = discord.Forbidden(MagicMock(status=403), "missing permissions")
+    elif failure == "http":
+        owner.add_roles.side_effect = discord.HTTPException(MagicMock(status=500), "boom")
+    elif failure == "owner_left":
+        interaction.guild.get_member.side_effect = None
+        interaction.guild.get_member.return_value = None
+
+    with patch("tickets.common.views.close_ticket", new=AsyncMock()) as close:
+        await view.verified.callback(interaction)
+
+    close.assert_not_awaited()
+    interaction.followup.send.assert_awaited_once()
+    assert interaction.followup.send.await_args is not None
+    assert "left open" in interaction.followup.send.await_args.args[0]
+
+
 # --- verification modal ---
 
 
@@ -185,7 +234,7 @@ async def test_verification_modal_submits_answers() -> None:
     conf = _state(modal={"a": _field("Filled"), "b": _field("Skipped", required=False)})
     member = _member(guild)
     cog = MagicMock()
-    cog.create_ticket_for_user = AsyncMock(return_value="Ticket has been created!")
+    cog.create_ticket_for_user = AsyncMock(return_value=("Ticket has been created!", None))
     bot = MagicMock()
     bot.get_cog.return_value = cog
     modal = VerificationModal(bot, guild, cast(Any, _Config(conf)), member, conf)
@@ -208,7 +257,7 @@ async def test_verification_modal_keeps_answers_to_fields_with_the_same_label() 
     conf = _state(modal={"a": _field("Age"), "b": _field("Age"), "c": _field("Age")})
     member = _member(guild)
     cog = MagicMock()
-    cog.create_ticket_for_user = AsyncMock(return_value="Ticket has been created!")
+    cog.create_ticket_for_user = AsyncMock(return_value=("Ticket has been created!", None))
     bot = MagicMock()
     bot.get_cog.return_value = cog
     modal = VerificationModal(bot, guild, cast(Any, _Config(conf)), member, conf)

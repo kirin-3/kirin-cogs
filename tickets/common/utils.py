@@ -304,8 +304,9 @@ def prep_overview_text(guild: discord.Guild, opened: dict, mention: bool = False
         member = guild.get_member(int(uid))
         if not member:
             continue
-        for ticket_channel_id, ticket_info in opened_tickets.items():
-            channel = guild.get_channel_or_thread(int(ticket_channel_id))
+        for key, ticket_info in opened_tickets.items():
+            channel_id = ticket_channel_id(key)  # None for pending-… reservations
+            channel = guild.get_channel_or_thread(channel_id) if channel_id is not None else None
             if not channel:
                 continue
 

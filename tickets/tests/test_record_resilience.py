@@ -9,7 +9,7 @@ import discord
 import pytest
 
 from tickets.common.constants import DEFAULT_GUILD, TicketState
-from tickets.common.utils import prune_invalid_tickets, ticket_channel_id
+from tickets.common.utils import prep_overview_text, prune_invalid_tickets, ticket_channel_id
 from tickets.common.views import VerificationModal
 from tickets.tickets import Tickets
 
@@ -240,40 +240,57 @@ async def test_prune_keeps_pending_records() -> None:
     assert list(state["opened"][str(USER_ID)]) == ["pending-9"]
 
 
-@pytest.mark.asyncio
-async def test_verification_modal_posts_to_newest_active_ticket_with_pending_present() -> None:
-    old_channel = _text_channel(100)
-    new_channel = _text_channel(200)
-    guild = _guild({100: old_channel, 200: new_channel})
-    member = _member(guild)
-    opened = {
-        str(USER_ID): {
-            "pending-9": _pending(),
-            "100": _active("2024-01-01T00:00:00+00:00"),
-            "200": _active("2024-01-02T00:00:00+00:00"),
-        }
-    }
-    state = _state(opened=opened)
+def _image_modal(guild: MagicMock, state: dict, created: MagicMock | None) -> tuple[VerificationModal, MagicMock]:
     cog = _cog(state, guild)
-    cog.create_ticket_for_user = AsyncMock(return_value="Ticket has been created!")  # type: ignore[method-assign]
+    cog.create_ticket_for_user = AsyncMock(return_value=("result", created))  # type: ignore[method-assign]
     modal = object.__new__(VerificationModal)
     modal.bot = MagicMock()
     modal.bot.get_cog.return_value = cog
     modal.guild = guild
     modal.config = cast(Any, _Config(state))
-    modal.user = member
+    modal.user = _member(guild)
     modal.image = MagicMock()
     modal.image.values = [MagicMock(url="https://example.invalid/a.png")]
     modal.questions = []
     interaction = MagicMock()
     interaction.response.defer = AsyncMock()
     interaction.followup.send = AsyncMock()
+    return modal, interaction
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("created_id", [100, None])
+async def test_verification_images_go_to_the_ticket_this_submission_created(created_id: int | None) -> None:
+    """An overlapping submission's newer ticket, or a failed creation, must not receive these images."""
+    channels = {100: _text_channel(100), 200: _text_channel(200)}
+    guild = _guild(channels)
+    opened = {
+        str(USER_ID): {
+            "100": _active("2024-01-01T00:00:00+00:00"),
+            "200": _active("2024-01-02T00:00:00+00:00"),
+        }
+    }
+    modal, interaction = _image_modal(guild, _state(opened=opened), channels.get(created_id or 0))
 
     await modal.on_submit(interaction)
 
-    new_channel.send.assert_awaited_once()
-    old_channel.send.assert_not_awaited()
-    interaction.followup.send.assert_awaited_once_with("Ticket has been created!", ephemeral=True)
+    channels[200].send.assert_not_awaited()
+    if created_id:
+        channels[100].send.assert_awaited_once()
+    else:
+        channels[100].send.assert_not_awaited()
+    interaction.followup.send.assert_awaited_once_with("result", ephemeral=True)
+
+
+def test_overview_skips_pending_reservations() -> None:
+    channel = _text_channel(100)
+    guild = _guild({100: channel})
+    guild.get_member.return_value = _member(guild)
+    opened = {str(USER_ID): {"pending-9": _pending(), "100": _active("2024-01-01T00:00:00+00:00")}}
+
+    text = prep_overview_text(guild, opened, mention=True)
+
+    assert text == "1. <#100> <t:1704067200:R> - user\n"
 
 
 # --- 8.3 auto-close isolation ---
@@ -345,9 +362,10 @@ async def test_log_send_failure_still_finalizes_ticket() -> None:
     cog, state, member, ticket_channel = _creation_setup(log_channel)
 
     with patch("tickets.common.functions.update_active_overview", new=AsyncMock(return_value=None)):
-        result = await cog.create_ticket_for_user(member)
+        result, created = await cog.create_ticket_for_user(member)
 
     assert ticket_channel.mention in result
+    assert created is ticket_channel
     record = state["opened"][str(USER_ID)]
     assert list(record) == ["500"]
     assert record["500"]["state"] == TicketState.ACTIVE
@@ -363,9 +381,10 @@ async def test_welcome_send_failure_still_finalizes_ticket() -> None:
     ticket_channel.send.side_effect = discord.HTTPException(MagicMock(status=500), "welcome failed")
 
     with patch("tickets.common.functions.update_active_overview", new=AsyncMock(return_value=None)):
-        result = await cog.create_ticket_for_user(member)
+        result, created = await cog.create_ticket_for_user(member)
 
     assert ticket_channel.mention in result
+    assert created is ticket_channel
     record = state["opened"][str(USER_ID)]
     assert list(record) == ["500"]
     assert record["500"]["state"] == TicketState.ACTIVE

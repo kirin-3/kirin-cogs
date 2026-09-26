@@ -10,12 +10,11 @@ from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import humanize_list
 
-from .constants import MAX_MODAL_FIELDS, TicketState
+from .constants import MAX_MODAL_FIELDS
 from .utils import (
     can_close,
     close_ticket,
     is_ticket_staff,
-    ticket_channel_id,
 )
 
 log = logging.getLogger("red.kirin_cogs.tickets.views")
@@ -204,23 +203,31 @@ class VerificationStatusView(View):
     @discord.ui.button(label="Verified", style=ButtonStyle.success, emoji="✅")
     async def verified(self, interaction: Interaction, button: Button):
         await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send("Closing...", ephemeral=True)
 
-        owner = self.channel.guild.get_member(int(self.owner_id))
-        if owner:
-            role = self.channel.guild.get_role(1267157222530748439)
-            if role:
-                try:
-                    await owner.add_roles(role, reason="Ticket Verified")
-                except discord.Forbidden:
-                    log.warning(f"Could not assign Verified role to {owner.name}: Missing Permissions")
-                except Exception as e:
-                    log.error(f"Failed to assign Verified role to {owner.name}", exc_info=e)
-            else:
-                log.warning(f"Verified role (1267157222530748439) not found in guild {self.channel.guild.name}")
-
+        # The ticket only closes as Verified once the member actually has the role
+        guild = self.channel.guild
+        owner = guild.get_member(int(self.owner_id))
+        role = guild.get_role(1267157222530748439)
+        error = None
         if not owner:
-            owner = await self.bot.fetch_user(int(self.owner_id))
+            error = "The ticket owner is no longer in the server, so they can't be given the Verified role."
+        elif not role:
+            log.warning(f"Verified role (1267157222530748439) not found in guild {guild.name}")
+            error = "The Verified role is missing."
+        else:
+            try:
+                await owner.add_roles(role, reason="Ticket Verified")
+            except discord.Forbidden:
+                log.warning(f"Could not assign Verified role to {owner.name}: Missing Permissions")
+                error = "I don't have permission to give the Verified role."
+            except discord.HTTPException as e:
+                log.error(f"Failed to assign Verified role to {owner.name}", exc_info=e)
+                error = "Discord couldn't give the Verified role."
+        if error:
+            await interaction.followup.send(f"{error} The ticket was left open.", ephemeral=True)
+            return
+        assert owner is not None
+        await interaction.followup.send("Closing...", ephemeral=True)
 
         await close_ticket(
             bot=self.bot,
@@ -462,41 +469,20 @@ class VerificationModal(discord.ui.Modal):
                 n += 1
                 key = f"{label} ({n})"
             answers[key] = text_input.value
-        result = await cog.create_ticket_for_user(self.user, answers=answers)
+        result, channel = await cog.create_ticket_for_user(self.user, answers=answers)
 
-        # Post image to the new ticket channel
-        conf = await self.config.guild(self.guild).all()
-        opened = conf["opened"]
-        uid = str(self.user.id)
-        if uid in opened:
-            # Get the most recently opened ticket
-            # (Sorting by ID is safer than max() on keys if keys are strings)
-            ticket_ids = sorted(
-                (
-                    channel_id
-                    for key, ticket in opened[uid].items()
-                    if (channel_id := ticket_channel_id(key)) is not None
-                    and isinstance(ticket, dict)
-                    and ticket.get("state", TicketState.ACTIVE) == TicketState.ACTIVE
-                ),
-                reverse=True,
-            )
-            if ticket_ids:
-                latest_channel_id = ticket_ids[0]
-                channel_raw = self.guild.get_channel(latest_channel_id)
-                channel = channel_raw if isinstance(channel_raw, (discord.TextChannel, discord.Thread)) else None
+        # Post the images to the ticket this submission created, not whichever ticket is newest
+        if channel and attachments:
+            for i, attachment in enumerate(attachments):
+                embed = discord.Embed(title=f"Verification Image {i + 1}", color=discord.Color.green())
+                embed.set_author(name=self.user.display_name, icon_url=self.user.display_avatar.url)
 
-                if channel and attachments:
-                    for i, attachment in enumerate(attachments):
-                        embed = discord.Embed(title=f"Verification Image {i + 1}", color=discord.Color.green())
-                        embed.set_author(name=self.user.display_name, icon_url=self.user.display_avatar.url)
-
-                        try:
-                            embed.set_image(url=attachment.url)
-                            await channel.send(embed=embed)
-                        except Exception as e:
-                            log.error(f"Failed to send verification image to {channel.name}", exc_info=e)
-                            await channel.send(f"Failed to load verification image {i + 1}: {attachment.url}")
+                try:
+                    embed.set_image(url=attachment.url)
+                    await channel.send(embed=embed)
+                except Exception as e:
+                    log.error(f"Failed to send verification image to {channel.name}", exc_info=e)
+                    await channel.send(f"Failed to load verification image {i + 1}: {attachment.url}")
 
         await interaction.followup.send(result, ephemeral=True)
 
