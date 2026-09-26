@@ -1,0 +1,26 @@
+{
+    "name": "advanceduptime",
+    "author": [
+        "Kreusada",
+        "kirin"
+    ],
+    "short": "Bot uptime, with extra stats.",
+    "description": "Port of Kreusada's advanceduptime, which was removed from Kreusada-Cogs. Replaces the core uptime command with one that shows system uptime, bot, latency and command usage stats. The core command comes back when the cog is unloaded.",
+    "install_msg": "Unload and uninstall Kreusada's advanceduptime before loading this; its settings carry over.",
+    "end_user_data_statement": "This cog stores no user data.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "requirements": [],
+    "tags": [
+        "uptime",
+        "utility"
+    ],
+    "license": "MIT"
+}
