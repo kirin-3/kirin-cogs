@@ -4,7 +4,7 @@
 **Operator:** kirin-3
 **Contact:** kirin@unicornia.net
 **Effective:** 16 September 2026
-**Last updated:** 25 September 2026
+**Last updated:** 26 September 2026
 
 ---
 
@@ -51,6 +51,7 @@ The bot reads message content only for the purposes below. Apart from the 7-day 
 - **Raid honeypot.** A hidden channel exists that legitimate members have no reason to post in. Posting there records the message text and attachment filenames into the staff audit log as the evidence supporting the resulting ban or quarantine.
 - **Moderation logging.** Edited and deleted messages in public channels are copied to a private staff-only channel so moderators can review content that was removed before they saw it.
 - **Deleted-message recall.** A short-lived in-memory cache holds the most recent deleted or edited message per channel so staff can recall it. It expires after 30 seconds by default and is never written to disk.
+- **Voice note transcription.** When staff enable it, voice notes posted in the server are sent to Google's speech recognition service to be transcribed, and the text is posted to a staff-only log channel with your name and a link to the voice note. The bot keeps no copy of the audio or the text.
 - **Commands and triggers.** Text-prefixed commands, member-authored text triggers, and keyword auto-responses require reading the message that invokes them.
 
 Message content is **not** used to train any machine-learning or AI model.
@@ -90,6 +91,7 @@ The bot is hosted on infrastructure we control. The following external services 
 | **NanoGPT** | Message excerpts from allowlisted channels, for abuse classification | Automated moderation |
 | **AI Horde** | The image prompt you supply | Image generation (free tier) |
 | **Modal** | The image prompt you supply | Image generation (premium tier) |
+| **Google** | The audio of voice notes posted in the server | Voice note transcription |
 | **popcat.xyz** | The target member's Discord avatar URL | Avatar image commands |
 | **Cloudflare** | Traffic to the staff web site, including the ban records staff view there and staff members' IP addresses; Buy Me a Coffee payment notifications on their way to the bot | Staff web site; supporter rewards |
 
@@ -110,7 +112,7 @@ If a new feature introduces a new recipient, this table is updated before that f
 | Staff web site login sessions | In memory only; at most 12 hours |
 | Presence and activity | Not retained at all |
 | Diagnostic moderation output | Up to one hour, then deleted automatically |
-| XP, currency, inventory, profiles, tickets, warnings, roleplay settings | Until you request deletion or the record is no longer needed |
+| XP, currency, inventory, profiles, tickets, warnings, roleplay settings, hammer-lift and Disboard bump counts | Until you request deletion or the record is no longer needed |
 | Quarantine role snapshots | Until the quarantine is resolved and the record cleared |
 | Boost timestamps | Retained to prevent duplicate awards for the same boost |
 | Supporter payment records (section 3.7) | Until you request deletion |

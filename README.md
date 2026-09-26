@@ -6,6 +6,9 @@ The bot's [Privacy Policy](PRIVACY.md) covers the whole instance; [DATA_GOVERNAN
 
 ## Available Cogs
 
+### AdvancedUptime
+Replaces `[p]uptime` with an embed of bot and system uptime, stats, latency and command usage. Fork of Kreusada's advanceduptime. See [advanceduptime/README.md](advanceduptime/README.md).
+
 ### AntiNuke
 Server protection against rogue administrators: monitors destructive actions (mass deletions, bans, prunes, permission grants, vanity/bot changes) and automatically quarantines offenders, with a trust system and role restoration.
 
@@ -33,8 +36,14 @@ Allows administrators to assign a role to a user and lets that user customize th
 ### Dashboard
 Serves the staff web site `staff.unicornia.net` from inside the bot, behind Discord login for Unicornia staff with 2FA. Its first pages show BanLog's ban records. See [dashboard/README.md](dashboard/README.md).
 
+### DisboardReminder
+Thanks whoever bumps on Disboard and reminds the bump channel two hours later. Fork of phenom4n4n's disboardreminder. See [disboardreminder/README.md](disboardreminder/README.md).
+
 ### Honeypot
 Trap channel that automatically bans fresh members or strips roles and times out established members who post in it.
+
+### Mjolnir
+Try to lift Thor's hammer, with a lift leaderboard. Fork of Kreusada's mjolnir (originally by Jojo). See [mjolnir/README.md](mjolnir/README.md).
 
 ### Moderation
 Dated, paginated `[p]warnings`, role-strip mutes with automatic unmute, kicks, bans, unbans with a reinvite, and
@@ -49,11 +58,17 @@ Supporter roles and currency rewards from the Patreon API and Buy Me a Coffee we
 ### Profile
 Create and manage user profiles with interactive modals and sticky messages.
 
+### RoleLimit
+Keeps members to one role out of a set: the newest colour role, or the highest ranked role. Fork of jenjam's colourlimit and rolelimit. See [rolelimit/README.md](rolelimit/README.md).
+
 ### Roleplay
 Roleplay action commands (`[p]hug`, `[p]ask`, ...) with consent prompts and per-member settings: owners, allowed and blocked lists, and selective, public and servant flags. Ported from the Unicornia repo; its existing member settings carry over unchanged.
 
 ### RulesAccept
 Lets users accept rules via a button and modal, automatically assigning a role upon acceptance.
+
+### Sticky
+Sticks a message to the bottom of a channel. Fork of Tobotimus' sticky, licensed GPL-3.0. See [sticky/README.md](sticky/README.md).
 
 ### Suggest
 A suggestion system that uses a sticky message with a button to submit suggestions and tracks votes.
@@ -84,6 +99,9 @@ AI-powered auto-moderation using sentiment analysis and AI detection to alert mo
 ### VerifyUser
 Allows authorized users to verify other members by granting them a specific verification role.
 
+### VoiceNoteLog
+Transcribes voice notes into a log channel with ffmpeg and Google's speech endpoint. Fork of japandotorg's voicenotelog. See [voicenotelog/README.md](voicenotelog/README.md).
+
 ## Archived Cogs
 
 These cogs live in [archived/](archived/). They are retired, no longer developed, and cannot be installed through `[p]cog install`.
@@ -112,4 +130,5 @@ Replace `<cogname>` with the name of the cog you want to install. Each cog folde
 
 ## License
 
-All cogs are released under the MIT License.
+All cogs are released under the MIT License, except [Sticky](sticky/), which is a fork of a GPL-3.0 cog and stays
+GPL-3.0 (see [sticky/LICENSE](sticky/LICENSE)). Forked cogs credit their original authors in their READMEs.
