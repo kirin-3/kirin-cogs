@@ -1,8 +1,49 @@
+import ipaddress
 import re
+import socket
+from urllib.parse import urljoin, urlsplit
 
 import aiohttp
 import discord
 from redbot.core import Config, commands
+
+URL_PATTERN = re.compile(r"https?://\S+")
+REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+MAX_REDIRECTS = 3
+
+
+def is_tenor_url(url: str) -> bool:
+    """Whether the URL's actual host is tenor.com or one of its subdomains."""
+    try:
+        host = urlsplit(url).hostname
+    except ValueError:
+        return False
+    return host is not None and (host == "tenor.com" or host.endswith(".tenor.com"))
+
+
+def is_allowed_destination(url: str) -> bool:
+    """Header probes only go to http(s) on public hosts; names are checked again once resolved."""
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https") or not host:
+        return False
+    try:
+        return ipaddress.ip_address(host).is_global
+    except ValueError:
+        return True  # a name; _PublicResolver checks what it resolves to
+
+
+class _PublicResolver(aiohttp.ThreadedResolver):
+    """Refuses names that resolve to private, loopback, link-local or otherwise non-public addresses."""
+
+    async def resolve(self, hostname: str, port: int = 0, family: int = socket.AF_INET):
+        infos = await super().resolve(hostname, port, family)
+        if not infos or not all(ipaddress.ip_address(info["host"]).is_global for info in infos):
+            raise OSError(f"{hostname} does not resolve to a public address")
+        return infos
 
 
 class ImageFilter(commands.Cog):
@@ -44,16 +85,39 @@ class ImageFilter(commands.Cog):
 
         # If not matched by pattern, try content-type check
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.head(url, allow_redirects=True, timeout=5) as response:
-                    content_type = response.headers.get("content-type", "")
-                    return content_type.startswith("image/")
+            return (await self._probe_content_type(url)).startswith("image/")
         except Exception:
             return False  # If request fails, don't treat as image
+
+    async def _probe_content_type(self, url: str) -> str:
+        """HEAD the URL, following redirects by hand so every hop is checked against is_allowed_destination."""
+        connector = aiohttp.TCPConnector(resolver=_PublicResolver())
+        async with aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=5)) as session:
+            for _ in range(MAX_REDIRECTS + 1):
+                if not is_allowed_destination(url):
+                    return ""
+                async with session.head(url, allow_redirects=False) as response:
+                    location = response.headers.get("Location")
+                    if response.status not in REDIRECT_STATUSES or not location:
+                        return response.headers.get("content-type", "")
+                url = urljoin(url, location)
+        return ""
 
     @commands.Cog.listener()
     async def on_message(self, message):
         """Listen for messages with image links that are not from tenor.com"""
+        await self._check_message(message)
+
+    @commands.Cog.listener()
+    async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent):
+        """Edits can add image links too; embed-only updates (link previews) leave the content alone."""
+        before = payload.cached_message
+        after = payload.message
+        if before is not None and before.content == after.content and before.attachments == after.attachments:
+            return
+        await self._check_message(after)
+
+    async def _check_message(self, message: discord.Message) -> None:
         # Ignore bot messages
         if message.author.bot:
             return
@@ -68,9 +132,7 @@ class ImageFilter(commands.Cog):
 
         # Get all URLs from the message
         content = message.content
-        # Simple URL regex - find potential URLs
-        url_pattern = re.compile(r"https?://\S+")
-        urls = url_pattern.findall(content)
+        urls = URL_PATTERN.findall(content)
 
         # Also check message attachments
         attachment_urls = [attachment.url for attachment in message.attachments]
@@ -83,7 +145,7 @@ class ImageFilter(commands.Cog):
         # Check each URL
         for url in all_urls:
             # Skip tenor links
-            if "tenor.com" in url:
+            if is_tenor_url(url):
                 continue
 
             # Check if it's an image URL
