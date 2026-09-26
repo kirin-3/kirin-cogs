@@ -37,7 +37,8 @@ List custom commands.
 - **Older commands**: Commands created before files were saved keep the attachment link in their response text; that link stops working if the original message is deleted, so recreate those commands. Responses saved before the 2,000-character limit are sent in several messages.
 - **Logging**: Logs command creations and deletions to a hardcoded audit-log channel (set in the cog's code).
 - **Moderation**: Moderators can delete any custom command.
-- **Cooldowns**: Commands have a cooldown to prevent spam.
+- **Cooldown**: Creating has a 5-second cooldown per member, counted across the command and the member site.
+- **Member site**: Supporters can also list, create and delete their commands on `my.unicornia.net` (see the Dashboard cog), under the same rules. Only the active supporter role can create; anyone can delete their own. Changes made there are marked as made on the web in the audit log.
 - **Permission-based listing**: Regular users see only their commands, moderators see all commands.
 
 ## Requirements

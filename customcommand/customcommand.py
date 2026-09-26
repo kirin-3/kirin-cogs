@@ -1,8 +1,10 @@
 import asyncio
 import contextlib
 import logging
+import math
 import re
 import shutil
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -18,6 +20,8 @@ log = logging.getLogger("red.kirin_cogs.customcommand")
 MESSAGE_LIMIT = 2000
 # Attachments are stored on disk and re-uploaded; keep them under the bot's upload limit
 MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
+# Seconds between one member's creations, counted across the commands and the member site
+CREATE_COOLDOWN = 5
 
 
 @dataclass
@@ -48,6 +52,7 @@ class CustomCommand(commands.Cog):
         self.command_cache = {}  # guild_id: {trigger: response}
         # Per-guild creation locks; idle entries are removed.
         self._guild_locks: dict[int, _LockEntry] = {}
+        self._cooldowns: dict[int, float] = {}  # user_id: monotonic time of their last create
 
     async def red_delete_data_for_user(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, *, requester, user_id: int
@@ -155,7 +160,15 @@ class CustomCommand(commands.Cog):
         for k in keys_to_remove:
             del self.trigger_cooldowns[k]
 
-    async def log_action(self, ctx, action: str, trigger: str, response: str | None = None):
+    async def log_action(
+        self,
+        guild: discord.Guild,
+        author: discord.abc.User,
+        action: str,
+        trigger: str,
+        response: str | None = None,
+        source: str = "command",
+    ):
         """Log custom command actions to the hardcoded channel."""
         channel = self.bot.get_channel(self.LOG_CHANNEL_ID)
         if not channel:
@@ -164,19 +177,182 @@ class CustomCommand(commands.Cog):
         embed = discord.Embed(
             title=f"Custom Command {action}",
             color=discord.Color.green() if action == "Created" else discord.Color.red(),
-            timestamp=ctx.message.created_at,
+            timestamp=discord.utils.utcnow(),
         )
-        embed.set_author(
-            name=f"{ctx.author} ({ctx.author.id})", icon_url=ctx.author.avatar.url if ctx.author.avatar else None
-        )
+        embed.set_author(name=f"{author} ({author.id})", icon_url=author.avatar.url if author.avatar else None)
         embed.add_field(name="Trigger", value=trigger, inline=True)
         if response:
             if len(response) > 1024:
                 response = response[:1021] + "..."
             embed.add_field(name="Response", value=response, inline=False)
+        if source == "web":
+            embed.set_footer(text="Made on the member site")
 
         with contextlib.suppress(discord.HTTPException):
             await channel.send(embed=embed)
+
+    # --- Shared rules, used by the commands and the member site ---
+
+    def _cooldown(self, user_id: int, *, stamp: bool) -> None:
+        """Refuse within CREATE_COOLDOWN of the member's last create; stamp now when asked.
+
+        Synchronous, so a check-and-stamp can't interleave with another create.
+        """
+        now = time.monotonic()
+        last = self._cooldowns.get(user_id)
+        if last is not None and now - last < CREATE_COOLDOWN:
+            wait = math.ceil(CREATE_COOLDOWN - (now - last))
+            raise ValueError(f"You're creating commands too fast. Try again in {wait} second(s).")
+        if stamp:
+            self._cooldowns = {uid: t for uid, t in self._cooldowns.items() if now - t < CREATE_COOLDOWN}
+            self._cooldowns[user_id] = now
+
+    def can_create(self, member: discord.Member) -> bool:
+        """Only active supporters create commands; anyone can delete their own."""
+        return any(role.id == self.role_id for role in member.roles)
+
+    def _check_create(self, member: discord.Member, trigger: str, response: str, has_attachment: bool) -> None:
+        if not self.can_create(member):
+            raise ValueError("You don't have the required role to create a custom command.")
+        if not response and not has_attachment:
+            raise ValueError("Please provide a response or attach an image.")
+        if len(response) > MESSAGE_LIMIT:
+            raise ValueError(
+                f"Responses can be at most {MESSAGE_LIMIT} characters (yours is {len(response)}), "
+                "because that's the most the bot can send in one message."
+            )
+        # Prevent bot triggers
+        if response.strip().startswith((".", "-", "&")):
+            raise ValueError("Responses cannot start with '.', '-', or '&' to prevent bot conflicts.")
+        if not trigger.replace(" ", "").isalnum():
+            raise ValueError("Trigger must be alphanumeric (spaces are allowed).")
+        if self.bot.get_command(trigger.lower()):
+            raise ValueError("A command with this name already exists.")
+        self._cooldown(member.id, stamp=False)
+
+    @staticmethod
+    def _owned(owners: dict, user_id: int | str) -> list[str]:
+        owned = owners.get(str(user_id)) or []
+        # Legacy records stored a single trigger as a string
+        return [owned] if isinstance(owned, str) else [t for t in owned if isinstance(t, str)]
+
+    async def limit_for(self, member: discord.Member) -> int:
+        limits = await self.config.guild(member.guild).user_limits()
+        return limits.get(str(member.id), 1) if isinstance(limits, dict) else 1
+
+    async def commands_for(self, member: discord.Member) -> list[dict]:
+        """The member's commands as trigger, response and attachment filename (or None)."""
+        guild = member.guild
+        owners = await self.config.guild(guild).command_owners()
+        responses = await self.config.guild(guild).commands()
+        result = []
+        for trigger in self._owned(owners, member.id):
+            stored = self._stored_attachment(guild.id, trigger)
+            result.append(
+                {
+                    "trigger": trigger,
+                    "response": responses.get(trigger, ""),
+                    "attachment": stored.name if stored is not None else None,
+                }
+            )
+        return result
+
+    async def create_command(
+        self,
+        member: discord.Member,
+        trigger: str,
+        response: str,
+        attachment: tuple[str, bytes] | None,
+        *,
+        source: str,
+    ) -> None:
+        """Create a command for the member, or raise ValueError with the reason.
+
+        `attachment` is (filename, data). The file itself is saved: a Discord
+        link stops working once its message is deleted.
+        """
+        guild = member.guild
+        self._check_create(member, trigger, response, attachment is not None)
+        if attachment is not None and len(attachment[1]) > MAX_ATTACHMENT_BYTES:
+            raise ValueError(f"Attachments can be at most {MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB.")
+        self._cooldown(member.id, stamp=True)
+        trigger = trigger.lower()
+        if attachment is not None:
+            name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(attachment[0]).name).lstrip(".") or "attachment"
+            attachment = (name, attachment[1])
+
+        is_owner = await self.bot.is_owner(member)
+
+        # Serialize validation and persistence within the guild so command
+        # limits, command content, and owner records change as one logical
+        # operation: a single read-modify-write under the per-guild lock.
+        async with self._guild_lock(guild.id):
+            guild_group = self.config.guild(guild)
+            guild_data = await guild_group.all()
+
+            commands_map = dict(guild_data.get("commands") or {})
+            owners_map = dict(guild_data.get("command_owners") or {})
+            limits_map = guild_data.get("user_limits") or {}
+
+            limit = limits_map.get(str(member.id), 1)
+            user_commands = self._owned(owners_map, member.id)
+
+            if len(user_commands) >= limit and not is_owner:
+                raise ValueError(f"You have reached your limit of {limit} custom command(s).")
+            if trigger in commands_map:
+                raise ValueError("A custom command with this trigger already exists.")
+
+            commands_map[trigger] = response
+            owners_map[str(member.id)] = [*user_commands, trigger]
+
+            guild_data["commands"] = commands_map
+            guild_data["command_owners"] = owners_map
+            try:
+                if attachment is not None:
+                    await self._save_attachment(guild.id, trigger, *attachment)
+                else:
+                    await self._delete_attachment(guild.id, trigger)
+                await guild_group.set(guild_data)
+            except Exception:
+                await self._delete_attachment(guild.id, trigger)
+                raise
+
+        # Update cache
+        self.command_cache.setdefault(guild.id, {})[trigger] = response
+
+        log_response = response
+        if attachment is not None:
+            log_response = f"{response}\n[Attachment: {attachment[0]}]".strip()
+        await self.log_action(guild, member, "Created", trigger, log_response, source)
+
+    async def _remove(self, guild: discord.Guild, trigger: str, owner_key: str | None, owned: list[str]) -> None:
+        """Remove a command, its file, its cooldown and its owner record. Call under the guild lock."""
+        async with self.config.guild(guild).commands() as commands:
+            commands.pop(trigger, None)
+        self.command_cache.get(guild.id, {}).pop(trigger, None)
+        self.trigger_cooldowns.pop((guild.id, trigger), None)
+        await self._delete_attachment(guild.id, trigger)
+        if owner_key is not None:
+            remaining = [t for t in owned if t != trigger]
+            owners = self.config.guild(guild).command_owners
+            if remaining:
+                await owners.set_raw(owner_key, value=remaining)  # pyright: ignore[reportAttributeAccessIssue]
+            else:
+                await owners.clear_raw(owner_key)  # pyright: ignore[reportAttributeAccessIssue]
+
+    async def delete_command(self, member: discord.Member, trigger: str, *, source: str) -> None:
+        """Delete one of the member's own commands, or raise ValueError."""
+        guild = member.guild
+        trigger = trigger.lower()
+        # Same lock as creation: both rewrite the guild's commands and owner records.
+        async with self._guild_lock(guild.id):
+            owned = self._owned(await self.config.guild(guild).command_owners(), member.id)
+            if not owned:
+                raise ValueError("You don't have a custom command to delete.")
+            if trigger not in owned:
+                raise ValueError("You don't own a command with that name.")
+            await self._remove(guild, trigger, str(member.id), owned)
+        await self.log_action(guild, member, "Deleted", trigger, source=source)
 
     @commands.group(aliases=["cc"])
     @commands.guild_only()
@@ -243,7 +419,6 @@ class CustomCommand(commands.Cog):
             await ctx.send(box(page))
 
     @customcommand.command(name="create")
-    @commands.cooldown(1, 5, commands.BucketType.user)
     async def customcommand_create(self, ctx, trigger: str, response: str | None = None):
         """
         Create a custom command.
@@ -253,104 +428,25 @@ class CustomCommand(commands.Cog):
         You can also attach an image to this command.
         Example: `[p]cc create "hello world" "Hello there!"`
         """
-        author = ctx.author
-        guild = ctx.guild
-
-        if not any(role.id == self.role_id for role in author.roles):
-            await ctx.send("You don't have the required role to create a custom command.")
-            return
-
         response = response or ""
-        if not response and not ctx.message.attachments:
-            await ctx.send("Please provide a response or attach an image.")
+        attachments = ctx.message.attachments
+        try:
+            # Checked before downloading too, so a refusal costs no download
+            self._check_create(ctx.author, trigger, response, bool(attachments))
+            attachment_file: tuple[str, bytes] | None = None
+            if attachments:
+                attachment = attachments[0]
+                if attachment.size > MAX_ATTACHMENT_BYTES:
+                    raise ValueError(f"Attachments can be at most {MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB.")
+                try:
+                    attachment_file = (attachment.filename, await attachment.read())
+                except discord.HTTPException:
+                    log.exception("Could not download a custom command attachment")
+                    raise ValueError("I couldn't download that attachment. Please try again.") from None
+            await self.create_command(ctx.author, trigger, response, attachment_file, source="command")
+        except ValueError as e:
+            await ctx.send(str(e))
             return
-
-        if len(response) > MESSAGE_LIMIT:
-            await ctx.send(
-                f"Responses can be at most {MESSAGE_LIMIT} characters (yours is {len(response)}), "
-                "because that's the most the bot can send in one message."
-            )
-            return
-
-        # Prevent bot triggers
-        if response.strip().startswith((".", "-", "&")):
-            await ctx.send("Responses cannot start with '.', '-', or '&' to prevent bot conflicts.")
-            return
-
-        if not trigger.replace(" ", "").isalnum():
-            await ctx.send("Trigger must be alphanumeric (spaces are allowed).")
-            return
-
-        if self.bot.get_command(trigger.lower()):
-            await ctx.send("A command with this name already exists.")
-            return
-
-        # The attachment itself is saved: its link stops working once the original message is deleted
-        attachment_file: tuple[str, bytes] | None = None
-        if ctx.message.attachments:
-            attachment = ctx.message.attachments[0]
-            if attachment.size > MAX_ATTACHMENT_BYTES:
-                await ctx.send(f"Attachments can be at most {MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB.")
-                return
-            try:
-                data = await attachment.read()
-            except discord.HTTPException:
-                log.exception("Could not download a custom command attachment")
-                await ctx.send("I couldn't download that attachment. Please try again.")
-                return
-            filename = re.sub(r"[^A-Za-z0-9._-]", "_", Path(attachment.filename).name).lstrip(".") or "attachment"
-            attachment_file = (filename, data)
-
-        is_owner = await self.bot.is_owner(author)
-
-        # Serialize validation and persistence within the guild so command
-        # limits, command content, and owner records change as one logical
-        # operation: a single read-modify-write under the per-guild lock.
-        async with self._guild_lock(guild.id):
-            guild_group = self.config.guild(guild)
-            guild_data = await guild_group.all()
-
-            commands_map = dict(guild_data.get("commands") or {})
-            owners_map = dict(guild_data.get("command_owners") or {})
-            limits_map = guild_data.get("user_limits") or {}
-
-            limit = limits_map.get(str(author.id), 1)
-            user_commands = owners_map.get(str(author.id), [])
-
-            # Migration: handle if stored as string (legacy)
-            if isinstance(user_commands, str):
-                user_commands = [user_commands]
-
-            if len(user_commands) >= limit and not is_owner:
-                await ctx.send(f"You have reached your limit of {limit} custom command(s).")
-                return
-
-            if trigger.lower() in commands_map:
-                await ctx.send("A custom command with this trigger already exists.")
-                return
-
-            commands_map[trigger.lower()] = response
-            owners_map[str(author.id)] = [*user_commands, trigger.lower()]
-
-            guild_data["commands"] = commands_map
-            guild_data["command_owners"] = owners_map
-            try:
-                if attachment_file is not None:
-                    await self._save_attachment(guild.id, trigger.lower(), *attachment_file)
-                else:
-                    await self._delete_attachment(guild.id, trigger.lower())
-                await guild_group.set(guild_data)
-            except Exception:
-                await self._delete_attachment(guild.id, trigger.lower())
-                raise
-
-        # Update cache
-        self.command_cache.setdefault(guild.id, {})[trigger.lower()] = response
-
-        log_response = response
-        if attachment_file is not None:
-            log_response = f"{response}\n[Attachment: {attachment_file[0]}]".strip()
-        await self.log_action(ctx, "Created", trigger.lower(), log_response)
         await ctx.send(f"Custom command `{trigger}` has been created.")
 
     @customcommand.command(name="delete")
@@ -363,104 +459,34 @@ class CustomCommand(commands.Cog):
         """
         author = ctx.author
         guild = ctx.guild
-        is_mod = author.guild_permissions.ban_members
 
-        # Same lock as creation: both rewrite the guild's commands and owner records.
-        async with self._guild_lock(guild.id):
-            # Mod deletion logic
-            if is_mod and trigger:
-                trigger = trigger.lower()
-                all_commands = self.command_cache.get(guild.id, {})
-
-                if trigger in all_commands:
-                    # Find owner to clean up
-                    command_owners = await self.config.guild(guild).command_owners()
-                    owner_found = None
-
-                    for user_id, triggers in command_owners.items():
-                        if isinstance(triggers, str):
-                            triggers = [triggers]
-                        if trigger in triggers:
-                            owner_found = user_id
-                            break
-
-                    # Delete from config
-                    async with self.config.guild(guild).commands() as commands:
-                        if trigger in commands:
-                            del commands[trigger]
-
-                    # Delete from cache
-                    if guild.id in self.command_cache and trigger in self.command_cache[guild.id]:
-                        del self.command_cache[guild.id][trigger]
-
-                    # Cleanup cooldown
-                    if (guild.id, trigger) in self.trigger_cooldowns:
-                        del self.trigger_cooldowns[(guild.id, trigger)]
-                    await self._delete_attachment(guild.id, trigger)
-
-                    if owner_found:
-                        triggers = command_owners[owner_found]
-                        if isinstance(triggers, str):
-                            triggers = [triggers]
-                        if trigger in triggers:
-                            triggers.remove(trigger)
-                            if not triggers:
-                                await self.config.guild(guild).command_owners.clear_raw(owner_found)  # pyright: ignore[reportAttributeAccessIssue]
-                            else:
-                                await self.config.guild(guild).command_owners.set_raw(owner_found, value=triggers)  # pyright: ignore[reportAttributeAccessIssue]
-
-                    await self.log_action(ctx, "Deleted (Mod)", trigger)
-                    await ctx.send(f"Custom command `{trigger}` has been deleted by moderator.")
-                    return
-                elif trigger not in all_commands:
+        if author.guild_permissions.ban_members and trigger:
+            trigger = trigger.lower()
+            async with self._guild_lock(guild.id):
+                if trigger not in self.command_cache.get(guild.id, {}):
                     await ctx.send("Command not found.")
                     return
+                command_owners = await self.config.guild(guild).command_owners()
+                owner_key = next((uid for uid in command_owners if trigger in self._owned(command_owners, uid)), None)
+                owned = self._owned(command_owners, owner_key) if owner_key is not None else []
+                await self._remove(guild, trigger, owner_key, owned)
+            await self.log_action(guild, author, "Deleted (Mod)", trigger)
+            await ctx.send(f"Custom command `{trigger}` has been deleted by moderator.")
+            return
 
-            # Regular user logic
-            command_owners = await self.config.guild(guild).command_owners()
-            user_commands = command_owners.get(str(author.id))
-
-            if not user_commands:
-                await ctx.send("You don't have a custom command to delete.")
+        if trigger is None:
+            owned = self._owned(await self.config.guild(guild).command_owners(), author.id)
+            if len(owned) > 1:
+                cmd_list = ", ".join(f"`{c}`" for c in owned)
+                await ctx.send(f"You have multiple commands: {cmd_list}. Please specify which one to delete.")
                 return
-
-            if isinstance(user_commands, str):
-                user_commands = [user_commands]
-
-            if trigger is None:
-                if len(user_commands) == 1:
-                    trigger = user_commands[0]
-                else:
-                    cmd_list = ", ".join(f"`{c}`" for c in user_commands)
-                    await ctx.send(f"You have multiple commands: {cmd_list}. Please specify which one to delete.")
-                    return
-
-            assert trigger is not None
-            trigger = trigger.lower()
-            if trigger not in user_commands:
-                await ctx.send("You don't own a command with that name.")
-                return
-
-            # Delete from config and cache
-            async with self.config.guild(guild).commands() as commands:
-                if trigger in commands:
-                    del commands[trigger]
-            if guild.id in self.command_cache and trigger in self.command_cache[guild.id]:
-                del self.command_cache[guild.id][trigger]
-
-            # Cleanup cooldown
-            if (guild.id, trigger) in self.trigger_cooldowns:
-                del self.trigger_cooldowns[(guild.id, trigger)]
-            await self._delete_attachment(guild.id, trigger)
-
-            user_commands.remove(trigger)
-            if not user_commands:
-                await self.config.guild(guild).command_owners.clear_raw(str(author.id))  # pyright: ignore[reportAttributeAccessIssue]
-            else:
-                await self.config.guild(guild).command_owners.set_raw(str(author.id), value=user_commands)  # pyright: ignore[reportAttributeAccessIssue]
-
-            await self.log_action(ctx, "Deleted", trigger)
-            await ctx.send(f"Your custom command `{trigger}` has been deleted.")
+            trigger = owned[0] if owned else ""
+        try:
+            await self.delete_command(author, trigger, source="command")
+        except ValueError as e:
+            await ctx.send(str(e))
+            return
+        await ctx.send(f"Your custom command `{trigger.lower()}` has been deleted.")
 
     @commands.Cog.listener()
     async def on_message_without_command(self, message: discord.Message):

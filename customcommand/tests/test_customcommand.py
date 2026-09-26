@@ -132,6 +132,7 @@ def _make_ctx(
     perms = MagicMock(spec=discord.Permissions)
     perms.ban_members = has_ban_members
     author.guild_permissions = perms
+    author.guild = guild
 
     message = MagicMock(spec=discord.Message)
     message.attachments = attachments or []
@@ -748,7 +749,7 @@ async def test_log_action_silent_when_channel_missing(cog: Any, bot_mock: MagicM
     ctx = _make_ctx(bot_mock)
 
     # Should not raise
-    await cog.log_action(ctx, "Created", "hello", "world")
+    await cog.log_action(ctx.guild, ctx.author, "Created", "hello", "world")
 
 
 # ---------------------------------------------------------------------------
@@ -939,7 +940,7 @@ async def test_attachment_is_sent_as_a_file_not_a_link(cog: Any, bot_mock: Magic
     assert file.filename == "cat.png"
     assert file.fp.read() == b"cat-bytes"
     assert call.kwargs["allowed_mentions"].everyone is False
-    assert cog.log_action.call_args.args[3] == "Look\n[Attachment: cat.png]"
+    assert cog.log_action.call_args.args[4] == "Look\n[Attachment: cat.png]"
 
 
 @pytest.mark.asyncio
@@ -1021,3 +1022,27 @@ async def test_data_deletion_removes_the_owners_files(cog: Any, config_mock: Any
     await cog.red_delete_data_for_user(requester="user", user_id=500)
 
     assert not (tmp_path / "1" / "cat").exists()
+
+
+@pytest.mark.asyncio
+async def test_second_create_within_cooldown_is_refused_across_method_and_command(
+    cog: Any, bot_mock: MagicMock, config_mock: Any
+) -> None:
+    config_mock.guild.return_value._store["user_limits"] = {"500": 5}
+    cog.log_action = AsyncMock()
+    ctx = _creator_ctx(cog, bot_mock)
+    now = [100.0]
+
+    with patch("customcommand.customcommand.time.monotonic", lambda: now[0]):
+        # 100 s: through the method, as the member site does
+        await cog.create_command(ctx.author, "first", "one", None, source="web")
+        # 102 s: through the command, refused with the wait left
+        now[0] = 102.0
+        await cog.customcommand_create.callback(cog, ctx, "second", "two")
+        assert ctx.send.call_args.args[0] == "You're creating commands too fast. Try again in 3 second(s)."
+        # 106 s: the window has passed
+        now[0] = 106.0
+        await cog.customcommand_create.callback(cog, ctx, "third", "three")
+
+    assert sorted(config_mock.guild.return_value._store["commands"]) == ["first", "third"]
+    assert cog.log_action.await_args_list[0].args[5] == "web"
