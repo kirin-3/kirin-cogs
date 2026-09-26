@@ -1,0 +1,29 @@
+{
+    "name": "Responder",
+    "author": [
+        "Ruffiana",
+        "Kirin"
+    ],
+    "short": "Fun auto-responses to message triggers",
+    "description": "Replies to trigger phrases in Unicornia's bot channels: \"<thing> rate\" embeds, \"I'm ...\" daddy jokes, long cat, The Game and table unflipping.",
+    "end_user_data_statement": "This cog does not store any end user data. The topic of a \"<thing> rate\" message that has no built-in rate is sent to Tenor as a GIF search term.",
+    "min_bot_version": "3.5.22",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "required_cogs": {},
+    "requirements": [],
+    "permissions": [
+        "embed_links",
+        "read_message_history"
+    ],
+    "tags": [
+        "fun",
+        "responder"
+    ]
+}

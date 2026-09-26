@@ -23,6 +23,9 @@ ignore = [
     "RUF012", # mutable class attributes — common Redbot/discord.py pattern
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"responder/**" = ["RUF001", "RUF002"]  # ❯, ノ and ┬ in responses are intentional
+
 [tool.ruff.lint.isort]
 known-third-party = ["discord", "redbot"]
 

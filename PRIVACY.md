@@ -96,6 +96,7 @@ The bot is hosted on infrastructure we control. The following external services 
 | **AI Horde** | The image prompt you supply | Image generation (free tier) |
 | **Modal** | The image prompt you supply | Image generation (premium tier) |
 | **Google** | The audio of voice notes posted in the server | Voice note transcription |
+| **Tenor** | The topic you type in a “<topic> rate” message that has no built-in rate | Rate responder (supporters) |
 | **popcat.xyz** | The target member's Discord avatar URL | Avatar image commands |
 | **Cloudflare** | Traffic to the staff and member web sites, including what you view and upload there and your IP address; Buy Me a Coffee payment notifications on their way to the bot | Web sites; supporter rewards |
 
