@@ -285,6 +285,9 @@ async def prune_invalid_tickets(
                     # Ticket was already removed
                     continue
                 del opened[uid][cid]
+                if not opened[uid]:
+                    # Drop the empty shell, like close_ticket does
+                    del opened[uid]
 
     grammar = "ticket" if count == 1 else "tickets"
     if count and ctx:
