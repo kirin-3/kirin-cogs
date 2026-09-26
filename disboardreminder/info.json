@@ -1,0 +1,26 @@
+{
+    "name": "disboardreminder",
+    "author": [
+        "PhenoM4n4n",
+        "kirin"
+    ],
+    "short": "Set a reminder to bump on Disboard.",
+    "description": "Port of phen-cogs' disboardreminder (archived). Thanks the bumper and reminds a channel two hours after each successful Disboard bump. Reads the settings the original cog saved.",
+    "install_msg": "Unload and uninstall phen-cogs' disboardreminder before loading this; its settings carry over.",
+    "end_user_data_statement": "This cog does not store new user data. Bump counts saved by older versions are kept and deleted on request.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "requirements": [],
+    "tags": [
+        "disboard",
+        "reminder"
+    ],
+    "license": "MIT"
+}
