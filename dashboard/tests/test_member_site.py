@@ -66,6 +66,7 @@ class _FakeCustomCommand:
     def __init__(self) -> None:
         self.created: list[tuple] = []
         self.deleted: list[tuple] = []
+        self.edited: list[tuple] = []
         self.owned: dict[int, list[str]] = {}
 
     def can_create(self, member: Any) -> bool:
@@ -79,6 +80,13 @@ class _FakeCustomCommand:
 
     async def create_command(self, member: Any, trigger: str, response: str, attachment: Any, *, source: str) -> None:
         self.created.append((member.id, trigger, response, attachment, source))
+
+    async def edit_command(
+        self, member: Any, old: str, new: str, response: str, attachment: Any, *, remove_file: bool, source: str
+    ) -> None:
+        if old not in self.owned.get(member.id, []):
+            raise ValueError("You don't own a command with that name.")
+        self.edited.append((member.id, old, new, response, attachment, remove_file, source))
 
     async def delete_command(self, member: Any, trigger: str, *, source: str) -> None:
         if trigger not in self.owned.get(member.id, []):
@@ -671,3 +679,43 @@ async def test_roleplay_page_explains_when_the_cog_is_unloaded(ms: SimpleNamespa
     status, page = await _get(ms, REGULAR, "/roleplay")
 
     assert status == 200 and "Roleplay settings are unavailable" in page
+
+
+@pytest.mark.asyncio
+async def test_active_supporter_edits_a_command(ms: SimpleNamespace) -> None:
+    ms.cc.owned[ACTIVE] = ["cat"]
+    _, page = await _get(ms, ACTIVE, "/commands")
+    form = _upload("file", b"gif", "new.gif", old="cat", trigger="kitty", response="purr", remove_file="1")
+
+    response = await _post(ms, ACTIVE, "/commands/edit", form)
+
+    assert 'action="/commands/edit"' in page and 'name="old" value="cat"' in page
+    assert response.status == 302
+    assert ms.cc.edited == [(ACTIVE, "cat", "kitty", "purr", ("new.gif", b"gif"), True, "web")]
+
+
+@pytest.mark.asyncio
+async def test_blank_trigger_keeps_the_old_one(ms: SimpleNamespace) -> None:
+    ms.cc.owned[ACTIVE] = ["cat"]
+
+    await _post(ms, ACTIVE, "/commands/edit", {"old": "cat", "trigger": "", "response": "purr"})
+
+    assert ms.cc.edited == [(ACTIVE, "cat", "cat", "purr", None, False, "web")]
+
+
+@pytest.mark.asyncio
+async def test_inactive_supporter_cannot_edit_commands(ms: SimpleNamespace) -> None:
+    ms.cc.owned[INACTIVE] = ["cat"]
+    _, page = await _get(ms, INACTIVE, "/commands")
+
+    response = await _post(ms, INACTIVE, "/commands/edit", {"old": "cat", "trigger": "cat", "response": "purr"})
+
+    assert 'action="/commands/edit"' not in page
+    assert response.status == 403 and ms.cc.edited == []
+
+
+@pytest.mark.asyncio
+async def test_editing_someone_elses_command_shows_the_error(ms: SimpleNamespace) -> None:
+    response = await _post(ms, ACTIVE, "/commands/edit", {"old": "theirs", "trigger": "mine", "response": "x"})
+
+    assert response.status == 400 and "You don&#39;t own a command with that name." in await response.text()

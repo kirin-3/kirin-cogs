@@ -131,6 +131,18 @@ class CustomCommand(commands.Cog):
 
         await asyncio.to_thread(write)
 
+    async def _move_attachment(self, guild_id: int, old: str, new: str) -> None:
+        source, target = self._attachment_dir(guild_id, old), self._attachment_dir(guild_id, new)
+        if source is None or target is None:
+            return
+
+        def move() -> None:
+            shutil.rmtree(target, ignore_errors=True)
+            if source.is_dir():
+                source.rename(target)
+
+        await asyncio.to_thread(move)
+
     def _stored_attachment(self, guild_id: int, trigger: str) -> Path | None:
         folder = self._attachment_dir(guild_id, trigger)
         if folder is None or not folder.is_dir():
@@ -176,7 +188,9 @@ class CustomCommand(commands.Cog):
 
         embed = discord.Embed(
             title=f"Custom Command {action}",
-            color=discord.Color.green() if action == "Created" else discord.Color.red(),
+            color={"Created": discord.Color.green(), "Edited": discord.Color.blurple()}.get(
+                action, discord.Color.red()
+            ),
             timestamp=discord.utils.utcnow(),
         )
         embed.set_author(name=f"{author} ({author.id})", icon_url=author.avatar.url if author.avatar else None)
@@ -353,6 +367,73 @@ class CustomCommand(commands.Cog):
                 raise ValueError("You don't own a command with that name.")
             await self._remove(guild, trigger, str(member.id), owned)
         await self.log_action(guild, member, "Deleted", trigger, source=source)
+
+    async def edit_command(
+        self,
+        member: discord.Member,
+        trigger: str,
+        new_trigger: str,
+        response: str,
+        attachment: tuple[str, bytes] | None,
+        *,
+        remove_file: bool,
+        source: str,
+    ) -> None:
+        """Replace one of the member's commands, or raise ValueError and leave it as it was.
+
+        The same rules as creating apply, since an edit is a delete and a re-create done in one step. A new
+        `attachment` replaces the saved file; otherwise the file is kept unless `remove_file` is set.
+        """
+        guild = member.guild
+        old, new = trigger.lower(), new_trigger.lower()
+        keeps_file = attachment is None and not remove_file and self._stored_attachment(guild.id, old) is not None
+        self._check_create(member, new_trigger, response, attachment is not None or keeps_file)
+        if attachment is not None and len(attachment[1]) > MAX_ATTACHMENT_BYTES:
+            raise ValueError(f"Attachments can be at most {MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB.")
+        self._cooldown(member.id, stamp=True)
+        if attachment is not None:
+            name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(attachment[0]).name).lstrip(".") or "attachment"
+            attachment = (name, attachment[1])
+
+        async with self._guild_lock(guild.id):
+            guild_group = self.config.guild(guild)
+            guild_data = await guild_group.all()
+            commands_map = dict(guild_data.get("commands") or {})
+            owners_map = dict(guild_data.get("command_owners") or {})
+            owned = self._owned(owners_map, member.id)
+            if old not in owned:
+                raise ValueError("You don't own a command with that name.")
+            if new != old and new in commands_map:
+                raise ValueError("A custom command with this trigger already exists.")
+
+            commands_map.pop(old, None)
+            commands_map[new] = response
+            owners_map[str(member.id)] = [new if t == old else t for t in owned]
+            guild_data["commands"] = commands_map
+            guild_data["command_owners"] = owners_map
+            # The record first: if saving it fails, the old command and its file are untouched.
+            await guild_group.set(guild_data)
+
+            if attachment is not None:
+                await self._save_attachment(guild.id, new, *attachment)
+                if new != old:
+                    await self._delete_attachment(guild.id, old)
+            elif remove_file:
+                await self._delete_attachment(guild.id, old)
+                await self._delete_attachment(guild.id, new)
+            elif new != old:
+                await self._move_attachment(guild.id, old, new)
+
+        cache = self.command_cache.setdefault(guild.id, {})
+        cache.pop(old, None)
+        cache[new] = response
+        self.trigger_cooldowns.pop((guild.id, old), None)
+
+        log_response = response
+        if attachment is not None:
+            log_response = f"{response}\n[Attachment: {attachment[0]}]".strip()
+        shown = old if new == old else f"{old} → {new}"
+        await self.log_action(guild, member, "Edited", shown, log_response, source)
 
     @commands.group(aliases=["cc"])
     @commands.guild_only()

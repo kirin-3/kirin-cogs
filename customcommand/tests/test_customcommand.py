@@ -1046,3 +1046,94 @@ async def test_second_create_within_cooldown_is_refused_across_method_and_comman
 
     assert sorted(config_mock.guild.return_value._store["commands"]) == ["first", "third"]
     assert cog.log_action.await_args_list[0].args[5] == "web"
+
+
+# ---------------------------------------------------------------------------
+# edit_command
+# ---------------------------------------------------------------------------
+
+
+async def _existing(cog: Any, bot_mock: MagicMock, tmp_path: Path, **store: Any) -> Any:
+    """An active supporter (500) owning `cat`, with a saved file, created 10 s in the past."""
+    cog.attachments_root = tmp_path
+    cog.log_action = AsyncMock()
+    ctx = _creator_ctx(cog, bot_mock)
+    now = [100.0]
+    with patch("customcommand.customcommand.time.monotonic", lambda: now[0]):
+        await cog.create_command(ctx.author, "cat", "meow", ("cat.png", b"png"), source="web")
+    cog._cooldowns.clear()
+    return ctx.author
+
+
+@pytest.mark.asyncio
+async def test_edit_renames_and_keeps_the_file(cog: Any, bot_mock: MagicMock, config_mock: Any, tmp_path: Path) -> None:
+    member = await _existing(cog, bot_mock, tmp_path)
+
+    await cog.edit_command(member, "cat", "kitty", "purr", None, remove_file=False, source="web")
+
+    store = config_mock.guild.return_value._store
+    assert store["commands"] == {"kitty": "purr"}
+    assert store["command_owners"] == {"500": ["kitty"]}
+    assert cog.command_cache[1] == {"kitty": "purr"}
+    assert (tmp_path / "1" / "kitty" / "cat.png").read_bytes() == b"png"
+    assert not (tmp_path / "1" / "cat").exists()
+    assert cog.log_action.await_args.args[2:4] == ("Edited", "cat → kitty")
+
+
+@pytest.mark.asyncio
+async def test_edit_replaces_or_removes_the_file(cog: Any, bot_mock: MagicMock, tmp_path: Path) -> None:
+    member = await _existing(cog, bot_mock, tmp_path)
+
+    await cog.edit_command(member, "cat", "cat", "meow", ("new.gif", b"gif"), remove_file=False, source="web")
+    assert [p.name for p in (tmp_path / "1" / "cat").iterdir()] == ["new.gif"]
+    cog._cooldowns.clear()
+
+    await cog.edit_command(member, "cat", "cat", "meow", None, remove_file=True, source="web")
+    assert not (tmp_path / "1" / "cat").exists()
+
+
+@pytest.mark.asyncio
+async def test_removing_the_file_of_a_file_only_command_is_refused(
+    cog: Any, bot_mock: MagicMock, tmp_path: Path
+) -> None:
+    member = await _existing(cog, bot_mock, tmp_path)
+
+    with pytest.raises(ValueError, match="provide a response"):
+        await cog.edit_command(member, "cat", "cat", "", None, remove_file=True, source="web")
+
+    assert (tmp_path / "1" / "cat" / "cat.png").exists()
+
+
+@pytest.mark.asyncio
+async def test_refused_edits_change_nothing(cog: Any, bot_mock: MagicMock, config_mock: Any, tmp_path: Path) -> None:
+    member = await _existing(cog, bot_mock, tmp_path)
+    store = config_mock.guild.return_value._store
+    store["commands"]["dog"] = "woof"
+    before = copy.deepcopy(store)
+
+    for old, new, message in [
+        ("dog", "dog", "don't own"),  # someone else's
+        ("cat", "dog", "already exists"),  # onto another command
+        ("cat", "bad!", "alphanumeric"),
+    ]:
+        with pytest.raises(ValueError, match=message):
+            await cog.edit_command(member, old, new, "x", None, remove_file=False, source="web")
+        cog._cooldowns.clear()
+
+    member.roles = []  # no longer an active supporter
+    with pytest.raises(ValueError, match="required role"):
+        await cog.edit_command(member, "cat", "cat", "x", None, remove_file=False, source="web")
+
+    assert store == before
+    assert (tmp_path / "1" / "cat" / "cat.png").exists()
+
+
+@pytest.mark.asyncio
+async def test_edit_shares_the_create_cooldown(cog: Any, bot_mock: MagicMock, tmp_path: Path) -> None:
+    member = await _existing(cog, bot_mock, tmp_path)
+    now = [200.0]
+    with patch("customcommand.customcommand.time.monotonic", lambda: now[0]):
+        await cog.edit_command(member, "cat", "cat", "one", None, remove_file=False, source="web")
+        now[0] = 202.0
+        with pytest.raises(ValueError, match="too fast"):
+            await cog.edit_command(member, "cat", "cat", "two", None, remove_file=False, source="web")

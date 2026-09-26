@@ -15,11 +15,10 @@
       <label>Color <input type="color" name="primary" value="#{{ colors[0] }}"></label>
       <label class="check"><input type="checkbox" name="gradient" value="1"{% if colors|length == 2 %} checked{% endif %}> Fade into a second color</label>
       <label>Second color <input type="color" name="secondary" value="#{{ colors[1] if colors|length > 1 else colors[0] }}"></label>
-      <p class="actions"><button class="primary" type="submit">Save color</button></p>
-    </form>
-    <form method="post" action="/role/holographic">
-      <input type="hidden" name="csrf" value="{{ session.csrf }}">
-      <button type="submit">Make it holographic</button>
+      <p class="actions">
+        <button class="primary" type="submit">Save color</button>
+        <button type="submit" formaction="/role/holographic">Make it holographic</button>
+      </p>
     </form>
   </section>
   <section class="panel">

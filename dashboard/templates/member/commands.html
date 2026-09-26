@@ -7,27 +7,42 @@
 {% else %}
 <p class="sub"><span class="badge">{{ commands|length }} of {{ limit }} used</span></p>
 {% if commands %}
-<div class="scroll">
-<table>
-  <thead><tr><th>Trigger</th><th>Response</th><th>File</th><th></th></tr></thead>
-  <tbody>
-  {% for command in commands %}
-  <tr>
-    <td class="mono">{{ command.trigger }}</td>
-    <td class="reason">{{ command.response }}</td>
-    <td>{{ command.attachment or "" }}</td>
-    <td class="num">
-      <form method="post" action="/commands/delete" data-confirm="Delete the command {{ command.trigger }}?">
-        <input type="hidden" name="csrf" value="{{ session.csrf }}">
-        <input type="hidden" name="trigger" value="{{ command.trigger }}">
-        <button class="quiet" type="submit">Delete</button>
-      </form>
-    </td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
-</div>
+{% for command in commands %}
+<article class="panel command">
+  <header class="command-head">
+    <h3 class="mono">{{ command.trigger }}</h3>
+    {% if command.attachment %}<span class="badge">📎 {{ command.attachment }}</span>{% endif %}
+    <form method="post" action="/commands/delete" data-confirm="Delete the command {{ command.trigger }}?">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <input type="hidden" name="trigger" value="{{ command.trigger }}">
+      <button class="quiet" type="submit">Delete</button>
+    </form>
+  </header>
+  {% if command.response %}<p class="response">{{ command.response }}</p>{% endif %}
+  {% if can_create %}
+  <details class="edit">
+    <summary>Edit</summary>
+    <form class="editor" method="post" action="/commands/edit" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <input type="hidden" name="old" value="{{ command.trigger }}">
+      <label>Trigger <small>Letters, digits and spaces</small>
+        <input type="text" name="trigger" value="{{ command.trigger }}" required maxlength="100">
+      </label>
+      <label>Response
+        <textarea name="response" rows="4" maxlength="2000">{{ command.response }}</textarea>
+      </label>
+      <label>New file <small>Optional, up to 8 MB. Replaces the current one.</small>
+        <input type="file" name="file">
+      </label>
+      {% if command.attachment %}
+      <label class="check"><input type="checkbox" name="remove_file" value="1"> Remove {{ command.attachment }}</label>
+      {% endif %}
+      <p class="actions"><button class="primary" type="submit">Save changes</button></p>
+    </form>
+  </details>
+  {% endif %}
+</article>
+{% endfor %}
 {% else %}
 <p class="empty">You don't have any custom commands.</p>
 {% endif %}

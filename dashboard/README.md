@@ -33,7 +33,7 @@ at the time of each request:
 | Custom role | Either supporter role, plus a role assigned with `[p]assignrole` |
 
 The pages follow the same rules as the bot's commands, because they call the same cog methods. Only active supporters
-can create custom commands. Creating and renaming emojis needs the role set with `[p]ce setrole`. Either kind of
+can create custom commands, or edit them on the site (a replace in one step, under the create rules). Creating and renaming emojis needs the role set with `[p]ce setrole`. Either kind of
 supporter can delete their own items. The per-member cooldowns count commands and site together. The member site can
 only upload new emojis, not copy existing ones, and it can't add people to or remove them from the roleplay lists.
 

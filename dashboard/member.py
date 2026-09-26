@@ -44,6 +44,7 @@ class MemberSite:
         app.router.add_post("/roleplay", self.roleplay_toggle)
         app.router.add_get("/commands", self.commands)
         app.router.add_post("/commands", self.command_create)
+        app.router.add_post("/commands/edit", self.command_edit)
         app.router.add_post("/commands/delete", self.command_delete)
         app.router.add_get("/emojis", self.emojis)
         app.router.add_post("/emojis", self.emoji_create)
@@ -160,6 +161,29 @@ class MemberSite:
             await cc.create_command(member, trigger, response, await _upload(form, "file"), source="web")
         except ValueError as e:
             return await self.commands(request, error=str(e), status=400, trigger=trigger, response=response)
+        raise web.HTTPFound("/commands")
+
+    async def command_edit(self, request: web.Request) -> web.StreamResponse:
+        member = self._require(request, "supporter")
+        cc = self._cog("CustomCommand")
+        if cc is None:
+            self._missing(request, "Custom commands")
+        if not cc.can_create(member):
+            self._refuse(request, 403, "Active supporters only", "Only active supporters can edit commands.")
+        form = await request.post()
+        old = _text(form, "old")
+        try:
+            await cc.edit_command(
+                member,
+                old,
+                _text(form, "trigger") or old,
+                _text(form, "response"),
+                await _upload(form, "file"),
+                remove_file=bool(form.get("remove_file")),
+                source="web",
+            )
+        except ValueError as e:
+            return await self.commands(request, error=str(e), status=400)
         raise web.HTTPFound("/commands")
 
     async def command_delete(self, request: web.Request) -> web.StreamResponse:
