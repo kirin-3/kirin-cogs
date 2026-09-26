@@ -517,62 +517,63 @@ class Honeypot(commands.Cog):
         guild = ctx.guild
         if guild is None:
             return
-        records = await self.config.guild(guild).quarantined_users()
-        record = records.get(str(member.id)) if isinstance(records, dict) else None
-        if not isinstance(record, dict):
-            await ctx.send(f"{member.mention} has no honeypot quarantine record.")
-            return
-        # Users who left can be named by ID; they have no roles or timeout to restore.
-        current = member if isinstance(member, discord.Member) else guild.get_member(member.id)
-        if current is None:
-            await ctx.send(
-                f"{member.mention} is no longer in the server, so there is nothing to restore. The record was kept "
-                f"in case they rejoin; use `{ctx.clean_prefix}honeypot clear` to delete it."
-            )
-            return
-        member = current
-        stored_roles = record.get("roles")
-        if not isinstance(stored_roles, list):
-            await ctx.send(f"{member.mention}'s quarantine record is malformed; no changes were made.")
-            return
+        async with self._quarantine_lock(guild.id, member.id):
+            records = await self.config.guild(guild).quarantined_users()
+            record = records.get(str(member.id)) if isinstance(records, dict) else None
+            if not isinstance(record, dict):
+                await ctx.send(f"{member.mention} has no honeypot quarantine record.")
+                return
+            # Users who left can be named by ID; they have no roles or timeout to restore.
+            current = member if isinstance(member, discord.Member) else guild.get_member(member.id)
+            if current is None:
+                await ctx.send(
+                    f"{member.mention} is no longer in the server, so there is nothing to restore. The record was kept "
+                    f"in case they rejoin; use `{ctx.clean_prefix}honeypot clear` to delete it."
+                )
+                return
+            member = current
+            stored_roles = record.get("roles")
+            if not isinstance(stored_roles, list):
+                await ctx.send(f"{member.mention}'s quarantine record is malformed; no changes were made.")
+                return
 
-        # @everyone is implicit and must never appear in a member roles payload.
-        final_roles = [role for role in member.roles if not role.is_default()]
-        final_ids = {role.id for role in final_roles}
-        unrestorable = 0
-        for role_id in stored_roles:
-            if not isinstance(role_id, int):
-                unrestorable += 1
-                continue
-            if role_id in final_ids:
-                continue
-            role = guild.get_role(role_id)
-            if role is None or not role.is_assignable():
-                unrestorable += 1
-                continue
-            final_roles.append(role)
-            final_ids.add(role.id)
+            # @everyone is implicit and must never appear in a member roles payload.
+            final_roles = [role for role in member.roles if not role.is_default()]
+            final_ids = {role.id for role in final_roles}
+            unrestorable = 0
+            for role_id in stored_roles:
+                if not isinstance(role_id, int):
+                    unrestorable += 1
+                    continue
+                if role_id in final_ids:
+                    continue
+                role = guild.get_role(role_id)
+                if role is None or not role.is_assignable():
+                    unrestorable += 1
+                    continue
+                final_roles.append(role)
+                final_ids.add(role.id)
 
-        try:
-            await member.edit(
-                roles=final_roles,
-                timed_out_until=None,
-                reason=f"Honeypot restore requested by {ctx.author} ({ctx.author.id})",
-            )
-        except discord.Forbidden:
-            await ctx.send(
-                f"Could not restore {member.mention}; check the bot's permissions and role hierarchy. "
-                "The quarantine record was retained."
-            )
-            return
-        except discord.HTTPException as exc:
-            await ctx.send(f"Could not restore {member.mention}: {exc}. The quarantine record was retained.")
-            return
+            try:
+                await member.edit(
+                    roles=final_roles,
+                    timed_out_until=None,
+                    reason=f"Honeypot restore requested by {ctx.author} ({ctx.author.id})",
+                )
+            except discord.Forbidden:
+                await ctx.send(
+                    f"Could not restore {member.mention}; check the bot's permissions and role hierarchy. "
+                    "The quarantine record was retained."
+                )
+                return
+            except discord.HTTPException as exc:
+                await ctx.send(f"Could not restore {member.mention}: {exc}. The quarantine record was retained.")
+                return
 
-        async with self.config.guild(guild).quarantined_users() as stored:
-            if isinstance(stored, dict):
-                stored.pop(str(member.id), None)
-        self._enforced_users.discard((guild.id, member.id))
+            async with self.config.guild(guild).quarantined_users() as stored:
+                if isinstance(stored, dict):
+                    stored.pop(str(member.id), None)
+            self._enforced_users.discard((guild.id, member.id))
         await ctx.send(f"Restored {member.mention}; {unrestorable} role(s) could not be reapplied.")
 
         embed = self._base_log_embed("Honeypot restore", discord.Color.green(), f"{member} ({member.id})")
@@ -613,13 +614,14 @@ class Honeypot(commands.Cog):
         guild = ctx.guild
         if guild is None:
             return
-        removed = False
-        async with self.config.guild(guild).quarantined_users() as records:
-            if isinstance(records, dict) and str(member.id) in records:
-                records.pop(str(member.id), None)
-                removed = True
-        if not removed:
-            await ctx.send(f"{member.mention} has no honeypot quarantine record.")
-            return
-        self._enforced_users.discard((guild.id, member.id))
+        async with self._quarantine_lock(guild.id, member.id):
+            removed = False
+            async with self.config.guild(guild).quarantined_users() as records:
+                if isinstance(records, dict) and str(member.id) in records:
+                    records.pop(str(member.id), None)
+                    removed = True
+            if not removed:
+                await ctx.send(f"{member.mention} has no honeypot quarantine record.")
+                return
+            self._enforced_users.discard((guild.id, member.id))
         await ctx.send(f"Cleared {member.mention}'s quarantine record without changing roles or timeout.")

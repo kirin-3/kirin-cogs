@@ -769,3 +769,24 @@ def test_restore_and_clear_accept_users_outside_the_server(command_name: str) ->
     annotation = command.clean_params["member"].annotation
     assert discord.User in getattr(annotation, "__args__", (annotation,))
     assert command.app_command.parameters[0].type is discord.AppCommandOptionType.user
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("command_name", ["honeypot_restore", "honeypot_clear"])
+async def test_restore_and_clear_wait_for_in_flight_enforcement(command_name: str) -> None:
+    config = _MemoryConfig({GUILD_ID: {"42": {"roles": [], "state": "pending", "quarantined_at": "then"}}})
+    cog = _make_cog(config)
+    guild = _guild(records_channel=_log_channel())
+    member = _member(guild)
+    ctx = _command_ctx(guild)
+
+    async with cog._quarantine_lock(GUILD_ID, 42):  # enforcement mid-flight
+        task = asyncio.create_task(cast(Any, getattr(cog, command_name)).callback(cog, ctx, member))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert "42" in config.guild_records[GUILD_ID]
+        member.edit.assert_not_awaited()
+    await task
+
+    assert "42" not in config.guild_records[GUILD_ID]
+    assert not cog._quarantine_locks
