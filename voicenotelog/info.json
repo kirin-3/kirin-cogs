@@ -1,0 +1,27 @@
+{
+    "name": "voicenotelog",
+    "author": [
+        "inthedark.org",
+        "kirin"
+    ],
+    "short": "Log transcriptions of members' voice notes.",
+    "description": "Port of Seina-Cogs' voicenotelog. Transcribes voice notes with Google's free speech endpoint and posts them to a log channel. Needs ffmpeg on the host. Reads the settings the original cog saved.",
+    "install_msg": "Unload and uninstall Seina-Cogs' voicenotelog before loading this; its settings carry over. ffmpeg must be installed on the host.",
+    "end_user_data_statement": "This cog stores no user data. Voice notes are sent to Google's speech recognition service to be transcribed.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "requirements": [],
+    "tags": [
+        "voice",
+        "logging",
+        "mod"
+    ],
+    "license": "MIT"
+}
