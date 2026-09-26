@@ -628,6 +628,7 @@ async def test_role_page_shows_colors_as_swatches(ms: SimpleNamespace) -> None:
     assert "Sparkles" in page and 'action="/role/icon"' in page
     # site.js reads the saved colors from here for the live preview
     assert '<div class="role-preview" data-colors="112233"' in page
+    assert 'data-colors="a9c9ff ffbbec ffc3a0"' in page  # the holographic preset, for its hover preview
 
 
 @pytest.mark.asyncio

@@ -288,6 +288,7 @@ class MemberSite:
             status=status,
             role=role,
             colors=[f"{c.value:06x}" for c in (role.colour, role.secondary_colour, role.tertiary_colour) if c],
+            holographic=[f"{c:06x}" for c in crc.HOLOGRAPHIC],
             icon_url=icon.url if isinstance(icon, discord.Asset) else None,
             icon_emoji=icon if isinstance(icon, str) else None,
             icons_allowed="ROLE_ICONS" in member.guild.features,

@@ -109,6 +109,8 @@ class CustomRoleColor(commands.Cog):
     Note: The bot must have manage roles permission and its top role must be above the roles being managed.
     """
 
+    HOLOGRAPHIC = HOLOGRAPHIC  # for the member site's preview, which reaches the cog only through get_cog
+
     def __init__(self, bot):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567890)

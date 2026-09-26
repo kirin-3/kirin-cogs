@@ -91,24 +91,33 @@ if (preview) {
   const colorForm = document.querySelector('form[action="/role/color"]');
   const color = colorForm.elements;
   const name = document.querySelector('form[action="/role/name"] input[name="name"]');
+  const holographicButton = colorForm.querySelector('[formaction="/role/holographic"]');
+  const parse = (list) => list.split(" ").map((hex) => `#${hex}`);
   // Start from the role's saved colors: a holographic role has three, more than the form can show.
-  let colors = preview.dataset.colors.split(" ").map((hex) => `#${hex}`);
-  const paint = () => {
-    const gradient = colors.length > 1 ? `linear-gradient(90deg, ${colors.join(", ")})` : "";
-    const solid = colors[0] === "#000000" ? "" : colors[0]; // Discord treats black as "no color"
+  let colors = parse(preview.dataset.colors);
+  const paint = (shown = colors) => {
+    // Holographic loops back to its first color so the shimmer below can scroll without a seam.
+    const stops = shown.length === 3 ? [...shown, shown[0]] : shown;
+    const gradient = shown.length > 1 ? `linear-gradient(90deg, ${stops.join(", ")})` : "";
+    const solid = shown[0] === "#000000" ? "" : shown[0]; // Discord treats black as "no color"
     for (const who of preview.querySelectorAll(".who")) {
       who.classList.toggle("gradient", gradient !== "");
+      who.classList.toggle("holographic", shown.length === 3); // only the holographic preset has three
       who.style.backgroundImage = gradient;
       who.style.color = gradient ? "" : solid;
     }
     for (const dot of preview.querySelectorAll(".dot")) dot.style.background = gradient || solid;
-    for (const label of preview.querySelectorAll(".role-label")) label.textContent = name.value.trim() || " ";
+    for (const label of preview.querySelectorAll(".role-label")) label.textContent = name.value.trim() || "\u00a0";
   };
   colorForm.addEventListener("input", () => {
     colors = color.gradient.checked ? [color.primary.value, color.secondary.value] : [color.primary.value];
     paint();
   });
-  name.addEventListener("input", paint);
+  name.addEventListener("input", () => paint());
+  // Hovering or focusing the button shows what it would do; it saves straight away when clicked.
+  const holographic = parse(holographicButton.dataset.colors);
+  for (const show of ["pointerenter", "focus"]) holographicButton.addEventListener(show, () => paint(holographic));
+  for (const hide of ["pointerleave", "blur"]) holographicButton.addEventListener(hide, () => paint());
   paint();
   preview.hidden = false;
 }

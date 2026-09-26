@@ -29,7 +29,7 @@
       <label>Second color <input type="color" name="secondary" value="#{{ colors[1] if colors|length > 1 else colors[0] }}"></label>
       <p class="actions">
         <button class="primary" type="submit">Save color</button>
-        <button type="submit" formaction="/role/holographic">Make it holographic</button>
+        <button type="submit" formaction="/role/holographic" data-colors="{{ holographic|join(' ') }}">Make it holographic</button>
       </p>
     </form>
   </section>
