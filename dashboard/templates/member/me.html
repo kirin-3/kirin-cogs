@@ -1,0 +1,53 @@
+{% extends "member/base.html" %}
+{% block title %}Profile{% endblock %}
+{% block content %}
+<section class="profile">
+  <figure class="banner">
+    <img class="bg" src="{{ banner }}" alt="" data-name="{{ me.background_name }}">
+    <figcaption>{{ me.background_name }}</figcaption>
+  </figure>
+  <div class="hello">
+    {% if user_avatar(member.id) %}<img src="{{ user_avatar(member.id) }}" alt="" width="72" height="72">{% endif %}
+    <div>
+      <h1>{{ member.display_name }}</h1>
+      <p>Level {{ me.xp.level }} · {{ rank }}{% if me.club %} · {{ me.club }}{% endif %}</p>
+    </div>
+  </div>
+</section>
+<div class="stats">
+  <div class="panel">
+    <h2>Level {{ me.xp.level }}</h2>
+    <progress max="{{ me.xp.required_xp or 1 }}" value="{{ me.xp.level_xp }}">{{ me.xp.level_xp }} / {{ me.xp.required_xp }}</progress>
+    <p class="sub">{{ "{:,}".format(me.xp.level_xp) }} / {{ "{:,}".format(me.xp.required_xp) }} XP to the next level · {{ "{:,}".format(me.xp.total_xp) }} XP in total</p>
+  </div>
+  <div class="panel">
+    <h2>Rank</h2>
+    <p class="big">{{ rank }}</p>
+    <p class="sub">among the server's members, by XP · <a href="/leaderboard">Leaderboard</a></p>
+  </div>
+  <div class="panel">
+    <h2>{{ currency }}</h2>
+    <p class="big">{{ "{:,}".format(me.wallet) }}</p>
+    <p class="sub">in your wallet · {{ "{:,}".format(me.bank) }} in the bank</p>
+  </div>
+</div>
+<h2>Recent transactions</h2>
+{% if me.transactions %}
+<div class="scroll">
+  <table>
+    <thead><tr><th>When</th><th class="num">Amount</th><th>Reason</th></tr></thead>
+    <tbody>
+      {% for t in me.transactions %}
+      <tr>
+        <td class="date">{% if t.timestamp %}{{ t.timestamp | when }}{% else %}{{ t.date }}{% endif %}</td>
+        <td class="num">{{ "{:+,}".format(t.amount) }}</td>
+        <td class="reason">{{ t.reason or t.type }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty">No transactions yet.</p>
+{% endif %}
+{% endblock %}

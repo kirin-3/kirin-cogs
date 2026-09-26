@@ -1,0 +1,29 @@
+{% extends "member/base.html" %}
+{% block title %}Leaderboard{% endblock %}
+{% block content %}
+<h1>XP leaderboard</h1>
+<p class="sub">
+  You're {{ viewer }}{% if viewer_page and viewer_page != page %} · <a href="/leaderboard?page={{ viewer_page }}">Show me</a>{% endif %}
+  <br><small>Updated every minute. Like <code>level leaderboard</code>, only the top 300 are ranked.</small>
+</p>
+{% if entries %}
+<ol class="lb">
+  {% for row in entries %}
+  <li class="lb-row{% if row.me %} me{% endif %}" tabindex="0">
+    <img class="bg" src="{{ row.still }}" data-animated="{{ row.animated }}" alt="" loading="lazy">
+    <span class="lb-rank">#{{ row.rank }}</span>
+    {% if row.avatar %}<img class="avatar" src="{{ row.avatar }}" alt="" width="40" height="40" loading="lazy">{% endif %}
+    <span class="lb-name">{{ row.name }}</span>
+    <span class="lb-xp">Level {{ row.level }}<small>{{ "{:,}".format(row.xp) }} XP</small></span>
+  </li>
+  {% endfor %}
+</ol>
+<nav class="pages" aria-label="Pages">
+  {% if page > 1 %}<a href="/leaderboard?page={{ page - 1 }}">← Previous</a>{% endif %}
+  <span>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a href="/leaderboard?page={{ page + 1 }}">Next →</a>{% endif %}
+</nav>
+{% else %}
+<p class="empty">Nobody has any XP yet.</p>
+{% endif %}
+{% endblock %}

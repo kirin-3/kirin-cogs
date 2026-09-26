@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Unicornia config{% endblock %}
+{% macro names(items) %}{% for c in items %}<span class="badge{% if c.missing %} warn{% endif %}">{{ c.name }}{% if c.missing %} (missing){% endif %}</span> {% else %}<span class="empty">None</span>{% endfor %}{% endmacro %}
+{% block content %}
+{% include "unicornia/_nav.html" %}
+<h1>Config</h1>
+<p class="sub">Read-only. Change these with the <code>unicornia</code> commands in Discord.</p>
+<h2>Settings</h2>
+<dl class="meta">
+  {% for key, value in settings|dictsort %}<dt>{{ key|replace("_", " ")|capitalize }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
+</dl>
+<h2>Channels and roles</h2>
+<dl class="meta">
+  {% for label, items in channels.items() %}<dt>{{ label }}</dt><dd>{{ names(items) }}</dd>{% endfor %}
+  <dt>Roles that earn no XP</dt><dd>{{ names(excluded_roles) }}</dd>
+</dl>
+<h2>Level rewards</h2>
+{% if role_rewards or currency_rewards %}
+<ul class="rows">
+  {% for r in role_rewards %}<li>Level {{ r.level }}: {{ "remove" if r.remove else "give" }} {{ names([r.role]) }}</li>{% endfor %}
+  {% for level, amount in currency_rewards %}<li>Level {{ level }}: {{ "{:,}".format(amount) }} currency</li>{% endfor %}
+</ul>
+{% else %}<p class="empty">No level rewards.</p>{% endif %}
+<h2>Whitelists</h2>
+{% for label, rules in whitelists.items() %}
+<h3>{{ label }}</h3>
+{% if rules %}
+<dl class="meta">{% for name, items in rules|dictsort %}<dt class="mono">{{ name }}</dt><dd>{{ names(items) }}</dd>{% endfor %}</dl>
+{% else %}<p class="empty">No rules: allowed everywhere.</p>{% endif %}
+{% endfor %}
+{% endblock %}

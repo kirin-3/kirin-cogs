@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Unicornia members{% endblock %}
+{% block content %}
+{% include "unicornia/_nav.html" %}
+<div class="bar">
+  <h1>Members</h1>
+  <form class="search" method="get" action="/unicornia/members">
+    <input type="search" name="q" value="{{ q }}" placeholder="User ID or name" maxlength="100" aria-label="Find a member">
+    <button type="submit">Find</button>
+  </form>
+</div>
+{% if not q %}
+<p class="empty">Look someone up by user ID, or by part of their username or display name. An ID also finds people who have left.</p>
+{% elif not matches %}
+<p class="empty">No current member's name contains “{{ q }}”.</p>
+{% else %}
+<div class="scroll">
+<table>
+  <thead><tr><th>Member</th><th>Username</th><th>ID</th></tr></thead>
+  <tbody>
+  {% for m in matches %}
+  <tr><td><a href="/unicornia/members/{{ m.id }}">{{ m.display_name }}</a></td><td>{{ m.name }}</td><td class="mono">{{ m.id }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if more %}<p class="sub">Showing the first {{ matches|length }}. Type more of the name to narrow it down.</p>{% endif %}
+{% endif %}
+{% endblock %}

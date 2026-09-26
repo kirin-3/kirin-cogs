@@ -1,10 +1,11 @@
-"""The member site's pages, my.unicornia.net: roleplay settings for everyone, and self-service for supporters.
+"""The member site's pages, my.unicornia.net: roleplay settings and Unicornia for everyone, self-service for supporters.
 
 Every rule lives in the cogs themselves (reached with bot.get_cog, never imported), so the site and the bot's commands
 can't drift apart. Their methods raise ValueError with a message for the member; the pages show it.
 """
 
 import asyncio
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import discord
@@ -17,6 +18,8 @@ ACTIVE_SUPPORTER = 700121551483437128
 INACTIVE_SUPPORTER = 1458440559713718466
 SUPPORTER_ROLES = frozenset({ACTIVE_SUPPORTER, INACTIVE_SUPPORTER})
 TOGGLE_STATES = {"on": True, "off": False}
+LEADERBOARD_PAGE = 25
+TRANSACTIONS = 20
 
 
 async def _upload(form: Any, name: str) -> tuple[str, bytes] | None:
@@ -31,6 +34,21 @@ async def _upload(form: Any, name: str) -> tuple[str, bytes] | None:
 def _text(form: Any, name: str) -> str:
     value = form.get(name, "")
     return value.strip() if isinstance(value, str) else ""
+
+
+def _timestamp(value: object) -> float | None:
+    """A transaction's SQLite UTC date ("YYYY-MM-DD HH:MM:SS") as a timestamp for the `when` filter."""
+    try:
+        return datetime.fromisoformat(str(value)).replace(tzinfo=UTC).timestamp()
+    except ValueError:
+        return None
+
+
+def _rank(rank: int | None, ranked: int) -> str:
+    """Like `level leaderboard`, the ranking stops at 300."""
+    if rank is not None:
+        return f"#{rank:,}"
+    return "300+" if ranked >= 300 else "Not ranked yet"
 
 
 class MemberSite:
@@ -56,6 +74,11 @@ class MemberSite:
         app.router.add_post("/role/name", self.role_name)
         app.router.add_post("/role/icon", self.role_icon)
         app.router.add_post("/role/mentionable", self.role_mentionable)
+        app.router.add_get("/me", self.me)
+        app.router.add_get("/me/backgrounds", self.backgrounds)
+        app.router.add_post("/me/backgrounds/buy", self.background_buy)
+        app.router.add_post("/me/backgrounds/use", self.background_use)
+        app.router.add_get("/leaderboard", self.leaderboard)
 
     async def sections(self, member: discord.Member) -> dict[str, bool]:
         """Which sections the member sees, from their roles and items right now.
@@ -63,10 +86,12 @@ class MemberSite:
         Commands and emojis show to supporters who can create them, or who still have some to look after:
         a legacy (inactive) supporter with nothing left would only see an empty page.
         """
+        unicornia = self._cog("Unicornia") is not None
         if not any(role.id in SUPPORTER_ROLES for role in member.roles):
-            return {"commands": False, "emojis": False, "role": False}
+            return {"unicornia": unicornia, "commands": False, "emojis": False, "role": False}
         cc, ce, crc = self._cog("CustomCommand"), self._cog("CustomEmoji"), self._cog("CustomRoleColor")
         return {
+            "unicornia": unicornia,
             "commands": cc is not None and (cc.can_create(member) or bool(await cc.commands_for(member))),
             "emojis": ce is not None and (await ce.can_create(member) or bool(await ce.emojis_for(member))),
             "role": crc is not None and await crc.assigned_role(member) is not None,
@@ -141,6 +166,94 @@ class MemberSite:
         except ValueError:
             raise web.HTTPBadRequest() from None
         raise web.HTTPFound("/roleplay")
+
+    # --- Unicornia: profile, backgrounds and XP leaderboard --------------------------------------
+
+    def _unicornia(self, request: web.Request) -> tuple[discord.Member, Any]:
+        uni = self._cog("Unicornia")
+        if uni is None:
+            self._missing(request, "Profiles, backgrounds and the leaderboard")
+        return request["member"], uni
+
+    async def me(self, request: web.Request) -> web.StreamResponse:
+        member, uni = self._unicornia(request)
+        summary = await uni.member_summary(member.guild, member.id, transactions=TRANSACTIONS)
+        for transaction in summary["transactions"]:
+            transaction["timestamp"] = _timestamp(transaction["date"])
+        return self._render(
+            request,
+            "me.html",
+            member=member,
+            me=summary,
+            rank=_rank(summary["rank"], len(await uni.xp_ranking(member.guild))),
+            banner=uni.background_images(summary["background"])[0],
+            currency=await uni.config.currency_name(),
+        )
+
+    async def backgrounds(self, request: web.Request, *, error: str = "", status: int = 200) -> web.Response:
+        member, uni = self._unicornia(request)
+        wallet, _bank = await uni.get_balance(member.id)
+        return self._render(
+            request,
+            "backgrounds.html",
+            status=status,
+            backgrounds=await uni.backgrounds_for(member),
+            wallet=wallet,
+            currency=await uni.config.currency_name(),
+            error=error,
+        )
+
+    async def _background_change(self, request: web.Request, change: str) -> web.StreamResponse:
+        member, uni = self._unicornia(request)
+        try:
+            await getattr(uni, change)(member, _text(await request.post(), "key"))
+        except ValueError as e:
+            return await self.backgrounds(request, error=str(e), status=400)
+        raise web.HTTPFound("/me/backgrounds")
+
+    async def background_buy(self, request: web.Request) -> web.StreamResponse:
+        return await self._background_change(request, "buy_background")
+
+    async def background_use(self, request: web.Request) -> web.StreamResponse:
+        return await self._background_change(request, "use_background")
+
+    async def leaderboard(self, request: web.Request) -> web.StreamResponse:
+        member, uni = self._unicornia(request)
+        ranking = await uni.xp_ranking(member.guild)
+        pages = max(1, -(-len(ranking) // LEADERBOARD_PAGE))
+        try:
+            page = min(max(int(request.query.get("page", "1")), 1), pages)
+        except ValueError:
+            page = 1
+        start = (page - 1) * LEADERBOARD_PAGE
+        rows = ranking[start : start + LEADERBOARD_PAGE]
+        equipped = await uni.equipped_backgrounds([user_id for user_id, _xp in rows])
+        entries = []
+        for number, (user_id, xp) in enumerate(rows, start + 1):
+            ranked = member.guild.get_member(user_id)
+            animated, still = uni.background_images(equipped[user_id])
+            entries.append(
+                {
+                    "rank": number,
+                    "name": ranked.display_name if ranked else "Former member",
+                    "avatar": ranked.display_avatar.with_size(64).url if ranked else "",
+                    "level": uni.level_stats(xp).level,
+                    "xp": xp,
+                    "animated": animated,
+                    "still": still,
+                    "me": user_id == member.id,
+                }
+            )
+        viewer = next((index + 1 for index, (user_id, _xp) in enumerate(ranking) if user_id == member.id), None)
+        return self._render(
+            request,
+            "leaderboard.html",
+            entries=entries,
+            page=page,
+            pages=pages,
+            viewer=_rank(viewer, len(ranking)),
+            viewer_page=None if viewer is None else -(-viewer // LEADERBOARD_PAGE),
+        )
 
     # --- custom commands -------------------------------------------------------------------------
 

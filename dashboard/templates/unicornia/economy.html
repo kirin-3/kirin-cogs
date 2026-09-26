@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Unicornia economy{% endblock %}
+{% block content %}
+{% include "unicornia/_nav.html" %}
+<h1>Economy</h1>
+<h2>Richest members</h2>
+{% if richest %}
+<div class="scroll"><table>
+  <thead><tr><th class="num">#</th><th>Member</th><th class="num">Wallet + bank</th></tr></thead>
+  <tbody>
+  {% for user_id, total in richest %}
+  <tr><td class="num">{{ loop.index }}</td><td><a href="/unicornia/members/{{ user_id }}">{{ user_name(user_id) }}</a></td><td class="num">{{ "{:,}".format(total) }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p class="empty">Nobody has any currency yet.</p>{% endif %}
+<h2>Gambling RTP</h2>
+<p class="sub">Target {{ "{:.1%}".format(house.target) }}, counted since each game's epoch.</p>
+{% if house.games %}
+<div class="scroll"><table>
+  <thead><tr><th>Game</th><th class="num">Rounds</th><th class="num">Staked</th><th class="num">RTP</th><th class="num">vs target</th><th>Since</th></tr></thead>
+  <tbody>
+  {% for g in house.games %}
+  <tr>
+    <td>{{ g.feature }}{% if g.low_confidence %} <span class="badge">low confidence</span>{% endif %}</td>
+    <td class="num">{{ "{:,}".format(g.rounds) }}</td>
+    <td class="num">{{ "{:,}".format(g.staked) }}</td>
+    <td class="num">{% if g.rtp is none %}—{% else %}{{ "{:.3%}".format(g.rtp) }}{% endif %}</td>
+    <td class="num">{% if g.deviation is not none %}<span class="badge {{ 'warn' if g.off_target else 'ok' }}">{{ "{:+.3%}".format(g.deviation) }}</span>{% endif %}</td>
+    <td>{{ g.epoch or "not started" }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p class="empty">No gambling data yet.</p>{% endif %}
+<h2>Yield pool</h2>
+<dl class="meta">
+  <dt>{{ "Deficit" if house.pool.balance < 0 else "Balance" }}</dt><dd>{{ "{:,}".format(house.pool.balance|abs) }}</dd>
+  <dt>Lifetime house-banked</dt><dd>{{ "{:,}".format(house.pool.lifetime_house_banked) }}</dd>
+  <dt>Lifetime pooled</dt><dd>{{ "{:,}".format(house.pool.lifetime_pooled) }}</dd>
+  <dt>Lifetime trade tax</dt><dd>{{ "{:,}".format(house.pool.lifetime_trade_tax) }}</dd>
+  <dt>Next distribution</dt><dd>{{ house.pool.next_distribution_at or "not scheduled" }}</dd>
+</dl>
+<h2>Recent dividend runs</h2>
+{% if house.runs %}
+<div class="scroll"><table>
+  <thead><tr><th>Period end</th><th class="num">Distributed</th><th class="num">Recipients</th></tr></thead>
+  <tbody>
+  {% for run in house.runs %}
+  <tr><td>{{ run.period_end }}</td><td class="num">{{ "{:,}".format(run.distributed) }}</td><td class="num">{{ "{:,}".format(run.recipients) }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p class="empty">No distributions have completed yet.</p>{% endif %}
+{% endblock %}

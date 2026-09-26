@@ -443,7 +443,10 @@ async def test_member_pages_may_show_discord_images_and_nothing_else_changes(ms:
 
     for name, value in MEMBER_SECURITY_HEADERS.items():
         assert response.headers[name] == value
-    assert "img-src 'self' https://cdn.discordapp.com;" in response.headers["Content-Security-Policy"]
+    assert (
+        "img-src 'self' https://cdn.discordapp.com https://unicornia.net;"
+        in response.headers["Content-Security-Policy"]
+    )
     assert staff.headers["Content-Security-Policy"] == SECURITY_HEADERS["Content-Security-Policy"]
 
 

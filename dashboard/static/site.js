@@ -1,4 +1,4 @@
-// Extras for the staff site. Every page also works without this file: the server still checks every change.
+// Extras for the staff and member sites. Every page also works without this file: the server still checks every change.
 // Only text is ever written into the page (textContent), never HTML, and new editor rows are copies of
 // server-rendered <template>s.
 "use strict";
@@ -120,6 +120,34 @@ if (preview) {
   for (const hide of ["pointerleave", "blur"]) holographicButton.addEventListener(hide, () => paint());
   paint();
   preview.hidden = false;
+}
+
+// Rank-card backgrounds. Leaderboard rows show a still and animate while hovered or focused (never with reduced
+// motion). An image that fails to load, which inline onerror can't catch under the CSP, becomes its name on a panel.
+const calm = matchMedia("(prefers-reduced-motion: reduce)");
+for (const row of document.querySelectorAll(".lb-row")) {
+  const image = row.querySelector("img.bg");
+  const still = image.src;
+  const animate = () => {
+    if (!calm.matches && image.dataset.animated) image.src = image.dataset.animated;
+  };
+  const rest = () => {
+    if (image.src !== still) image.src = still;
+  };
+  row.addEventListener("pointerenter", animate);
+  row.addEventListener("focusin", animate);
+  row.addEventListener("pointerleave", rest);
+  row.addEventListener("focusout", rest);
+}
+const broken = (image) => {
+  const placeholder = document.createElement("span");
+  placeholder.className = "bg placeholder";
+  placeholder.textContent = image.dataset.name || "";
+  image.replaceWith(placeholder);
+};
+for (const image of document.querySelectorAll("img.bg")) {
+  if (image.complete && image.naturalWidth === 0 && image.getAttribute("src")) broken(image);
+  else image.addEventListener("error", () => broken(image));
 }
 
 addEventListener("beforeunload", (event) => {

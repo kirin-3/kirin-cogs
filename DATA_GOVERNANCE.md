@@ -15,7 +15,7 @@ This document is the per-cog annex to the bot's [Privacy Policy](PRIVACY.md), wh
 | CustomEmoji | User limits and emoji ownership | Removes limits and ownership records |
 | CustomRoleColor | User-to-role management assignments | Removes the assignment |
 | DisboardReminder | Per-member Disboard bump counts saved by older versions of the original cog; no new records | Removes the user's counts from every guild |
-| Dashboard | Staff and member login sessions (Discord user ID, CSRF token, expiry) in memory only; page traffic passes through Cloudflare. Changes made on the member site are stored by the cog they belong to (CustomCommand, CustomEmoji, CustomRoleColor, Roleplay) | Nothing persistent; sessions end after 12 hours, on logout, or on unload/restart |
+| Dashboard | Staff and member login sessions (Discord user ID, CSRF token, expiry) in memory only; page traffic passes through Cloudflare. Changes made on the member site are stored by the cog they belong to (CustomCommand, CustomEmoji, CustomRoleColor, Roleplay, Unicornia) | Nothing persistent; sessions end after 12 hours, on logout, or on unload/restart |
 | Honeypot | Guild-scoped user IDs, prior role IDs, and quarantine timestamps | Removes the user's quarantine records from every guild |
 | Mjolnir | Per-user count of successful hammer lifts | Removes the user's count |
 | Moderation | Guild/member IDs, role IDs removed by a mute, and the mute end time | Removes the user's mute records from every guild |

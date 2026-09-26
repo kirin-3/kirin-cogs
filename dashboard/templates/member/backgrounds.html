@@ -1,0 +1,31 @@
+{% extends "member/base.html" %}
+{% block title %}Backgrounds{% endblock %}
+{% block content %}
+<h1>Backgrounds</h1>
+<p class="sub">The background of your rank card. <span class="badge">{{ "{:,}".format(wallet) }} {{ currency }} in your wallet</span></p>
+<div class="bg-grid">
+  {% for bg in backgrounds %}
+  <article class="bg-card{% if bg.equipped %} equipped{% endif %}">
+    <img class="bg" src="{{ bg.animated }}" alt="" loading="lazy" data-name="{{ bg.name }}">
+    <div class="bg-info">
+      <h2>{{ bg.name }}</h2>
+      {% if bg.equipped %}
+      <span class="badge ok">Equipped</span>
+      {% elif bg.owned %}
+      <form method="post" action="/me/backgrounds/use">
+        <input type="hidden" name="csrf" value="{{ session.csrf }}">
+        <input type="hidden" name="key" value="{{ bg.key }}">
+        <button type="submit">Equip</button>
+      </form>
+      {% else %}
+      <form method="post" action="/me/backgrounds/buy" data-confirm="Buy {{ bg.name }} for {{ '{:,}'.format(bg.price) }} {{ currency }}? It will be equipped straight away.">
+        <input type="hidden" name="csrf" value="{{ session.csrf }}">
+        <input type="hidden" name="key" value="{{ bg.key }}">
+        <button class="primary" type="submit">{% if bg.price %}Buy · {{ "{:,}".format(bg.price) }}{% else %}Get for free{% endif %}</button>
+      </form>
+      {% endif %}
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% endblock %}

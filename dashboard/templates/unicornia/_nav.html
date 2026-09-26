@@ -1,0 +1,6 @@
+<nav class="subnav" aria-label="Unicornia">
+  <a href="/unicornia/members"{% if path.startswith("/unicornia/members") %} class="on"{% endif %}>Members</a>
+  <a href="/unicornia/economy"{% if path == "/unicornia/economy" %} class="on"{% endif %}>Economy</a>
+  <a href="/unicornia/config"{% if path == "/unicornia/config" %} class="on"{% endif %}>Config</a>
+  <a href="/unicornia/market"{% if path == "/unicornia/market" %} class="on"{% endif %}>Stock market</a>
+</nav>

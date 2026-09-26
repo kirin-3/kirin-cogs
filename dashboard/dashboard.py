@@ -30,6 +30,7 @@ from yarl import URL
 
 from .automod_forms import SECTIONS, Names, apply_action, editor_view, parse_rows, row_templates, row_view
 from .member import MemberSite
+from .unicornia_views import StaffUnicornia
 
 GUILD_ID = 684360255798509578
 STAFF_ROLE_ID = 696020813299580940
@@ -83,11 +84,11 @@ SECURITY_HEADERS = {
     "X-Robots-Tag": "noindex, nofollow",
     "Cache-Control": "no-store",
 }
-# Emojis and role icons are shown from Discord's CDN.
+# Emojis, role icons and avatars are shown from Discord's CDN, rank-card backgrounds from the main site.
 MEMBER_SECURITY_HEADERS = {
     **SECURITY_HEADERS,
     "Content-Security-Policy": SECURITY_HEADERS["Content-Security-Policy"].replace(
-        "img-src 'self'", "img-src 'self' https://cdn.discordapp.com"
+        "img-src 'self'", "img-src 'self' https://cdn.discordapp.com https://unicornia.net"
     ),
 }
 
@@ -208,6 +209,7 @@ class Dashboard(commands.Cog):
             user_name=self._user_name, user_avatar=self._user_avatar, channel_name=self._channel_name
         )
         self.member_site = MemberSite(self)
+        self.staff_unicornia = StaffUnicornia(self)
 
     async def cog_load(self) -> None:
         # Not bot.http: that session carries the bot token.
@@ -266,6 +268,7 @@ class Dashboard(commands.Cog):
         app.router.add_post("/automod/lists", self.automod_list_create)
         app.router.add_post(f"/automod/lists/{word_list}", self.automod_list_save)
         app.router.add_post(f"/automod/lists/{word_list}/delete", self.automod_list_delete)
+        self.staff_unicornia.add_routes(app)
         return app
 
     # --- access control --------------------------------------------------------------------------
@@ -315,9 +318,12 @@ class Dashboard(commands.Cog):
     def _admits(self, site: Site, user_id: int) -> bool:
         return self._is_staff(user_id) if site is STAFF else self.member(user_id) is not None
 
+    def guild(self) -> discord.Guild | None:
+        return self.bot.get_guild(GUILD_ID)
+
     def member(self, user_id: int) -> discord.Member | None:
         """The user as a Unicornia member, from the bot's member cache."""
-        guild = self.bot.get_guild(GUILD_ID)
+        guild = self.guild()
         return guild.get_member(user_id) if guild else None
 
     def _is_staff(self, user_id: int) -> bool:

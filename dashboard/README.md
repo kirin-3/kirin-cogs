@@ -5,9 +5,11 @@ Cloudflare. They share the login code but keep separate sessions and cookies.
 
 - **Staff site**, `staff.unicornia.net` on `127.0.0.1:8011`. Lists the ban records kept by the BanLog cog and the
   messages each banned member posted in the week before their ban, and manages the AutoMod cog's rulesets, rules and
-  word lists, including its action log and the dry-run switch.
-- **Member site**, `my.unicornia.net` on `127.0.0.1:8012`. Every member can see their roleplay settings and turn
-  Selective, Public and Servant on or off. Supporters also manage their custom commands, custom emojis and, if they
+  word lists, including its action log and the dry-run switch. Its Unicornia pages show, read-only, any member's
+  economy and XP, the house economy, the cog's configuration and the stock market.
+- **Member site**, `my.unicornia.net` on `127.0.0.1:8012`. Every member can see their Unicornia profile, buy and equip
+  rank-card backgrounds, see the XP leaderboard, and turn their roleplay settings (Selective, Public and Servant) on
+  or off. Supporters also manage their custom commands, custom emojis and, if they
   were given one with `[p]assignrole`, their custom role.
 
 ## Who can log in
@@ -28,6 +30,7 @@ at the time of each request:
 
 | Section | Who sees it |
 | --- | --- |
+| Profile, Backgrounds, Leaderboard | Everyone, while the Unicornia cog is loaded |
 | Roleplay | Everyone |
 | Custom commands | The active supporter role (`700121551483437128`), or the inactive one (`1458440559713718466`) while the member still has commands |
 | Custom emojis | A supporter role who can create emojis (the `[p]ce setrole` role), or who still has emojis |
@@ -37,6 +40,30 @@ The pages follow the same rules as the bot's commands, because they call the sam
 can create custom commands, or edit them on the site (a replace in one step, under the create rules). Creating and renaming emojis needs the role set with `[p]ce setrole`. Either kind of
 supporter can delete their own items. The per-member cooldowns count commands and site together. The member site can
 only upload new emojis, not copy existing ones, and it can't add people to or remove them from the roleplay lists.
+
+## Unicornia pages
+
+On the member site:
+
+- `/me`: wallet, bank, level and progress, rank, club, the equipped background (animated) and the last 20
+  transactions. Only the member's own.
+- `/me/backgrounds`: every buyable background, plus hidden ones the member owns. Buying asks for confirmation with the
+  name and price; the purchase itself follows `xpshop buy`'s rules and charges at most once. Equipping follows
+  `xpshop use`.
+- `/leaderboard?page=N`: the guild's current members by XP, 25 a page, each with their background as a still that
+  animates while the row is hovered or focused. The member's own row is highlighted, and their rank is always shown.
+  Like `level leaderboard`, only the top 300 are ranked, and the ranking is rebuilt at most once a minute.
+
+On the staff site, open to all staff and GET-only, so nothing there can change Unicornia data:
+
+- `/unicornia/members?q=`: find a member by ID or part of a name. `/unicornia/members/{id}` shows balances, rakeback,
+  level and rank, club, gambling stats, backgrounds, shop inventory and the last 100 transactions. It works by ID for
+  people who have left.
+- `/unicornia/economy`: the 25 richest members, and the RTP, yield pool and dividend figures from `yieldstats`.
+- `/unicornia/config`: the settings, channels, level rewards and whitelists. Deleted channels and roles show their ID.
+- `/unicornia/market`: listed stocks and prices.
+
+These pages answer 503 while the Unicornia cog isn't loaded.
 
 On both sites, whether the user may still use the site is re-checked against the bot's member cache on every request,
 so losing the staff role, or leaving the server, ends access on the next click. Sessions live in memory, expire
@@ -51,11 +78,12 @@ so losing the staff role, or leaving the server, ends access on the next click. 
   and reads them only after the session check.
 - Uploads are checked by their content, not their file name: emojis must be PNG, JPEG or GIF, role icons PNG or JPEG.
 - Pages carry a strict Content-Security-Policy, `nosniff`, `no-referrer`, `DENY` framing, `noindex`, and `no-store`.
-  The member site may also show images from `cdn.discordapp.com`, for emojis and role icons. All user text is
+  The member site may also show images from `cdn.discordapp.com`, for emojis, role icons and avatars, and from
+  `unicornia.net`, for rank-card backgrounds. All user text is
   HTML-escaped by Jinja2.
 - The only script is `static/site.js`. The policy allows the site's own files and nothing else: no inline scripts, no
   other hosts, and no requests from scripts. It adds conveniences only, such as adding editor rows in place, a live
-  preview of the custom role, local times, filter boxes, and delete confirmations. Every page works without it, and
+  preview of the custom role, animating leaderboard backgrounds, local times, filter boxes, and delete confirmations. Every page works without it, and
   every change is still checked by the server. It writes text into the page, never HTML.
 - The login callbacks share one limit, because both sites log in through the bot's IP. Discord gets at most 5 code
   exchanges per minute per client IP and 30 per minute in total, and none at all while it is answering 429. Member
@@ -101,8 +129,8 @@ session length of 12 hours apply to both.
    }
    ```
 
-4. Load the cogs: `[p]load banlog automod dashboard`, and have `customcommand`, `customemoji`, `customrolecolor` and
-   `roleplay` loaded. Pages whose cog is not loaded show a notice instead.
+4. Load the cogs: `[p]load banlog automod dashboard`, and have `customcommand`, `customemoji`, `customrolecolor`,
+   `roleplay` and `unicornia` loaded. Pages whose cog is not loaded show a notice instead.
 5. Check that:
    - a staff account with 2FA can log in to the staff site, and a non-staff account gets "Staff only";
    - a member without 2FA can log in to the member site and sees only Roleplay;

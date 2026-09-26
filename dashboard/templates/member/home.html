@@ -5,10 +5,27 @@
   {% if user_avatar(session.user_id) %}<img src="{{ user_avatar(session.user_id) }}" alt="" width="72" height="72">{% endif %}
   <div>
     <h1>Hi, {{ member.display_name }}!</h1>
-    <p>Here's everything you can change about yourself on Unicornia.</p>
+    <p>Here's everything about you on Unicornia.</p>
   </div>
 </section>
 <div class="tiles">
+  {% if nav.unicornia %}
+  <a class="tile washi tone-lavender" href="/me">
+    <span class="sticker" aria-hidden="true">🦄</span>
+    <h2>Profile</h2>
+    <p>Your level, rank, balance and recent transactions.</p>
+  </a>
+  <a class="tile washi tone-peach" href="/me/backgrounds">
+    <span class="sticker" aria-hidden="true">🖼️</span>
+    <h2>Backgrounds</h2>
+    <p>Buy and equip your rank card's background.</p>
+  </a>
+  <a class="tile washi tone-butter" href="/leaderboard">
+    <span class="sticker" aria-hidden="true">🏆</span>
+    <h2>Leaderboard</h2>
+    <p>The server's XP ranking.</p>
+  </a>
+  {% endif %}
   <a class="tile washi tone-pink" href="/roleplay">
     <span class="sticker" aria-hidden="true">🎭</span>
     <h2>Roleplay</h2>

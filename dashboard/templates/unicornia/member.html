@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% set shown = member.display_name if member else user_name(user_id) %}
+{% block title %}{{ shown }}{% endblock %}
+{% block content %}
+{% include "unicornia/_nav.html" %}
+<p class="back"><a href="/unicornia/members">← Members</a></p>
+<h1>{{ shown }}</h1>
+<p class="sub"><span class="mono">{{ user_id }}</span>{% if member %} · {{ member.name }}{% else %} · <span class="badge warn">Not in the server</span>{% endif %}</p>
+<dl class="meta">
+  <dt>Wallet</dt><dd>{{ "{:,}".format(me.wallet) }}</dd>
+  <dt>Bank</dt><dd>{{ "{:,}".format(me.bank) }}</dd>
+  <dt>Pending rakeback</dt><dd>{{ "{:,}".format(me.rakeback) }}</dd>
+  <dt>Level</dt><dd>{{ me.xp.level }} ({{ "{:,}".format(me.xp.total_xp) }} XP)</dd>
+  <dt>Rank</dt><dd>{{ rank }}</dd>
+  <dt>Club</dt><dd>{{ me.club or "None" }}</dd>
+  <dt>Background</dt><dd>{{ me.background_name }} <small>(owns {{ me.owned_backgrounds|join(", ") }})</small></dd>
+</dl>
+<h2>Gambling</h2>
+{% if me.bets %}
+<div class="scroll"><table>
+  <thead><tr><th>Game</th><th class="num">Bet</th><th class="num">Won</th><th class="num">Lost</th><th class="num">Biggest win</th></tr></thead>
+  <tbody>
+  {% for b in me.bets %}
+  <tr><td>{{ b.game }}</td><td class="num">{{ "{:,}".format(b.bet) }}</td><td class="num">{{ "{:,}".format(b.won) }}</td><td class="num">{{ "{:,}".format(b.lost) }}</td><td class="num">{{ "{:,}".format(b.max_win) }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p class="empty">No bets.</p>{% endif %}
+<h2>Shop inventory</h2>
+{% if me.inventory %}
+<ul class="rows">{% for item in me.inventory %}<li>{{ item.name }} × {{ item.quantity }}</li>{% endfor %}</ul>
+{% else %}<p class="empty">Nothing.</p>{% endif %}
+<h2>Transactions</h2>
+<p class="sub">The latest {{ me.transactions|length }}.</p>
+{% if me.transactions %}
+<div class="scroll"><table>
+  <thead><tr><th>When</th><th class="num">Amount</th><th>Type</th><th>Reason</th></tr></thead>
+  <tbody>
+  {% for t in me.transactions %}
+  <tr><td class="date">{% if t.timestamp %}{{ t.timestamp|when }}{% else %}{{ t.date }}{% endif %}</td><td class="num">{{ "{:+,}".format(t.amount) }}</td><td class="mono">{{ t.type }}</td><td class="reason">{{ t.reason }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p class="empty">No transactions.</p>{% endif %}
+{% endblock %}

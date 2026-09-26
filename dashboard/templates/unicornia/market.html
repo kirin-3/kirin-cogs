@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Stock market{% endblock %}
+{% block content %}
+{% include "unicornia/_nav.html" %}
+<h1>Stock market</h1>
+{% if stocks %}
+<div class="scroll"><table>
+  <thead><tr><th>Symbol</th><th>Name</th><th class="num">Price</th><th class="num">Change</th></tr></thead>
+  <tbody>
+  {% for s in stocks %}
+  <tr>
+    <td class="mono">{{ s.symbol }}</td>
+    <td>{{ s.name }}</td>
+    <td class="num">{{ "{:,.2f}".format(s.price) }}</td>
+    <td class="num">{% if s.previous_price %}{{ "{:+.2%}".format(s.price / s.previous_price - 1) }}{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p class="empty">No stocks are listed.</p>{% endif %}
+{% endblock %}
