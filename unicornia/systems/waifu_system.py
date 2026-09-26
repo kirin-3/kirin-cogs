@@ -111,21 +111,10 @@ class WaifuSystem:
         Returns:
             Tuple of (success, message).
         """
-        # Check if user owns the waifu
-        waifu = await self.db.waifu.get_waifu_info(waifu_id)
-        if not waifu or waifu[1] != user.id:  # waifu[1] is claimer_id
+        # The update re-checks ownership, so a claim that lands after this read isn't overwritten.
+        # The price is left alone for the same reason (gifts change it inside their own transaction).
+        if not await self.db.waifu.transfer_waifu(waifu_id, user.id, new_owner.id):
             return False, "You don't own this waifu."
-
-        current_price = waifu[2]
-        waifu[3]
-
-        # Fee removed as per request
-
-        # New price remains the same (no fee reduction)
-        new_price = current_price
-
-        # Perform transfer
-        await self.db.waifu.transfer_waifu(waifu_id, new_owner.id, new_price)
 
         return True, f"Successfully transferred waifu to {new_owner.display_name}."
 

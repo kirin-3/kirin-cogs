@@ -171,8 +171,21 @@ class EconomySystem:
         cooldown_hours = max(1, await self.config.timely_cooldown())
         cooldown_seconds = cooldown_hours * 3600
 
-        # Attempt atomic claim
-        new_streak = await self.db.economy.attempt_timely_claim(user_id, cooldown_seconds)
+        # Bonuses that don't depend on the streak
+        base_amount = await self.config.timely_amount()
+        supporter_role_id = 700121551483437128
+        supporter_bonus = 100 if any(r.id == supporter_role_id for r in user.roles) else 0
+        booster_bonus = 100 if user.premium_since is not None else 0
+
+        def streak_bonus(streak: int) -> int:
+            return min(streak * 10, 300)  # Max 300 bonus
+
+        # Claim and credit atomically; the repository writes the transaction-log row
+        new_streak = await self.db.economy.attempt_timely_claim(
+            user_id,
+            cooldown_seconds,
+            lambda streak: base_amount + streak_bonus(streak) + supporter_bonus + booster_bonus,
+        )
 
         if new_streak is None:
             # Failed (Cooldown)
@@ -192,35 +205,13 @@ class EconomySystem:
                     pass
             return False, 0, 0, {}
 
-        # Success! Calculate reward amount (base + streak bonus)
-        base_amount = await self.config.timely_amount()
-        streak_bonus = min(new_streak * 10, 300)  # Max 300 bonus
-
-        # Supporter Bonus
-        supporter_bonus = 0
-        supporter_role_id = 700121551483437128
-        if any(r.id == supporter_role_id for r in user.roles):
-            supporter_bonus = 100
-
-        # Server Booster Bonus
-        booster_bonus = 0
-        if user.premium_since is not None:
-            booster_bonus = 100
-
-        total_amount = base_amount + streak_bonus + supporter_bonus + booster_bonus
-
         breakdown = {
             "base": base_amount,
-            "streak": streak_bonus,
+            "streak": streak_bonus(new_streak),
             "supporter": supporter_bonus,
             "booster": booster_bonus,
         }
-
-        # Award currency; the repository writes the single canonical
-        # transaction-log row (streak info is carried in its note).
-        await self.db.economy.add_currency(
-            user_id, total_amount, "timely", "system", note=f"Daily reward (streak: {new_streak})"
-        )
+        total_amount = sum(breakdown.values())
 
         return True, total_amount, new_streak, breakdown
 
@@ -304,8 +295,5 @@ class EconomySystem:
         Returns:
             Claimed amount.
         """
-        balance = await self.db.economy.claim_rakeback(user_id)
-        if balance > 0:
-            # The repository writes the single canonical transaction-log row.
-            await self.db.economy.add_currency(user_id, balance, "rakeback", "system", note="Claimed rakeback")
-        return balance
+        # The repository resets the balance, credits it and logs it in one transaction.
+        return await self.db.economy.claim_rakeback(user_id)

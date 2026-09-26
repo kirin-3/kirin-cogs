@@ -133,7 +133,8 @@ async def test_stored_zero_daily_cooldown_still_means_an_hour() -> None:
 
     await economy.claim_timely(MagicMock(id=7))
 
-    db.economy.attempt_timely_claim.assert_awaited_once_with(7, 3600)
+    assert db.economy.attempt_timely_claim.await_args is not None
+    assert db.economy.attempt_timely_claim.await_args.args[:2] == (7, 3600)
 
 
 @pytest.mark.asyncio

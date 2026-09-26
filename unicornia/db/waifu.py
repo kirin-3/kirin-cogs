@@ -106,40 +106,41 @@ class WaifuRepository:
             await db.commit()
             return True
 
-    async def transfer_waifu(self, waifu_id: int, new_owner_id: int, price: int) -> None:
-        """Transfer waifu ownership.
+    async def transfer_waifu(self, waifu_id: int, old_owner_id: int, new_owner_id: int) -> bool:
+        """Transfer waifu ownership, but only if ``old_owner_id`` still owns it.
 
         Args:
             waifu_id: Waifu user ID.
+            old_owner_id: Owner the caller checked; a claim that landed since then wins.
             new_owner_id: New owner user ID.
-            price: New price.
+
+        Returns:
+            Whether the waifu was transferred.
         """
         async with self.db._get_connection() as db:
-            # Get old owner
-            cursor = await db.execute("SELECT ClaimerId FROM WaifuInfo WHERE WaifuId = ?", (waifu_id,))
-            result = await cursor.fetchone()
-            old_owner_id = result[0] if result else 0
+            await db.execute("BEGIN")
+            try:
+                cursor = await db.execute(
+                    "UPDATE WaifuInfo SET ClaimerId = ? WHERE WaifuId = ? AND ClaimerId = ?",
+                    (new_owner_id, waifu_id, old_owner_id),
+                )
+                if cursor.rowcount == 0:
+                    await db.execute("ROLLBACK")
+                    return False
 
-            # Update waifu
-            await db.execute(
-                """
-                UPDATE WaifuInfo
-                SET ClaimerId = ?, Price = ?
-                WHERE WaifuId = ?
-            """,
-                (new_owner_id, price, waifu_id),
-            )
-
-            # Log update (Transfer = 2? Assuming UpdateType enum)
-            await db.execute(
-                """
-                INSERT INTO WaifuUpdates (UserId, OldId, NewId, UpdateType, DateAdded)
-                VALUES (?, ?, ?, 2, datetime('now'))
-            """,
-                (waifu_id, old_owner_id, new_owner_id),
-            )
-
-            await db.commit()
+                # Log update (Transfer = 2? Assuming UpdateType enum)
+                await db.execute(
+                    """
+                    INSERT INTO WaifuUpdates (UserId, OldId, NewId, UpdateType, DateAdded)
+                    VALUES (?, ?, ?, 2, datetime('now'))
+                """,
+                    (waifu_id, old_owner_id, new_owner_id),
+                )
+                await db.commit()
+                return True
+            except Exception:
+                await db.execute("ROLLBACK")
+                raise
 
     async def force_claim_waifu(
         self, waifu_id: int, claimer_id: int, old_owner_id: int | None, price: int, claimer_note: str, owner_note: str

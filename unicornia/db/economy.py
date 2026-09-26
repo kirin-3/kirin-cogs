@@ -1,6 +1,6 @@
 import json
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -384,29 +384,31 @@ class EconomyRepository:
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
             try:
-                # Update user currency
-                await db.execute(
-                    """
-                    INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
-                    ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount + ?
-                """,
-                    (user_id, amount, amount),
-                )
-
-                # Log transaction
-                await db.execute(
-                    """
-                    INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
-                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-                """,
-                    (user_id, amount, transaction_type, extra, other_id, note),
-                )
-
+                await self._add_currency(user_id, amount, transaction_type, extra, other_id, note, db)
                 await db.commit()
                 return True
             except Exception:
                 await db.execute("ROLLBACK")
                 raise
+
+    async def _add_currency(
+        self, user_id: int, amount: int, transaction_type: str, extra: str, other_id: int | None, note: str, db
+    ) -> None:
+        """Internal add currency (no transaction control), for callers that credit inside their own transaction."""
+        await db.execute(
+            """
+            INSERT INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, ?)
+            ON CONFLICT(UserId) DO UPDATE SET CurrencyAmount = CurrencyAmount + ?
+        """,
+            (user_id, amount, amount),
+        )
+        await db.execute(
+            """
+            INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        """,
+            (user_id, amount, transaction_type, extra, other_id, note),
+        )
 
     async def remove_currency(
         self,
@@ -767,12 +769,15 @@ class EconomyRepository:
             last_claim = datetime.fromisoformat(row[0])
             return (datetime.utcnow() - last_claim).total_seconds() >= cooldown_seconds
 
-    async def attempt_timely_claim(self, user_id: int, cooldown_seconds: int = 86400) -> int | None:
-        """Attempt to claim timely reward atomically.
+    async def attempt_timely_claim(
+        self, user_id: int, cooldown_seconds: int, reward: Callable[[int], int]
+    ) -> int | None:
+        """Claim the timely reward and credit it in one transaction, so a failed credit keeps the cooldown unused.
 
         Args:
             user_id: Discord user ID.
             cooldown_seconds: Cooldown in seconds.
+            reward: Amount to credit for the new streak.
 
         Returns:
             New streak if successful, None if on cooldown.
@@ -815,41 +820,22 @@ class EconomyRepository:
                 # 3. Retrieve new streak
                 cursor = await db.execute("SELECT Streak FROM TimelyCooldown WHERE UserId = ?", (user_id,))
                 row = await cursor.fetchone()
+                if not row:
+                    await db.execute("ROLLBACK")
+                    return None
+                streak = row[0]
 
+                # 4. Credit the reward before committing the claim
+                if (amount := reward(streak)) > 0:
+                    await self._add_currency(
+                        user_id, amount, "timely", "system", None, f"Daily reward (streak: {streak})", db
+                    )
                 await db.commit()
-
-                if row:
-                    return row[0]
-                return None
+                return streak
 
             except Exception:
                 await db.execute("ROLLBACK")
                 raise
-
-    async def claim_timely(self, user_id: int, amount: int, cooldown_hours: int) -> bool:
-        """Claim timely reward.
-
-        Args:
-            user_id: Discord user ID.
-            amount: Amount to claim.
-            cooldown_hours: Cooldown in hours.
-
-        Returns:
-            True if claimed, False if on cooldown.
-        """
-        if amount <= 0:
-            raise ValueError("Amount must be a positive integer.")
-
-        # Use atomic check-and-update
-        streak = await self.attempt_timely_claim(user_id, cooldown_hours * 3600)
-
-        if streak is None:
-            return False
-
-        # If successful, award currency
-        await self.add_currency(user_id, amount, "timely", "daily", note="Daily timely reward")
-
-        return True
 
     async def get_timely_info(self, user_id: int) -> tuple[str | None, int]:
         """Get timely cooldown info.
@@ -1205,7 +1191,7 @@ class EconomyRepository:
             await db.commit()
 
     async def claim_rakeback(self, user_id: int) -> int:
-        """Claim and reset rakeback balance.
+        """Claim the rakeback balance, reset it and credit it to the wallet.
 
         Args:
             user_id: User ID.
@@ -1214,25 +1200,21 @@ class EconomyRepository:
             Claimed amount.
         """
         async with self.db._get_connection() as db:
-            cursor = await db.execute(
-                """
-                SELECT RakebackBalance FROM Rakeback WHERE UserId = ?
-            """,
-                (user_id,),
-            )
-            result = await cursor.fetchone()
-            balance = result[0] if result else 0
+            # Reset and credit together: a failed credit must not lose the balance
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await db.execute("SELECT RakebackBalance FROM Rakeback WHERE UserId = ?", (user_id,))
+                result = await cursor.fetchone()
+                balance = result[0] if result else 0
 
-            if balance > 0:
-                await db.execute(
-                    """
-                    UPDATE Rakeback SET RakebackBalance = 0 WHERE UserId = ?
-                """,
-                    (user_id,),
-                )
+                if balance > 0:
+                    await db.execute("UPDATE Rakeback SET RakebackBalance = 0 WHERE UserId = ?", (user_id,))
+                    await self._add_currency(user_id, balance, "rakeback", "system", None, "Claimed rakeback", db)
                 await db.commit()
-
-            return balance
+                return balance
+            except Exception:
+                await db.execute("ROLLBACK")
+                raise
 
     # Currency generation channel methods
     async def get_currency_generation_channels(self, guild_id: int | None = None) -> list[tuple]:

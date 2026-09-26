@@ -142,6 +142,7 @@ class Unicornia(
         self.market_task = None
         self.yield_task = None
         self.reservation_recovery_task = None
+        self.nitro_task = None
         self._whitelist_cache: dict[int, tuple[dict[str, list[int]], dict[str, list[int]]]] = {}
 
     async def cog_load(self):
@@ -211,6 +212,7 @@ class Unicornia(
             self.wal_task = asyncio.create_task(self._wal_maintenance_loop())
             self.market_task = asyncio.create_task(self.market_loop())
             self.yield_task = asyncio.create_task(self.yield_loop())
+            self.nitro_task = asyncio.create_task(self.nitro_system.reconcile_loop())
 
             log.info("Unicornia: All systems initialized successfully")
         except Exception as e:
@@ -243,6 +245,11 @@ class Unicornia(
                 self.reservation_recovery_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await self.reservation_recovery_task
+
+            if self.nitro_task:
+                self.nitro_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self.nitro_task
 
             if self.currency_decay:
                 await self.currency_decay.stop_decay_loop()
