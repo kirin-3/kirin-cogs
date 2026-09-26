@@ -1,0 +1,26 @@
+{
+    "name": "mjolnir",
+    "author": [
+        "Jojo",
+        "Kreusada",
+        "kirin"
+    ],
+    "short": "Try to lift Thor's mighty hammer!",
+    "description": "Port of Kreusada's mjolnir, which was removed from Kreusada-Cogs. Try to lift Thor's hammer and climb the leaderboard. Reads the lift counts the original cog saved.",
+    "install_msg": "Unload and uninstall Kreusada's mjolnir before loading this; everyone's lift counts carry over.",
+    "end_user_data_statement": "This cog stores how many times each user has lifted the hammer, by user ID.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "requirements": [],
+    "tags": [
+        "fun"
+    ],
+    "license": "MIT"
+}
