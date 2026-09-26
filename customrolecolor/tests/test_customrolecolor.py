@@ -92,6 +92,7 @@ def _make_ctx(
     perms = MagicMock(spec=discord.Permissions)
     perms.manage_roles = has_manage_roles
     author.guild_permissions = perms
+    author.guild = guild
 
     message = MagicMock(spec=discord.Message)
     message.attachments = attachments or []
@@ -708,3 +709,58 @@ async def test_dpytest_myrolename_no_assignment(dpytest_bot: dpy_commands.Bot) -
 
     channel_mock.send.assert_called_once()
     assert "don't have a role assigned" in channel_mock.send.call_args[0][0]
+
+
+# ---------------------------------------------------------------------------
+# Shared rules: one cooldown across edits, icon content checks
+# ---------------------------------------------------------------------------
+
+
+def _assigned(bot_mock: MagicMock, config_mock: MagicMock, **ctx_kwargs) -> tuple[MagicMock, MagicMock]:
+    ctx = _make_ctx(bot_mock, author_id=500, **ctx_kwargs)
+    config_mock.guild.return_value.assignments = AsyncMock(return_value={"500": 999})
+    role = _make_role(position=50)
+    ctx.guild.get_role = MagicMock(return_value=role)
+    return ctx, role
+
+
+@pytest.mark.asyncio
+async def test_name_change_three_seconds_after_color_change_is_refused(
+    cog: CustomRoleColor, bot_mock: MagicMock, config_mock: MagicMock
+) -> None:
+    ctx, role = _assigned(bot_mock, config_mock)
+    now = [100.0]
+
+    with patch("customrolecolor.customrolecolor.time.monotonic", lambda: now[0]):
+        # The member site calls the method; the command follows 3 s later
+        await cog.set_color(ctx.author, "#ff0000", "#0000ff")
+        now[0] = 103.0
+        await cog.myrolename.callback(cog, ctx, new_name="Too Soon")  # pyright: ignore[reportArgumentType]
+
+    ctx.send.assert_called_once_with("You're editing your role too fast. Try again in 7 second(s).")
+    role.edit.assert_awaited_once()
+    assert role.edit.call_args.kwargs["secondary_colour"] == discord.Color(0x0000FF)
+
+
+@pytest.mark.asyncio
+async def test_icon_upload_is_checked_by_content(
+    cog: CustomRoleColor, bot_mock: MagicMock, config_mock: MagicMock
+) -> None:
+    ctx, role = _assigned(bot_mock, config_mock, guild_features=["ROLE_ICONS"])
+
+    with pytest.raises(ValueError, match="PNG or JPEG"):
+        await cog.set_icon(ctx.author, None, b"GIF89a not allowed for icons")
+    await cog.set_icon(ctx.author, None, b"\xff\xd8\xff\xe0 jpeg")
+
+    role.edit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_assigned_role_needs_the_member_to_hold_it(
+    cog: CustomRoleColor, bot_mock: MagicMock, config_mock: MagicMock
+) -> None:
+    ctx, role = _assigned(bot_mock, config_mock)
+    assert await cog.assigned_role(ctx.author) is role
+
+    ctx.author.get_role = MagicMock(return_value=None)
+    assert await cog.assigned_role(ctx.author) is None

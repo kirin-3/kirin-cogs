@@ -24,25 +24,21 @@ Change the color of your assigned role. Supports flat colors, gradients, and a h
   - Usage: `[p]myrolecolor #FF0000 #0000FF`
 - **Holographic**: Apply the holographic role preset (uses advanced tertiary coloring).
   - Usage: `[p]myrolecolor holographic`
-- **Cooldown**: 10 seconds per use
 
 #### `[p]myrolename <name>`
 Change the name of your assigned role.
 - **Usage**: `[p]myrolename My New Role Name`
 - **Name Length**: 1-100 characters
-- **Cooldown**: 10 seconds per use
 
 #### `[p]myroleicon [emoji]`
 Change the icon of your assigned role.
 - **Unicode Emoji**: `[p]myroleicon 👑`
-- **Custom Image**: Upload an image (PNG/JPG < 256KB) and run `[p]myroleicon`.
+- **Custom Image**: Upload an image (PNG/JPG < 256KB) and run `[p]myroleicon`. The file is checked by its content, not its name.
 - **Requirements**: Server must have the ROLE_ICONS feature (Level 2 Boost required)
-- **Cooldown**: 10 seconds per use
 
 #### `[p]myrolementionable <state>`
 Toggle whether your role can be mentioned by others.
 - **Usage**: `[p]myrolementionable on`, `[p]myrolementionable off`, `[p]myrolementionable yes`, `[p]myrolementionable no`, `[p]myrolementionable true`, `[p]myrolementionable false`
-- **Cooldown**: 10 seconds per use
 
 #### `[p]colorpreview <hex>`
 Generate a preview image of a specific color to see how it looks.
@@ -57,7 +53,8 @@ View a generated image of common colors and a copyable text list of hex codes.
 - **Color Options**: Flat colors, gradients, and holographic presets
 - **Icon Support**: Unicode emojis and custom images (when server supports ROLE_ICONS feature)
 - **Mention Control**: Toggle mentionability of roles
-- **Cooldown System**: Prevents spam with 10-second cooldown on user commands
+- **Cooldown**: Color, name, icon and mention changes share one 10-second cooldown per member, counted across the commands and the member site
+- **Member site**: Supporters with an assigned role can also change it on `my.unicornia.net` (see the Dashboard cog), under the same rules
 - **Color Utilities**: Preview colors and view color palettes
 - **Server Boost Required**: Role icons require Level 2 server boost or higher
 
