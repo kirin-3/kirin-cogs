@@ -147,16 +147,22 @@ class Sticky(commands.Cog):
     async def _set_sticky(self, ctx: commands.Context, **sticky: Any) -> None:
         channel = ctx.channel
         assert isinstance(channel, StickyChannel)
-        async with self.conf.channel(channel).all() as settings:  # pyright: ignore[reportArgumentType]
-            settings.pop("stickied", None)
-            settings.pop("advstickied", None)
-            settings.update(sticky)
-            content, embed = build_sticky(settings)
+        settings = self.conf.channel(channel)  # pyright: ignore[reportArgumentType]
+        # Locked so a repost can't slip in between reading and saving `last`.
+        async with self._lock_channel(channel.id):
+            data = await settings.all()
+            old_last = data.get("last")
+            data.pop("stickied", None)
+            data.pop("advstickied", None)
+            data.update(sticky)
+            content, embed = build_sticky(data)
             msg = await channel.send(content, embed=embed or discord.utils.MISSING)
-            if settings.get("last") is not None:
+            data["last"] = msg.id
+            # Save before deleting, or the delete event would see the old message as current and repost it.
+            await settings.set(data)
+            if old_last is not None:
                 with contextlib.suppress(discord.HTTPException):
-                    await channel.get_partial_message(settings["last"]).delete()
-            settings["last"] = msg.id
+                    await channel.get_partial_message(old_last).delete()
 
     # --- listeners -----------------------------------------------------------
 
@@ -182,7 +188,7 @@ class Sticky(commands.Cog):
             return
         if payload.message_id != await self.conf.channel(channel).last():  # pyright: ignore[reportArgumentType]
             return
-        await self._maybe_repost(channel)
+        await self._maybe_repost(channel, deleted_id=payload.message_id)
 
     async def _maybe_repost(
         self,
@@ -190,6 +196,7 @@ class Sticky(commands.Cog):
         responding_to: discord.Message | None = None,
         *,
         delete_last: bool = False,
+        deleted_id: int | None = None,
     ) -> None:
         cv = self._channel_cvs.setdefault(channel.id, asyncio.Condition())
         settings = self.conf.channel(channel)  # pyright: ignore[reportArgumentType]
@@ -200,6 +207,8 @@ class Sticky(commands.Cog):
             last_id = data["last"]
             if last_id is None:
                 return
+            if deleted_id is not None and last_id != deleted_id:
+                return  # the sticky was replaced while we waited for the lock
             last_message = channel.get_partial_message(last_id)
             # Don't respond to our own sticky, or to messages older than it.
             if responding_to and (responding_to.id == last_id or responding_to.created_at < last_message.created_at):

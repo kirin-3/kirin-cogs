@@ -25,7 +25,7 @@ log = logging.getLogger("red.kirin-cogs.voicenotelog")
 
 MIC_GIF: Final[str] = "https://cdn.discordapp.com/emojis/1164844325973270599.gif"
 # The free Chromium key SpeechRecognition uses; Google may revoke it at any time.
-GOOGLE_URL: Final[str] = "http://www.google.com/speech-api/v2/recognize"
+GOOGLE_URL: Final[str] = "https://www.google.com/speech-api/v2/recognize"
 GOOGLE_PARAMS: Final[dict[str, str]] = {
     "client": "chromium",
     "lang": "en-US",

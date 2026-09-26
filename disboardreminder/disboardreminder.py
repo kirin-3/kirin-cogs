@@ -306,10 +306,9 @@ class DisboardReminder(commands.Cog):
             ),
         )
         embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
-        for key in ("message", "tyMessage"):
-            embed.add_field(
-                name=key, value=f"```{discord.utils.escape_markdown(str(data.get(key)))[:1000]}```", inline=False
-            )
+        # Escaped plain text, not a code block: escapes show as backslashes inside code blocks.
+        for key, name in (("message", "Reminder message"), ("tyMessage", "Thank-you message")):
+            embed.add_field(name=name, value=discord.utils.escape_markdown(str(data.get(key)))[:1024], inline=False)
         next_bump = data.get("nextBump")
         if isinstance(next_bump, int | float):
             embed.timestamp = datetime.fromtimestamp(next_bump, UTC)

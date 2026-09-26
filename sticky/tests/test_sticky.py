@@ -70,3 +70,30 @@ async def test_new_message_reposts_and_deletes_old_sticky() -> None:
     channel.send.assert_awaited_once_with("Rules", embed=discord.utils.MISSING)
     cast(MagicMock, cog.conf.channel).return_value.last.set.assert_awaited_once_with(999)
     old.delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_of_replaced_sticky_does_not_repost() -> None:
+    # A delete event for the old sticky that lands after [p]sticky replaced it must not post a duplicate.
+    cog = _cog({"last": 2, "stickied": "New", "header_enabled": False, "cooldown": 3, "advstickied": {}})
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 10
+    channel.send = AsyncMock()
+    await cog._maybe_repost(channel, deleted_id=1)
+    channel.send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_set_sticky_saves_new_id_before_deleting_old() -> None:
+    cog = _cog({"last": 1, "stickied": "Old", "header_enabled": False, "cooldown": 3, "advstickied": {}})
+    group = cast(MagicMock, cog.conf.channel).return_value
+    order: list[str] = []
+    group.set = AsyncMock(side_effect=lambda data: order.append(f"save {data['last']}"))
+    old = MagicMock(delete=AsyncMock(side_effect=lambda: order.append("delete old")))
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 10
+    channel.get_partial_message.return_value = old
+    channel.send = AsyncMock(return_value=MagicMock(id=2))
+    await cog._set_sticky(MagicMock(channel=channel), stickied="New")
+    assert order == ["save 2", "delete old"]
+    assert group.set.await_args_list[0].args[0]["stickied"] == "New"
