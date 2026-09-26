@@ -68,16 +68,24 @@ class CoreDB:
         Args:
             db: The database connection to configure.
         """
-        await db.execute("PRAGMA journal_mode=WAL")
-        await db.execute("PRAGMA foreign_keys=ON")
-        await db.execute("PRAGMA synchronous=NORMAL")
-        await db.execute(
-            "PRAGMA cache_size=-4000"
-        )  # Negative value = pages in KiB (4000KB ~ 4MB) -> actually let's use pages. Positive = pages. 4000 pages * 4KB = 16MB.
-        await db.execute("PRAGMA temp_store=MEMORY")
-        await db.execute("PRAGMA mmap_size=33554432")  # 32MB memory mapping (Safe for 1GB VPS)
-        await db.execute("PRAGMA page_size=4096")  # 4KB page size
-        await db.execute("PRAGMA auto_vacuum=INCREMENTAL")  # Incremental vacuum
+        # Fetch (and thereby close) every PRAGMA cursor: some of these return a
+        # row, and a cursor with an unfetched row keeps its statement active on
+        # the shared connection. Committing with an active statement fails with
+        # "cannot commit transaction - SQL statements in progress", and the
+        # failed commit leaves the transaction open, wedging every later query.
+        for pragma in (
+            "PRAGMA journal_mode=WAL",
+            "PRAGMA foreign_keys=ON",
+            "PRAGMA synchronous=NORMAL",
+            # Negative value = pages in KiB (4000KB ~ 4MB) -> actually let's use pages. Positive = pages. 4000 pages * 4KB = 16MB.
+            "PRAGMA cache_size=-4000",
+            "PRAGMA temp_store=MEMORY",
+            "PRAGMA mmap_size=33554432",  # 32MB memory mapping (Safe for 1GB VPS)
+            "PRAGMA page_size=4096",  # 4KB page size
+            "PRAGMA auto_vacuum=INCREMENTAL",  # Incremental vacuum
+        ):
+            cursor = await db.execute(pragma)
+            await cursor.fetchall()
 
     async def check_wal_integrity(self) -> bool:
         """Check WAL mode integrity and perform maintenance if needed.
@@ -95,12 +103,14 @@ class CoreDB:
                 mode = await cursor.fetchone()
                 if mode and mode[0] != "wal":
                     log.warning("Database not in WAL mode, attempting to enable...")
-                    await db.execute("PRAGMA journal_mode=WAL")
+                    cursor = await db.execute("PRAGMA journal_mode=WAL")
+                    await cursor.fetchall()
                     await db.commit()
 
                 # Perform WAL checkpoint to prevent WAL file from growing too large
                 # Using PASSIVE to avoid locking the database
-                await db.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                cursor = await db.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                await cursor.fetchall()
 
             # The check reads the whole file, so it runs outside the shared connection's lock
             result = await self._quick_check()
