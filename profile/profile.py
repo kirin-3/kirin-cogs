@@ -198,9 +198,16 @@ class Profile(commands.Cog):
 
         await view.wait()
         if view.submitted:
-            await self._update_profile_embed(member, view.data, picture=view.picture)
-            await self.config.member(member).profile_data.set(view.data)
-            await interaction.followup.send("Profile updated successfully!", ephemeral=True)
+            posted = await self._update_profile_embed(member, view.data, picture=view.picture)
+            await self.config.member(member).profile_data.set(view.data)  # kept either way, so a retry is prefilled
+            if posted:
+                await interaction.followup.send("Profile updated successfully!", ephemeral=True)
+            else:
+                await interaction.followup.send(
+                    "Your answers were saved, but I couldn't post your profile: the profile channel is missing "
+                    "or I can't post there. Please tell staff, then edit your profile again to post it.",
+                    ephemeral=True,
+                )
 
     async def handle_delete_request(self, interaction: discord.Interaction):
         if not isinstance(interaction.user, discord.Member) or interaction.guild is None:
@@ -220,18 +227,13 @@ class Profile(commands.Cog):
 
         await view.wait()
         if view.value:
-            # Delete message
-            channel = await self.get_profile_channel(guild)
-            if channel and user_conf.get("message_id"):
-                try:
-                    msg = channel.get_partial_message(user_conf["message_id"])
-                    await msg.delete()
-                except discord.NotFound:
-                    pass
-                except Exception as e:
-                    log.error(f"Failed to delete profile message for {member.id}: {e}")
-
-            await self.config.member(member).clear()
+            if not await self._remove_profile(guild, member.id):
+                # The post may still be up; keep the record so it isn't orphaned.
+                return await interaction.followup.send(
+                    "I couldn't take down your profile post, so nothing was deleted. "
+                    "Please try again later or tell staff.",
+                    ephemeral=True,
+                )
             await self.config.member(member).last_delete.set(datetime.now(UTC).timestamp())
             await interaction.followup.send("Your profile has been deleted.", ephemeral=True)
 
@@ -252,14 +254,14 @@ class Profile(commands.Cog):
         if message_id:
             channel = await self.get_profile_channel(guild)
             if channel is None:
-                log.warning(f"Profile channel not found; keeping the profile of departed user {user_id} for cleanup")
+                log.warning(f"Profile channel not found; keeping the profile of user {user_id} for cleanup")
                 return False
             try:
                 await channel.get_partial_message(message_id).delete()
             except discord.NotFound:
                 pass
             except discord.HTTPException as e:
-                log.error(f"Failed to delete profile message of departed user {user_id}: {e}")
+                log.error(f"Failed to delete profile message of user {user_id}: {e}")
                 return False
         await member_group.profile_data.clear()
         await member_group.message_id.clear()
@@ -280,11 +282,15 @@ class Profile(commands.Cog):
 
     async def _update_profile_embed(
         self, user: discord.Member, data: ProfileData, picture: UploadedPicture | None = None
-    ):
-        """Post or edit the profile. `picture` is a new upload; otherwise the post's current picture is kept."""
+    ) -> bool:
+        """Post or edit the profile. `picture` is a new upload; otherwise the post's current picture is kept.
+
+        Returns False if nothing could be published.
+        """
         channel = await self.get_profile_channel(user.guild)
         if not channel:
-            return
+            log.warning(f"Profile channel not found; could not post the profile of {user.id}")
+            return False
         message_id = await self.config.member(user).message_id()
 
         embed = discord.Embed(title=data.get("name", user.display_name), color=user.color, timestamp=datetime.now(UTC))
@@ -335,16 +341,24 @@ class Profile(commands.Cog):
             try:
                 msg = channel.get_partial_message(message_id)
                 await msg.edit(content=content, embed=embed, attachments=files())
-                return
+                return True
             except discord.NotFound:
                 pass
+            except discord.HTTPException as e:
+                log.error(f"Failed to edit the profile post of {user.id}: {e}")
+                return False
 
         # Create new message if none exists or old one was deleted
-        new_msg = await channel.send(content=content, embed=embed, files=files())
+        try:
+            new_msg = await channel.send(content=content, embed=embed, files=files())
+        except discord.HTTPException as e:
+            log.error(f"Failed to post the profile of {user.id}: {e}")
+            return False
         await self.config.member(user).message_id.set(new_msg.id)
 
         # After sending a profile, we might need to repost the sticky
         await self._maybe_repost_sticky(user.guild, channel)
+        return True
 
     # Sticky Logic
     @commands.Cog.listener()

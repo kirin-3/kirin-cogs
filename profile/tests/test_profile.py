@@ -50,7 +50,10 @@ def _make_profile_config_mock() -> MagicMock:
     member_group.message_id = _make_config_attr(None)
     member_group.last_delete = _make_config_attr(None)
     member_group.clear = AsyncMock()
+    member_group.profile_data.clear = AsyncMock()
+    member_group.message_id.clear = AsyncMock()
     config.member = MagicMock(return_value=member_group)
+    config.member_from_ids = MagicMock(return_value=member_group)
 
     config.all_users = AsyncMock(return_value={})
     return config
@@ -204,6 +207,8 @@ async def test_handle_delete_request_confirmed_deletes_message(cog: Profile, con
     message.delete = AsyncMock()
     channel.get_partial_message.return_value = message
     cog.get_profile_channel = AsyncMock(return_value=channel)  # type: ignore[method-assign]
+    config_mock.member.return_value.message_id = AsyncMock(return_value=999)
+    config_mock.member.return_value.message_id.clear = AsyncMock()
 
     fake_view = MagicMock()
     fake_view.wait = AsyncMock()
@@ -213,9 +218,70 @@ async def test_handle_delete_request_confirmed_deletes_message(cog: Profile, con
         await cog.handle_delete_request(interaction)
 
     message.delete.assert_awaited_once()
-    config_mock.member.return_value.clear.assert_awaited_once()
+    config_mock.member.return_value.profile_data.clear.assert_awaited_once()
+    config_mock.member.return_value.message_id.clear.assert_awaited_once()
     config_mock.member.return_value.last_delete.set.assert_awaited_once()
     interaction.followup.send.assert_awaited_once_with("Your profile has been deleted.", ephemeral=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("channel_found", [True, False])
+async def test_handle_delete_request_keeps_record_when_post_cannot_be_removed(
+    cog: Profile, config_mock: MagicMock, channel_found: bool
+) -> None:
+    member = _make_member()
+    interaction = _make_interaction(member, guild=MagicMock(spec=discord.Guild))
+    config_mock.member.return_value.all = AsyncMock(
+        return_value={"profile_data": {"name": "Alice"}, "message_id": 999, "last_delete": None}
+    )
+    config_mock.member.return_value.message_id = AsyncMock(return_value=999)
+    config_mock.member.return_value.message_id.clear = AsyncMock()
+    channel = MagicMock(spec=discord.TextChannel)
+    message = MagicMock(spec=discord.Message)
+    message.delete = AsyncMock(side_effect=discord.Forbidden(MagicMock(status=403), "no"))
+    channel.get_partial_message.return_value = message
+    cog.get_profile_channel = AsyncMock(return_value=channel if channel_found else None)  # type: ignore[method-assign]
+    fake_view = MagicMock()
+    fake_view.wait = AsyncMock()
+    fake_view.value = True
+
+    with patch("profile.profile.ProfileDeleteConfirmView", return_value=fake_view):
+        await cog.handle_delete_request(interaction)
+
+    config_mock.member.return_value.profile_data.clear.assert_not_awaited()
+    config_mock.member.return_value.message_id.clear.assert_not_awaited()
+    config_mock.member.return_value.last_delete.set.assert_not_awaited()
+    assert "nothing was deleted" in interaction.followup.send.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_create_edit_reports_when_nothing_was_posted(cog: Profile, config_mock: MagicMock) -> None:
+    member = _make_member()
+    interaction = _make_interaction(member, guild=MagicMock(spec=discord.Guild))
+    fake_view = MagicMock()
+    fake_view.wait = AsyncMock()
+    fake_view.submitted = True
+    fake_view.data = {"name": "Alice", "age": 28}
+    fake_view.picture = None
+    cog.get_profile_channel = AsyncMock(return_value=None)  # type: ignore[method-assign]
+
+    with patch("profile.profile.ProfileBuilderView", return_value=fake_view):
+        await cog.handle_create_edit(interaction)
+
+    config_mock.member.return_value.profile_data.set.assert_awaited_once_with(fake_view.data)
+    assert "couldn't post your profile" in interaction.followup.send.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_update_profile_embed_returns_false_when_send_fails(cog: Profile, config_mock: MagicMock) -> None:
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock(side_effect=discord.Forbidden(MagicMock(status=403), "no"))
+    cog.get_profile_channel = AsyncMock(return_value=channel)  # type: ignore[method-assign]
+    config_mock.member.return_value.message_id = AsyncMock(return_value=None)
+    config_mock.member.return_value.message_id.set = AsyncMock()
+
+    assert await cog._update_profile_embed(_make_member(), {"name": "Alice"}) is False
+    config_mock.member.return_value.message_id.set.assert_not_awaited()
 
 
 @pytest.mark.asyncio
