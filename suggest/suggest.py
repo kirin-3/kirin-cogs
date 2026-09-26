@@ -28,6 +28,8 @@ def vote_emoji_kind(emoji: object) -> str | None:
     Recognizes both the configured custom emojis and the Unicode fallbacks
     used when the custom emojis are unavailable.
     """
+    if isinstance(emoji, discord.PartialEmoji) and emoji.id is None:
+        emoji = emoji.name  # a Unicode emoji, as raw reaction events carry it
     if isinstance(emoji, (discord.Emoji, discord.PartialEmoji)):
         if emoji.id == UP_EMOJI_ID:
             return "up"
@@ -127,6 +129,8 @@ class Suggest(commands.Cog):
         channel = await self.get_suggestion_channel()
         if not channel:
             return await interaction.response.send_message("Suggestion channel not found.", ephemeral=True)
+        # Acknowledge first: posting and reacting below can outlast the interaction's 3-second window.
+        await interaction.response.defer(ephemeral=True)
 
         # Allocate the identifier atomically per guild so concurrent
         # submissions can never share or overwrite an identifier.
@@ -146,7 +150,11 @@ class Suggest(commands.Cog):
         )
         embed.set_footer(text="Pending Review")
 
-        msg = await channel.send(embed=embed)
+        try:
+            msg = await channel.send(embed=embed)
+        except discord.HTTPException as e:
+            log.error(f"Failed to post suggestion #{s_id}: {e}")
+            return await interaction.followup.send("I couldn't post your suggestion. Please try again.", ephemeral=True)
 
         # Add reactions
         try:
@@ -163,7 +171,7 @@ class Suggest(commands.Cog):
             data["msg_id"] = msg.id
             data["status"] = "pending"
 
-        await interaction.response.send_message("Suggestion submitted!", ephemeral=True)
+        await interaction.followup.send("Suggestion submitted!", ephemeral=True)
         await self._maybe_repost_sticky(channel)
 
     @commands.command()  # pyright: ignore[reportArgumentType]
@@ -258,29 +266,33 @@ class Suggest(commands.Cog):
             pass
 
     @commands.Cog.listener()
-    async def on_reaction_add(self, reaction: discord.Reaction, user: discord.Member):
-        if user.bot:
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        """Keep one vote per user. Raw, so suggestions that aren't in the message cache are covered too."""
+        if payload.channel_id != SUGGEST_CHANNEL_ID or (payload.member is not None and payload.member.bot):
             return
-        if reaction.message.channel.id != SUGGEST_CHANNEL_ID:
-            return
-
-        # Only voting reactions matter (custom emojis or Unicode fallbacks)
-        added_kind = vote_emoji_kind(reaction.emoji)
+        added_kind = vote_emoji_kind(payload.emoji)
         if added_kind is None:
             return
+        channel = self.bot.get_channel(payload.channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            return
 
-        # Ensure mutually exclusive
-        msg = reaction.message
-        for r in msg.reactions:
-            if r.emoji == reaction.emoji:
-                continue
+        msg = discord.utils.get(self.bot.cached_messages, id=payload.message_id)
+        if msg is None:
+            try:
+                msg = await channel.fetch_message(payload.message_id)
+            except discord.HTTPException:
+                return
 
-            # Check if this other reaction is a voting emoji too
-            if vote_emoji_kind(r.emoji) is not None:
-                # Check if user reacted to this one too
-                async for u in r.users():
-                    if u.id == user.id:
-                        await r.remove(user)
+        # Take the user off every vote of the other kind; removing a reaction they didn't add is a no-op.
+        voter = discord.Object(payload.user_id)
+        for reaction in msg.reactions:
+            kind = vote_emoji_kind(reaction.emoji)
+            if kind is not None and kind != added_kind:
+                try:
+                    await msg.remove_reaction(reaction.emoji, voter)
+                except discord.HTTPException as e:
+                    log.warning(f"Could not remove the opposite vote of {payload.user_id} on {msg.id}: {e}")
 
     # Sticky Logic
     @commands.Cog.listener()
