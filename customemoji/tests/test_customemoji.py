@@ -176,7 +176,7 @@ async def _endless_stream(request: web.Request) -> web.StreamResponse:
 async def test_download_image_success(cog: Any) -> None:
     server = await _serve({"/ok.png": _png})
     try:
-        data = await cog.download_image(str(server.make_url("/ok.png")))
+        data = await cog._fetch(str(server.make_url("/ok.png")))
     finally:
         await cog.cog_unload()
         await server.close()
@@ -189,7 +189,7 @@ async def test_download_image_non_200(cog: Any) -> None:
     server = await _serve({"/missing.png": _missing})
     try:
         with pytest.raises(ValueError, match="Failed to download"):
-            await cog.download_image(str(server.make_url("/missing.png")))
+            await cog._fetch(str(server.make_url("/missing.png")))
     finally:
         await cog.cog_unload()
         await server.close()
@@ -200,7 +200,7 @@ async def test_download_image_rejects_declared_size(cog: Any) -> None:
     server = await _serve({"/huge.png": _declared_huge})
     try:
         with pytest.raises(ValueError, match="too large"):
-            await cog.download_image(str(server.make_url("/huge.png")))
+            await cog._fetch(str(server.make_url("/huge.png")))
     finally:
         await cog.cog_unload()
         await server.close()
@@ -211,7 +211,7 @@ async def test_download_image_caps_while_reading(cog: Any) -> None:
     server = await _serve({"/endless.png": _endless_stream})
     try:
         with pytest.raises(ValueError, match="too large"):
-            await asyncio.wait_for(cog.download_image(str(server.make_url("/endless.png"))), timeout=5)
+            await asyncio.wait_for(cog._fetch(str(server.make_url("/endless.png"))), timeout=5)
     finally:
         await cog.cog_unload()
         await server.close()
@@ -223,7 +223,48 @@ async def test_download_image_does_not_use_bot_session(cog: Any, bot_mock: Magic
     del bot_mock.session
     server = await _serve({"/ok.png": _png})
     try:
-        assert await cog.download_image(str(server.make_url("/ok.png")))
+        assert await cog._fetch(str(server.make_url("/ok.png")))
+    finally:
+        await cog.cog_unload()
+        await server.close()
+
+
+async def _redirect(request: web.Request) -> web.Response:
+    raise web.HTTPFound("http://169.254.169.254/latest/meta-data/")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/a.png",
+        "https://example.com/a.png",
+        "http://cdn.discordapp.com/emojis/1.png",  # not https
+        "https://cdn.discordapp.com@169.254.169.254/a.png",  # userinfo trick
+        "https://cdn.discordapp.com.evil.test/a.png",
+        "file:///etc/passwd",
+    ],
+)
+async def test_download_image_refuses_non_discord_urls(cog: Any, url: str) -> None:
+    cog._fetch = AsyncMock()
+    with pytest.raises(ValueError, match="Only Discord image links"):
+        await cog.download_image(url)
+    cog._fetch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host", ["cdn.discordapp.com", "media.discordapp.net"])
+async def test_download_image_allows_discord_cdn(cog: Any, host: str) -> None:
+    cog._fetch = AsyncMock(return_value=b"img")
+    assert await cog.download_image(f"https://{host}/emojis/1.png") == b"img"
+
+
+@pytest.mark.asyncio
+async def test_fetch_does_not_follow_redirects(cog: Any) -> None:
+    server = await _serve({"/r.png": _redirect})
+    try:
+        with pytest.raises(ValueError, match="Failed to download"):
+            await cog._fetch(str(server.make_url("/r.png")))
     finally:
         await cog.cog_unload()
         await server.close()

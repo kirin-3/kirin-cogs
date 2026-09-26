@@ -7,7 +7,7 @@ Allows users with a specific role to create and manage their own custom emojis o
 - **Slot System**: Limits how many emojis each user can own (default 2).
 - **Flexible**: Upload images or copy existing emojis from other servers.
 - **Permission-based management**: Moderators can delete any emoji and view others' emoji lists.
-- **Image validation**: Checks image type and size (max 256KB) to comply with Discord limits. Downloads from URLs or emojis stop as soon as they pass 256KB.
+- **Image validation**: Checks image type and size (max 256KB) to comply with Discord limits. Downloads from Discord image links or emojis stop as soon as they pass 256KB.
 - **Auto-cleanup**: When an emoji is deleted outside the bot (e.g. in Server Settings), its record is dropped right away and the owner's slot is freed.
 - **Cooldowns**: Commands have cooldowns to prevent spam.
 
@@ -19,10 +19,10 @@ Allows users with a specific role to create and manage their own custom emojis o
 - `[p]ce resetlimit <user>`: Reset a user's limit to the default (2).
 
 ### User Commands
-- `[p]ce create <name> [emoji_or_url]`: Create a new emoji. You can attach an image or provide an existing emoji/URL.
+- `[p]ce create <name> [emoji_or_url]`: Create a new emoji. You can attach an image or provide an existing emoji or a Discord image link (`cdn.discordapp.com` / `media.discordapp.net`; other hosts are refused).
   - With attachment: `[p]ce create my_emoji` (attach image)
   - With existing emoji: `[p]ce create my_emoji 😄`
-  - With URL: `[p]ce create my_emoji https://example.com/image.png`
+  - With URL: `[p]ce create my_emoji https://cdn.discordapp.com/attachments/.../image.png`
 - `[p]ce delete <emoji>`: Delete one of your emojis.
 - `[p]ce rename <emoji> <new_name>`: Rename one of your emojis.
 - `[p]ce list [user]`: List emojis owned by you or another user.

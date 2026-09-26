@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit
+
 import aiohttp
 import discord
 from redbot.core import Config, checks, commands
@@ -5,6 +7,8 @@ from redbot.core import Config, checks, commands
 # Discord's upload limit for custom emojis
 MAX_EMOJI_BYTES = 256 * 1024
 DOWNLOAD_TIMEOUT = aiohttp.ClientTimeout(total=15)
+# Only Discord's own CDN: an arbitrary URL would let users make the bot request internal addresses.
+ALLOWED_IMAGE_HOSTS = frozenset({"cdn.discordapp.com", "media.discordapp.net"})
 
 
 class CustomEmoji(commands.Cog):
@@ -73,9 +77,16 @@ class CustomEmoji(commands.Cog):
         return sum(1 for owner_id in ownership.values() if owner_id == user_id)
 
     async def download_image(self, url: str) -> bytes:
-        """Download image from URL, refusing anything over Discord's emoji size limit."""
+        """Download an image from Discord's CDN, refusing anything over Discord's emoji size limit."""
+        parts = urlsplit(url)
+        if parts.scheme != "https" or parts.hostname not in ALLOWED_IMAGE_HOSTS:
+            raise ValueError("Only Discord image links are supported. Attach the image or use an existing emoji.")
+        return await self._fetch(url)
+
+    async def _fetch(self, url: str) -> bytes:
         too_large = f"Image is too large (max {MAX_EMOJI_BYTES // 1024}KB)."
-        async with self._get_session().get(url) as response:
+        # No redirects: a CDN link must not bounce the request somewhere else.
+        async with self._get_session().get(url, allow_redirects=False) as response:
             if response.status != 200:
                 raise ValueError("Failed to download image.")
             if response.content_length is not None and response.content_length > MAX_EMOJI_BYTES:
@@ -158,11 +169,11 @@ class CustomEmoji(commands.Cog):
         """
         Create a new custom emoji.
 
-        You can upload an image attachment or provide an existing emoji/URL.
+        You can upload an image attachment or provide an existing emoji or Discord image link.
         Usage:
             [p]ce create my_emoji (with attachment)
             [p]ce create my_emoji <existing_emoji>
-            [p]ce create my_emoji https://example.com/image.png
+            [p]ce create my_emoji https://cdn.discordapp.com/attachments/...
         """
         guild = ctx.guild
         author = ctx.author
@@ -208,8 +219,7 @@ class CustomEmoji(commands.Cog):
             if isinstance(source, discord.PartialEmoji):
                 url = source.url
             elif isinstance(source, str):
-                # Basic URL validation could go here, strictly we trust download_image to fail if bad
-                url = source
+                url = source  # download_image only accepts Discord CDN links
 
             if url:
                 try:
