@@ -118,6 +118,26 @@ else:
     await ctx.send("You do not have enough currency.")
 ```
 
+## Rank-card backgrounds and read-only views
+
+These are what the Dashboard cog's member and staff pages use. `buy_background` and `use_background` are the only ones
+that change anything; the rest never write to the database.
+
+| Method | Returns |
+| --- | --- |
+| `buy_background(member, key) -> str` | Buys a visible background, charges at most once, equips it, and returns its name. Raises `ValueError` with the reason (not found, not for sale, already owned, not enough currency). |
+| `use_background(member, key) -> str` | Equips an owned background, hidden ones included. Raises `ValueError` if it isn't owned. |
+| `equipped_backgrounds(user_ids) -> dict[int, str]` | Each user's equipped background key, `"default"` when none, in one query. |
+| `background_images(key) -> tuple[str, str]` | `(animated, still)` URLs for the web: `preview` → `url`, and `still` → `preview` → `url`. |
+| `backgrounds_for(member) -> list[dict]` | Every buyable background plus hidden ones the member owns, each with `key`, `name`, `price`, `animated`, `still`, `owned` and `equipped`. |
+| `xp_ranking(guild) -> list[tuple[int, int]]` | `(user_id, xp)` of current non-bot members, best first, top 300, cached for a minute (shared with `level leaderboard`). |
+| `level_stats(xp) -> LevelStats` | Level, XP into the level, XP needed, and total. |
+| `member_summary(guild, user_id, *, transactions=20, details=False) -> dict` | Wallet, bank, `LevelStats`, rank (`None` past 300 or without XP), club, equipped background and recent transactions. `details=True` adds rakeback, bet stats, shop inventory and owned backgrounds. |
+| `richest(guild, limit=25) -> list[tuple[int, int]]` | `(user_id, wallet + bank)` of current non-bot members. |
+| `house_stats() -> dict` | The `[p]unicornia yieldstats` figures as numbers: per-game RTP against the target, the yield pool and recent dividend runs. |
+| `config_snapshot(guild) -> dict` | The settings, channels, whitelists and level rewards, without the Nadeko migration path, market message ID or on/off switches. |
+| `stocks() -> list[dict]` | Every listed stock. |
+
 ## Best Practices
 
 1.  **Check for Cog Existence**: Always check if `bot.get_cog("Unicornia")` returns a value before attempting to call methods.

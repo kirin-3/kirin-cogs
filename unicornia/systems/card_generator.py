@@ -120,7 +120,7 @@ class XPCardGenerator:
                     "default": {
                         "name": "Default Background",
                         "price": 0,
-                        "url": "https://unicornia.net/botimages/defaultxp1.png",
+                        "url": "https://unicornia.net/images/defaultxp1.png",
                         "preview": "",
                         "desc": "Free default background for everyone",
                     }

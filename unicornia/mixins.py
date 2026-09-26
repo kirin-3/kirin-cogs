@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    import discord
     from redbot.core import Config
     from redbot.core.bot import Red
 
@@ -51,3 +52,10 @@ class UnicorniaMixinBase:
         market_system: MarketSystem
 
         def invalidate_whitelist_cache(self, guild_id: int) -> None: ...
+
+        @staticmethod
+        def _normalize_whitelist(raw: object) -> dict[str, list[int]]: ...
+
+        async def buy_background(self, member: discord.abc.User, key: str) -> str: ...
+
+        async def use_background(self, member: discord.abc.User, key: str) -> str: ...

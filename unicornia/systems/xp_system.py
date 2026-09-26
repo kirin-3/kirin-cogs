@@ -20,6 +20,8 @@ from .card_generator import XPCardGenerator
 
 log = logging.getLogger("red.kirin_cogs.unicornia.xp")
 
+LEADERBOARD_TTL = 60  # seconds a guild's XP ranking is reused
+
 
 class XPSystem:
     """Handles XP gain, leveling, and rewards"""
@@ -39,6 +41,8 @@ class XPSystem:
         # Entries contain effective XP (including pending messages) and a cumulative threshold.
         self.user_xp_cache: OrderedDict[tuple[int, int], dict[str, int]] = OrderedDict()
         self.user_xp_cache_size = 5000
+        # guild_id -> (time.monotonic(), ranked (user_id, xp) of current non-bot members, top 300)
+        self._leaderboard_cache: dict[int, tuple[float, list[tuple[int, int]]]] = {}
 
         self._voice_xp_task = None
         self._message_xp_task = None
@@ -605,6 +609,12 @@ class XPSystem:
         Returns:
             List of (UserId, Xp) tuples.
         """
+        # The guild's full XP scan (80k rows live, ~65 ms under the only DB connection) runs at most once a minute.
+        now = time.monotonic()
+        cached = self._leaderboard_cache.get(guild.id)
+        if cached is not None and now - cached[0] < LEADERBOARD_TTL:
+            return list(cached[1])
+
         all_users = await self.db.xp.get_all_guild_xp(guild.id)
 
         filtered_users = []
@@ -612,9 +622,11 @@ class XPSystem:
             member = guild.get_member(user_id)
             if member and not member.bot:
                 filtered_users.append((user_id, xp))
+                if len(filtered_users) == 300:  # 30 pages
+                    break
 
-        # Limit to 30 pages (300 users)
-        return filtered_users[:300]
+        self._leaderboard_cache[guild.id] = (now, filtered_users)
+        return list(filtered_users)
 
     def get_progress_bar(self, current_xp: int, required_xp: int, length: int = 10) -> str:
         """Generate a progress bar for XP.

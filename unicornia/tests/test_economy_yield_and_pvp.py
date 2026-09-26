@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from datetime import datetime, timedelta
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -662,6 +663,7 @@ async def test_owner_dashboard_is_aggregate_only_and_handles_cold_data() -> None
         db=SimpleNamespace(economy=economy_repo),
         config=SimpleNamespace(currency_symbol=AsyncMock(return_value="$")),
     )
+    handler.house_stats = partial(AdminCommands.house_stats, cast(Any, handler))
     ctx = SimpleNamespace(send=AsyncMock())
     callback = cast(Any, command.callback)
     await callback(handler, ctx)

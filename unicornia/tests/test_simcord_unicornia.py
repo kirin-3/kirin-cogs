@@ -197,6 +197,7 @@ async def test_messages_gain_xp_only_in_included_channels(red_env: simcord.Env) 
     await member.send(channel, "hello again")
     # Message XP is buffered and flushed to SQLite by a 30s background task.
     await red_env.advance_time(31)
+    _cog(red_env).xp_system._leaderboard_cache.clear()  # the ranking is otherwise reused for a minute
     await member.send(channel, "!level lb")
     reply = _bot_messages(channel, bot)[-1]
     assert reply.embeds, "expected a leaderboard embed"
@@ -227,4 +228,46 @@ async def test_command_whitelist_restricts_balance_to_one_channel(red_env: simco
 
     await member.send(bots, "!balance")
     assert _bot_messages(bots, bot)[-1].embeds
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_xpshop_buy_and_use_reply_as_before(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild, _owner = _guild_with_owner(red_env)
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    cog = _cog(red_env)
+    cog.xp_system.card_generator.xp_config = {
+        "shop": {
+            "bgs": {
+                "default": {"name": "Default Background", "price": 0, "url": "https://x/default.png"},
+                "astolfo": {"name": "Astolfo", "price": 20_000, "url": "https://x/Astolfo.gif"},
+                "aki": {"name": "Aki", "price": 20_000, "url": "https://x/aki.gif", "hidden": True},
+            }
+        }
+    }
+    symbol = await cog.config.currency_symbol()
+
+    await member.send(channel, "!xpshop buy astolfo")
+    assert _last_text(channel, bot).endswith("Insufficient Slut points! You have 0 but need 20,000.")
+
+    await cog.add_balance(member.id, 25_000)
+    await member.send(channel, "!xpshop buy astolfo")
+    assert _last_text(channel, bot) == (
+        f"✅ Successfully purchased **Astolfo** for 20,000 {symbol}!"
+        "\n🌟 Auto-equipped **Astolfo** as your new background!"
+    )
+    await member.send(channel, "!xpshop buy astolfo")
+    assert _last_text(channel, bot).endswith("You already own this background!")
+    await member.send(channel, "!xpshop buy aki")
+    assert _last_text(channel, bot).endswith("Background `aki` is not available for purchase.")
+
+    await member.send(channel, "!xpshop use aki")
+    assert "You don't own the background `aki`." in _last_text(channel, bot)
+    await member.send(channel, "!xpshop use default")
+    assert _last_text(channel, bot) == "✅ Now using **Default Background** as your XP background!"
+    assert await cog.equipped_backgrounds([member.id]) == {member.id: "default"}
+    assert await cog.get_balance(member.id) == (5_000, 0)
     simcord.assert_no_errors(red_env)

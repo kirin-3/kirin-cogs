@@ -1,3 +1,5 @@
+from typing import Any
+
 import discord
 from redbot.core import checks, commands
 from redbot.core.utils.chat_formatting import box, humanize_number
@@ -9,6 +11,15 @@ from ..views import UnicorniaHelpView
 
 RTP_TOLERANCE = 0.005
 LOW_CONFIDENCE_ROUNDS = 100
+# Left out of the dashboard's config view: a file path, internal bookkeeping, and the on/off switches nothing reads
+HIDDEN_SETTINGS = {
+    "nadeko_db_path",
+    "decay_last_run",
+    "xp_enabled",
+    "economy_enabled",
+    "gambling_enabled",
+    "shop_enabled",
+}
 
 # Integer settings where 0 would remove the limit entirely (a daily every minute, decay every minute) or spawn nothing
 MIN_ONE_SETTINGS = {
@@ -70,28 +81,24 @@ class AdminCommands(UnicorniaMixinBase):
     @checks.is_owner()
     async def yield_stats_dashboard(self, ctx):
         """Report aggregate payout performance and yield-pool flows."""
-        stats = await self.economy_system.get_gambling_stats(None)
-        pool = await self.db.economy.get_yield_pool()
-        runs = await self.db.economy.get_recent_dividend_runs()
+        house = await self.house_stats()
+        pool, runs = house["pool"], house["runs"]
         currency = await self.config.currency_symbol()
 
         lines = ["## House Economy Dashboard", "### Gambling RTP"]
-        if not stats:
+        if not house["games"]:
             lines.append("No post-upgrade gambling data has accumulated yet.")
-        for row in stats:
-            feature, _legacy_bet, _legacy_win, _legacy_loss, rounds, staked, paid, rakeback, epoch = row
-            realized = (int(paid) + int(rakeback)) / int(staked) if int(staked) else None
-            if realized is None:
+        for game in house["games"]:
+            if game["rtp"] is None:
                 rtp_text = "unavailable"
                 marker = "⚪"
             else:
-                deviation = realized - RTP_TARGET
-                marker = "🔴" if abs(deviation) > RTP_TOLERANCE else "🟢"
-                rtp_text = f"{realized:.3%} ({deviation:+.3%} vs target)"
-            confidence = " — low confidence" if int(rounds) < LOW_CONFIDENCE_ROUNDS else ""
+                marker = "🔴" if game["off_target"] else "🟢"
+                rtp_text = f"{game['rtp']:.3%} ({game['deviation']:+.3%} vs target)"
+            confidence = " — low confidence" if game["low_confidence"] else ""
             lines.append(
-                f"- {marker} **{feature}**: {int(rounds):,} rounds, "
-                f"{currency}{int(staked):,} staked, RTP {rtp_text}{confidence}; epoch {epoch or 'not started'}"
+                f"- {marker} **{game['feature']}**: {game['rounds']:,} rounds, "
+                f"{currency}{game['staked']:,} staked, RTP {rtp_text}{confidence}; epoch {game['epoch'] or 'not started'}"
             )
 
         balance = int(pool["balance"])
@@ -119,6 +126,52 @@ class AdminCommands(UnicorniaMixinBase):
         else:
             lines.append("No distributions have completed yet.")
         await _send_lines_in_chunks(ctx, lines)
+
+    async def house_stats(self) -> dict[str, Any]:
+        """The yieldstats figures: per-game RTP against the target, the yield pool and recent dividend runs."""
+        games = []
+        for row in await self.economy_system.get_gambling_stats(None):
+            feature, _legacy_bet, _legacy_win, _legacy_loss, rounds, staked, paid, rakeback, epoch = row
+            rtp = (int(paid) + int(rakeback)) / int(staked) if int(staked) else None
+            deviation = None if rtp is None else rtp - RTP_TARGET
+            games.append(
+                {
+                    "feature": feature,
+                    "rounds": int(rounds),
+                    "staked": int(staked),
+                    "rtp": rtp,
+                    "deviation": deviation,
+                    "off_target": deviation is not None and abs(deviation) > RTP_TOLERANCE,
+                    "low_confidence": int(rounds) < LOW_CONFIDENCE_ROUNDS,
+                    "epoch": epoch,
+                }
+            )
+        return {
+            "target": RTP_TARGET,
+            "games": games,
+            "pool": await self.db.economy.get_yield_pool(),
+            "runs": await self.db.economy.get_recent_dividend_runs(),
+        }
+
+    async def config_snapshot(self, guild: discord.Guild) -> dict[str, Any]:
+        """What the config, status and guild commands show, for reading only. No file paths or message IDs."""
+        settings = await self.config.all()
+        for key in HIDDEN_SETTINGS:
+            settings.pop(key, None)
+        generation_channels = settings.pop("generation_channels", [])
+        guild_settings = await self.config.guild(guild).all()
+        return {
+            "settings": settings,
+            "generation_channels": generation_channels if isinstance(generation_channels, list) else [],
+            "xp_channels": guild_settings.get("xp_included_channels") or [],
+            "double_xp_channels": guild_settings.get("xp_double_channels") or [],
+            "excluded_roles": guild_settings.get("excluded_roles") or [],
+            "command_whitelist": self._normalize_whitelist(guild_settings.get("command_whitelist")),
+            "system_whitelist": self._normalize_whitelist(guild_settings.get("system_whitelist")),
+            "market_channel": guild_settings.get("market_channel"),
+            "role_rewards": await self.db.xp.get_all_xp_role_rewards(guild.id),
+            "currency_rewards": await self.db.xp.get_xp_currency_rewards(guild.id),
+        }
 
     @unicornia_group.group(name="migration")
     @checks.is_owner()

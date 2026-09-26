@@ -664,75 +664,20 @@ class ShopCommands(UnicorniaMixinBase):
         """
 
         try:
-            # Get background info
-            items = self.xp_system.card_generator.get_available_backgrounds()
-            price = self.xp_system.card_generator.get_background_price(item_key)
-
-            if item_key not in items:
-                await ctx.reply(
-                    f"<a:zz_NoTick:729318761655435355> Background `{item_key}` not found.", mention_author=False
-                )
-                return
-
-            bg_data = items[item_key]
-            if bg_data.get("hidden", False):
-                await ctx.reply(
-                    f"<a:zz_NoTick:729318761655435355> Background `{item_key}` is not available for purchase.",
-                    mention_author=False,
-                )
-                return
-
-            if price == -1:
-                await ctx.reply(
-                    f"<a:zz_NoTick:729318761655435355> Background `{item_key}` is no longer available for purchase.",
-                    mention_author=False,
-                )
-                return
-
-            # Check balance
-            user_balance = await self.db.economy.get_user_currency(ctx.author.id)
-            if user_balance < price:
-                currency_symbol = await self.config.currency_symbol()
-                await ctx.reply(
-                    f"<a:zz_NoTick:729318761655435355> Insufficient Slut points! You have {user_balance:,} {currency_symbol} but need {price:,} {currency_symbol}.",
-                    mention_author=False,
-                )
-                return
-
-            # Attempt purchase (item_type_id = 1 for backgrounds)
-            success = await self.db.xp.purchase_xp_item(ctx.author.id, 1, item_key, price)
-
-            if success:
-                currency_symbol = await self.config.currency_symbol()
-                item_name = items[item_key].get("name", item_key)
-                price_text = "FREE" if price == 0 else f"{price:,} {currency_symbol}"
-
-                # Auto-equip logic
-                equip_success = await self.db.xp.set_active_xp_item(ctx.author.id, 1, item_key)
-
-                msg = f"✅ Successfully purchased **{item_name}** for {price_text}!"
-                if equip_success:
-                    msg += f"\n🌟 Auto-equipped **{item_name}** as your new background!"
-                else:
-                    msg += f"\n(Tip: Use `[p]xpshop use {item_key}` to equip it)"
-
-                await ctx.reply(msg, mention_author=False)
-            else:
-                # Check why it failed
-                if await self.db.xp.user_owns_xp_item(ctx.author.id, 1, item_key):
-                    await ctx.reply(
-                        "<a:zz_NoTick:729318761655435355> You already own this background!", mention_author=False
-                    )
-                else:
-                    currency_symbol = await self.config.currency_symbol()
-                    user_currency = await self.db.economy.get_user_currency(ctx.author.id)
-                    await ctx.reply(
-                        f"<a:zz_NoTick:729318761655435355> Insufficient Slut points! You have {user_currency:,} {currency_symbol} but need {price:,} {currency_symbol}.",
-                        mention_author=False,
-                    )
-
+            item_name = await self.buy_background(ctx.author, item_key)
+        except ValueError as e:
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> {e}", mention_author=False)
+            return
         except Exception as e:
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error processing purchase: {e}", mention_author=False)
+            return
+        price = self.xp_system.card_generator.get_background_price(item_key)
+        price_text = "FREE" if price == 0 else f"{price:,} {await self.config.currency_symbol()}"
+        await ctx.reply(
+            f"✅ Successfully purchased **{item_name}** for {price_text}!"
+            f"\n🌟 Auto-equipped **{item_name}** as your new background!",
+            mention_author=False,
+        )
 
     @xp_shop_group.command(name="use")
     async def shop_use(self, ctx, item_key: str):
@@ -747,29 +692,14 @@ class ShopCommands(UnicorniaMixinBase):
         """
 
         try:
-            # Check if user owns the background
-            if not await self.db.xp.user_owns_xp_item(ctx.author.id, 1, item_key):
-                await ctx.reply(
-                    f"<a:zz_NoTick:729318761655435355> You don't own the background `{item_key}`. Purchase it first with `[p]xpshop buy {item_key}`.",
-                    mention_author=False,
-                )
-                return
-
-            # Set as active
-            success = await self.db.xp.set_active_xp_item(ctx.author.id, 1, item_key)
-
-            if success:
-                backgrounds = self.xp_system.card_generator.get_available_backgrounds()
-                item_name = backgrounds.get(item_key, {}).get("name", item_key)
-                await ctx.reply(f"✅ Now using **{item_name}** as your XP background!", mention_author=False)
-            else:
-                await ctx.reply(
-                    f"<a:zz_NoTick:729318761655435355> Failed to set background. Make sure you own `{item_key}`.",
-                    mention_author=False,
-                )
-
+            item_name = await self.use_background(ctx.author, item_key)
+        except ValueError as e:
+            await ctx.reply(f"<a:zz_NoTick:729318761655435355> {e}", mention_author=False)
+            return
         except Exception as e:
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error setting background: {e}", mention_author=False)
+            return
+        await ctx.reply(f"✅ Now using **{item_name}** as your XP background!", mention_author=False)
 
     @xp_shop_group.command(name="owned", aliases=["inventory", "inv"])
     async def shop_owned(self, ctx):

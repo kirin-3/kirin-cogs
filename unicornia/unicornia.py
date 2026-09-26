@@ -12,6 +12,7 @@ import os
 from datetime import datetime
 from typing import Any, Literal
 
+import discord
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 
@@ -44,6 +45,7 @@ from .systems import (
     XPSystem,
     YieldSystem,
 )
+from .types import LevelStats
 
 log = logging.getLogger("red.kirin_cogs.unicornia")
 
@@ -427,6 +429,146 @@ class Unicornia(
         return await self.economy_system.remove_currency(
             user_id, amount, transaction_type="api_remove", extra=source, note=reason
         )
+
+    # --- rank-card backgrounds, shared by the xpshop commands and the member site ---------------------
+
+    def _backgrounds(self) -> dict[str, dict[str, Any]]:
+        if not self._check_systems_ready():
+            raise ValueError("Unicornia is still starting up. Try again in a minute.")
+        return self.xp_system.card_generator.get_available_backgrounds()
+
+    async def buy_background(self, member: discord.abc.User, key: str) -> str:
+        """Buy a visible background and equip it. Returns its name; raises ValueError with the reason it was refused.
+
+        purchase_xp_item checks ownership and charges in one block under the connection lock, so repeated or
+        concurrent buys charge at most once.
+        """
+        backgrounds = self._backgrounds()
+        background = backgrounds.get(key)
+        if background is None:
+            raise ValueError(f"Background `{key}` not found.")
+        if background.get("hidden", False):
+            raise ValueError(f"Background `{key}` is not available for purchase.")
+        price = background.get("price", -1)
+        if type(price) is not int or price < 0:
+            raise ValueError(f"Background `{key}` is no longer available for purchase.")
+        if await self.db.xp.user_owns_xp_item(member.id, 1, key):
+            raise ValueError("You already own this background!")
+        balance = await self.db.economy.get_user_currency(member.id)
+        if balance < price:
+            raise ValueError(f"Insufficient Slut points! You have {balance:,} but need {price:,}.")
+        if not await self.db.xp.purchase_xp_item(member.id, 1, key, price):
+            if await self.db.xp.user_owns_xp_item(member.id, 1, key):
+                raise ValueError("You already own this background!")
+            balance = await self.db.economy.get_user_currency(member.id)
+            raise ValueError(f"Insufficient Slut points! You have {balance:,} but need {price:,}.")
+        await self.db.xp.set_active_xp_item(member.id, 1, key)
+        return background.get("name", key)
+
+    async def use_background(self, member: discord.abc.User, key: str) -> str:
+        """Equip a background the member owns, hidden ones included. Returns its name; raises ValueError otherwise."""
+        backgrounds = self._backgrounds()
+        await self.db.xp.get_user_xp_items(member.id, 1)  # gives everyone the free default before checking
+        if not await self.db.xp.set_active_xp_item(member.id, 1, key):
+            raise ValueError(f"You don't own the background `{key}`. Purchase it first with `[p]xpshop buy {key}`.")
+        return backgrounds.get(key, {}).get("name", key)
+
+    async def equipped_backgrounds(self, user_ids: list[int]) -> dict[int, str]:
+        """Each user's equipped background key, in one read that writes nothing."""
+        if not self._check_systems_ready():
+            return dict.fromkeys(user_ids, "default")
+        return await self.db.xp.get_active_backgrounds(user_ids)
+
+    def background_images(self, key: str) -> tuple[str, str]:
+        """(animated, still) image URLs for the web: preview → url, and still → preview → url."""
+        backgrounds = self._backgrounds()
+        background = backgrounds.get(key) or backgrounds.get("default", {})
+        url = background.get("url") or ""
+        animated = background.get("preview") or url
+        return animated, background.get("still") or animated
+
+    async def backgrounds_for(self, member: discord.abc.User) -> list[dict[str, Any]]:
+        """The backgrounds page: every buyable background plus hidden ones the member owns, marked equipped/owned."""
+        backgrounds = self._backgrounds()
+        owned = await self.db.xp.get_owned_backgrounds(member.id)
+        equipped = (await self.db.xp.get_active_backgrounds([member.id]))[member.id]
+        listed = []
+        for key, background in backgrounds.items():
+            price = background.get("price", -1)
+            buyable = not background.get("hidden", False) and type(price) is int and price >= 0
+            if not buyable and key not in owned:
+                continue
+            animated, still = self.background_images(key)
+            listed.append(
+                {
+                    "key": key,
+                    "name": background.get("name", key),
+                    "price": price if type(price) is int else None,
+                    "animated": animated,
+                    "still": still,
+                    "owned": key in owned,
+                    "equipped": key == equipped,
+                }
+            )
+        return listed
+
+    # --- read-only views for the dashboard --------------------------------------------------------
+
+    async def xp_ranking(self, guild: discord.Guild) -> list[tuple[int, int]]:
+        """(user_id, xp) of the guild's current non-bot members, best first, top 300, up to a minute old."""
+        if not self._check_systems_ready():
+            return []
+        return await self.xp_system.get_filtered_leaderboard(guild)
+
+    @staticmethod
+    def level_stats(xp: int) -> LevelStats:
+        """LevelStats (level, level_xp, required_xp, total_xp) for a total XP amount."""
+        return DatabaseManager.calculate_level_stats(xp)
+
+    async def member_summary(
+        self, guild: discord.Guild, user_id: int, *, transactions: int = 20, details: bool = False
+    ) -> dict[str, Any]:
+        """One member's economy and XP, without writing anything. `details` adds what only staff see."""
+        wallet, bank = await self.economy_system.get_balance(user_id)
+        xp = await self.db.xp.get_user_xp(user_id, guild.id)
+        ranking = await self.xp_ranking(guild)
+        rank = next((index + 1 for index, (ranked_id, _) in enumerate(ranking) if ranked_id == user_id), None)
+        club = await self.db.club.get_club_by_member(user_id)
+        summary: dict[str, Any] = {
+            "wallet": wallet,
+            "bank": bank,
+            "xp": self.level_stats(xp),
+            "rank": rank,
+            "club": club[1] if club else None,
+            "background": (background := (await self.db.xp.get_active_backgrounds([user_id]))[user_id]),
+            "background_name": self._backgrounds().get(background, {}).get("name", background),
+            "transactions": [
+                {"type": kind, "amount": amount, "reason": reason, "date": date}
+                for kind, amount, reason, date in await self.db.economy.get_currency_transactions(user_id, transactions)
+            ],
+        }
+        if details:
+            summary["rakeback"] = await self.db.economy.get_rakeback_balance(user_id)
+            summary["bets"] = [
+                {"game": game, "bet": bet, "won": won, "lost": lost, "max_win": max_win}
+                for game, bet, won, lost, max_win in await self.db.economy.get_user_bet_stats(user_id)
+            ]
+            summary["inventory"] = [
+                {"name": name, "quantity": quantity, "price": price}
+                for _entry, quantity, _index, name, price, _type in await self.db.shop.get_user_inventory(
+                    guild.id, user_id
+                )
+            ]
+            summary["owned_backgrounds"] = sorted(await self.db.xp.get_owned_backgrounds(user_id))
+        return summary
+
+    async def richest(self, guild: discord.Guild, limit: int = 25) -> list[tuple[int, int]]:
+        """(user_id, wallet + bank) of the guild's richest current non-bot members."""
+        return await self.economy_system.get_filtered_leaderboard(guild, limit=limit)
+
+    async def stocks(self) -> list[dict[str, Any]]:
+        """Every listed stock (symbol, name, emoji, price, previous_price, ...)."""
+        return await self.db.stock.get_all_stocks()
 
     async def cog_check(self, ctx: commands.Context) -> bool:  # type: ignore[override]
         """Global check for all commands in this cog"""

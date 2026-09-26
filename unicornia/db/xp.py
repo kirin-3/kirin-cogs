@@ -319,6 +319,29 @@ class XPRepository:
             )
             await db.commit()
 
+    async def get_active_backgrounds(self, user_ids: list[int]) -> dict[int, str]:
+        """Each user's equipped background key, "default" when none is set. Read-only, unlike get_active_xp_item."""
+        result = dict.fromkeys(user_ids, "default")
+        if not user_ids:
+            return result
+        placeholders = ",".join("?" * len(user_ids))
+        async with self.db._get_connection() as db:
+            cursor = await db.execute(
+                f"SELECT UserId, ItemKey FROM XpShopOwnedItem WHERE ItemType = 1 AND IsUsing AND UserId IN ({placeholders})",
+                user_ids,
+            )
+            for user_id, key in await cursor.fetchall():
+                result[user_id] = key
+        return result
+
+    async def get_owned_backgrounds(self, user_id: int) -> set[str]:
+        """The background keys a user owns, "default" included. Read-only, unlike get_user_xp_items."""
+        async with self.db._get_connection() as db:
+            cursor = await db.execute(
+                "SELECT ItemKey FROM XpShopOwnedItem WHERE UserId = ? AND ItemType = 1", (user_id,)
+            )
+            return {"default"} | {row[0] for row in await cursor.fetchall()}
+
     async def user_owns_xp_item(self, user_id: int, item_type: int, item_key: str) -> bool:
         """Check if user owns a specific XP shop item.
 

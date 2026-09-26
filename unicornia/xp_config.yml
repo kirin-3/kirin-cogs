@@ -7,6 +7,8 @@
 #     url: https://example.com/image.png
 #     desc: Secret
 #     hidden: true
+# For the member site, `preview` (animated WebP) and `still` (first frame) are optional lighter versions of `url`;
+# make them with unicornia/tools/bg_webp.py. Rank cards always use `url`.
 
 shop:
   bgs:
@@ -15,127 +17,146 @@ shop:
       name: Default Background
       preview: ''
       price: 0
-      url: https://unicornia.net/botimages/defaultxp1.png
+      url: https://unicornia.net/images/defaultxp1.png
     aki-csm:
       desc: ''
       name: Aki
-      preview: ''
+      preview: https://unicornia.net/images/aki-csm.webp
+      still: https://unicornia.net/images/aki-csm-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/aki-csm.gif
+      url: https://unicornia.net/images/aki-csm.gif
       hidden: true
     archer:
       desc: ''
       name: Archer
-      preview: ''
+      preview: https://unicornia.net/images/archer.webp
+      still: https://unicornia.net/images/archer-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/archer.gif
+      url: https://unicornia.net/images/archer.gif
     astolfo:
       desc: ''
       name: Astolfo
-      preview: ''
+      preview: https://unicornia.net/images/Astolfo.webp
+      still: https://unicornia.net/images/Astolfo-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/Astolfo.gif
+      url: https://unicornia.net/images/Astolfo.gif
     butt:
       desc: ''
       name: Butt
-      preview: ''
+      preview: https://unicornia.net/images/butt.webp
+      still: https://unicornia.net/images/butt-still.webp
       price: 25000
-      url: https://unicornia.net/botimages/butt.gif
+      url: https://unicornia.net/images/butt.gif
     butts-jiggle:
       desc: ''
       name: Butts jiggle
-      preview: ''
+      preview: https://unicornia.net/images/butts-jiggle.webp
+      still: https://unicornia.net/images/butts-jiggle-still.webp
       price: 25000
-      url: https://unicornia.net/botimages/butts-jiggle.gif
+      url: https://unicornia.net/images/butts-jiggle.gif
     chainsawman:
       desc: ''
       name: Chainsaw Man
-      preview: ''
+      preview: https://unicornia.net/images/chainsawman.webp
+      still: https://unicornia.net/images/chainsawman-still.webp
       price: 15000
-      url: https://unicornia.net/botimages/chainsawman.gif
+      url: https://unicornia.net/images/chainsawman.gif
     dandadan:
       desc: ''
       name: Dan Da Dan
-      preview: ''
+      preview: https://unicornia.net/images/dandadan.webp
+      still: https://unicornia.net/images/dandadan-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/dandadan.gif
+      url: https://unicornia.net/images/dandadan.gif
     edward:
       desc: ''
       name: Edward Elric
-      preview: ''
+      preview: https://unicornia.net/images/edward-elric.webp
+      still: https://unicornia.net/images/edward-elric-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/edward-elric.gif
+      url: https://unicornia.net/images/edward-elric.gif
     hypno-femdom:
       desc: ''
       name: Femdom Hypno
-      preview: ''
+      preview: https://unicornia.net/images/hypno-femdom.webp
+      still: https://unicornia.net/images/hypno-femdom-still.webp
       price: 25000
-      url: https://unicornia.net/botimages/hypno-femdom.gif
+      url: https://unicornia.net/images/hypno-femdom.gif
     jinwoo:
       desc: ''
       name: jin-woo
-      preview: ''
+      preview: https://unicornia.net/images/jinwoo.webp
+      still: https://unicornia.net/images/jinwoo-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/jinwoo.gif
+      url: https://unicornia.net/images/jinwoo.gif
     light:
       desc: ''
       name: Light Yagami
-      preview: ''
+      preview: https://unicornia.net/images/light-yagami.webp
+      still: https://unicornia.net/images/light-yagami-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/light-yagami.gif
+      url: https://unicornia.net/images/light-yagami.gif
     lucy:
       desc: ''
       name: Lucyna Kushinada
-      preview: ''
+      preview: https://unicornia.net/images/Lucyna-Kushinada.webp
+      still: https://unicornia.net/images/Lucyna-Kushinada-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/Lucyna-Kushinada.gif
+      url: https://unicornia.net/images/Lucyna-Kushinada.gif
     makima1:
       desc: ''
       name: Makima 1
-      preview: ''
+      preview: https://unicornia.net/images/makima1.webp
+      still: https://unicornia.net/images/makima1-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/makima1.gif
+      url: https://unicornia.net/images/makima1.gif
     makima2:
       desc: ''
       name: Makima 2
-      preview: ''
+      preview: https://unicornia.net/images/makima2.webp
+      still: https://unicornia.net/images/makima2-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/makima2.gif
+      url: https://unicornia.net/images/makima2.gif
     makima3:
       desc: ''
       name: Makima 3
       preview: ''
       price: 20
-      url: https://unicornia.net/botimages/makima3.gif
+      url: https://unicornia.net/images/makima3.gif
       hidden: true
     pindown:
       desc: ''
       name: Pindown
-      preview: ''
+      preview: https://unicornia.net/images/pin-down.webp
+      still: https://unicornia.net/images/pin-down-still.webp
       price: 25000
-      url: https://unicornia.net/botimages/pin-down.gif
+      url: https://unicornia.net/images/pin-down.gif
     rintohsaka:
       desc: ''
       name: Rin Tohsaka
-      preview: ''
+      preview: https://unicornia.net/images/rintohsaka.webp
+      still: https://unicornia.net/images/rintohsaka-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/rintohsaka.gif
+      url: https://unicornia.net/images/rintohsaka.gif
     saber:
       desc: ''
       name: Saber
-      preview: ''
+      preview: https://unicornia.net/images/saber.webp
+      still: https://unicornia.net/images/saber-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/saber.gif
+      url: https://unicornia.net/images/saber.gif
     saber2:
       desc: ''
       name: Saber 2
-      preview: ''
+      preview: https://unicornia.net/images/saber2.webp
+      still: https://unicornia.net/images/saber2-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/saber2.gif
+      url: https://unicornia.net/images/saber2.gif
     shadow:
       desc: Shadow from the Eminence in Shadow
       name: Shadow
-      preview: ''
+      preview: https://unicornia.net/images/shadow1.webp
+      still: https://unicornia.net/images/shadow1-still.webp
       price: 20000
-      url: https://unicornia.net/botimages/shadow1.gif
+      url: https://unicornia.net/images/shadow1.gif
   isEnabled: true
