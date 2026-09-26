@@ -245,7 +245,10 @@ def plan_entries(state: State, now: float) -> list[Entry]:
         if not rec.get("charge"):
             continue  # free members and patrons never charged
         active = rec.get("status") == "active_patron"
-        reward = calculate_reward(Decimal(_int(rec.get("cents")) or 0) / 100)
+        periods = _int(rec.get("periods")) or 1
+        # Patreon reports what one charge paid: the yearly amount for annual pledges, so reward a monthly share.
+        monthly = (Decimal(_int(rec.get("cents")) or 0) / 100 / periods).quantize(_CENT, rounding=ROUND_HALF_UP)
+        reward = calculate_reward(monthly)
         entries.append(
             Entry(
                 "patreon_members",
@@ -254,7 +257,7 @@ def plan_entries(state: State, now: float) -> list[Entry]:
                 active,
                 active and reward > 0,
                 rec.get("anchor"),
-                _int(rec.get("periods")) or 1,
+                periods,
                 f"patron:patreon:{rid}:{rec['charge']}",
                 reward,
                 "Patreon pledge",

@@ -648,6 +648,18 @@ def test_cancel_at_period_end_stops_pay_but_keeps_role_until_period_end() -> Non
     assert not entry.active
 
 
+def test_annual_patreon_reward_uses_monthly_share_of_the_charge() -> None:
+    state = _state(
+        patreon_members={
+            "annual": {"charge": "c", "status": "active_patron", "cents": 2922, "periods": 12},
+            "monthly": {"charge": "c", "status": "active_patron", "cents": 250, "periods": 1},
+        }
+    )
+    annual, monthly = plan_entries(state, NOW)
+    assert annual.reward == calculate_reward(Decimal("2.44"))  # 29.22 / 12 = 2.435, rounded half-up
+    assert monthly.reward == calculate_reward(Decimal("2.50"))
+
+
 def test_staff_link_overrides_patreon_discord_connection() -> None:
     state = _state(
         links={"alice@example.com": 99},

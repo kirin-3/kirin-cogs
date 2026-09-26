@@ -6,7 +6,7 @@ Requires the Unicornia cog for currency. It works for one hard-coded server (`GU
 ## How it works
 
 - **Patreon**: every hour the cog reads the campaign's members. A new charge with status `Paid` starts a run of
-  periods: one for monthly pledges, twelve for annual ones (a reward every 30 days). The patron's Discord account comes
+  periods: one for monthly pledges, twelve for annual ones (a reward every 30 days, each for a twelfth of the charge). The patron's Discord account comes
   from Patreon's Discord connection.
 - **Buy Me a Coffee memberships and monthly donations**: reward every 30 days from the start while the membership is
   `active`; yearly memberships pay a twelfth of the amount each period. The role stays until the paid period ends.
