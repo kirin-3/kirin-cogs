@@ -60,7 +60,18 @@ class CoreDB:
             if self._conn is None:
                 await self.connect()
             assert self._conn is not None, "Database connection is not established"
-            yield self._conn
+            try:
+                yield self._conn
+            except BaseException:
+                # A caller that fails mid-transaction (a failed COMMIT included) must not
+                # leave it open on the shared connection, or every later BEGIN fails with
+                # "cannot start a transaction within a transaction".
+                if self._conn is not None and self._conn.in_transaction:
+                    try:
+                        await self._conn.rollback()
+                    except Exception:
+                        log.exception("Could not roll back after a failed database operation")
+                raise
 
     async def _setup_wal_mode(self, db: aiosqlite.Connection) -> None:
         """Set up WAL mode and optimizations for a database connection.

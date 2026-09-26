@@ -344,8 +344,8 @@ class CurrencyDecay:
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                print(f"Error in currency decay loop: {e}")
+            except Exception:
+                log.exception("Error in currency decay loop")
                 await asyncio.sleep(3600)  # Wait 1 hour before retrying
 
     async def _process_decay(self, execution_time: int):
