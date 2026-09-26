@@ -402,6 +402,7 @@ legend { padding: 0 6px; color: var(--muted); font: 600 0.95rem var(--heading); 
 .tone-peach { --tape: var(--peach); }
 
 img.emoji { width: 36px; height: 36px; object-fit: contain; vertical-align: middle; }
+img.inline-emoji { width: auto; height: 1.25em; vertical-align: -0.25em; }
 .emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
 .emoji-card { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px 16px 12px; text-align: center; background: var(--panel); border: 1px solid var(--line); border-radius: 1.5rem; box-shadow: var(--shadow); }
 .emoji-card img { width: 64px; height: 64px; object-fit: contain; }

@@ -8,6 +8,7 @@ the user may still use the site is re-checked against the member cache on every 
 import functools
 import hmac
 import logging
+import re
 import secrets
 import time
 from collections import deque
@@ -34,6 +35,7 @@ from .modmail import StaffModmail
 from .unicornia_views import StaffUnicornia
 
 GUILD_ID = 684360255798509578
+CUSTOM_EMOJI = re.compile(r"<(a?):(\w{2,32}):(\d{15,21})>")
 STAFF_ROLE_ID = 696020813299580940
 HOST = "127.0.0.1"
 STAFF_PORT = 8011
@@ -161,6 +163,20 @@ def _when(timestamp: float | None) -> markupsafe.Markup:
     )
 
 
+def _emojis(text: object) -> markupsafe.Markup:
+    """Text with Discord custom emojis (`<:name:id>`, `<a:name:id>`) as CDN images; everything else is escaped."""
+    # split() yields [text, animated, name, id, text, ...]
+    parts = CUSTOM_EMOJI.split("" if text is None else str(text))
+    out = markupsafe.escape(parts[0])
+    for i in range(1, len(parts), 4):
+        animated, name, emoji_id, after = parts[i : i + 4]
+        out += markupsafe.Markup(
+            '<img class="inline-emoji" src="https://cdn.discordapp.com/emojis/{}.{}" alt=":{}:" title=":{}:">'
+        ).format(emoji_id, "gif" if animated else "webp", name, name)
+        out += after
+    return out
+
+
 def _page_number(raw: str) -> int:
     try:
         return min(max(int(raw), 0), MAX_PAGE)
@@ -206,6 +222,7 @@ class Dashboard(commands.Cog):
         self._blocked_until = 0.0
         self._templates = jinja2.Environment(loader=jinja2.FileSystemLoader(HERE / "templates"), autoescape=True)
         self._templates.filters["when"] = _when
+        self._templates.filters["emojis"] = _emojis
         self._templates.globals.update(
             user_name=self._user_name, user_avatar=self._user_avatar, channel_name=self._channel_name
         )

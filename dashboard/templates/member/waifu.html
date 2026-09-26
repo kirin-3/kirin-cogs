@@ -4,7 +4,7 @@
 {% include "member/_account.html" %}
 <h1>Waifu</h1>
 <div class="stats">
-  <div class="panel"><h2>Price</h2><p class="big">{{ currency }}{{ "{:,}".format(waifu.price) }}</p></div>
+  <div class="panel"><h2>Price</h2><p class="big">{{ currency|emojis }}{{ "{:,}".format(waifu.price) }}</p></div>
   <div class="panel"><h2>Owner</h2><p class="big">{{ owner }}</p></div>
   <div class="panel"><h2>Affinity</h2><p class="big">{{ affinity }}</p></div>
 </div>
@@ -15,11 +15,11 @@
   </section>
   <section class="panel">
     <h2>Your waifus ({{ waifus|length }})</h2>
-    {% if waifus %}<ul class="rows">{% for w in waifus %}<li>{{ w.name }} <small>{{ currency }}{{ "{:,}".format(w.price) }}</small></li>{% endfor %}</ul>{% else %}<p class="empty">None yet.</p>{% endif %}
+    {% if waifus %}<ul class="rows">{% for w in waifus %}<li>{{ w.name }} <small>{{ currency|emojis }}{{ "{:,}".format(w.price) }}</small></li>{% endfor %}</ul>{% else %}<p class="empty">None yet.</p>{% endif %}
   </section>
   <section class="panel">
     <h2>Gifts received ({{ waifu.gifts|sum(attribute="count") }})</h2>
-    {% if waifu.gifts %}<ul class="rows">{% for g in waifu.gifts %}<li>{{ g.emoji }} {{ g.name }}{% if g.count > 1 %} <small>×{{ g.count }}</small>{% endif %}</li>{% endfor %}</ul>{% else %}<p class="empty">None yet.</p>{% endif %}
+    {% if waifu.gifts %}<ul class="rows">{% for g in waifu.gifts %}<li>{{ g.emoji|emojis }} {{ g.name }}{% if g.count > 1 %} <small>×{{ g.count }}</small>{% endif %}</li>{% endfor %}</ul>{% else %}<p class="empty">None yet.</p>{% endif %}
   </section>
 </div>
 <p class="empty">Claim, gift and divorce with the bot's <code>waifu</code> commands in Discord.</p>

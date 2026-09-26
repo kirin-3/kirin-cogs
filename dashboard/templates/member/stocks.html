@@ -24,7 +24,7 @@
     <tbody>
       {% for h in portfolio.holdings %}
       <tr>
-        <td>{{ h.emoji }} <strong>{{ h.symbol }}</strong><small>{{ h.name }}</small></td>
+        <td>{{ h.emoji|emojis }} <strong>{{ h.symbol }}</strong><small>{{ h.name }}</small></td>
         <td class="num">{{ "{:,}".format(h.amount) }}</td>
         <td class="num">{{ "{:,.1f}".format(h.average_cost) }}</td>
         <td class="num">{{ "{:,.2f}".format(h.current_price) }}</td>

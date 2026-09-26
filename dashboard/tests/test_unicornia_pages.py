@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from dashboard.dashboard import SESSION_COOKIE, Session
+from dashboard.dashboard import SESSION_COOKIE, Session, _emojis
 from dashboard.tests.test_member_site import (  # noqa: F401
     ACTIVE,
     CSRF,
@@ -323,7 +323,14 @@ async def test_account_tabs_on_every_me_page(ms: SimpleNamespace, uni: _FakeUnic
 @pytest.mark.asyncio
 async def test_stocks_page_shows_holdings_totals_and_dividends(ms: SimpleNamespace, uni: _FakeUnicornia) -> None:  # noqa: F811
     uni.holdings = [
-        {"symbol": "UNI", "name": "Unicorn", "emoji": "🦄", "amount": 10, "average_cost": 100, "current_price": 120}
+        {
+            "symbol": "UNI",
+            "name": "Unicorn",
+            "emoji": "<a:laugh:691625827938336818>",
+            "amount": 10,
+            "average_cost": 100,
+            "current_price": 120,
+        }
     ]
     uni.dividends = [
         {"period_end": "2026-09-02", "symbol": "UNI", "weight": 0.5, "amount": 30, "date": ""},
@@ -335,6 +342,10 @@ async def test_stocks_page_shows_holdings_totals_and_dividends(ms: SimpleNamespa
 
     assert status == 200 and "Unicorn" in page and "1,200" in page and "+200" in page and "+20.0%" in page
     assert page.index("2026-09-02") < page.index("2026-09-01") and "0.250" in page
+    assert (
+        '<img class="inline-emoji" src="https://cdn.discordapp.com/emojis/691625827938336818.gif" alt=":laugh:"' in page
+    )
+    assert "&lt;a:laugh" not in page
     assert "You don't hold any shares." in empty and "You haven't received any dividends." in empty
 
 
@@ -392,21 +403,42 @@ async def test_club_images_load_only_from_allowed_https_hosts(
 
 @pytest.mark.asyncio
 async def test_waifu_page_of_a_claimed_member(ms: SimpleNamespace, uni: _FakeUnicornia) -> None:  # noqa: F811
+    uni.config.currency_symbol.return_value = "<:slut:686148402941001730>"
     uni.waifus[REGULAR] = {
         "price": 500,
         "claimer_id": ACTIVE,
         "affinity_id": INACTIVE,
         "affinity_from": [INACTIVE, FORMER],
         "waifus": [{"user_id": 500_000_000_000_000_000 + n, "price": 70 + n} for n in range(14)],
-        "gifts": [{"name": "Rose", "emoji": "🌹", "count": 3}, {"name": "Cake", "emoji": "🍰", "count": 1}],
+        "gifts": [
+            {"name": "Rose", "emoji": "🌹", "count": 3},
+            {"name": "Cage", "emoji": "<:cage:686126928327213057>", "count": 1},
+        ],
     }
 
     status, page = await _get(ms, REGULAR, "/me/waifu")
 
-    assert status == 200 and "$500" in page
+    assert (
+        status == 200
+        and 'src="https://cdn.discordapp.com/emojis/686148402941001730.webp" alt=":slut:" title=":slut:">500<' in page
+    )
+    assert page.count('src="https://cdn.discordapp.com/emojis/686148402941001730.webp"') == 15 and "&lt;:" not in page
+    assert (
+        '<img class="inline-emoji" src="https://cdn.discordapp.com/emojis/686126928327213057.webp" alt=":cage:"' in page
+    )
     assert ms.members[ACTIVE].display_name in page and ms.members[INACTIVE].display_name in page
-    assert "Your waifus (14)" in page and page.count("Unknown user") == 15 and "$83" in page
+    assert "Your waifus (14)" in page and page.count("Unknown user") == 15 and ">83<" in page
     assert "🌹 Rose <small>\N{MULTIPLICATION SIGN}3</small>" in page and "Gifts received (4)" in page
+
+
+def test_emojis_filter_turns_discord_markup_into_images_and_escapes_the_rest() -> None:
+    html = str(_emojis('<b>hi</b> <:w_yay:686136240566829112> & <a:laugh:691625827938336818> <:x:1> "q"'))
+
+    assert html.startswith("&lt;b&gt;hi&lt;/b&gt; <img")
+    assert 'src="https://cdn.discordapp.com/emojis/686136240566829112.webp" alt=":w_yay:"' in html
+    assert 'src="https://cdn.discordapp.com/emojis/691625827938336818.gif"' in html
+    assert "&amp;" in html and "&lt;:x:1&gt;" in html and "&#34;q&#34;" in html
+    assert str(_emojis(None)) == "" and str(_emojis("🦄")) == "🦄"
 
 
 @pytest.mark.asyncio
