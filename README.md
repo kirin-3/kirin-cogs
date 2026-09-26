@@ -67,6 +67,9 @@ Roleplay action commands (`[p]hug`, `[p]ask`, ...) with consent prompts and per-
 ### RulesAccept
 Lets users accept rules via a button and modal, automatically assigning a role upon acceptance.
 
+### SelfTimeout
+`[p]break <duration>` lets members time themselves out for up to 28 days after a confirmation, then deletes the command and confirmation. See [selftimeout/README.md](selftimeout/README.md).
+
 ### Sticky
 Sticks a message to the bottom of a channel. Fork of Tobotimus' sticky, licensed GPL-3.0. See [sticky/README.md](sticky/README.md).
 

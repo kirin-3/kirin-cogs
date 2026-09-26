@@ -1,0 +1,30 @@
+{
+    "name": "SelfTimeout",
+    "author": [
+        "kirin"
+    ],
+    "short": "Let members time themselves out for a break.",
+    "description": "Adds [p]break, which lets a member time themselves out for up to 28 days after confirming, then cleans up the command and confirmation messages.",
+    "install_msg": "SelfTimeout loaded. Members can use `[p]break <duration>` to time themselves out. Enable the slash version with `[p]slash enable break`.",
+    "end_user_data_statement": "This cog does not store any end user data. It applies a Discord timeout to the member who asks for one.",
+    "min_bot_version": "3.5.0",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "required_cogs": {},
+    "requirements": [],
+    "permissions": [
+        "moderate_members",
+        "manage_messages"
+    ],
+    "tags": [
+        "timeout",
+        "break",
+        "utility"
+    ]
+}
