@@ -84,6 +84,35 @@ for (const form of document.querySelectorAll("form.editor")) {
   });
 }
 
+// Custom role page: preview the name and color while they're being edited. Colors go in through the style
+// properties, which the CSP allows, not style attributes.
+const preview = document.querySelector(".role-preview");
+if (preview) {
+  const colorForm = document.querySelector('form[action="/role/color"]');
+  const color = colorForm.elements;
+  const name = document.querySelector('form[action="/role/name"] input[name="name"]');
+  // Start from the role's saved colors: a holographic role has three, more than the form can show.
+  let colors = preview.dataset.colors.split(" ").map((hex) => `#${hex}`);
+  const paint = () => {
+    const gradient = colors.length > 1 ? `linear-gradient(90deg, ${colors.join(", ")})` : "";
+    const solid = colors[0] === "#000000" ? "" : colors[0]; // Discord treats black as "no color"
+    for (const who of preview.querySelectorAll(".who")) {
+      who.classList.toggle("gradient", gradient !== "");
+      who.style.backgroundImage = gradient;
+      who.style.color = gradient ? "" : solid;
+    }
+    for (const dot of preview.querySelectorAll(".dot")) dot.style.background = gradient || solid;
+    for (const label of preview.querySelectorAll(".role-label")) label.textContent = name.value.trim() || " ";
+  };
+  colorForm.addEventListener("input", () => {
+    colors = color.gradient.checked ? [color.primary.value, color.secondary.value] : [color.primary.value];
+    paint();
+  });
+  name.addEventListener("input", paint);
+  paint();
+  preview.hidden = false;
+}
+
 addEventListener("beforeunload", (event) => {
   if (dirty.size) {
     event.preventDefault();

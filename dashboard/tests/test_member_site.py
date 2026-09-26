@@ -626,6 +626,8 @@ async def test_role_page_shows_colors_as_swatches(ms: SimpleNamespace) -> None:
     assert status == 200
     assert '<input type="color" value="#112233" disabled' in page
     assert "Sparkles" in page and 'action="/role/icon"' in page
+    # site.js reads the saved colors from here for the live preview
+    assert '<div class="role-preview" data-colors="112233"' in page
 
 
 @pytest.mark.asyncio

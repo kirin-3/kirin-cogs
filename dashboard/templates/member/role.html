@@ -7,6 +7,18 @@
   {% if role.mentionable %}<span class="badge ok">Mentionable</span>{% else %}<span class="badge">Not mentionable</span>{% endif %}
 </p>
 {% if problem %}<p class="notice">{{ problem }}</p>{% endif %}
+{# Filled in and shown by site.js as the forms below change; CSP rules out painting colors without it. #}
+<div class="role-preview" data-colors="{{ colors|join(' ') }}" aria-label="Preview" hidden>
+  {% for theme in ("dark", "light") %}
+  <div class="discord {{ theme }}">
+    {% if user_avatar(session.user_id) %}<img src="{{ user_avatar(session.user_id) }}" alt="" width="40" height="40">{% endif %}
+    <div>
+      <span class="who">{{ user_name(session.user_id) }}</span>
+      <span class="chip"><span class="dot"></span><span class="role-label">{{ role.name }}</span></span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
 <div class="flow">
   <section class="panel">
     <h2>Color</h2>

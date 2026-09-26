@@ -54,9 +54,9 @@ so losing the staff role, or leaving the server, ends access on the next click. 
   The member site may also show images from `cdn.discordapp.com`, for emojis and role icons. All user text is
   HTML-escaped by Jinja2.
 - The only script is `static/site.js`. The policy allows the site's own files and nothing else: no inline scripts, no
-  other hosts, and no requests from scripts. It adds conveniences only, such as adding editor rows in place, local
-  times, filter boxes, and delete confirmations. Every page works without it, and every change is still checked by
-  the server. It writes text into the page, never HTML.
+  other hosts, and no requests from scripts. It adds conveniences only, such as adding editor rows in place, a live
+  preview of the custom role, local times, filter boxes, and delete confirmations. Every page works without it, and
+  every change is still checked by the server. It writes text into the page, never HTML.
 - The login callbacks share one limit, because both sites log in through the bot's IP. Discord gets at most 5 code
   exchanges per minute per client IP and 30 per minute in total, and none at all while it is answering 429. Member
   logins stop at 20 a minute, so staff can always use the last 10.

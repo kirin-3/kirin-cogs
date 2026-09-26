@@ -381,6 +381,17 @@ img.emoji { width: 36px; height: 36px; object-fit: contain; vertical-align: midd
 .emoji-card .inline { flex-wrap: nowrap; justify-content: center; width: 100%; margin: 6px 0 0; }
 .emoji-card .inline input { flex: 1 1 auto; min-width: 0; }
 .swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* The role as Discord shows it, on its dark and light themes */
+.role-preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 0 0 20px; }
+.discord { display: flex; gap: 12px; align-items: center; min-width: 0; padding: 14px 16px; border-radius: 1rem; font-family: "gg sans", "Noto Sans", "Helvetica Neue", Arial, sans-serif; }
+.discord.dark { background: #313338; color: #f2f3f5; --chip: #232428; }
+.discord.light { background: #ffffff; color: #060607; --chip: #ebedef; border: 1px solid var(--line); }
+.discord img { width: 40px; height: 40px; border-radius: 50%; }
+.discord > div { min-width: 0; }
+.discord .who { display: inline-block; max-width: 100%; font-weight: 600; overflow-wrap: anywhere; }
+.discord .who.gradient { background-clip: text; -webkit-background-clip: text; color: transparent; }
+.discord .chip { display: flex; gap: 6px; align-items: center; width: fit-content; max-width: 100%; margin-top: 4px; padding: 2px 8px; border-radius: 4px; background: var(--chip); font-size: 0.8rem; overflow-wrap: anywhere; }
+.discord .dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: #99aab5; }
 td .inline { margin: 8px 0 0; }
 .sub { margin: 0 0 18px; color: var(--muted); }
 .command-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
