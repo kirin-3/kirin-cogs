@@ -1,4 +1,5 @@
 import asyncio
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -395,3 +396,28 @@ async def test_warn_member_saves_a_point_and_dms() -> None:
     assert "Used F- Slur" in member.send.await_args.kwargs["embed"].description
     assert last_case(cog).args[1] == "warning"
     assert last_case(cog).kwargs == {"public": False}
+
+
+@pytest.mark.asyncio
+async def test_expiry_loop_leaves_a_mute_extended_after_its_snapshot() -> None:
+    later = time.time() + 3600
+    cog, mute = _bot_cog({"roles": [2], "until": later})  # extended: the live record
+    member = _target()
+    cog.config.all_members = AsyncMock(return_value={1: {9: {"mute": {"roles": [2], "until": 1.0}}}})  # stale snapshot
+    cog.bot = MagicMock()
+    cog.bot.get_guild.return_value = member.guild
+    cog._find_member = AsyncMock(return_value=member)  # type: ignore[method-assign]
+    cog._dm = AsyncMock()  # type: ignore[method-assign]
+
+    await cog.expire_mutes.coro(cog)
+
+    member.edit.assert_not_awaited()
+    mute.clear.assert_not_awaited()
+    cast(AsyncMock, cog._dm).assert_not_awaited()
+    cast(AsyncMock, cog._case).assert_not_awaited()
+
+    mute.return_value = {"roles": [2], "until": 1.0}  # genuinely expired: unmuted as before
+    await cog.expire_mutes.coro(cog)
+    member.edit.assert_awaited_once()
+    mute.clear.assert_awaited_once()
+    assert last_case(cog).args[1] == "sunmute"

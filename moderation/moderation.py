@@ -393,15 +393,20 @@ class Moderation(commands.Cog):
         """Serializes mute, unmute, and enforcement for one member so they never undo each other."""
         return self._locks[(member.guild.id, member.id)]
 
-    async def _unmute(self, member: discord.Member, reason: str) -> int | None:
+    async def _unmute(self, member: discord.Member, reason: str, *, expired_only: bool = False) -> int | None:
         """Give back the roles a mute stripped and remove Muted.
 
-        Returns how many saved roles couldn't be given back, or None if the member isn't muted.
+        Returns how many saved roles couldn't be given back, or None if the member isn't muted
+        (or, with `expired_only`, if the mute hasn't expired: it was lifted or extended meanwhile).
         """
         async with self._lock(member):
             member = member.guild.get_member(member.id) or member  # freshest cached roles
             group = self.config.member(member)
             record = await group.mute()
+            if expired_only and not (
+                isinstance(record, dict) and record.get("until") and record["until"] <= time.time()
+            ):
+                return None
             muted_role = member.guild.get_role(MUTED_ROLE_ID)
             if not isinstance(record, dict) and (muted_role is None or muted_role not in member.roles):
                 return None
@@ -466,7 +471,8 @@ class Moderation(commands.Cog):
                     if member is None:  # left while muted; nothing to give back
                         await self.config.member_from_ids(guild_id, user_id).mute.clear()
                         continue
-                    await self._unmute(member, "Mute expired")
+                    if await self._unmute(member, "Mute expired", expired_only=True) is None:
+                        continue  # unmuted or extended since the snapshot above
                     await self._dm(member, notice(guild, UNMUTE_DM_TITLE, UNMUTE_DM, discord.Color.green()))
                     await self._case(guild, "sunmute", member, guild.me, "Mute expired")
                 except Exception:
