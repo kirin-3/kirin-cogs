@@ -6,7 +6,8 @@ Cloudflare. They share the login code but keep separate sessions and cookies.
 - **Staff site**, `staff.unicornia.net` on `127.0.0.1:8011`. Lists the ban records kept by the BanLog cog and the
   messages each banned member posted in the week before their ban, and manages the AutoMod cog's rulesets, rules and
   word lists, including its action log and the dry-run switch. Its Unicornia pages show, read-only, any member's
-  economy and XP, the house economy, the cog's configuration and the stock market.
+  economy and XP, the house economy, the cog's configuration and the stock market. Its Modmail pages show every
+  thread the modmail bot has kept since October 2020, read-only.
 - **Member site**, `my.unicornia.net` on `127.0.0.1:8012`. Every member can see their Unicornia profile, buy and equip
   rank-card backgrounds, see the XP leaderboard, and turn their roleplay settings (Selective, Public and Servant) on
   or off. Supporters also manage their custom commands, custom emojis and, if they
@@ -65,6 +66,32 @@ On the staff site, open to all staff and GET-only, so nothing there can change U
 
 These pages answer 503 while the Unicornia cog isn't loaded.
 
+## Modmail pages
+
+On the staff site, open to all staff and GET-only. The data comes from the modmail bot (a separate Node bot, pm2 app
+`mail`) through its own SQLite database, `/home/kirin/modmail/db/data.sqlite`. The dashboard opens it read-only, never
+changes modmail, and keeps no copy.
+
+- `/modmail?q=`: threads newest first, 50 a page. The search box takes a user ID (17–20 digits), a thread number
+  (`#4829` or `4829`), or any other text, which matches usernames and message text, ignoring case.
+- `/modmail/{number}`: the conversation. Member messages sit on the left, replies to the member on the right with the
+  staff member's real name and, for anonymous replies, the role name the member saw. Internal staff chat, bot
+  commands and system lines are marked, edited replies show both versions, and deleted replies are marked.
+- Ban pages list the banned member's modmail threads.
+
+Attachments are Discord CDN links, and their signatures expire. When a thread is opened, the dashboard asks Discord
+for freshly signed links (`POST /attachments/refresh-urls`, with the bot's token, 50 links a call) and keeps them in
+memory until they expire. Images are shown inline, other files as links. Nothing is downloaded or stored; a link
+Discord won't refresh is shown as its file name marked unavailable.
+
+If the database is missing or can't be read, the pages say modmail logs are unavailable and the rest of the site keeps
+working.
+
+Modmail writes the database with a rollback journal and waits up to 1 s for a reader, and each page does one short
+read. If modmail's log (`pm2 logs mail`) ever shows `SQLITE_BUSY` or "database is locked", switch the file to WAL:
+stop the `mail` app, run `sqlite3 /home/kirin/modmail/db/data.sqlite "PRAGMA journal_mode=WAL;"`, and start it again.
+It needs no change to modmail's code, but backups must then copy `data.sqlite-wal` too, or use `.backup`.
+
 On both sites, whether the user may still use the site is re-checked against the bot's member cache on every request,
 so losing the staff role, or leaving the server, ends access on the next click. Sessions live in memory, expire
 12 hours after login, and end on logout or when the cog unloads or the bot restarts. Logging back in takes one click.
@@ -78,8 +105,8 @@ so losing the staff role, or leaving the server, ends access on the next click. 
   and reads them only after the session check.
 - Uploads are checked by their content, not their file name: emojis must be PNG, JPEG or GIF, role icons PNG or JPEG.
 - Pages carry a strict Content-Security-Policy, `nosniff`, `no-referrer`, `DENY` framing, `noindex`, and `no-store`.
-  The member site may also show images from `cdn.discordapp.com`, for emojis, role icons and avatars, and from
-  `unicornia.net`, for rank-card backgrounds. All user text is
+  Both sites may show images from `cdn.discordapp.com`: modmail attachments on the staff site; emojis, role icons and
+  avatars on the member site. The member site may also show images from `unicornia.net`, for rank-card backgrounds. All user text is
   HTML-escaped by Jinja2.
 - The only script is `static/site.js`. The policy allows the site's own files and nothing else: no inline scripts, no
   other hosts, and no requests from scripts. It adds conveniences only, such as adding editor rows in place, a live

@@ -30,6 +30,7 @@ from yarl import URL
 
 from .automod_forms import SECTIONS, Names, apply_action, editor_view, parse_rows, row_templates, row_view
 from .member import MemberSite
+from .modmail import StaffModmail
 from .unicornia_views import StaffUnicornia
 
 GUILD_ID = 684360255798509578
@@ -73,11 +74,13 @@ DELETED_MODERATOR_ID = 0xDE1
 HERE = Path(__file__).parent
 # __Host- cookies must be Secure with Path=/ and no Domain, so browsers never share them with other subdomains.
 COOKIE_FLAGS: dict[str, Any] = {"httponly": True, "secure": True, "samesite": "Lax", "path": "/"}
+CSP = (
+    "default-src 'none'; script-src 'self'; style-src 'self'; img-src {}; form-action 'self'; "
+    "frame-ancestors 'none'; base-uri 'none'"
+)
+# Modmail attachments are shown from Discord's CDN.
 SECURITY_HEADERS = {
-    "Content-Security-Policy": (
-        "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; form-action 'self'; "
-        "frame-ancestors 'none'; base-uri 'none'"
-    ),
+    "Content-Security-Policy": CSP.format("'self' https://cdn.discordapp.com"),
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "X-Frame-Options": "DENY",
@@ -87,9 +90,7 @@ SECURITY_HEADERS = {
 # Emojis, role icons and avatars are shown from Discord's CDN, rank-card backgrounds from the main site.
 MEMBER_SECURITY_HEADERS = {
     **SECURITY_HEADERS,
-    "Content-Security-Policy": SECURITY_HEADERS["Content-Security-Policy"].replace(
-        "img-src 'self'", "img-src 'self' https://cdn.discordapp.com https://unicornia.net"
-    ),
+    "Content-Security-Policy": CSP.format("'self' https://cdn.discordapp.com https://unicornia.net"),
 }
 
 log = logging.getLogger("red.kirin-cogs.dashboard")
@@ -210,6 +211,7 @@ class Dashboard(commands.Cog):
         )
         self.member_site = MemberSite(self)
         self.staff_unicornia = StaffUnicornia(self)
+        self.staff_modmail = StaffModmail(self)
 
     async def cog_load(self) -> None:
         # Not bot.http: that session carries the bot token.
@@ -231,6 +233,7 @@ class Dashboard(commands.Cog):
         await self._http.close()
         self.sessions.clear()
         self.member_sessions.clear()
+        self.staff_modmail.links.clear()
 
     def _app(self, site: Site, **kwargs: Any) -> web.Application:
         """An app with the login routes and access control shared by both sites."""
@@ -269,6 +272,7 @@ class Dashboard(commands.Cog):
         app.router.add_post(f"/automod/lists/{word_list}", self.automod_list_save)
         app.router.add_post(f"/automod/lists/{word_list}/delete", self.automod_list_delete)
         self.staff_unicornia.add_routes(app)
+        self.staff_modmail.add_routes(app)
         return app
 
     # --- access control --------------------------------------------------------------------------
@@ -470,7 +474,8 @@ class Dashboard(commands.Cog):
         ban = await cast(Any, banlog).get_ban(int(request.match_info["ban_id"]))
         if ban is None:
             return self._message(request, 404, "Ban not found", "There is no ban record with that number.")
-        return self._render(request, "ban.html", ban=ban)
+        modmail_threads = await self.staff_modmail.for_user(int(ban["user_id"]))
+        return self._render(request, "ban.html", ban=ban, modmail_threads=modmail_threads)
 
     # --- automod pages -----------------------------------------------------------------------------
 
@@ -818,7 +823,7 @@ class Dashboard(commands.Cog):
         return user.name if user else str(user_id)
 
     def _user_avatar(self, user_id: int) -> str:
-        """The user's Discord avatar URL, or "". Only the member site's CSP allows Discord's CDN."""
+        """The user's Discord avatar URL, or ""."""
         user = self.bot.get_user(user_id)
         return user.display_avatar.with_size(128).url if user else ""
 

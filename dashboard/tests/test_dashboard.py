@@ -205,6 +205,14 @@ async def test_only_the_sites_own_script_may_run(site: SimpleNamespace) -> None:
 
 
 @pytest.mark.asyncio
+async def test_images_only_from_the_site_and_discord(site: SimpleNamespace) -> None:
+    response = await site.client.get("/logged-out")
+
+    img_src = next(p for p in response.headers["Content-Security-Policy"].split("; ") if p.startswith("img-src"))
+    assert img_src == "img-src 'self' https://cdn.discordapp.com"
+
+
+@pytest.mark.asyncio
 async def test_user_text_is_escaped(site: SimpleNamespace) -> None:
     banlog = _FakeBanLog()
     banlog.bans = [

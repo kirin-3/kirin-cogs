@@ -13,6 +13,18 @@
   <dt>Banned</dt><dd>{{ ban.banned_at|when }}</dd>
   {% if ban.unbanned_at %}<dt>Unbanned</dt><dd>{{ ban.unbanned_at|when }}</dd>{% endif %}
 </dl>
+<h2>Modmail threads</h2>
+{% if modmail_threads is none %}
+<p class="empty">Modmail logs are unavailable right now.</p>
+{% elif modmail_threads %}
+<ul class="rows">
+  {% for thread in modmail_threads %}
+  <li><a href="/modmail/{{ thread.number }}">#{{ thread.number }}</a> · {{ thread.opened|when }} · {{ thread.status }}</li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">This user has not opened any modmail threads.</p>
+{% endif %}
 <h2>Messages from the week before the ban ({{ ban.messages|length }})</h2>
 {% for message in ban.messages %}
 <article class="message{% if message.deleted_at %} deleted{% endif %}">

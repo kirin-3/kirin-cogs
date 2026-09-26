@@ -294,6 +294,33 @@ td small { display: block; color: var(--muted); font-size: 0.85rem; }
 .files { color: var(--muted); font-size: 0.85rem; }
 .tag { margin-right: 6px; font-size: 0.75rem; font-weight: 700; color: var(--warn); }
 
+/* --- modmail: member messages on the left, replies to the member on the right, bot lines small --- */
+.thread { display: flex; flex-direction: column; gap: 10px; }
+.mm { max-width: 85%; padding: 12px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 1rem; box-shadow: var(--shadow); }
+.mm header { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; color: var(--muted); font-size: 0.85rem; }
+.mm header strong { color: var(--text); font-size: 0.95rem; }
+.mm p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mm-label { font-weight: 700; color: var(--accent); }
+.mm-member { align-self: flex-start; border-left: 4px solid var(--pink); }
+.mm-reply { align-self: flex-end; background: var(--accent-soft); border-color: transparent; }
+.mm-chat { align-self: center; max-width: 92%; border-style: dashed; box-shadow: none; }
+.mm-chat .mm-label { color: var(--rose); }
+.mm-edited, .mm-deleted { align-self: flex-end; box-shadow: none; }
+.mm-deleted { border-left: 4px solid var(--warn); }
+.mm-deleted .mm-label { color: var(--warn); }
+.mm-before { color: var(--muted); text-decoration: line-through; }
+.mm-embed { margin: 8px 0 0; padding: 6px 12px; border-left: 4px solid var(--lavender); background: var(--raised); border-radius: 0 0.6rem 0.6rem 0; }
+.mm-files { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; margin-top: 8px; }
+.mm-files img { display: block; max-width: min(100%, 360px); max-height: 320px; border-radius: 0.6rem; border: 1px solid var(--line); }
+.mm-files .files { margin: 0; }
+.mm-line { align-self: center; max-width: 92%; margin: 0; color: var(--muted); font-size: 0.82rem; text-align: center; overflow-wrap: anywhere; }
+.mm-body { white-space: pre-wrap; }
+.mm-line .mm-label { color: var(--muted); }
+.mm-command .mm-body { font-family: var(--mono); }
+@media (max-width: 520px) {
+  .mm, .mm-chat { max-width: 100%; }
+}
+
 /* --- automod --- */
 .dry { border-left: 5px solid var(--accent); }
 .dry.live { border-left-color: var(--ok); }

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Modmail{% endblock %}
+{% block content %}
+<div class="bar">
+  <h1>Modmail</h1>
+  <form class="search" method="get" action="/modmail">
+    <input type="search" name="q" value="{{ q }}" placeholder="Thread #, user ID, username or text" maxlength="100" aria-label="Search modmail threads">
+    <button type="submit">Search</button>
+  </form>
+</div>
+{% if unavailable %}
+<p class="notice">Modmail logs are unavailable right now: the modmail bot's database can't be read.</p>
+{% elif not threads %}
+<p class="empty">{% if q %}No threads match “{{ q }}”.{% else %}No modmail threads yet.{% endif %}</p>
+{% else %}
+<div class="scroll">
+<table>
+  <thead><tr><th class="num">Thread</th><th>Member</th><th>Opened</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for thread in threads %}
+  <tr>
+    <td class="num"><a href="/modmail/{{ thread.number }}">#{{ thread.number }}</a></td>
+    <td>{{ thread.user_name }}<small>{{ thread.user_id }}</small></td>
+    <td class="date">{{ thread.opened|when }}</td>
+    <td>{{ thread.status }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<nav class="pages">
+  {% if page > 0 %}<a href="/modmail?page={{ page - 1 }}&amp;q={{ q|urlencode }}">Newer</a>{% endif %}
+  {% if more %}<a href="/modmail?page={{ page + 1 }}&amp;q={{ q|urlencode }}">Older</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

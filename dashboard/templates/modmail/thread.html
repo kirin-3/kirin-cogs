@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{% if thread %}Modmail #{{ thread.number }}{% else %}Modmail{% endif %}{% endblock %}
+{% block content %}
+<p class="back"><a href="/modmail">← All threads</a></p>
+{% if unavailable %}
+<p class="notice">Modmail logs are unavailable right now: the modmail bot's database can't be read.</p>
+{% else %}
+<h1>#{{ thread.number }} · {{ thread.user_name }}</h1>
+<dl class="meta">
+  <dt>User ID</dt><dd>{{ thread.user_id }} · <a href="/modmail?q={{ thread.user_id }}">All their threads</a></dd>
+  <dt>Opened</dt><dd>{{ thread.opened|when }}</dd>
+  <dt>Status</dt><dd>{{ thread.status }}</dd>
+</dl>
+<h2>Messages ({{ messages|length }})</h2>
+<div class="thread">
+{% for m in messages %}
+{% if m.kind in ("system", "to-member", "command") %}
+<p class="mm-line mm-{{ m.kind }}">
+  {{ m.when|when }}
+  {% if m.kind == "to-member" %}<span class="mm-label">Bot to member</span>{% elif m.kind == "command" %}<span class="mm-label">{{ m.name }} ran</span>{% endif %}
+  <span class="mm-body">{{ m.body }}</span>
+</p>
+{% else %}
+<article class="mm mm-{{ m.kind }}">
+  <header>
+    <strong>{{ m.name }}</strong>
+    {% if m.kind == "member" %}<span class="mm-label">Member</span>
+    {% elif m.kind == "reply" %}<span class="mm-label">{% if m.role %}Reply as {{ m.role }} (anonymous){% else %}Reply{% endif %}</span>
+    {% elif m.kind == "chat" %}<span class="mm-label">Staff only, not sent to the member</span>
+    {% elif m.kind == "edited" %}<span class="mm-label">Edited a reply</span>
+    {% elif m.kind == "deleted" %}<span class="mm-label">Deleted a reply</span>{% endif %}
+    {{ m.when|when }}
+  </header>
+  {% if m.kind == "edited" %}
+  <p class="mm-before">{{ m.before }}</p>
+  <p>{{ m.after }}</p>
+  {% elif m.kind == "deleted" %}
+  <p class="mm-before">{{ m.before or m.body }}</p>
+  {% elif m.body %}
+  <p>{{ m.body }}</p>
+  {% endif %}
+  {% for embed in m.embeds %}
+  <blockquote class="mm-embed">
+    {% if embed.title %}<strong>{{ embed.title }}</strong>{% endif %}
+    {% if embed.description %}<p>{{ embed.description }}</p>{% endif %}
+    {% if embed.url and not embed.title and not embed.description %}<p>{{ embed.url }}</p>{% endif %}
+  </blockquote>
+  {% endfor %}
+  {% if m.files %}
+  <div class="mm-files">
+    {% for file in m.files %}
+    {% if file.text %}<p class="files">{{ file.text }}</p>
+    {% elif not file.url %}<p class="files">{{ file.name }} <span class="tag">Unavailable</span></p>
+    {% elif file.image %}<a href="{{ file.url }}" target="_blank" rel="noopener noreferrer"><img src="{{ file.url }}" alt="{{ file.name }}" loading="lazy"></a>
+    {% else %}<p class="files"><a href="{{ file.url }}" target="_blank" rel="noopener noreferrer">{{ file.name }}</a></p>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+</article>
+{% endif %}
+{% else %}
+<p class="empty">This thread has no messages.</p>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -16,6 +16,7 @@
   <nav class="nav">
     <a href="/"{% if path == "/" or path.startswith("/bans/") %} class="on"{% endif %}>Bans</a>
     <a href="/automod"{% if path.startswith("/automod") %} class="on"{% endif %}>Automod</a>
+    <a href="/modmail"{% if path.startswith("/modmail") %} class="on"{% endif %}>Modmail</a>
     <a href="/unicornia/members"{% if path.startswith("/unicornia/") %} class="on"{% endif %}>Unicornia</a>
   </nav>
   <form class="logout" method="post" action="/logout">
