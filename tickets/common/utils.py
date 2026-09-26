@@ -276,7 +276,8 @@ async def prune_invalid_tickets(
     if users_to_remove or tickets_to_remove:
         async with config.guild(guild).opened() as opened:
             for uid in users_to_remove:
-                del opened[uid]
+                # close_ticket may have removed the user since conf was read
+                opened.pop(uid, None)
             for uid, cid in tickets_to_remove:
                 if uid not in opened:
                     # User was already removed

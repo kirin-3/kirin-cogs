@@ -413,3 +413,15 @@ async def test_auto_close_skips_close_pending_but_retries_close_failed() -> None
     close.assert_awaited_once()
     assert close.await_args is not None
     assert close.await_args.args[3] is failed
+
+
+@pytest.mark.asyncio
+async def test_prune_tolerates_a_user_removed_since_the_snapshot() -> None:
+    # A departed member's close_ticket can drop their key before the prune writes
+    guild = _guild({})
+    guild.get_member.return_value = None
+    snapshot = _state(opened={str(USER_ID): {"100": _active("2024-01-01T00:00:00+00:00")}})
+    state = _state(opened={})
+
+    assert await prune_invalid_tickets(guild, snapshot, cast(Any, _Config(state))) is True
+    assert state["opened"] == {}
