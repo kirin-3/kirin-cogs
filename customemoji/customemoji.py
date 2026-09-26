@@ -1,3 +1,6 @@
+import math
+import re
+import time
 from urllib.parse import urlsplit
 
 import aiohttp
@@ -6,6 +9,11 @@ from redbot.core import Config, checks, commands
 
 # Discord's upload limit for custom emojis
 MAX_EMOJI_BYTES = 256 * 1024
+# Seconds between one member's emoji changes, counted across the commands and the member site
+COOLDOWN = 10
+EMOJI_NAME = re.compile(r"[A-Za-z0-9_]{2,32}")
+# Formats Discord accepts for emojis, by their first bytes rather than a filename
+IMAGE_SIGNATURES = (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a")
 DOWNLOAD_TIMEOUT = aiohttp.ClientTimeout(total=15)
 # Only Discord's own CDN: an arbitrary URL would let users make the bot request internal addresses.
 ALLOWED_IMAGE_HOSTS = frozenset({"cdn.discordapp.com", "media.discordapp.net"})
@@ -26,6 +34,7 @@ class CustomEmoji(commands.Cog):
         }
         self.config.register_guild(**default_guild)
         self._session: aiohttp.ClientSession | None = None
+        self._cooldowns: dict[int, float] = {}  # user_id: monotonic time of their last change
 
     async def cog_unload(self) -> None:
         if self._session is not None:
@@ -99,6 +108,121 @@ class CustomEmoji(commands.Cog):
                     raise ValueError(too_large)
             return bytes(data)
 
+    # --- Shared rules, used by the commands and the member site ---
+
+    def _cooldown(self, user_id: int, *, stamp: bool) -> None:
+        """Refuse within COOLDOWN of the member's last change; stamp now when asked.
+
+        Synchronous, so a check-and-stamp can't interleave with another change.
+        That also keeps two quick creates from both passing the slot check.
+        """
+        now = time.monotonic()
+        last = self._cooldowns.get(user_id)
+        if last is not None and now - last < COOLDOWN:
+            wait = math.ceil(COOLDOWN - (now - last))
+            raise ValueError(f"You're changing emojis too fast. Try again in {wait} second(s).")
+        if stamp:
+            self._cooldowns = {uid: t for uid, t in self._cooldowns.items() if now - t < COOLDOWN}
+            self._cooldowns[user_id] = now
+
+    @staticmethod
+    def _check_name(name: str) -> None:
+        if not EMOJI_NAME.fullmatch(name):
+            raise ValueError("Emoji names should be 2 to 32 alphanumeric characters and underscores.")
+
+    async def _require_role(self, member: discord.Member) -> None:
+        """Creating and renaming need the role set with `[p]ce setrole`, when one is set."""
+        required_role_id = await self.config.guild(member.guild).required_role_id()
+        if not required_role_id:
+            return
+        role = member.guild.get_role(required_role_id)
+        if not role:
+            raise ValueError(
+                "The required role for creating emojis no longer exists. Please ask an admin to reconfigure it."
+            )
+        if role not in member.roles:
+            raise ValueError("You do not have the required role to create emojis.")
+
+    async def can_create(self, member: discord.Member) -> bool:
+        try:
+            await self._require_role(member)
+        except ValueError:
+            return False
+        return True
+
+    async def slots_for(self, member: discord.Member) -> tuple[int, int]:
+        """(used, limit) for the member's emoji slots."""
+        return (
+            await self.get_user_emoji_count(member.guild, member.id),
+            await self.get_user_limit(member.guild, member.id),
+        )
+
+    async def emojis_for(self, member: discord.Member) -> list[discord.Emoji]:
+        ownership = await self.get_live_ownership(member.guild)
+        return [
+            emoji
+            for emoji_id, owner_id in ownership.items()
+            if owner_id == member.id and (emoji := member.guild.get_emoji(int(emoji_id)))
+        ]
+
+    async def _owns(self, member: discord.Member, emoji: discord.Emoji) -> bool:
+        ownership = await self.config.guild(member.guild).emoji_ownership()
+        return ownership.get(str(emoji.id)) == member.id
+
+    async def create_emoji(self, member: discord.Member, name: str, image: bytes) -> discord.Emoji:
+        """Create an emoji owned by the member, or raise ValueError with the reason."""
+        guild = member.guild
+        self._check_name(name)
+        if len(image) > MAX_EMOJI_BYTES:
+            raise ValueError(f"Image is too large (max {MAX_EMOJI_BYTES // 1024}KB).")
+        if not image.startswith(IMAGE_SIGNATURES):
+            raise ValueError("The image must be a PNG, JPEG or GIF.")
+        self._cooldown(member.id, stamp=True)
+        await self._require_role(member)
+        used, limit = await self.slots_for(member)
+        if used >= limit:
+            raise ValueError(f"You have reached your limit of {limit} emojis.")
+        try:
+            emoji = await guild.create_custom_emoji(
+                name=name, image=image, reason=f"Created by {member} ({member.id}) via CustomEmoji"
+            )
+        except discord.HTTPException as e:
+            raise ValueError(f"Failed to create emoji. Discord error: {e}") from None
+        async with self.config.guild(guild).emoji_ownership() as ownership:
+            ownership[str(emoji.id)] = member.id
+        return emoji
+
+    async def rename_emoji(self, member: discord.Member, emoji: discord.Emoji, name: str) -> None:
+        """Rename one of the member's own emojis, or raise ValueError."""
+        self._check_name(name)
+        await self._require_role(member)
+        if not await self._owns(member, emoji):
+            raise ValueError("You do not own this emoji.")
+        self._cooldown(member.id, stamp=True)
+        try:
+            await emoji.edit(name=name, reason=f"Renamed by {member} via CustomEmoji")
+        except discord.Forbidden:
+            raise ValueError("I do not have permission to edit this emoji.") from None
+        except discord.HTTPException as e:
+            raise ValueError(f"Failed to edit emoji: {e}") from None
+
+    async def delete_emoji(self, member: discord.Member, emoji: discord.Emoji) -> None:
+        """Delete one of the member's own emojis, or raise ValueError."""
+        if not await self._owns(member, emoji):
+            raise ValueError("You do not own this emoji.")
+        self._cooldown(member.id, stamp=True)
+        await self._delete(emoji, member.guild, member)
+
+    async def _delete(self, emoji: discord.Emoji, guild: discord.Guild, by: discord.abc.User) -> None:
+        try:
+            await emoji.delete(reason=f"Deleted by {by} via CustomEmoji")
+        except discord.Forbidden:
+            raise ValueError("I do not have permission to delete this emoji.") from None
+        except discord.HTTPException as e:
+            raise ValueError(f"Failed to delete emoji: {e}") from None
+        async with self.config.guild(guild).emoji_ownership() as ownership:
+            ownership.pop(str(emoji.id), None)
+
     @commands.Cog.listener()
     async def on_guild_emojis_update(
         self,
@@ -164,7 +288,6 @@ class CustomEmoji(commands.Cog):
 
     @customemoji.command(name="create")
     @commands.bot_has_permissions(manage_emojis=True)
-    @commands.cooldown(1, 10, commands.BucketType.user)
     async def ce_create(self, ctx, name: str, source: discord.PartialEmoji | str | None = None):
         """
         Create a new custom emoji.
@@ -175,84 +298,43 @@ class CustomEmoji(commands.Cog):
             [p]ce create my_emoji <existing_emoji>
             [p]ce create my_emoji https://cdn.discordapp.com/attachments/...
         """
-        guild = ctx.guild
-        author = ctx.author
-
-        # Check Role
-        required_role_id = await self.config.guild(guild).required_role_id()
-        if required_role_id:
-            role = guild.get_role(required_role_id)
-            if not role:
-                await ctx.send(
-                    "The required role for creating emojis no longer exists. Please ask an admin to reconfigure it."
-                )
-                return
-            if role not in author.roles:
-                await ctx.send("You do not have the required role to create emojis.")
-                return
-
-        # Check Limit
-        limit = await self.get_user_limit(guild, author.id)
-        current_count = await self.get_user_emoji_count(guild, author.id)
-
-        if current_count >= limit:
-            await ctx.send(f"You have reached your limit of {limit} emojis.")
+        try:
+            # Checked before downloading too, so a refusal costs no download
+            await self._require_role(ctx.author)
+            current_count, limit = await self.slots_for(ctx.author)
+            if current_count >= limit:
+                raise ValueError(f"You have reached your limit of {limit} emojis.")
+            self._cooldown(ctx.author.id, stamp=False)
+            image_data = await self._command_image(ctx, source)
+            emoji = await self.create_emoji(ctx.author, name, image_data)
+        except ValueError as e:
+            await ctx.send(str(e))
             return
+        await ctx.send(
+            f"Emoji {emoji} (`:{emoji.name}:`) created successfully! ({current_count + 1}/{limit} slots used)"
+        )
 
-        # Determine Image Source
-        image_data = None
+    async def _command_image(self, ctx, source: discord.PartialEmoji | str | None) -> bytes:
         if ctx.message.attachments:
             attachment = ctx.message.attachments[0]
             if not attachment.filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif")):
-                await ctx.send("Invalid file type. Please upload a PNG, JPG, or GIF.")
-                return
+                raise ValueError("Invalid file type. Please upload a PNG, JPG, or GIF.")
             if attachment.size > MAX_EMOJI_BYTES:
-                await ctx.send(f"Image is too large (max {MAX_EMOJI_BYTES // 1024}KB).")
-                return
+                raise ValueError(f"Image is too large (max {MAX_EMOJI_BYTES // 1024}KB).")
             try:
-                image_data = await attachment.read()
+                return await attachment.read()
             except Exception as e:
-                await ctx.send(f"Failed to read attachment: {e}")
-                return
-        elif source:
-            url = None
-            if isinstance(source, discord.PartialEmoji):
-                url = source.url
-            elif isinstance(source, str):
-                url = source  # download_image only accepts Discord CDN links
-
-            if url:
-                try:
-                    image_data = await self.download_image(str(url))
-                except ValueError as e:
-                    await ctx.send(f"{e}")
-                    return
-                except Exception as e:
-                    await ctx.send(f"Failed to download image from source: {e}")
-                    return
-
-        if not image_data:
-            await ctx.send("Please provide an image attachment or a valid emoji/URL.")
-            return
-
-        # Create Emoji
-        try:
-            emoji = await guild.create_custom_emoji(
-                name=name, image=image_data, reason=f"Created by {author} ({author.id}) via CustomEmoji"
-            )
-
-            # Save Ownership
-            async with self.config.guild(guild).emoji_ownership() as ownership:
-                ownership[str(emoji.id)] = author.id
-
-            await ctx.send(
-                f"Emoji {emoji} (`:{emoji.name}:`) created successfully! ({current_count + 1}/{limit} slots used)"
-            )
-
-        except discord.HTTPException as e:
-            await ctx.send(f"Failed to create emoji. Discord error: {e}")
-        except Exception as e:
-            await ctx.send(f"An unexpected error occurred: {e}")
+                raise ValueError(f"Failed to read attachment: {e}") from None
+        if source:
+            # download_image only accepts Discord CDN links
+            url = source.url if isinstance(source, discord.PartialEmoji) else source
+            try:
+                return await self.download_image(str(url))
+            except ValueError:
+                raise
+            except Exception as e:
+                raise ValueError(f"Failed to download image from source: {e}") from None
+        raise ValueError("Please provide an image attachment or a valid emoji/URL.")
 
     @customemoji.command(name="delete")
     @commands.bot_has_permissions(manage_emojis=True)
@@ -262,55 +344,32 @@ class CustomEmoji(commands.Cog):
 
         You can only delete emojis you own, unless you are a moderator.
         """
-        ownership = await self.config.guild(ctx.guild).emoji_ownership()
-        owner_id = ownership.get(str(emoji.id))
-
-        is_mod = await self.bot.is_mod(ctx.author) or ctx.author.guild_permissions.manage_emojis
-        is_owner = owner_id == ctx.author.id
-
-        if not is_owner and not is_mod:
-            await ctx.send("You do not own this emoji and do not have permission to delete it.")
-            return
-
         try:
-            await emoji.delete(reason=f"Deleted by {ctx.author} via CustomEmoji")
-
-            async with self.config.guild(ctx.guild).emoji_ownership() as ownership:
-                if str(emoji.id) in ownership:
-                    del ownership[str(emoji.id)]
-
-            await ctx.send(f"Emoji `{emoji.name}` has been deleted.")
-
-        except discord.Forbidden:
-            await ctx.send("I do not have permission to delete this emoji.")
-        except discord.HTTPException as e:
-            await ctx.send(f"Failed to delete emoji: {e}")
+            if await self._owns(ctx.author, emoji):
+                await self.delete_emoji(ctx.author, emoji)
+            elif await self.bot.is_mod(ctx.author) or ctx.author.guild_permissions.manage_emojis:
+                await self._delete(emoji, ctx.guild, ctx.author)
+            else:
+                raise ValueError("You do not own this emoji and do not have permission to delete it.")
+        except ValueError as e:
+            await ctx.send(str(e))
+            return
+        await ctx.send(f"Emoji `{emoji.name}` has been deleted.")
 
     @customemoji.command(name="rename")
     @commands.bot_has_permissions(manage_emojis=True)
     async def ce_rename(self, ctx, emoji: discord.Emoji, new_name: str):
         """
         Rename a custom emoji you own.
+
+        Needs the same role as creating one.
         """
-        # Validate name (alphanumeric + underscores usually best for Discord)
-        if not new_name.replace("_", "").isalnum():
-            await ctx.send("Emoji names should only contain alphanumeric characters and underscores.")
-            return
-
-        ownership = await self.config.guild(ctx.guild).emoji_ownership()
-        owner_id = ownership.get(str(emoji.id))
-
-        if owner_id != ctx.author.id:
-            await ctx.send("You do not own this emoji.")
-            return
-
         try:
-            await emoji.edit(name=new_name, reason=f"Renamed by {ctx.author} via CustomEmoji")
-            await ctx.send(f"Emoji renamed to `:{new_name}:`.")
-        except discord.Forbidden:
-            await ctx.send("I do not have permission to edit this emoji.")
-        except discord.HTTPException as e:
-            await ctx.send(f"Failed to edit emoji: {e}")
+            await self.rename_emoji(ctx.author, emoji, new_name)
+        except ValueError as e:
+            await ctx.send(str(e))
+            return
+        await ctx.send(f"Emoji renamed to `:{new_name}:`.")
 
     @customemoji.command(name="list")
     async def ce_list(self, ctx, user: discord.Member | None = None):

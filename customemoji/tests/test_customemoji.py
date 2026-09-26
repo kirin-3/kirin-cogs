@@ -16,6 +16,8 @@ from redbot.core import Config
 
 from customemoji.customemoji import MAX_EMOJI_BYTES, CustomEmoji
 
+PNG = b"\x89PNG\r\n\x1a\n"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -97,6 +99,7 @@ def _make_ctx(
     perms = MagicMock(spec=discord.Permissions)
     perms.manage_emojis = manage_emojis
     author.guild_permissions = perms
+    author.guild = guild
 
     message = MagicMock(spec=discord.Message)
     message.attachments = attachments or []
@@ -309,7 +312,7 @@ async def test_create_allowed_after_emoji_deleted_outside_bot(
     attachment = MagicMock(spec=discord.Attachment)
     attachment.filename = "new.png"
     attachment.size = 1024
-    attachment.read = AsyncMock(return_value=b"png")
+    attachment.read = AsyncMock(return_value=PNG)
     ctx = _make_ctx(bot_mock, author_id=500, attachments=[attachment])
     ctx.guild.get_emoji = MagicMock(side_effect=lambda emoji_id: MagicMock() if emoji_id == 1001 else None)
     new_emoji = MagicMock()
@@ -546,7 +549,7 @@ async def test_create_attachment_too_large(cog: Any, bot_mock: MagicMock, config
 
 @pytest.mark.asyncio
 async def test_create_success_with_attachment(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
-    image_bytes = b"fakepngdata"
+    image_bytes = PNG + b"fakepngdata"
     attachment = MagicMock(spec=discord.Attachment)
     attachment.filename = "image.png"
     attachment.size = 1024
@@ -840,3 +843,63 @@ async def test_dpytest_ce_list_self_no_emojis(dpytest_bot: dpy_commands.Bot) -> 
 
     channel_mock.send.assert_called_once()
     assert "no custom emojis" in channel_mock.send.call_args[0][0]
+
+
+# ---------------------------------------------------------------------------
+# Shared rules: rename role, cooldown, content checks
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rename_without_the_role_is_refused(cog: Any, bot_mock: MagicMock, config_mock: MagicMock) -> None:
+    ctx = _make_ctx(bot_mock, author_id=500)
+    ctx.guild.get_role = MagicMock(return_value=MagicMock(spec=discord.Role))
+    guild_group = config_mock.guild.return_value
+    guild_group.required_role_id = AsyncMock(return_value=888)
+    guild_group.emoji_ownership = AsyncMock(return_value={"1001": 500})
+    emoji = MagicMock(spec=discord.Emoji)
+    emoji.id = 1001
+    emoji.edit = AsyncMock()
+
+    await cog.ce_rename.callback(cog, ctx, emoji, "newname")
+
+    emoji.edit.assert_not_awaited()
+    ctx.send.assert_called_once_with("You do not have the required role to create emojis.")
+
+
+@pytest.mark.asyncio
+async def test_two_creates_two_seconds_apart_create_one_emoji(cog: Any, config_mock: MagicMock) -> None:
+    ownership: dict = {}
+    guild_group = config_mock.guild.return_value
+    guild_group.emoji_ownership = MagicMock(return_value=_acm(ownership))
+    guild_group.user_limits = AsyncMock(return_value={"500": 5})
+    member = _make_ctx(MagicMock(), author_id=500).author
+    member.guild.get_emoji = MagicMock(return_value=MagicMock())
+    member.guild.create_custom_emoji = AsyncMock(side_effect=[MagicMock(id=1), MagicMock(id=2)])
+    now = [100.0]
+
+    with patch("customemoji.customemoji.time.monotonic", lambda: now[0]):
+        await cog.create_emoji(member, "first", PNG)
+        now[0] = 102.0
+        with pytest.raises(ValueError, match="Try again in 8 second"):
+            await cog.create_emoji(member, "second", PNG)
+
+    member.guild.create_custom_emoji.assert_awaited_once()
+    assert ownership == {"1": 500}
+
+
+@pytest.mark.asyncio
+async def test_text_file_named_png_is_refused(cog: Any) -> None:
+    member = _make_ctx(MagicMock(), author_id=500).author
+    member.guild.create_custom_emoji = AsyncMock()
+
+    with pytest.raises(ValueError, match="must be a PNG, JPEG or GIF"):
+        await cog.create_emoji(member, "party_cat", b"just some text")
+
+    member.guild.create_custom_emoji.assert_not_awaited()
+
+
+@pytest.mark.parametrize("name", ["a", "bad name", "café", "x" * 33])
+def test_emoji_names_are_ascii_letters_digits_and_underscores(name: str) -> None:
+    with pytest.raises(ValueError):
+        CustomEmoji._check_name(name)
