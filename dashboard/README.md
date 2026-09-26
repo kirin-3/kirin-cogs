@@ -9,8 +9,8 @@ Cloudflare. They share the login code but keep separate sessions and cookies.
   economy and XP, the house economy, the cog's configuration and the stock market. Its Modmail pages show every
   thread the modmail bot has kept since October 2020, read-only.
 - **Member site**, `my.unicornia.net` on `127.0.0.1:8012`. Every member can see their Unicornia profile, buy and equip
-  rank-card backgrounds, see the XP leaderboard, and turn their roleplay settings (Selective, Public and Servant) on
-  or off. Supporters also manage their custom commands, custom emojis and, if they
+  rank-card backgrounds, see the XP leaderboard, and turn their roleplay settings (Selective, Public and Servant) and the bot's daddy replies
+  on or off. Supporters also manage their custom commands, custom emojis and, if they
   were given one with `[p]assignrole`, their custom role.
 
 ## Who can log in
@@ -32,7 +32,7 @@ at the time of each request:
 | Section | Who sees it |
 | --- | --- |
 | Profile, Backgrounds, Leaderboard | Everyone, while the Unicornia cog is loaded |
-| Roleplay | Everyone |
+| Roleplay, Settings | Everyone |
 | Custom commands | The active supporter role (`700121551483437128`), or the inactive one (`1458440559713718466`) while the member still has commands |
 | Custom emojis | A supporter role who can create emojis (the `[p]ce setrole` role), or who still has emojis |
 | Custom role | Either supporter role, plus a role assigned with `[p]assignrole` |
@@ -41,6 +41,11 @@ The pages follow the same rules as the bot's commands, because they call the sam
 can create custom commands, or edit them on the site (a replace in one step, under the create rules). Creating and renaming emojis needs the role set with `[p]ce setrole`. Either kind of
 supporter can delete their own items. The per-member cooldowns count commands and site together. The member site can
 only upload new emojis, not copy existing ones, and it can't add people to or remove them from the roleplay lists.
+
+## Settings page
+
+`/settings` on the member site lists the Responder cog's per-member switches; today that is only daddy replies,
+the same switch as `[p]daddyoptout`. It shows a notice while Responder isn't loaded.
 
 ## Unicornia pages
 
@@ -157,10 +162,10 @@ session length of 12 hours apply to both.
    ```
 
 4. Load the cogs: `[p]load banlog automod dashboard`, and have `customcommand`, `customemoji`, `customrolecolor`,
-   `roleplay` and `unicornia` loaded. Pages whose cog is not loaded show a notice instead.
+   `responder`, `roleplay` and `unicornia` loaded. Pages whose cog is not loaded show a notice instead.
 5. Check that:
    - a staff account with 2FA can log in to the staff site, and a non-staff account gets "Staff only";
-   - a member without 2FA can log in to the member site and sees only Roleplay;
+   - a member without 2FA can log in to the member site and sees only Roleplay and Settings;
    - an inactive supporter can list and delete their items but has no create forms;
    - an active supporter can create a command and an emoji;
    - a supporter with an assigned role can recolor it.

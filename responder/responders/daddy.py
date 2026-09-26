@@ -29,6 +29,8 @@ class ImDaddyResponder(BaseTextResponder):
     ):
         if message.author.id in self.never_respond:
             return
+        if not await self.parent.config.user(message.author).daddy():
+            return
 
         name = message.content[match.end() :].strip()
 

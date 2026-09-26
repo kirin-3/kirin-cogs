@@ -1,0 +1,32 @@
+{% extends "member/base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+{% if missing %}
+<p class="notice">Settings are unavailable right now. Try again later.</p>
+{% else %}
+<section class="panel">
+  <table>
+    <tbody>
+    {% for toggle in toggles %}
+    <tr>
+      <td>{{ toggle.emoji }} <strong>{{ toggle.label }}</strong><small>{{ toggle.description }}</small></td>
+      <td class="num">
+        {% if toggle.value %}<span class="badge ok">On</span>{% else %}<span class="badge">Off</span>{% endif %}
+      </td>
+      <td class="num">
+        <form method="post" action="/settings">
+          <input type="hidden" name="csrf" value="{{ session.csrf }}">
+          <input type="hidden" name="key" value="{{ toggle.key }}">
+          <input type="hidden" name="value" value="{{ 'off' if toggle.value else 'on' }}">
+          <button type="submit">Turn {{ "off" if toggle.value else "on" }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+<p class="empty">Daddy replies can also be switched with the bot's <code>daddyoptout</code> command in Discord.</p>
+{% endif %}
+{% endblock %}

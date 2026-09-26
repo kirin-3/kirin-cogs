@@ -15,14 +15,14 @@ This document is the per-cog annex to the bot's [Privacy Policy](PRIVACY.md), wh
 | CustomEmoji | User limits and emoji ownership | Removes limits and ownership records |
 | CustomRoleColor | User-to-role management assignments | Removes the assignment |
 | DisboardReminder | Per-member Disboard bump counts saved by older versions of the original cog; no new records | Removes the user's counts from every guild |
-| Dashboard | Staff and member login sessions (Discord user ID, CSRF token, expiry) in memory only; page traffic passes through Cloudflare. The staff site shows modmail threads read-only from the modmail bot's own database; attachment links are re-signed through Discord when viewed and cached in memory until they expire, and no copy of threads or files is kept. Changes made on the member site are stored by the cog they belong to (CustomCommand, CustomEmoji, CustomRoleColor, Roleplay, Unicornia) | Nothing persistent; sessions end after 12 hours, on logout, or on unload/restart |
+| Dashboard | Staff and member login sessions (Discord user ID, CSRF token, expiry) in memory only; page traffic passes through Cloudflare. The staff site shows modmail threads read-only from the modmail bot's own database; attachment links are re-signed through Discord when viewed and cached in memory until they expire, and no copy of threads or files is kept. Changes made on the member site are stored by the cog they belong to (CustomCommand, CustomEmoji, CustomRoleColor, Responder, Roleplay, Unicornia) | Nothing persistent; sessions end after 12 hours, on logout, or on unload/restart |
 | Honeypot | Guild-scoped user IDs, prior role IDs, and quarantine timestamps | Removes the user's quarantine records from every guild |
 | Mjolnir | Per-user count of successful hammer lifts | Removes the user's count |
 | Moderation | Guild/member IDs, role IDs removed by a mute, and the mute end time | Removes the user's mute records from every guild |
 | NitroAward | Guild/member boost timestamps and legacy boost markers | Clears member and legacy records |
 | Patron | Patreon/Buy Me a Coffee names, emails, pledge amounts, payment progress, and the Discord IDs they are linked to | Removes the user's links and payment records; Unicornia financial entries follow its policy |
 | Profile | Questionnaire answers, picture URLs, message IDs, and timestamps | Clears member-scoped and legacy user-scoped records |
-| Responder | Nothing stored. The topic of a `<topic> rate` message with no built-in rate is sent to Tenor as a GIF search term | No local record |
+| Responder | User IDs of members who turned off daddy replies (kept only while it's off). The topic of a `<topic> rate` message with no built-in rate is sent to Tenor as a GIF search term | Removes the user's opt-out |
 | Roleplay | Per-user settings: public, servant, and selective flags, and the user IDs in each member's owner, allowed, and blocked lists | Removes the user's settings and their ID from every other member's lists |
 | RulesAccept | Acceptance member ID and submitted text posted to a Discord log channel | No local per-user record; Discord log-retention policy applies |
 | Suggest | Author IDs, suggestion text, message IDs, status, and review reason | Removes suggestions authored by the user |

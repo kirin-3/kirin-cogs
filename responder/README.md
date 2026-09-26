@@ -1,6 +1,6 @@
 # Responder
 
-Auto-responses to trigger phrases, with no commands. Ported from the Unicornia repo
+Auto-responses to trigger phrases. Ported from the Unicornia repo
 ([ruffiana/Unicornia](https://github.com/ruffiana/Unicornia), originally by Ruffiana, MIT).
 
 It only answers in the channels listed in `const.SERVER_PERMISSIONS` (Unicornia's bot channels and Ruffiana's test
@@ -17,6 +17,12 @@ server), and it ignores bots, Red's blocklist and servers where the cog is disab
 | `(╯°□°)╯︵ ┻━┻` | `┬─┬ノ( º _ ºノ)` | none |
 
 Admins skip cooldowns. Responders with a cooldown stay silent while it runs.
+
+## Opting out
+
+`[p]daddyoptout` (also `/daddyoptout`, once enabled with `[p]slash enable daddyoptout`) turns the daddy replies off
+for you, and running it again turns them back on. Members can also switch it on the member site's Settings page,
+`my.unicornia.net/settings`. Only opted-out members are stored; turning replies back on deletes the record.
 
 ### Rates
 

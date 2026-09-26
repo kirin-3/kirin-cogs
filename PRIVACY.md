@@ -69,13 +69,13 @@ The bot reads your Discord status and current activity for exactly two features:
 
 Staff can review ban records and the automod rules and action log on a private web site, `staff.unicornia.net`, after logging in with Discord. The login reads only the staff member's Discord user ID and whether their account has two-factor authentication. Members who are not staff cannot log in.
 
-Members can log in with Discord to a second site, `my.unicornia.net`, to view and change their own roleplay settings and, for supporters, their custom commands, custom emojis and custom role. This login reads only the member's Discord user ID. What you change there is stored exactly as if you had used the bot's commands (see [section 3.6](#36-content-you-submit-deliberately)); files you upload go to Discord or, for custom commands, to the bot's storage.
+Members can log in with Discord to a second site, `my.unicornia.net`, to view and change their own roleplay settings and auto-reply settings and, for supporters, their custom commands, custom emojis and custom role. This login reads only the member's Discord user ID. What you change there is stored exactly as if you had used the bot's commands (see [section 3.6](#36-content-you-submit-deliberately)); files you upload go to Discord or, for custom commands, to the bot's storage.
 
 On both sites the login session is held in memory, never written to disk, and ends after 12 hours, on logout, or when the bot restarts.
 
 ### 3.6 Content you submit deliberately
 
-Profile questionnaire answers, suggestions, confessions, support-ticket answers, custom command triggers and responses, rules-acceptance text, and image-generation prompts are stored or posted as the feature requires. Roleplay settings store your consent choices (whether you are public, a servant, or selective) and the user IDs you add as your owner, allowed users, or blocked users. Confessions and rules acceptances are posted to Discord channels rather than retained in a local database; once posted, Discord's retention and your server's moderation policy apply.
+Profile questionnaire answers, suggestions, confessions, support-ticket answers, custom command triggers and responses, rules-acceptance text, and image-generation prompts are stored or posted as the feature requires. Roleplay settings store your consent choices (whether you are public, a servant, or selective) and the user IDs you add as your owner, allowed users, or blocked users. If you turn off the bot's "I'm your daddy" replies, your user ID is stored with that choice until you turn them back on. Confessions and rules acceptances are posted to Discord channels rather than retained in a local database; once posted, Discord's retention and your server's moderation policy apply.
 
 ### 3.7 Supporter payments
 
@@ -117,7 +117,7 @@ If a new feature introduces a new recipient, this table is updated before that f
 | Web site login sessions | In memory only; at most 12 hours |
 | Presence and activity | Not retained at all |
 | Diagnostic moderation output | Up to one hour, then deleted automatically |
-| XP, currency, inventory, profiles, tickets, warnings, roleplay settings, hammer-lift and Disboard bump counts, contest payouts | Until you request deletion or the record is no longer needed |
+| XP, currency, inventory, profiles, tickets, warnings, roleplay settings, auto-reply opt-outs, hammer-lift and Disboard bump counts, contest payouts | Until you request deletion or the record is no longer needed |
 | Quarantine role snapshots | Until the quarantine is resolved and the record cleared |
 | Boost timestamps | Retained to prevent duplicate awards for the same boost |
 | Supporter payment records (section 3.7) | Until you request deletion |

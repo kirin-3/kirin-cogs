@@ -710,6 +710,73 @@ async def test_roleplay_page_explains_when_the_cog_is_unloaded(ms: SimpleNamespa
     assert status == 200 and "Roleplay settings are unavailable" in page
 
 
+# --- settings ------------------------------------------------------------------------------------
+
+
+class _FakeResponder:
+    """Responder's settings_for/set_toggle; the real ones are tested with the cog."""
+
+    def __init__(self) -> None:
+        self.daddy: dict[int, bool] = {}
+
+    async def settings_for(self, user_id: int) -> dict[str, dict]:
+        item = {"label": "Daddy replies", "description": "Hi, I'm your daddy", "emoji": "👨"}
+        return {"daddy": {**item, "value": self.daddy.get(user_id, True)}}
+
+    async def set_toggle(self, user_id: int, key: str, value: bool) -> None:
+        if key != "daddy":
+            raise ValueError(key)
+        self.daddy[user_id] = value
+
+
+@pytest.mark.asyncio
+async def test_settings_page_turns_daddy_replies_off_and_on(ms: SimpleNamespace) -> None:
+    responder = ms.cogs["ResponderCog"] = _FakeResponder()
+
+    _, home = await _get(ms, REGULAR, "/")
+    status, page = await _get(ms, REGULAR, "/settings")
+    assert 'href="/settings"' in home
+    assert status == 200 and "Daddy replies" in page and "Turn off" in page
+
+    response = await _post(ms, REGULAR, "/settings", {"key": "daddy", "value": "off"})
+    _, page = await _get(ms, REGULAR, "/settings")
+    assert response.status == 302 and response.headers["Location"] == "/settings"
+    assert responder.daddy == {REGULAR: False} and "Turn on" in page
+
+    await _post(ms, REGULAR, "/settings", {"key": "daddy", "value": "on"})
+    assert responder.daddy == {REGULAR: True}
+
+
+@pytest.mark.parametrize("form", [{"key": "nope", "value": "off"}, {"key": "daddy", "value": "maybe"}])
+@pytest.mark.asyncio
+async def test_settings_rejects_unknown_keys_and_values(ms: SimpleNamespace, form: dict) -> None:
+    responder = ms.cogs["ResponderCog"] = _FakeResponder()
+
+    response = await _post(ms, REGULAR, "/settings", form)
+
+    assert response.status == 400 and responder.daddy == {}
+
+
+@pytest.mark.asyncio
+async def test_settings_needs_the_csrf_token(ms: SimpleNamespace) -> None:
+    responder = ms.cogs["ResponderCog"] = _FakeResponder()
+
+    response = await ms.client.post(
+        "/settings", data={"key": "daddy", "value": "off"}, headers=_log_in(ms, REGULAR), allow_redirects=False
+    )
+
+    assert response.status == 403 and responder.daddy == {}
+
+
+@pytest.mark.asyncio
+async def test_settings_page_explains_when_the_cog_is_unloaded(ms: SimpleNamespace) -> None:
+    status, page = await _get(ms, REGULAR, "/settings")
+    response = await _post(ms, REGULAR, "/settings", {"key": "daddy", "value": "off"})
+
+    assert status == 200 and "Settings are unavailable" in page
+    assert response.status == 503
+
+
 @pytest.mark.asyncio
 async def test_active_supporter_edits_a_command(ms: SimpleNamespace) -> None:
     ms.cc.owned[ACTIVE] = ["cat"]

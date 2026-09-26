@@ -25,6 +25,7 @@ PERSISTENT_COGS = {
     "nitroaward",
     "patron",
     "profile",
+    "responder",
     "roleplay",
     "suggest",
     "tickets",

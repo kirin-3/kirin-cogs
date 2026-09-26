@@ -5,11 +5,20 @@ import re
 from pathlib import Path
 
 import discord
-from redbot.core import commands
+from redbot.core import Config, commands
 from redbot.core.bot import Red
 
 from . import __version__, const
 from .responders.base_text_responder import BaseTextResponder
+
+# Per-member on/off settings, all on by default. The member site's Settings page lists them.
+USER_SETTINGS = {
+    "daddy": {
+        "label": "Daddy replies",
+        "description": 'Answer messages that start with "I\'m" or "I am" with "Hi, ...! I\'m your daddy...".',
+        "emoji": "👨",
+    },
+}
 
 
 class ResponderCog(commands.Cog):
@@ -27,12 +36,47 @@ class ResponderCog(commands.Cog):
         self.logger.setLevel(const.LOG_LEVEL)
 
         self.bot = bot
+        self.config = Config.get_conf(self, identifier=0x5E5B0DE7, force_registration=True)
+        self.config.register_user(**dict.fromkeys(USER_SETTINGS, True))
 
         self.responders = self._init_responders()
 
         self.logger.info("-" * 32)
         self.logger.info(f"{self.__class__.__name__} v({__version__}) initialized!")
         self.logger.info("-" * 32)
+
+    async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
+        await self.config.user_from_id(user_id).clear()
+
+    async def settings_for(self, user_id: int) -> dict[str, dict]:
+        """A member's settings, keyed like USER_SETTINGS, each with its label, description, emoji and value."""
+        data = await self.config.user_from_id(user_id).all()
+        return {key: {**meta, "value": data[key]} for key, meta in USER_SETTINGS.items()}
+
+    async def set_toggle(self, user_id: int, key: str, value: bool) -> None:
+        if key not in USER_SETTINGS:
+            raise ValueError(f"{key!r} isn't a setting.")
+        group = self.config.user_from_id(user_id)
+        if not value:
+            await group.get_attr(key).set(False)
+            return
+        await group.get_attr(key).clear()
+        # Everything back on (the default): keep no record of the member at all
+        if all((await group.all()).values()):
+            await group.clear()
+
+    @commands.hybrid_command(name="daddyoptout")
+    async def daddy_opt_out(self, ctx: commands.Context) -> None:
+        """Turn the "Hi, ...! I'm your daddy..." replies to your messages off, or back on."""
+        enabled = not await self.config.user(ctx.author).daddy()
+        await self.set_toggle(ctx.author.id, "daddy", enabled)
+        if enabled:
+            text = "Daddy replies are back on for you."
+        else:
+            text = (
+                f"You won't get daddy replies anymore. Run `{ctx.clean_prefix}daddyoptout` again to turn them back on."
+            )
+        await ctx.send(f"{text} You can also change this at <https://my.unicornia.net/settings>.", ephemeral=True)
 
     def _init_responders(self):
         """Collect all responder classes from the responders directory and instantiates them."""

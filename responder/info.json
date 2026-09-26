@@ -6,7 +6,7 @@
     ],
     "short": "Fun auto-responses to message triggers",
     "description": "Replies to trigger phrases in Unicornia's bot channels: \"<thing> rate\" embeds, \"I'm ...\" daddy jokes, long cat, The Game and table unflipping.",
-    "end_user_data_statement": "This cog does not store any end user data. The topic of a \"<thing> rate\" message that has no built-in rate is sent to Tenor as a GIF search term.",
+    "end_user_data_statement": "This cog stores the Discord user IDs of members who turned off daddy replies, only while they are off; deletion removes the record. The topic of a \"<thing> rate\" message that has no built-in rate is sent to Tenor as a GIF search term.",
     "min_bot_version": "3.5.22",
     "min_python_version": [
         3,

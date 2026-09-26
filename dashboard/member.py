@@ -1,4 +1,4 @@
-"""The member site's pages, my.unicornia.net: roleplay settings and Unicornia for everyone, self-service for supporters.
+"""The member site's pages, my.unicornia.net: settings and Unicornia for everyone, self-service for supporters.
 
 Every rule lives in the cogs themselves (reached with bot.get_cog, never imported), so the site and the bot's commands
 can't drift apart. Their methods raise ValueError with a message for the member; the pages show it.
@@ -60,6 +60,8 @@ class MemberSite:
         app.router.add_get("/", self.home)
         app.router.add_get("/roleplay", self.roleplay)
         app.router.add_post("/roleplay", self.roleplay_toggle)
+        app.router.add_get("/settings", self.settings)
+        app.router.add_post("/settings", self.settings_toggle)
         app.router.add_get("/commands", self.commands)
         app.router.add_post("/commands", self.command_create)
         app.router.add_post("/commands/edit", self.command_edit)
@@ -166,6 +168,29 @@ class MemberSite:
         except ValueError:
             raise web.HTTPBadRequest() from None
         raise web.HTTPFound("/roleplay")
+
+    # --- settings: the Responder cog's per-member switches ----------------------------------------
+
+    async def settings(self, request: web.Request) -> web.StreamResponse:
+        responder = self._cog("ResponderCog")
+        if responder is None:
+            return self._render(request, "settings.html", missing=True)
+        toggles = [{"key": key, **item} for key, item in (await responder.settings_for(request["member"].id)).items()]
+        return self._render(request, "settings.html", toggles=toggles)
+
+    async def settings_toggle(self, request: web.Request) -> web.StreamResponse:
+        responder = self._cog("ResponderCog")
+        if responder is None:
+            self._missing(request, "Settings")
+        form = await request.post()
+        state = TOGGLE_STATES.get(_text(form, "value"))
+        if state is None:
+            raise web.HTTPBadRequest()
+        try:
+            await responder.set_toggle(request["member"].id, _text(form, "key"), state)
+        except ValueError:
+            raise web.HTTPBadRequest() from None
+        raise web.HTTPFound("/settings")
 
     # --- Unicornia: profile, backgrounds and XP leaderboard --------------------------------------
 
