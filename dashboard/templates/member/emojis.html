@@ -1,0 +1,56 @@
+{% extends "member/base.html" %}
+{% block title %}Custom emojis{% endblock %}
+{% block content %}
+<h1>Custom emojis</h1>
+{% if missing %}
+<p class="notice">Custom emojis are unavailable right now. Try again later.</p>
+{% else %}
+<p class="empty">{{ used }} of {{ limit }} slots used.</p>
+{% if emojis %}
+<div class="scroll">
+<table>
+  <thead><tr><th>Emoji</th><th>Name</th><th></th></tr></thead>
+  <tbody>
+  {% for emoji in emojis %}
+  <tr>
+    <td><img class="emoji" src="{{ emoji.url }}" alt="" width="32" height="32"></td>
+    <td class="mono">:{{ emoji.name }}:
+      {% if can_create %}
+      <form class="inline" method="post" action="/emojis/{{ emoji.id }}/rename">
+        <input type="hidden" name="csrf" value="{{ session.csrf }}">
+        <input type="text" name="name" value="{{ emoji.name }}" required pattern="[A-Za-z0-9_]{2,32}" aria-label="New name">
+        <button type="submit">Rename</button>
+      </form>
+      {% endif %}
+    </td>
+    <td class="num">
+      <form method="post" action="/emojis/{{ emoji.id }}/delete" data-confirm="Delete the emoji :{{ emoji.name }}:?">
+        <input type="hidden" name="csrf" value="{{ session.csrf }}">
+        <button class="quiet" type="submit">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">You don't have any custom emojis.</p>
+{% endif %}
+{% if can_create %}
+<section class="panel">
+  <h2>New emoji</h2>
+  <form class="editor" method="post" action="/emojis" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <label>Name <small>2 to 32 letters, digits and underscores</small>
+      <input type="text" name="name" required pattern="[A-Za-z0-9_]{2,32}">
+    </label>
+    <label>Image <small>PNG, JPEG or GIF, up to 256 KB</small>
+      <input type="file" name="image" accept="image/png,image/jpeg,image/gif" required>
+    </label>
+    <p class="actions"><button class="primary" type="submit">Create</button></p>
+  </form>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

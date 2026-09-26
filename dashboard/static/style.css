@@ -221,3 +221,13 @@ legend { padding: 0 6px; color: var(--muted); font-weight: 600; }
 .danger button:hover { background: var(--warn-bg); }
 .offscreen { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .words { columns: 12rem; margin: 0; padding: 14px 18px 14px 36px; overflow-wrap: anywhere; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+
+/* --- member site --- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.tile { display: block; margin: 0; color: var(--text); text-decoration: none; }
+.tile:hover { border-color: var(--accent); }
+.tile p { margin: 0; color: var(--muted); }
+img.emoji { width: 32px; height: 32px; object-fit: contain; vertical-align: middle; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+input[type="color"] { width: 48px; height: 32px; padding: 2px; }
+td .inline { margin: 6px 0 0; }

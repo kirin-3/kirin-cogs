@@ -65,9 +65,13 @@ The bot reads your Discord status and current activity for exactly two features:
 
 **Presence and activity data is never stored, logged, or transmitted anywhere.** It is read from the live gateway cache at the moment of the event and then discarded. If you do not want your activity used this way, disable *"Display current activity as a status message"* in your own Discord privacy settings, which removes it from the data Discord sends us at all.
 
-### 3.5 Staff web site
+### 3.5 Web sites
 
-Staff can review ban records and the automod rules and action log on a private web site, `staff.unicornia.net`, after logging in with Discord. The login reads only the staff member's Discord user ID and whether their account has two-factor authentication. The login session is held in memory, never written to disk, and ends after 12 hours, on logout, or when the bot restarts. Members who are not staff cannot log in.
+Staff can review ban records and the automod rules and action log on a private web site, `staff.unicornia.net`, after logging in with Discord. The login reads only the staff member's Discord user ID and whether their account has two-factor authentication. Members who are not staff cannot log in.
+
+Members can log in with Discord to a second site, `my.unicornia.net`, to view and change their own roleplay settings and, for supporters, their custom commands, custom emojis and custom role. This login reads only the member's Discord user ID. What you change there is stored exactly as if you had used the bot's commands (see [section 3.6](#36-content-you-submit-deliberately)); files you upload go to Discord or, for custom commands, to the bot's storage.
+
+On both sites the login session is held in memory, never written to disk, and ends after 12 hours, on logout, or when the bot restarts.
 
 ### 3.6 Content you submit deliberately
 
@@ -93,7 +97,7 @@ The bot is hosted on infrastructure we control. The following external services 
 | **Modal** | The image prompt you supply | Image generation (premium tier) |
 | **Google** | The audio of voice notes posted in the server | Voice note transcription |
 | **popcat.xyz** | The target member's Discord avatar URL | Avatar image commands |
-| **Cloudflare** | Traffic to the staff web site, including the ban records staff view there and staff members' IP addresses; Buy Me a Coffee payment notifications on their way to the bot | Staff web site; supporter rewards |
+| **Cloudflare** | Traffic to the staff and member web sites, including what you view and upload there and your IP address; Buy Me a Coffee payment notifications on their way to the bot | Web sites; supporter rewards |
 
 These services process the data to return a result; we do not authorise them to retain it for their own purposes, and we send them no more than the feature requires. Some features fetch content *from* third parties (question prompts, reaction GIFs) without sending any user data; those are not listed above because nothing about you leaves the bot.
 
@@ -109,7 +113,7 @@ If a new feature introduces a new recipient, this table is updated before that f
 | Ban records, with the banned member's messages from the week before the ban | Kept as moderation records until removed on request (see [section 8](#8-your-rights)) |
 | Automod action log | The newest 250 actions; older entries are dropped automatically |
 | Automod spam history | In memory only; at most one hour, and discarded on restart |
-| Staff web site login sessions | In memory only; at most 12 hours |
+| Web site login sessions | In memory only; at most 12 hours |
 | Presence and activity | Not retained at all |
 | Diagnostic moderation output | Up to one hour, then deleted automatically |
 | XP, currency, inventory, profiles, tickets, warnings, roleplay settings, hammer-lift and Disboard bump counts, contest payouts | Until you request deletion or the record is no longer needed |

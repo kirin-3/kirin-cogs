@@ -1,0 +1,54 @@
+{% extends "member/base.html" %}
+{% block title %}Custom role{% endblock %}
+{% block content %}
+<h1>{% if icon_url %}<img class="emoji" src="{{ icon_url }}" alt="" width="32" height="32"> {% elif icon_emoji %}{{ icon_emoji }} {% endif %}{{ role.name }}</h1>
+<p class="swatches">
+  {% for color in colors %}<input type="color" value="#{{ color }}" disabled aria-label="Current color #{{ color }}">{% endfor %}
+  {% if role.mentionable %}<span class="badge ok">Mentionable</span>{% else %}<span class="badge">Not mentionable</span>{% endif %}
+</p>
+{% if problem %}<p class="notice">{{ problem }}</p>{% endif %}
+<div class="flow">
+  <section class="panel">
+    <h2>Color</h2>
+    <form class="editor" method="post" action="/role/color">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <label>Color <input type="color" name="primary" value="#{{ colors[0] }}"></label>
+      <label class="check"><input type="checkbox" name="gradient" value="1"{% if colors|length == 2 %} checked{% endif %}> Fade into a second color</label>
+      <label>Second color <input type="color" name="secondary" value="#{{ colors[1] if colors|length > 1 else colors[0] }}"></label>
+      <p class="actions"><button class="primary" type="submit">Save color</button></p>
+    </form>
+    <form method="post" action="/role/holographic">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <button type="submit">Make it holographic</button>
+    </form>
+  </section>
+  <section class="panel">
+    <h2>Name</h2>
+    <form class="editor" method="post" action="/role/name">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <label>Name <input type="text" name="name" value="{{ role.name }}" required maxlength="100"></label>
+      <p class="actions"><button class="primary" type="submit">Save name</button></p>
+    </form>
+  </section>
+  {% if icons_allowed %}
+  <section class="panel">
+    <h2>Icon</h2>
+    <form class="editor" method="post" action="/role/icon" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <label>Emoji <small>A standard emoji, not a server one</small><input type="text" name="emoji" maxlength="32"></label>
+      <label>Or an image <small>PNG or JPEG, up to 256 KB</small><input type="file" name="image" accept="image/png,image/jpeg"></label>
+      <p class="actions"><button class="primary" type="submit">Save icon</button></p>
+    </form>
+  </section>
+  {% endif %}
+  <section class="panel">
+    <h2>Mentions</h2>
+    <form method="post" action="/role/mentionable">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <input type="hidden" name="state" value="{{ 'off' if role.mentionable else 'on' }}">
+      <p>{% if role.mentionable %}Anyone can mention this role.{% else %}Only people who can mention every role can mention this one.{% endif %}</p>
+      <button type="submit">{% if role.mentionable %}Stop mentions{% else %}Allow mentions{% endif %}</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "member/base.html" %}
+{% block title %}Roleplay{% endblock %}
+{% block content %}
+<h1>Roleplay settings</h1>
+{% if missing %}
+<p class="notice">Roleplay settings are unavailable right now. Try again later.</p>
+{% else %}
+<section class="panel">
+  <h2>Settings</h2>
+  <table>
+    <tbody>
+    {% for toggle in toggles %}
+    <tr>
+      <td>{{ toggle.emoji }} <strong>{{ toggle.label }}</strong><small>{{ toggle.description|replace("*", "") }}</small></td>
+      <td class="num">
+        {% if toggle.value %}<span class="badge ok">On</span>{% else %}<span class="badge">Off</span>{% endif %}
+      </td>
+      <td class="num">
+        <form method="post" action="/roleplay">
+          <input type="hidden" name="csrf" value="{{ session.csrf }}">
+          <input type="hidden" name="key" value="{{ toggle.key }}">
+          <input type="hidden" name="value" value="{{ 'off' if toggle.value else 'on' }}">
+          <button type="submit">Turn {{ "off" if toggle.value else "on" }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+<div class="flow">
+  {% for list in lists %}
+  <section class="panel">
+    <h3>{{ list.emoji }} {{ list.label }}</h3>
+    <p class="empty">{{ list.description|replace("*", "") }}</p>
+    {% if list.names %}
+    <ul class="rows">{% for name in list.names %}<li>{{ name }}</li>{% endfor %}</ul>
+    {% else %}
+    <p class="empty">Nobody yet.</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+<p class="empty">Add or remove people from these lists with the bot's <code>roleplay settings</code> commands in Discord.</p>
+{% endif %}
+{% endblock %}

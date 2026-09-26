@@ -1,0 +1,53 @@
+{% extends "member/base.html" %}
+{% block title %}Custom commands{% endblock %}
+{% block content %}
+<h1>Custom commands</h1>
+{% if missing %}
+<p class="notice">Custom commands are unavailable right now. Try again later.</p>
+{% else %}
+<p class="empty">{{ commands|length }} of {{ limit }} used.</p>
+{% if commands %}
+<div class="scroll">
+<table>
+  <thead><tr><th>Trigger</th><th>Response</th><th>File</th><th></th></tr></thead>
+  <tbody>
+  {% for command in commands %}
+  <tr>
+    <td class="mono">{{ command.trigger }}</td>
+    <td class="reason">{{ command.response }}</td>
+    <td>{{ command.attachment or "" }}</td>
+    <td class="num">
+      <form method="post" action="/commands/delete" data-confirm="Delete the command {{ command.trigger }}?">
+        <input type="hidden" name="csrf" value="{{ session.csrf }}">
+        <input type="hidden" name="trigger" value="{{ command.trigger }}">
+        <button class="quiet" type="submit">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">You don't have any custom commands.</p>
+{% endif %}
+{% if can_create %}
+<section class="panel">
+  <h2>New command</h2>
+  <form class="editor" method="post" action="/commands" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <label>Trigger <small>Letters, digits and spaces</small>
+      <input type="text" name="trigger" value="{{ draft.trigger }}" required maxlength="100">
+    </label>
+    <label>Response
+      <textarea name="response" rows="4" maxlength="2000">{{ draft.response }}</textarea>
+    </label>
+    <label>File <small>Optional, up to 8 MB</small>
+      <input type="file" name="file">
+    </label>
+    <p class="actions"><button class="primary" type="submit">Create</button></p>
+  </form>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

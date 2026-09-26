@@ -3,10 +3,10 @@
     "author": [
         "Kirin"
     ],
-    "short": "Unicornia's staff web site, behind Discord login",
-    "description": "Serves staff.unicornia.net from inside the bot: Discord login restricted to Unicornia staff with 2FA, and pages for the ban records kept by BanLog.",
+    "short": "Unicornia's staff and member web sites, behind Discord login",
+    "description": "Serves staff.unicornia.net (ban records and AutoMod, for staff with 2FA) and my.unicornia.net (roleplay settings for members; custom commands, emojis and role for supporters) from inside the bot.",
     "install_msg": "Thanks for installing the Dashboard. Follow the README deployment checklist before loading it.",
-    "end_user_data_statement": "This cog does not persistently store data about users. Staff logins read the Discord account's ID and 2FA status once; the resulting session is held in memory only and ends after 12 hours, on logout, or when the cog unloads.",
+    "end_user_data_statement": "This cog does not persistently store data about users. Staff logins read the Discord account's ID and 2FA status once, and member logins read only the account's ID; the resulting session is held in memory only and ends after 12 hours, on logout, or when the cog unloads. Changes made on the member site are stored by the cog that owns them (CustomCommand, CustomEmoji, CustomRoleColor, Roleplay).",
     "min_bot_version": "3.5.0",
     "min_python_version": [
         3,

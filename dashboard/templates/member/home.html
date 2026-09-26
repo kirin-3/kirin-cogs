@@ -1,0 +1,15 @@
+{% extends "member/base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+<h1>Welcome, {{ user_name(session.user_id) }}</h1>
+<div class="tiles">
+  <a class="panel tile" href="/roleplay"><h2>Roleplay</h2><p>Your consent settings for roleplay commands.</p></a>
+  {% if nav.supporter %}
+  <a class="panel tile" href="/commands"><h2>Custom commands</h2><p>The commands you've made for the server.</p></a>
+  <a class="panel tile" href="/emojis"><h2>Custom emojis</h2><p>The emojis you've added to the server.</p></a>
+  {% endif %}
+  {% if nav.role %}
+  <a class="panel tile" href="/role"><h2>Custom role</h2><p>Your role's color, name, icon and mentions.</p></a>
+  {% endif %}
+</div>
+{% endblock %}

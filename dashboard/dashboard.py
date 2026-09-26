@@ -1,7 +1,8 @@
-"""Unicornia's staff web site, staff.unicornia.net, behind Discord login.
+"""Unicornia's web sites behind Discord login: staff.unicornia.net for staff, my.unicornia.net for members.
 
-The site listens on loopback only; Caddy exposes it through Cloudflare. Every route needs a staff session unless it is
-listed in PUBLIC_PATHS, and staff status is re-checked against the member cache on every request.
+Both sites listen on loopback only; Caddy exposes them through Cloudflare. They share the login code, parametrized by a
+Site record, but keep separate sessions. Every route needs a session unless it is listed in PUBLIC_PATHS, and whether
+the user may still use the site is re-checked against the member cache on every request.
 """
 
 import functools
@@ -28,20 +29,26 @@ from redbot.core.errors import CogLoadError
 from yarl import URL
 
 from .automod_forms import SECTIONS, Names, apply_action, editor_view, parse_rows, row_templates, row_view
+from .member import MemberSite
 
 GUILD_ID = 684360255798509578
 STAFF_ROLE_ID = 696020813299580940
 HOST = "127.0.0.1"
 STAFF_PORT = 8011
+MEMBER_PORT = 8012
 REDIRECT_URI = "https://staff.unicornia.net/callback"
+MEMBER_REDIRECT_URI = "https://my.unicornia.net/callback"
 AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
 DISCORD_API = "https://discord.com/api/v10"
 SESSION_COOKIE = "__Host-staff"
+MEMBER_COOKIE = "__Host-member"
 STATE_COOKIE = "__Host-state"
 SESSION_SECONDS = 12 * 3600
 STATE_SECONDS = 600
-EXCHANGES_PER_IP = 5  # per minute
-EXCHANGES_TOTAL = 30  # per minute, from all clients
+EXCHANGES_PER_IP = 5  # per minute, across both sites
+EXCHANGES_TOTAL = 30  # per minute, from all clients on both sites
+MEMBER_EXCHANGES = 20  # member logins stop here, so the last 10 of the minute stay free for staff
+MEMBER_MAX_BODY = 9 * 1024 * 1024  # an 8 MB custom command attachment plus the rest of the form
 PUBLIC_PATHS = frozenset({"/login", "/callback", "/logged-out"})
 # POSTs to these routes also need a bot owner; staff can only view automod.
 OWNER_ONLY = frozenset(
@@ -76,6 +83,13 @@ SECURITY_HEADERS = {
     "X-Robots-Tag": "noindex, nofollow",
     "Cache-Control": "no-store",
 }
+# Emojis and role icons are shown from Discord's CDN.
+MEMBER_SECURITY_HEADERS = {
+    **SECURITY_HEADERS,
+    "Content-Security-Policy": SECURITY_HEADERS["Content-Security-Policy"].replace(
+        "img-src 'self'", "img-src 'self' https://cdn.discordapp.com"
+    ),
+}
 
 log = logging.getLogger("red.kirin-cogs.dashboard")
 
@@ -85,6 +99,49 @@ class Session:
     user_id: int
     csrf: str
     expires_at: float  # time.monotonic()
+
+
+@dataclass(frozen=True)
+class Site:
+    """What differs between the staff and member sites. Ports are read at load time (STAFF_PORT, MEMBER_PORT)."""
+
+    name: str
+    redirect_uri: str
+    cookie: str
+    needs_2fa: bool
+    exchange_cap: int  # of the shared per-minute window
+    headers: dict[str, str]
+    templates: str  # template folder prefix
+    login_title: str
+    refused_title: str
+    refused_text: str
+
+
+STAFF = Site(
+    "staff",
+    REDIRECT_URI,
+    SESSION_COOKIE,
+    True,
+    EXCHANGES_TOTAL,
+    SECURITY_HEADERS,
+    "",
+    "Staff login",
+    "Staff only",
+    "This site is for Unicornia staff.",
+)
+MEMBER = Site(
+    "member",
+    MEMBER_REDIRECT_URI,
+    MEMBER_COOKIE,
+    False,
+    MEMBER_EXCHANGES,
+    MEMBER_SECURITY_HEADERS,
+    "member/",
+    "Member login",
+    "Members only",
+    "This site is for members of the Unicornia Discord server.",
+)
+SITE = web.AppKey("site", Site)
 
 
 def _same(given: str, expected: str) -> bool:
@@ -128,48 +185,68 @@ def _editing(handler: _Route) -> _Route:
 
 
 async def _add_security_headers(request: web.Request, response: web.StreamResponse) -> None:
-    response.headers.update(SECURITY_HEADERS)
+    response.headers.update(request.app[SITE].headers)
 
 
 class Dashboard(commands.Cog):
-    """Unicornia's staff web site."""
+    """Unicornia's staff and member web sites."""
 
     _runner: web.AppRunner
+    _member_runner: web.AppRunner
     _http: aiohttp.ClientSession
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
-        self.sessions: dict[str, Session] = {}
-        self._exchanges: deque[tuple[float, str]] = deque()  # (time, client IP) of code exchanges in the last minute
+        self.sessions: dict[str, Session] = {}  # staff
+        self.member_sessions: dict[str, Session] = {}
+        # (time, client IP) of code exchanges in the last minute, from both sites: they share the bot's IP.
+        self._exchanges: deque[tuple[float, str]] = deque()
         self._blocked_until = 0.0
         self._templates = jinja2.Environment(loader=jinja2.FileSystemLoader(HERE / "templates"), autoescape=True)
         self._templates.filters["when"] = _when
         self._templates.globals.update(user_name=self._user_name, channel_name=self._channel_name)
+        self.member_site = MemberSite(self)
 
     async def cog_load(self) -> None:
         # Not bot.http: that session carries the bot token.
         self._http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
         # No access log: callback request lines carry OAuth codes.
         self._runner = web.AppRunner(self.make_app(), access_log=None)
-        await self._runner.setup()
-        try:
-            await web.TCPSite(self._runner, HOST, STAFF_PORT).start()
-        except OSError as exc:
-            await self.cog_unload()
-            raise CogLoadError(f"The staff site could not listen on {HOST}:{STAFF_PORT} ({exc}).") from exc
+        self._member_runner = web.AppRunner(self.make_member_app(), access_log=None)
+        for runner, port, name in ((self._runner, STAFF_PORT, "staff"), (self._member_runner, MEMBER_PORT, "member")):
+            await runner.setup()
+            try:
+                await web.TCPSite(runner, HOST, port).start()
+            except OSError as exc:
+                await self.cog_unload()
+                raise CogLoadError(f"The {name} site could not listen on {HOST}:{port} ({exc}).") from exc
 
     async def cog_unload(self) -> None:
         await self._runner.cleanup()
+        await self._member_runner.cleanup()
         await self._http.close()
         self.sessions.clear()
+        self.member_sessions.clear()
 
-    def make_app(self) -> web.Application:
-        app = web.Application(middlewares=[self._require_staff])
+    def _app(self, site: Site, **kwargs: Any) -> web.Application:
+        """An app with the login routes and access control shared by both sites."""
+        app = web.Application(middlewares=[self._require_session], **kwargs)
+        app[SITE] = site
         app.on_response_prepare.append(_add_security_headers)
         app.router.add_get("/login", self.login)
         app.router.add_get("/callback", self.callback)
         app.router.add_get("/logged-out", self.logged_out)
         app.router.add_post("/logout", self.logout)
+        app.router.add_static("/static", HERE / "static")
+        return app
+
+    def make_member_app(self) -> web.Application:
+        app = self._app(MEMBER, client_max_size=MEMBER_MAX_BODY)
+        self.member_site.add_routes(app)
+        return app
+
+    def make_app(self) -> web.Application:
+        app = self._app(STAFF)
         app.router.add_get("/", self.ban_list)
         app.router.add_get(r"/bans/{ban_id:\d{1,18}}", self.ban_detail)
         ruleset, rule, word_list = r"{ruleset_id:\d{1,18}}", r"{rule_id:\d{1,18}}", r"{list_id:\d{1,18}}"
@@ -187,13 +264,12 @@ class Dashboard(commands.Cog):
         app.router.add_post("/automod/lists", self.automod_list_create)
         app.router.add_post(f"/automod/lists/{word_list}", self.automod_list_save)
         app.router.add_post(f"/automod/lists/{word_list}/delete", self.automod_list_delete)
-        app.router.add_static("/static", HERE / "static")
         return app
 
     # --- access control --------------------------------------------------------------------------
 
     @web.middleware
-    async def _require_staff(self, request: web.Request, handler: Handler) -> web.StreamResponse:
+    async def _require_session(self, request: web.Request, handler: Handler) -> web.StreamResponse:
         """Deny by default: only PUBLIC_PATHS, static files, and unmatched URLs (404/405) skip the session check."""
         resource = request.match_info.route.resource
         if resource is None or isinstance(resource, web.StaticResource) or resource.canonical in PUBLIC_PATHS:
@@ -204,47 +280,67 @@ class Dashboard(commands.Cog):
                 raise web.HTTPFound("/logged-out")
             raise web.HTTPUnauthorized()
         if request.method == "POST":
+            # Read only now that the session is known, so anonymous clients can't make the bot buffer uploads.
             form = await request.post()
             if not _same(str(form.get("csrf", "")), session.csrf):
                 raise web.HTTPForbidden()
             if resource.canonical in OWNER_ONLY and not await self._is_owner(session.user_id):
                 raise web.HTTPForbidden()
         request["session"] = session
+        if request.app[SITE] is MEMBER:
+            member = self.member(session.user_id)
+            assert member is not None  # _session() checked
+            request["member"] = member
+            request["nav"] = await self.member_site.sections(member)
         return await handler(request)
 
+    def _sessions(self, site: Site) -> dict[str, Session]:
+        return self.sessions if site is STAFF else self.member_sessions
+
     def _session(self, request: web.Request) -> Session | None:
-        """The request's live session; expired sessions and members no longer staff are logged out on the spot."""
-        token = request.cookies.get(SESSION_COOKIE, "")
-        session = self.sessions.get(token)
+        """The request's live session; expired sessions and users the site no longer admits are logged out on the spot."""
+        site = request.app[SITE]
+        sessions = self._sessions(site)
+        token = request.cookies.get(site.cookie, "")
+        session = sessions.get(token)
         if session is None:
             return None
-        if session.expires_at <= time.monotonic() or not self._is_staff(session.user_id):
-            del self.sessions[token]
+        if session.expires_at <= time.monotonic() or not self._admits(site, session.user_id):
+            del sessions[token]
             return None
         return session
 
+    def _admits(self, site: Site, user_id: int) -> bool:
+        return self._is_staff(user_id) if site is STAFF else self.member(user_id) is not None
+
+    def member(self, user_id: int) -> discord.Member | None:
+        """The user as a Unicornia member, from the bot's member cache."""
+        guild = self.bot.get_guild(GUILD_ID)
+        return guild.get_member(user_id) if guild else None
+
     def _is_staff(self, user_id: int) -> bool:
         """The same gate as [p]ban: the staff role or Ban Members, read from the bot's member cache."""
-        guild = self.bot.get_guild(GUILD_ID)
-        member = guild.get_member(user_id) if guild else None
+        member = self.member(user_id)
         return member is not None and (
             member.get_role(STAFF_ROLE_ID) is not None or member.guild_permissions.ban_members
         )
 
     async def _is_owner(self, user_id: int) -> bool:
-        guild = self.bot.get_guild(GUILD_ID)
-        member = guild.get_member(user_id) if guild else None
+        member = self.member(user_id)
         return member is not None and await self.bot.is_owner(member)
 
-    def _allow_exchange(self, ip: str) -> bool:
-        """Cap code exchanges so a login flood can't get the bot's shared IP banned by Discord."""
+    def _allow_exchange(self, ip: str, cap: int = EXCHANGES_TOTAL) -> bool:
+        """Cap code exchanges so a login flood can't get the bot's shared IP banned by Discord.
+
+        Both sites share one window; the member site passes a lower cap, so it can't use up the staff site's share.
+        """
         now = time.monotonic()
         if now < self._blocked_until:
             return False
         while self._exchanges and self._exchanges[0][0] <= now - 60:
             self._exchanges.popleft()
         recent_from_ip = sum(seen == ip for _, seen in self._exchanges)
-        if len(self._exchanges) >= EXCHANGES_TOTAL or recent_from_ip >= EXCHANGES_PER_IP:
+        if len(self._exchanges) >= min(cap, EXCHANGES_TOTAL) or recent_from_ip >= EXCHANGES_PER_IP:
             return False
         self._exchanges.append((now, ip))
         return True
@@ -262,7 +358,7 @@ class Dashboard(commands.Cog):
             client_id=str(self.bot.application_id),
             response_type="code",
             scope="identify",
-            redirect_uri=REDIRECT_URI,
+            redirect_uri=request.app[SITE].redirect_uri,
             state=state,
             prompt="none",
         )
@@ -272,35 +368,36 @@ class Dashboard(commands.Cog):
         return response
 
     async def callback(self, request: web.Request) -> web.StreamResponse:
+        site = request.app[SITE]
         state = request.query.get("state", "")
         if not state or not _same(state, request.cookies.get(STATE_COOKIE, "")):
             return self._message(request, 400, "Login expired", "Start again from the login page.", login=True)
         code = request.query.get("code")
         if not code:
             return self._login_failed(request)  # cancelled on Discord's page
-        if not self._allow_exchange(request.headers.get("CF-Connecting-IP") or request.remote or ""):
+        if not self._allow_exchange(request.headers.get("CF-Connecting-IP") or request.remote or "", site.exchange_cap):
             return self._message(request, 429, "Too many logins", "Wait a minute, then try again.", login=True)
         secret = await self._client_secret()
         if not secret:
             return self._not_configured(request)
         try:
-            user = await self._fetch_identity(code, secret)
+            user = await self._fetch_identity(code, secret, site.redirect_uri)
         except (aiohttp.ClientError, TimeoutError, KeyError, ValueError):
             log.warning("Discord login request failed", exc_info=True)
             user = None
         if user is None:
             return self._login_failed(request)
-        if not user.get("mfa_enabled"):
+        if site.needs_2fa and not user.get("mfa_enabled"):
             text = "Turn on two-factor authentication for your Discord account, then log in again."
             return self._message(request, 403, "Two-factor authentication required", text, login=True)
         user_id = int(user["id"])
-        if not self._is_staff(user_id):
-            return self._message(request, 403, "Staff only", "This site is for Unicornia staff.")
+        if not self._admits(site, user_id):
+            return self._message(request, 403, site.refused_title, site.refused_text)
         return self._start_session(request, user_id)
 
-    async def _fetch_identity(self, code: str, secret: str) -> dict[str, Any] | None:
+    async def _fetch_identity(self, code: str, secret: str, redirect_uri: str) -> dict[str, Any] | None:
         """Trade the code for the user's identity. The access token is used once and never stored."""
-        data = {"grant_type": "authorization_code", "code": code, "redirect_uri": REDIRECT_URI}
+        data = {"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri}
         auth = aiohttp.BasicAuth(str(self.bot.application_id), secret)
         async with self._http.post(f"{DISCORD_API}/oauth2/token", data=data, auth=auth) as response:
             if not self._discord_ok(response):
@@ -319,28 +416,33 @@ class Dashboard(commands.Cog):
             except ValueError:
                 retry_after = 60.0
             self._blocked_until = time.monotonic() + max(retry_after, 1.0)
-            log.warning("Discord rate-limited the staff login; pausing logins for %.0f seconds", retry_after)
+            log.warning("Discord rate-limited a login; pausing logins on both sites for %.0f seconds", retry_after)
         return response.status == 200
 
     def _start_session(self, request: web.Request, user_id: int) -> web.Response:
+        site = request.app[SITE]
+        sessions = self._sessions(site)
         now = time.monotonic()
-        self.sessions = {token: session for token, session in self.sessions.items() if session.expires_at > now}
-        self.sessions.pop(request.cookies.get(SESSION_COOKIE, ""), None)  # never reuse a token from before login
+        for token in [token for token, session in sessions.items() if session.expires_at <= now]:
+            del sessions[token]
+        sessions.pop(request.cookies.get(site.cookie, ""), None)  # never reuse a token from before login
         token = secrets.token_urlsafe(32)
-        self.sessions[token] = Session(user_id, secrets.token_urlsafe(32), now + SESSION_SECONDS)
+        sessions[token] = Session(user_id, secrets.token_urlsafe(32), now + SESSION_SECONDS)
         response = web.Response(status=302, headers={"Location": "/"})
-        response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_SECONDS, **COOKIE_FLAGS)
+        response.set_cookie(site.cookie, token, max_age=SESSION_SECONDS, **COOKIE_FLAGS)
         response.set_cookie(STATE_COOKIE, "", max_age=0, **COOKIE_FLAGS)
         return response
 
     async def logout(self, request: web.Request) -> web.StreamResponse:
-        self.sessions.pop(request.cookies.get(SESSION_COOKIE, ""), None)
+        site = request.app[SITE]
+        self._sessions(site).pop(request.cookies.get(site.cookie, ""), None)
         response = web.Response(status=302, headers={"Location": "/logged-out"})
-        response.set_cookie(SESSION_COOKIE, "", max_age=0, **COOKIE_FLAGS)
+        response.set_cookie(site.cookie, "", max_age=0, **COOKIE_FLAGS)
         return response
 
     async def logged_out(self, request: web.Request) -> web.StreamResponse:
-        return self._message(request, 200, "Staff login", "Log in with your Discord account to continue.", login=True)
+        title = request.app[SITE].login_title
+        return self._message(request, 200, title, "Log in with your Discord account to continue.", login=True)
 
     # --- ban pages ---------------------------------------------------------------------------------
 
@@ -682,14 +784,15 @@ class Dashboard(commands.Cog):
 
     def _render(self, request: web.Request, template: str, *, status: int = 200, **context: Any) -> web.Response:
         html = self._templates.get_template(template).render(
-            session=request.get("session"), path=request.path, **context
+            session=request.get("session"), path=request.path, nav=request.get("nav"), **context
         )
         return web.Response(text=html, status=status, content_type="text/html")
 
     def _message(
         self, request: web.Request, status: int, title: str, text: str, *, login: bool = False
     ) -> web.Response:
-        return self._render(request, "message.html", status=status, title=title, text=text, login=login)
+        template = request.app[SITE].templates + "message.html"
+        return self._render(request, template, status=status, title=title, text=text, login=login)
 
     def _login_failed(self, request: web.Request) -> web.Response:
         return self._message(request, 400, "Login failed", "Discord did not confirm the login.", login=True)

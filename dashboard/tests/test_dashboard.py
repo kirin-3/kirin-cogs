@@ -147,6 +147,7 @@ def _free_port() -> int:
 async def test_site_listens_on_loopback_until_unloaded(monkeypatch: pytest.MonkeyPatch) -> None:
     port = _free_port()
     monkeypatch.setattr(dashboard_module, "STAFF_PORT", port)
+    monkeypatch.setattr(dashboard_module, "MEMBER_PORT", _free_port())
     cog = Dashboard(MagicMock())
     await cog.cog_load()
     async with aiohttp.ClientSession() as http:
@@ -168,6 +169,7 @@ async def test_port_in_use_fails_the_load_and_names_the_port(monkeypatch: pytest
         blocker.listen()
         port = blocker.getsockname()[1]
         monkeypatch.setattr(dashboard_module, "STAFF_PORT", port)
+        monkeypatch.setattr(dashboard_module, "MEMBER_PORT", _free_port())
         cog = Dashboard(MagicMock())
 
         with pytest.raises(CogLoadError, match=str(port)):
