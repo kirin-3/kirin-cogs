@@ -25,10 +25,10 @@ Every hour the cog runs a passive WAL checkpoint and `PRAGMA quick_check`. The c
 
 ## Migration from Nadeko
 
-When the cog loads, it attempts to migrate data from an existing Nadeko Bot database (`nadeko.db`) if found in the cog's directory.
+Migration is manual, not automatic: point the cog at the source database with `[p]unicornia migration setpath <path>` and run `[p]unicornia migration run`. The migration looks for `nadeko.db` at the configured path, falling back to bot-working-directory locations (`/data/nadeko.db`, `data/nadeko.db`, `nadeko.db`, `data/nadeko/nadeko.db`).
 
 ### Migration Process
-1.  **Detection**: Checks for `nadeko.db` in the `unicornia/` folder.
+1.  **Detection**: Reads `nadeko.db` from the configured path (or the fallback locations above).
 2.  **Mapping**: Reads data from Nadeko's tables and inserts it into Unicornia's tables.
 3.  **ID Translation**:
     *   Nadeko uses internal Integer IDs for linking users (e.g., in Waifu and Club tables).
@@ -99,6 +99,55 @@ Stores currently active "pickable" currency on the ground.
 *   `MessageId` (Integer)
 *   `Amount` (Integer)
 *   `Password` (Text, Optional): For protected drops.
+
+#### `EconomyOperations`
+Idempotent balance operations, keyed by a caller-supplied operation key so retries never repeat a balance effect.
+*   `Id` (Integer, PK)
+*   `OperationKey` (Text, Unique)
+*   `GuildId` (Integer)
+*   `UserId` (Integer)
+*   `Source` (Text): Calling cog/system identity.
+*   `Direction` (Text): "credit" or "debit".
+*   `Amount` (Integer)
+*   `State` (Text): Operation state.
+*   `Result` (Text)
+*   `CreatedAt` (Text), `SettledAt` (Text)
+
+#### `YieldPool`
+The single-row stock-dividend pool funded by house edge and trade tax.
+*   `Id` (Integer, PK, always 1)
+*   `Balance` (Integer): Currently distributable.
+*   `LifetimeHouseBanked`, `LifetimePooled`, `LifetimeTradeTax` (Integer): Lifetime funding breakdown.
+*   `NextDistributionAt` (Text)
+*   `UpdatedAt` (Text)
+
+#### `DividendRuns`
+One row per completed dividend distribution.
+*   `PeriodEnd` (Text, PK)
+*   `Distributed` (Integer), `Recipients` (Integer)
+*   `CompletedAt` (Text)
+
+#### `DividendPayouts`
+Per-user dividend payments by period and symbol.
+*   `Id` (Integer, PK)
+*   `PeriodEnd` (Text), `UserId` (Integer), `Symbol` (Text)
+*   `Weight` (Real): The holder's share weight.
+*   `Amount` (Integer)
+*   `DateAdded` (Text)
+
+#### `SpectatorMarkets`
+Parimutuel spectator markets on live blackjack hands.
+*   `Id` (Integer, PK)
+*   `HandKey` (Text, Unique)
+*   `State` (Text), `Outcome` (Text)
+*   `OpenedAt` (Text), `ClosedAt` (Text)
+
+#### `SpectatorBets`
+Individual spectator wagers.
+*   `Id` (Integer, PK)
+*   `MarketId` (Integer, FK to `SpectatorMarkets`)
+*   `UserId` (Integer), `Side` (Text), `Amount` (Integer)
+*   `StakeKey` (Text, Unique): Idempotency key per wager.
 
 ### XP System
 
@@ -239,6 +288,30 @@ Per-user gambling stats.
 *   `LossAmount` (Integer)
 *   `MaxWin` (Integer)
 
+### Stock Market
+
+#### `Stocks`
+One row per listed stock.
+*   `Symbol` (Text, PK), `Name` (Text), `Emoji` (Text)
+*   `CurrentPrice`, `PreviousPrice` (Integer)
+*   `TotalShares` (Integer), `ShareReserve` (Real)
+*   `SmoothedUsage` (Real), `PeriodUsage` (Integer), `Volatility` (Real)
+*   `Hidden` (Integer): 1 if delisted from listings.
+
+#### `StockHoldings`
+Shares held per user and symbol.
+*   `UserId` (Integer, PK), `Symbol` (Text, PK, FK to `Stocks`)
+*   `Amount` (Integer), `AverageCost` (Real)
+
+#### `StockTransactions`
+Every buy and sell.
+*   `Id` (Integer, PK)
+*   `UserId` (Integer), `Symbol` (Text)
+*   `Side` (Text): "buy" or "sell".
+*   `Kind` (Text): "trade" or an import marker.
+*   `Shares` (Integer), `ExecPrice` (Real), `Tax` (Integer), `TotalAmount` (Integer)
+*   `IsImported` (Integer), `DateAdded` (Text)
+
 ### Configuration
 
 #### `BotConfig`
@@ -246,6 +319,11 @@ Persistent system configuration.
 *   `Key` (Text, PK)
 *   `Value` (Text)
 *   `Description` (Text)
+
+#### `Event`
+Currency generation events in progress (matching Nadeko's Event).
+*   `Id` (Integer, PK)
+*   `GuildId` (Integer), `ChannelId` (Integer), `Event` (Text)
 
 #### `GCChannelId`
 Channels where currency generation is enabled.

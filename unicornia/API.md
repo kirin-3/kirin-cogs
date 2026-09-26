@@ -15,6 +15,42 @@ if not unicornia:
 
 ## Methods
 
+### `apply_operation(*, key: str, user_id: int, amount: int, direction: OperationDirection, source: str, guild_id: int | None = None, reason: str = "") -> OperationOutcome | None`
+
+Applies a balance effect **exactly once**, keyed by a caller-supplied idempotency key. Other cogs should prefer this
+over `add_balance`/`remove_balance` whenever a stable operation identity exists (a reward tied to one event, for
+example). Repeating a settled key returns the original result without changing the balance or writing another
+transaction-log row, so retries and replayed webhooks never pay twice.
+
+`OperationDirection` and `OperationOutcome` come from `unicornia.db.economy`; `direction` is the literal
+`"credit"` to add or `"debit"` to remove, and `amount` is always positive.
+
+**Parameters:**
+- `key` (str): Unique idempotency key (e.g. `"nitro:<guild>:<member>:<ts>"`).
+- `user_id` (int): The Discord ID of the user whose wallet is mutated.
+- `amount` (int): Absolute amount to apply.
+- `direction` (OperationDirection): `"credit"` to add, `"debit"` to remove.
+- `source` (str): Calling cog/system identity.
+- `guild_id` (int, optional): Guild context for the operation.
+- `reason` (str, optional): Human-readable reason for the transaction-log row.
+
+**Returns:**
+- `OperationOutcome | None`: The outcome of the operation, or `None` if the system was not ready.
+
+**Example:**
+```python
+outcome = await unicornia.apply_operation(
+    key=f"contest:{contest_id}:{ctx.author.id}",
+    user_id=ctx.author.id,
+    amount=1000,
+    direction="credit",
+    source="ContestCog",
+    reason="Contest prize",
+)
+```
+
+---
+
 ### `get_balance(user_id: int) -> Tuple[int, int]`
 
 Retrieves the current wallet and bank balance for a specific user.

@@ -9,7 +9,8 @@ Rule-based automod for Unicornia, replacing YAGPDB's. Staff read the rules and t
 - A rule fires when **any** of its triggers matches and **every** condition holds, its ruleset's included.
 - **Triggers:**
   - message text: regex match, regex no-match, word list;
-  - message contents: server invite, any link (`http(s)://` or `www.`; bare domains don't count), mentions of
+  - message contents: server invite, any link (`http(s)://`, `www.`, or a bare `discord.gg/...` invite; other bare
+    domains don't count), mentions of
     distinct users and roles;
   - counted over a window of 1 to 3600 seconds: messages, identical messages, attachments, links, mentions. Messages
     in channels the rule's channel conditions exclude don't count, and a member's counts start again from zero after
@@ -22,7 +23,8 @@ Rule-based automod for Unicornia, replacing YAGPDB's. Staff read the rules and t
   ban > mute > timeout > warn > set nickname, and longer beats shorter. Every fired rule's delete and send message
   effects still run, and the message is deleted once.
 - Text is converted from fancy Unicode letters (math script, full-width) to plain letters before matching. Word
-  lists compare whole words without regard to case. A regex that takes longer than 100 ms counts as no match.
+  lists compare whole words without regard to case. A regex that takes longer than 100 ms counts as no match, and a
+  regex no-match trigger with a slow pattern stays silent — the timeout is treated as a match.
 - Warns, mutes, timeouts and bans go through the Moderation cog, so they send the usual DMs, create modlog cases and
   post to the public mod-log. An automod mute never shortens a mute that is already running.
 
@@ -44,7 +46,7 @@ It leaves dry-run as it is.
 
 | Command | What it does |
 | --- | --- |
-| `[p]automod import` | Replace all rules and lists with the attached JSON file, after checking all of it. |
+| `[p]automod import` | Replace all rules and lists with the attached JSON file, after checking all of it. The attachment must be at most 2 MB. |
 | `[p]automod export` | DM you all rules and lists as `automod-rules.json`. |
 
 Everything else is edited on the staff site. Unloading the cog stops automod at once.
@@ -61,7 +63,7 @@ checks. A member at or above the bot's highest role can't be punished; the log r
 | Guild | `684360255798509578` |
 | Action log | newest 250 entries |
 | Regex time limit | 100 ms |
-| Counted history | 100 messages per member |
+| Counted history | 100 messages per member per channel (tracked separately for each channel) |
 
 ## Storage and data deletion
 

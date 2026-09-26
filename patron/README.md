@@ -8,8 +8,10 @@ Requires the Unicornia cog for currency. It works for one hard-coded server (`GU
 - **Patreon**: every hour the cog reads the campaign's members. A new charge with status `Paid` starts a run of
   periods: one for monthly pledges, twelve for annual ones (a reward every 30 days, each for a twelfth of the charge). The patron's Discord account comes
   from Patreon's Discord connection.
-- **Buy Me a Coffee memberships and monthly donations**: reward every 30 days from the start while the membership is
+- **Buy Me a Coffee memberships and monthly donations**: reward every 30 days while the membership is
   `active`; yearly memberships pay a twelfth of the amount each period. The role stays until the paid period ends.
+  Rewards begin from when the cog first saw the membership (its webhook event, or a `[p]patronset bmcadd` entry):
+  a membership first seen mid-cycle is not back-paid for periods before that.
 - **Buy Me a Coffee one-time donations**: one reward and the Active role for 30 days. Refunds are posted to the log
   channel; currency already awarded is not taken back.
 - **Roles**: anyone with an active payment gets the Active role; anyone who paid before gets the Former role instead.

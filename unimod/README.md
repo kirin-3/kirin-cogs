@@ -1,11 +1,11 @@
 # UniMod - AI-Powered Auto Moderation Cog
 
-Intelligent auto-moderation system that combines **VADER sentiment analysis** for local pre-filtering with **GLM5 via an OpenAI-compatible endpoint** (default: NVIDIA's hosted API at `integrate.api.nvidia.com`) for accurate rule violation detection.
+Intelligent auto-moderation system that combines **VADER sentiment analysis** for local pre-filtering with **GLM-5.3 via NanoGPT's OpenAI-compatible endpoint** (`https://nano-gpt.com/api/v1/chat/completions`, hardcoded) for accurate rule violation detection.
 
 ## Features
 
 - **Two-Stage Filtering**: VADER sentiment analysis pre-filters messages before AI review, reducing API costs
-- **AI-Powered Detection**: GLM5 model analyzes conversation context against server rules
+- **AI-Powered Detection**: GLM-5.3 model analyzes conversation context against server rules
 - **Whitelist-Based Monitoring**: Only monitors channels you explicitly add
 - **Anti-Censorship Design**: Explicitly permits 18+ content while detecting actual rule violations
 - **Per-Channel Buffers**: Collects 20 messages per channel for conversation context
@@ -29,9 +29,9 @@ Intelligent auto-moderation system that combines **VADER sentiment analysis** fo
 
 ### Required Setup
 
-1. **Set API Key** (stored under Red's shared `openai` token, used for the GLM5 endpoint):
+1. **Set API Key** (stored under Red's shared `openai` token as `api_key`, used for the NanoGPT endpoint):
    ```
-   [p]set api openai YOUR_API_KEY
+   [p]set api openai api_key YOUR_API_KEY
    ```
    Or alternatively:
    ```
@@ -65,7 +65,7 @@ Intelligent auto-moderation system that combines **VADER sentiment analysis** fo
    [p]unimod config buffersize 30
    ```
 
-- **Minimum Alert Severity** (low, medium, high; default medium): violations the AI rates below this are logged, not alerted. `low` = etiquette or channel placement, `medium` = needs a staff look, `high` = act now. Use `low` to alert on everything.
+- **Minimum Alert Severity** (low, medium, high; default medium): violations the AI rates below this are logged, not alerted. `low` = etiquette or channel placement, `medium` = needs a staff look, `high` = act now. Use `low` to alert on everything. A response with a missing or unrecognized severity always alerts, whatever the floor.
    ```
    [p]unimod config severity medium
    ```
@@ -81,7 +81,7 @@ Intelligent auto-moderation system that combines **VADER sentiment analysis** fo
 | `[p]unimod whitelist [#channel...]` | Add channels to monitoring whitelist |
 | `[p]unimod unwhitelist [#channel...]` | Remove channels from whitelist |
 | `[p]unimod clearwhitelist` | Clear all whitelisted channels |
-| `[p]unimod config apikey <key>` | Set API key (for the GLM5 endpoint) |
+| `[p]unimod config apikey <key>` | Set API key (for the NanoGPT endpoint) |
 | `[p]unimod config threshold <value>` | Set VADER threshold (-1.0 to 0.0) |
 | `[p]unimod config buffersize <int>` | Set buffer size (10-50) |
 | `[p]unimod config severity <low\|medium\|high>` | Set minimum severity that sends an alert (default medium) |
@@ -109,13 +109,17 @@ Discord Message
       ↓ Yes
   Add to Buffer (max 20)
       ↓
-  VADER Score < -0.5? ──No──→ Wait for buffer full
-      ↓ Yes                    ↓
-  Trigger AI Review ←──────────┘
+  Extreme (score < threshold-0.3)? ──Yes──→ Trigger AI Review Now
+      ↓ No
+  Buffer Full or Idle 2 min? ──No──→ Wait
+      ↓ Yes
+  Any Message Below Threshold? ──No──→ Discard
+      ↓ Yes
+  AI Review
       ↓
   Build Prompt with Rules
       ↓
-  Send to GLM5 via the configured endpoint
+  Send to GLM-5.3 via the NanoGPT endpoint
       ↓
   Parse JSON Response
       ↓
@@ -131,14 +135,14 @@ Discord Message
 VADER (Valence Aware Dictionary and sEntiment Reasoner) is a lexicon and rule-based sentiment analysis tool specifically attuned to sentiments expressed in social media.
 
 - **Compound Score**: Normalized weighted composite score (-1 to +1)
-- **Threshold**: Messages with compound < -0.5 trigger AI review
+- **Threshold**: A message with compound below the threshold (default -0.5) marks its buffer for review; the review runs once the buffer fills, sits idle for 2 minutes, or the message is extreme
 - **Extreme Threshold**: Messages with compound < (threshold - 0.3) trigger immediate review
 
 **Important**: Each message is analyzed individually, not combined. This prevents toxicity dilution where one toxic message among many positive ones would be missed.
 
 ### AI Analysis
 
-The GLM5 model receives:
+The GLM-5.3 model receives:
 1. **System Prompt**: Server rules from `rules.md` + operating instructions
 2. **User Prompt**: Conversation log in JSON format + channel context
 
@@ -170,6 +174,7 @@ unimod/
 ├── unimod.py        # Main cog class
 ├── info.json        # Cog metadata
 ├── rules.md         # Server rules (edit this file)
+├── tests/           # Test suite
 └── README.md        # This file
 ```
 
@@ -191,7 +196,7 @@ After editing:
 ## Troubleshooting
 
 ### "OpenAI API key not configured"
-Set your API key: `[p]set api openai YOUR_API_KEY`
+Set your API key: `[p]set api openai api_key YOUR_API_KEY` (or `[p]unimod config apikey YOUR_API_KEY`)
 
 ### "No channels are being monitored"
 Add channels to the whitelist: `[p]unimod whitelist #channel-name`

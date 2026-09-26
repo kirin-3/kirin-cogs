@@ -11,7 +11,8 @@ A robust, single-panel support ticket system for Red Discord Bot.
 ## Commands
 
 ### User Commands
-The user commands are hybrid — they work as slash commands too.
+The user commands are hybrid — they work as slash commands too. The ticket opener is the main user, but support
+roles, the server owner, and bot admins can also run all three in any ticket.
 
 - `[p]add <user>`: Add a user to your ticket.
 - `[p]renameticket <new_name>`: Rename your ticket channel.
@@ -22,7 +23,10 @@ The user commands are hybrid — they work as slash commands too.
 
 ### Close Button Workflow
 When staff (support roles, the server owner, or bot admins) use the **Close** button in a ticket, a verification dialog appears:
-- **Verified** ✅: Closes ticket, assigns Verified role, and DMs the user confirming verification.
+- **Verified** ✅: Closes ticket, assigns the Verified role, and DMs the user confirming verification. The role is
+  hardcoded (`1267157222530748439`) with no command to configure it — on a server without that exact role, a
+  Verified close fails and the ticket stays open. The DM is sent only while `[p]tickets dm` is on, and if the DM
+  can't be delivered it falls back to hardcoded channel `686092688059400454` with a mention of the user.
 - **Not Verified** ❌: Prompts for a reason, then closes ticket and DMs the user that they were not verified.
 
 When the ticket owner uses the **Close** button (allowed while `[p]tickets selfclose` is on), they are only asked for a reason and the ticket closes without a verification status. Users cannot verify themselves.
@@ -35,14 +39,14 @@ Base support ticket settings. Alias: `[p]tset`
 #### Setup
 1. `[p]tickets category <category>`: Set the category where new tickets will be created.
 2. `[p]tickets channel <channel>`: Set the channel where the panel message will be located.
-3. `[p]tickets panelmessage <message>`: Set the existing message that the "Open Ticket" button will be attached to.
+3. `[p]tickets panelmessage <message>`: Set the existing message that the "Open Ticket" button will be attached to. The message must have been sent by the bot itself, be in a text channel (not a thread, voice, or forum channel), and the category must already be set.
 4. (Optional) `[p]tickets embed`: Create a stylized message (embed) to use as the panel message.
 
 #### Customization
 - `[p]tickets buttontext <text>`: Set the text on the open button.
 - `[p]tickets buttoncolor <color>`: Set the button color (red, blue, green, grey).
 - `[p]tickets buttonemoji <emoji>`: Set an emoji for the button.
-- `[p]tickets ticketname <format>`: Set the naming format for new ticket channels (supports variables like `{num}`, `{user}`).
+- `[p]tickets ticketname <format>`: Set the naming format for new ticket channels (supports `{num}`, `{user}`, `{displayname}`, `{id}`, `{shortdate}`, `{longdate}`, `{time}`).
 - `[p]tickets addmessage`: Add an embed to be sent inside the ticket when it opens.
 - `[p]tickets viewmessages`: View/delete these internal ticket messages.
 - `[p]tickets logchannel <channel>`: Set a channel for logging opened/closed tickets.
@@ -50,7 +54,7 @@ Base support ticket settings. Alias: `[p]tset`
 #### Modals (Input Forms)
 The ticket panel opens the verification modal (image upload). These commands customize it; answers are posted in the new ticket.
 - `[p]tickets modaltitle <title>`: Set the title of the modal (defaults to "Verification").
-- `[p]tickets addmodal <field_name>`: Add or edit a question shown below the image upload (e.g., "Username", "Issue"). Up to 4 questions, since the upload takes one of Discord's 5 modal slots.
+- `[p]tickets addmodal <field_name>`: Add a question shown below the image upload (e.g., "Username", "Issue"). Specifying an existing field name **deletes** it; edit an existing question through `[p]tickets viewmodal`'s edit button. Up to 4 questions, since the upload takes one of Discord's 5 modal slots.
 - `[p]tickets viewmodal`: View and delete configured modal fields.
 
 #### Access Control

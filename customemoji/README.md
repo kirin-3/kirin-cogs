@@ -6,7 +6,7 @@ Allows users with a specific role to create and manage their own custom emojis o
 - **User-Managed Emojis**: Create, delete, and rename your own emojis.
 - **Slot System**: Limits how many emojis each user can own (default 2).
 - **Flexible**: Upload images or copy existing emojis from other servers.
-- **Permission-based management**: Moderators can delete any emoji and view others' emoji lists.
+- **Permission-based management**: A Red bot moderator can delete any emoji and view others' emoji lists. A guild member with only the Manage Emojis permission can likewise delete any emoji, but cannot view others' lists.
 - **Image validation**: Checks image type and size (max 256KB) to comply with Discord limits. Downloads from Discord image links or emojis stop as soon as they pass 256KB.
 - **Auto-cleanup**: When an emoji is deleted outside the bot (e.g. in Server Settings), its record is dropped right away and the owner's slot is freed.
 - **Cooldowns**: Commands have cooldowns to prevent spam.
@@ -32,4 +32,4 @@ Allows users with a specific role to create and manage their own custom emojis o
 ## Requirements
 - The bot needs `Manage Emojis` permission in the server.
 - Users need the configured role to create emojis (if set).
-- Moderators need Manage Emojis or Bot Moderator permissions to manage others' emojis.
+- Deleting someone else's emoji requires Manage Emojis **or** Red bot moderator permissions; viewing another user's list requires Red bot moderator permissions only.

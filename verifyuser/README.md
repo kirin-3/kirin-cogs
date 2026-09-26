@@ -8,7 +8,9 @@ A small single-server verification cog. Members holding a specific authorized ro
 [p]verifyuser <target_user>
 ```
 
-The command is hybrid — it works as a slash command (`/verifyuser`) as well. Replies are ephemeral.
+The command is hybrid — it works as a slash command (`/verifyuser`) as well. Error replies are ephemeral in slash
+mode; the success reply ("Successfully verified ...") is a normal message, and as a prefix command all replies are
+normal messages.
 
 ## Permissions
 

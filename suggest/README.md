@@ -52,14 +52,14 @@ Rejects a suggestion and updates the suggestion message with rejection status.
 4. Your suggestion appears as an embed with a unique ID number
 
 ### Voting on Suggestions
-- React with ✅ (upvote) or ❌ (downvote) to vote on suggestions
+- React with the server's custom upvote/downvote emojis (IDs below) to vote on suggestions; if they are missing from the bot's emoji cache, ✅ and ❌ are used instead
 - Voting is mutually exclusive: you can only have one vote per suggestion
 - Switching your vote automatically removes the previous reaction
 
 ### Tracking Your Suggestion
 - Suggestions start with "Pending Review" status
 - When reviewed, the embed updates to show "Approved" or "Rejected"
-- You receive a DM notification with the decision and reason
+- You receive a DM notification with the decision and reason (when the bot cannot DM you — DMs closed, for example — the failure is logged and skipped)
 - Final vote counts are displayed on resolved suggestions
 
 ## How Administrators Use It
@@ -84,7 +84,7 @@ The cog uses the following hardcoded settings:
 
 ## Notes
 
-- Suggestion IDs are automatically incremented and unique
+- Suggestion IDs are automatically incremented and unique (the counter starts from an imported floor, so the first new ID is above the suggestions migrated in)
 - The sticky message has a 3-second cooldown before reposting to prevent spam
 - All suggestion data is stored including author ID, content, message ID, status, and review reason
 - Bot owner only commands ensure only authorized users can resolve suggestions

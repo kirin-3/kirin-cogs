@@ -21,6 +21,11 @@ and reloading either cog is safe: when Warnings loads or reloads, this cog takes
 this cog unloads, Red's version comes back. While the Warnings cog isn't loaded, `[p]warnings` and `[p]warns` don't
 exist (this cog steps aside so Warnings can always load).
 
+> **Note for reviewers:** this works and is tested (`test_warnings_command_is_shared_safely_with_reds_warnings_cog`).
+> `sync_warnings()` is called from `setup()` in `__init__.py` and from the `on_cog_add` listener, which Red dispatches
+> after every cog load. Unloading Warnings needs no handler: discord.py removes commands by name, so it takes this
+> cog's `[p]warnings` with it, which is the intended "steps aside" state. The two cogs do not collide in either order.
+
 Also reload the updated **RulesAccept** cog, which refuses muted members (see [Mutes](#mutes)).
 
 ## Commands
@@ -40,8 +45,9 @@ permission checks silently).
 | `[p]userinfo [user]` | - | Account age, join date, warning count, mute status, and which of a few key roles they hold (`USERINFO_ROLE_IDS` in `moderation.py`; the field is left out when they have none). Also `[p]whois`. |
 
 Kick, ban, and mute refuse targets who are yourself, the server owner, or have the same or a higher role than you or
-the bot. Every action is logged as a Red modlog case (`smute`, `sunmute`, `kick`, `ban`, `hackban`, `unban`), so
-`[p]case` and `[p]casesfor` show it next to warnings. Set the channel with `[p]modlogset modlog #channel`.
+the bot. Every action is logged as a Red modlog case (`smute`, `sunmute`, `kick`, `ban`, `hackban`, `unban`,
+`timeout`, `warning`), so `[p]case` and `[p]casesfor` show it next to warnings. Set the channel with
+`[p]modlogset modlog #channel`.
 
 ## Mutes
 

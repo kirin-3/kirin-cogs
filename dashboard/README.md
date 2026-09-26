@@ -2,7 +2,8 @@
 
 Dashboard serves Unicornia's staff web site, `staff.unicornia.net`, from inside the bot. It listens on
 `127.0.0.1:8011` only; Caddy exposes it through Cloudflare. Its pages list the ban records kept by the BanLog cog
-and show the messages each banned member posted in the week before their ban.
+and show the messages each banned member posted in the week before their ban, and manage the AutoMod cog's rulesets,
+rules, and word lists, including its action log and the dry-run switch.
 
 ## Who can log in
 
@@ -15,6 +16,9 @@ Login is Discord OAuth2 with the `identify` scope. A session is created only whe
 Staff status is re-checked against the bot's member cache on every request, so removing the role ends access on the
 next click. Sessions live in memory, expire 12 hours after login, and end on logout or when the cog unloads or the bot
 restarts. Logging back in takes one click.
+
+Editing AutoMod — every POST that changes rulesets, rules, lists, or the dry-run switch — additionally requires a
+**bot owner**; staff accounts can view the automod pages but not change them.
 
 ## Protections
 
@@ -62,7 +66,8 @@ restarts. Logging back in takes one click.
    }
    ```
 
-4. Load the cogs: `[p]load banlog dashboard`.
+4. Load the cogs: `[p]load banlog automod dashboard`. The automod pages need the AutoMod cog loaded; without it they
+   show a notice instead.
 5. Check that a staff account with 2FA can log in, a non-staff account gets "Staff only", and a test ban with message
    deletion shows the purged messages.
 

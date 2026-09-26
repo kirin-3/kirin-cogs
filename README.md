@@ -62,7 +62,7 @@ Create and manage user profiles with interactive modals and sticky messages.
 Keeps members to one role out of a set: the newest colour role, or the highest ranked role. Fork of jenjam's colourlimit and rolelimit. See [rolelimit/README.md](rolelimit/README.md).
 
 ### Roleplay
-Roleplay action commands (`[p]hug`, `[p]ask`, ...) with consent prompts and per-member settings: owners, allowed and blocked lists, and selective, public and servant flags. Ported from the Unicornia repo; its existing member settings carry over unchanged.
+Roleplay action commands (`[p]hug`, `[p]ask`, ...) with consent prompts and per-member settings: owners, allowed and blocked lists, and selective, public and servant flags. Ported from the Unicornia repo; its existing member settings carry over unchanged. See [roleplay/README.md](roleplay/README.md).
 
 ### RulesAccept
 Lets users accept rules via a button and modal, automatically assigning a role upon acceptance.

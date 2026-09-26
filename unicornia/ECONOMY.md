@@ -27,7 +27,6 @@ The currency (default name "Slut points") flows through the system via several m
     *   **Shop Purchases**: Buying roles, items, XP card backgrounds, or Discord Nitro removes currency from circulation.
     *   **Gambling Losses**: A house edge is built into games to naturally remove currency over time.
     *   **Waifu Gifts**: Gifts increase a waifu's value but cost currency, effectively removing it from the user's wallet.
-    *   **Transfer Fees**: Transferring waifus incurs a **10%** (or **60%** if affinity matches) tax.
     *   **Decay**: An automated system to slowly decay balances of wealthy users to control inflation.
 
 ## Database Schema
@@ -96,10 +95,10 @@ The gambling module integrates deeply with the economy:
 **Supported Games:**
 *   **Blackjack**: Interactive game with Hit/Stand logic and a **2.4x** payout (stake included) for a Natural 21. Blackjack losses do not accrue rakeback.
 *   **Slots**: Multi-line payout logic matching Nadeko's original probability table (Jokers/Triples).
-*   **Betroll**: Simple 1-100 roll (Win if 66+). Payout: 2x.
-*   **Lucky Ladder**: A high-risk, high-reward game with 8 rungs. Multipliers range from 0.1x to **2.4x**.
-*   **Rock Paper Scissors**: PVP against the bot. Win 2x.
-*   **Betflip**: Coin flip guess. Payout: **1.95x**.
+*   **Betroll**: Simple 1-100 roll. Win tiers: over 66 pays **2x**, over 90 pays **4x**, exactly 100 pays **10x**.
+*   **Lucky Ladder**: A high-risk, high-reward game with 8 rungs. Multipliers descend from **2.35x** to 0.10x as the rung number rises.
+*   **Rock Paper Scissors**: PVP against the bot. Win **1.875x**.
+*   **Betflip**: Coin flip guess. Payout: **1.90x**.
 *   **Mines**: High-stakes game where you reveal safe spots on a grid to increase multiplier. (1-19 mines).
 
 ### 4. Waifu Economy
@@ -107,7 +106,7 @@ Waifus act as unique assets that can be traded.
 *   **Claiming**: Users can claim others for a price.
 *   **Value Growth**: The price of a waifu increases as they are gifted items.
 *   **Affinity**: Setting an affinity provides a **20% discount** on claiming that user.
-*   **Transfer Logic**: Transferring a waifu incurs a tax, and the waifu's price is *reduced* by the tax amount, resetting their market value slightly.
+*   **Transfer Logic**: Transfers are free and never change the waifu's price (only gifts do, inside their own transaction).
 
 ### 5. Shop System
 The shop allows admins to sell:
@@ -140,7 +139,7 @@ Values saved before these limits existed are tolerated: a zero daily cooldown or
 
 ## Migration Guide (Nadeko -> Unicornia)
 
-The system automatically detects an existing `nadeko.db` file in the cog folder. On first load, it runs a migration script (`db.migrate_from_nadeko`) that:
+Migration is manual: set the source database with `[p]unicornia migration setpath` and run `[p]unicornia migration run`. The migration script (`db.migrate_from_nadeko`) looks for `nadeko.db` at the configured path and in a few bot-working-directory locations. It:
 1.  Reads user balances from Nadeko's `DiscordUser`.
 2.  Transfers Bank balances from `BankUsers`.
 3.  Preserves transaction history (where schema permits).

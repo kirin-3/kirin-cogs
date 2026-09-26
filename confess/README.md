@@ -1,5 +1,8 @@
 # Confess
 
+> Originally a fork of the confession cog from [Jintaku-Cogs-V3](https://github.com/Jintaku/Jintaku-Cogs-V3)
+> by Jintaku (AGPL-3.0), since rewritten for Unicornia.
+
 Confess is a Discord bot cog that allows users to submit anonymous confessions in a designated confession channel. The cog provides a sticky message with a confession button that stays at the bottom of the channel, making it easy for users to share their secrets or admissions anonymously.
 
 ## Features
@@ -19,7 +22,7 @@ Confess is a Discord bot cog that allows users to submit anonymous confessions i
 
 ## Usage
 
-Users can submit confessions by clicking the "Confess" button (🙊) in the sticky message at the bottom of the confession channel. This opens a modal where they can type their confession (minimum 5 characters, maximum 2000 characters).
+Users can submit confessions by clicking the "Confess" button (🙊) in the sticky message at the bottom of the confession channel. This opens a modal where they can type their confession (minimum 5 characters, maximum 1972 characters — the 2000-character Discord limit minus the anonymous header the cog prepends).
 
 Once submitted, the confession appears in the channel as an anonymous post, and the user receives a confirmation message: "Your confession has been sent, you are forgiven now."
 

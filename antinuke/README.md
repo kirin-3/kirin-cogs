@@ -35,9 +35,9 @@ All commands are prefix-only (no slash commands).
 - **Per-Action Thresholds and Timeframes**: Each action type has its own threshold and time window
 - **Atomic Quarantine**: Single API call replaces all roles with the quarantine role
 - **Role Restoration**: Full role snapshot is retained and restored when the user is unquarantined
-- **Bot Kick**: Optionally auto-kicks bot accounts added to the server, and always kicks bots that exceed a threshold
+- **Bot Kick**: Auto-kicks bot accounts added to the server (on by default; disable with `[p]antinuke monitor botkick off`), and always kicks bots that exceed a threshold
 - **Trust System**: Whitelist users and roles to bypass monitoring
-- **Logging Channel**: Dedicated channel for all AntiNuke alerts, with owner DMs as fallback
+- **Logging Channel**: Dedicated channel for all AntiNuke alerts
 
 People who exceed a threshold are quarantined. Bots that exceed a threshold are kicked instead, because a bot's permissions live on its managed integration role, which quarantine cannot remove. Only this bot itself is exempt, so trust any other bot that legitimately bans, kicks, or manages channels and roles in bulk. Enabling bot kick also kicks newly added bots when the member who added them is acted on.
 
@@ -136,7 +136,7 @@ Out of the box, every action type is monitored with these defaults:
 │  • Compare action count against configured threshold             │
 │  • Atomic role replacement with quarantine role (bots: kick)     │
 │  • Role snapshot saved for restoration                           │
-│  • Log channel notification (+ owner DM fallback)                │
+│  • Log channel notification (hierarchy failures DM the owner)    │
 │  • Bot kick for unauthorized bots (if enabled)                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -180,8 +180,8 @@ All commands are under the `[p]antinuke` group (alias: `[p]an`). Every command, 
 | `[p]antinuke monitor` (alias `mon`) | Show monitoring configuration for all action types |
 | `[p]antinuke monitor enable <action_type>` | Enable monitoring for an action type |
 | `[p]antinuke monitor disable <action_type>` | Disable monitoring for an action type |
-| `[p]antinuke monitor threshold <action_type> <threshold> [timeframe]` | Set threshold and timeframe (default 60s, min 10s; threshold 0 = instant) |
-| `[p]antinuke monitor botkick <enabled>` | Toggle auto-kicking of newly added unauthorized bots |
+| `[p]antinuke monitor threshold <action_type> <threshold> [timeframe]` | Set threshold and timeframe (default 60s, min 10s; threshold 0 = instant). Omitting `timeframe` resets it to 60s, even if a custom one was set before |
+| `[p]antinuke monitor botkick <enabled>` | Toggle auto-kicking of newly added unauthorized bots (on by default) |
 
 ### Trust Management Commands
 
@@ -189,9 +189,9 @@ All commands are under the `[p]antinuke` group (alias: `[p]an`). Every command, 
 |---------|-------------|
 | `[p]antinuke trust` (alias `trusted`) | Manage trusted users and roles |
 | `[p]antinuke trust adduser <user>` | Add a user or bot to the trust list |
-| `[p]antinuke trust removeuser <user>` | Remove a user from the trust list |
+| `[p]antinuke trust removeuser <user>` | Remove a user from the trust list (aliases `deluser`, `rmuser`) |
 | `[p]antinuke trust addrole <role>` | Add a role to the trust list |
-| `[p]antinuke trust removerole <role>` | Remove a role from the trust list |
+| `[p]antinuke trust removerole <role>` | Remove a role from the trust list (aliases `delrole`, `rmrole`) |
 | `[p]antinuke trust list` (alias `show`) | Show all trusted users and roles |
 | `[p]antinuke trust clear` | Clear all trusted users and roles |
 
@@ -246,7 +246,7 @@ When a user triggers AntiNuke:
 
 1. **Role Snapshot**: All of the user's current roles are saved to Config
 2. **Atomic Strip**: The user's roles are replaced with only the quarantine role in a single API call
-3. **Notification**: Alert is sent to the log channel (and the owner by DM if no log channel is set)
+3. **Notification**: Alert is sent to the log channel. Without a log channel, quarantines, bot kicks, and restorations are not announced anywhere — the only owner DMs AntiNuke sends are hierarchy-failure alerts, when it cannot act because the offender outranks the bot
 4. **Bot Handling**: If the offender is a bot, it is kicked instead, since quarantine cannot strip a bot's managed role
 
 Quarantine operations are serialized per user and tracked with a pending/completed/failed state, so failed operations stay retryable.
@@ -416,7 +416,7 @@ Quarantine Role (Lowest, above @everyone)
 1. Is log channel set? `[p]antinuke settings`
 2. Can bot send messages in that channel?
 3. Can bot embed links in that channel?
-4. Without a log channel, alerts are DMed to the server owner
+4. Without a log channel, alerts are not sent anywhere (only hierarchy-failure alerts DM the server owner)
 
 ## FAQ
 
@@ -437,7 +437,7 @@ A: Currently, only triggered events are logged. Partial counts are not persisted
 ### Configuration Questions
 
 **Q: Can violators be kicked or banned instead of quarantined?**  
-A: People are always quarantined, which strips roles so you can review. Bots are kicked, because quarantine cannot remove a bot's managed role. Enable `[p]antinuke monitor botkick on` to also auto-kick newly added unauthorized bots.
+A: People are always quarantined, which strips roles so you can review. Bots are kicked, because quarantine cannot remove a bot's managed role. Auto-kicking newly added unauthorized bots is on by default; turn it off with `[p]antinuke monitor botkick off`.
 
 **Q: Should I enable bot kicking?**  
 A: Yes. Rogue bots are a common attack vector. Trust any bot that legitimately performs administrative actions in bulk, or it will be kicked when it exceeds a threshold.

@@ -13,7 +13,9 @@ The system logs all rule acceptances to a designated channel for administrative 
 
 ## Commands
 
-All commands require the **Administrator** permission or **Manage Server** permission.
+All commands require the **Administrator** permission or **Manage Server** permission. `setrole` additionally checks
+that the invoker may grant the chosen role: unless you are the guild owner, you need the **Manage Roles** permission
+and the role must be below your own top role.
 
 ### `sendrules`
 Sends the rules acceptance button to the channel. Members can click this button to begin the acceptance process.
@@ -25,6 +27,9 @@ Sends the rules acceptance button to the channel. Members can click this button 
 
 ### `setrole`
 Sets the role that will be assigned to members when they accept the rules.
+
+The role must be assignable: managed and default (`@everyone`) roles are refused, and so is any role at or above the
+bot's top role.
 
 **Usage:**
 ```
@@ -47,7 +52,8 @@ Sets the role that will be assigned to members when they accept the rules.
 
 ## Setup for Administrators
 
-1. Set the role to assign: `[ p ] setrole @YourMemberRole`
+1. Set the role to assign: `[ p ] setrole @YourMemberRole`. A default role (`686098839651876908`) is configured
+   out of the box, so this step is only needed on other servers or to change it.
 2. Post the rules button in your rules channel: `[ p ] sendrules`
 3. Ensure the bot has permission to:
    - Send messages in the rules channel

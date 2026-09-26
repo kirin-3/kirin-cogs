@@ -68,6 +68,7 @@ Splitting an order does not avoid curve cost: the closed-form path integral prod
 | `[p]stock buy <ticker> <amount>` | | Buy shares. Requires currency in wallet. |
 | `[p]stock sell <ticker> <amount>` | | Sell shares. Proceeds go to wallet. |
 | `[p]stock portfolio` | `holdings` | View your owned stocks and Profit/Loss. |
+| `[p]stock dividends` | `yield` | View your dividend history by stock and period. |
 
 ### Admin Commands
 | Command | Permission | Description |
@@ -76,6 +77,7 @@ Splitting an order does not avoid curve cost: the closed-form path integral prod
 | `[p]stock delist <symbol>` | Owner | Remove a stock permanently. |
 | `[p]stock unwind` | Owner | Preview a cost-basis refund and full market reset. Dry-run by default. |
 | `[p]stock unwind confirm` | Owner | Execute the previously previewed unwind after validating every holding. |
+| `[p]stock cleanup` | Owner | Clear the stored market dashboard configuration for this server. |
 | `[p]stock dashboard [channel]` | Admin | Create a real-time auto-updating market board. |
 
 ### Owner-only position unwind

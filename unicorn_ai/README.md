@@ -7,9 +7,9 @@ The bot uses webhooks to impersonate personas, posting messages that appear to c
 ## Features
 - **OpenAI-Compatible Endpoints**: NanoGPT out of the box; point it at any other compatible API with `[p]ai endpoint`.
 - **Custom Personas**: Load character definitions from simple JSON files.
-- **Context Awareness**: Remembers the last 50-100 messages in the channel (configurable per persona or globally). The persona's own earlier replies are recognised as its own, so it does not answer itself.
+- **Context Awareness**: Remembers up to the last 200 messages in the channel (1–200, configurable per persona or globally). The persona's own earlier replies are recognised as its own, so it does not answer itself.
 - **Multi-Channel Support**: Configure different personas and intervals for different channels.
-- **Thread Support**: Works in both text channels and threads.
+- **Thread Support**: Manual generation and `[p]summon` work in text channels and threads; the auto-messaging loop runs in text channels only.
 - **Auto-Messaging**: Configurable loop to make the AI speak periodically.
 - **Webhook Impersonation**: Uses webhooks to post messages as the persona character.
 - **User Opt-Out**: Users can opt out of having their messages included in AI context.
@@ -85,12 +85,9 @@ Create new JSON files in `.../unicorn_ai/data/personas/`.
     "name": "Unicorn",
     "description": "Internal description for the admin.",
     "system_prompt": "You are a magical Unicorn. You end sentences with *neigh*.",
-    "personality": "Cheerful, Energetic",
     "avatar_url": "https://example.com/unicorn.png",
     "after_context": "[System Note: Be brief.]",
     "history_limit": 100,
-    "first_message": "Hello! *neigh*",
-    "examples": [],
     "allow_summon": true
 }
 ```
@@ -98,12 +95,9 @@ Create new JSON files in `.../unicorn_ai/data/personas/`.
 - **name**: The display name of the persona (used in webhooks).
 - **description**: Internal description for admin reference.
 - **system_prompt**: The core instruction sent to the AI defining the persona's behavior.
-- **personality**: Brief description of personality traits.
 - **avatar_url**: (Optional) URL to an image for the persona's webhook avatar.
 - **after_context**: (Optional) Text appended to the *end* of the conversation history (useful for reminders like "Keep it short").
 - **history_limit**: (Optional) Override the global history limit for this specific persona.
-- **first_message**: (Optional) A greeting message the persona might use.
-- **examples**: (Optional) Example conversations for few-shot learning.
 - **allow_summon**: If set to `true`, users can summon this persona with the `[p]summon` command (subject to cooldowns).
 
 ## Request Settings

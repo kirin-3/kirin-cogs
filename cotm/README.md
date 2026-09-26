@@ -42,16 +42,14 @@ A Discord bot cog that manages the Cutie of the Month contest on the Unicornia s
 ## Setup
 
 1. Configure the relevant channels and constants in `const.py` to match your server's needs:
-   - Contest information channel ID
    - Entries channel ID
    - Winners channel ID
    - Cutie role ID
    - Other server-specific constants
 
 2. Ensure the bot has proper permissions in the designated channels:
-   - Read, send, and manage messages in the contest channel
-   - Permission to react to messages for vote counting
-   - Access to server emoji used in the contest
+   - Read Messages, Send Messages, and Embed Links in the channels where the dashboard is posted
+   - Read Message History in the entries channel (the cog reads reactions; it never adds any)
 
 3. Load the cog using `[p]load cotm`
 
@@ -99,11 +97,10 @@ The top contestants receive various rewards including:
 
 - Voting is done through reactions in the entries channel
 - Only specific emoji reactions count as valid votes
-- New members who join after the contest starts may have their votes excluded based on server configuration
+- A minimum-membership age for voters can be applied by passing `voter_server_age` to `[p]contestcount`; it is not a server-wide setting, and the "Check Standings" button and `[p]cotmreward` count votes without any age filter
 
 ## Technical Details
 
 - The dashboard uses Discord's V2 components for interactive navigation
 - The dashboard updates automatically across bot restarts
-- Vote counting includes validation to exclude invalid voters based on server membership duration
 - The system supports multiple emoji types for vote counting

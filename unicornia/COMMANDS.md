@@ -86,7 +86,7 @@ Manage your wallet, bank, and transactions.
 | `[p]economy take <amount> <user>` | Take currency from a user. | Bot Owner |
 | `[p]economy bank [user]` | View bank information for a user. | |
 | `[p]pick` | Global shortcut to pick up generated currency from chat. | |
-| `[p]currency pick [password]` | Pick up generated currency from chat. | |
+| `[p]currency pick [password]` | Pick up generated currency from chat. The optional password is accepted but ignored. | |
 | `[p]bank` | Base command for banking. | |
 | `[p]bank deposit <amount>` | Deposit currency from wallet to bank. Alias: `dep`, `d`. | |
 | `[p]bank withdraw <amount>` | Withdraw currency from bank to wallet. Alias: `with`, `w`. | |
@@ -103,7 +103,7 @@ Games of chance to win (or lose) currency. All gambling commands have top-level 
 | `[p]gambling slots <amount>` | Play the slot machine. Shortcut: `[p]slots`. |
 | `[p]gambling blackjack <amount>` | Play a game of Blackjack (21). A natural 21 pays 2.4x (stake included); no rakeback. Alias: `21`. Shortcut: `[p]blackjack` (prefix only). |
 | `[p]gambling betflip <amount> <heads/tails>` | Bet on a coin flip. Alias: `bf`. Shortcut: `[p]betflip`. |
-| `[p]gambling luckyladder <amount>` | Climb the lucky ladder for increasing multipliers. Alias: `ladder`. Shortcut: `[p]luckyladder`. |
+| `[p]gambling luckyladder <amount>` | Climb the lucky ladder; multipliers descend from 2.35x as the rung number rises. Alias: `ladder`. Shortcut: `[p]luckyladder`. |
 | `[p]gambling mines <amount> [mines]` | Play Minesweeper. Reveal safe spots to multiply your bet. Alias: `minesweeper`. Shortcut: `[p]mines`. |
 | `[p]duel <user> <amount>` | Challenge another player to a staked best-of-three-draw Rock-Paper-Scissors duel. |
 

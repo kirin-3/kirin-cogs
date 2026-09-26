@@ -12,7 +12,9 @@ deletes the message, and chooses an action from the member's server tenure:
   28-day timeout in one Discord request. Their removed role IDs are saved before the request so staff can restore them.
   The compromised-account DM is attempted only after quarantine succeeds.
 
-Bots, webhook messages, non-member authors, and members holding the staff role are ignored. A per-member lock prevents a
+Bots, webhook messages, non-member authors, members holding the staff role, and the guild owner are ignored. The guild
+owner who posts in the honeypot is never banned or quarantined; only a "Honeypot owner alert" is sent to the log
+channel. A per-member lock prevents a
 message burst from running enforcement more than once. Outcomes and failures are sent to the hardcoded log channel.
 
 A member who triggers the honeypot again is handled as a new incident when:

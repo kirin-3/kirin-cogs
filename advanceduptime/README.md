@@ -18,9 +18,10 @@ The original crashed on every use with discord.py 2 (`bot.user.avatar_url` no lo
 | `[p]uptimeset latencystats <true/false>` | owner | Show gateway and shard latency |
 | `[p]uptimeset sysuptime <true/false>` | owner | Show the host's uptime |
 | `[p]uptimeset usagestats <true/false>` | owner | Track and show the most and least used commands |
-| `[p]uptimeset settings` | owner | Show these settings |
+| `[p]uptimeset settings` (alias `showsettings`) | owner | Show these settings |
 
-Command usage is kept in memory only and resets when the cog reloads.
+Command usage is kept in memory only and resets when the cog reloads. `[p]uptime` needs the bot to have **Embed
+Links** in the channel it is used in.
 
 ## Migrating from Kreusada-Cogs
 

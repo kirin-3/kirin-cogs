@@ -24,7 +24,7 @@ All commands need `Manage Messages` or Red's mod role.
 | `[p]sticky <text>` | Sticky this text to the channel |
 | `[p]sticky existing <message>` | Sticky an existing message's text and first embed (ID or link) |
 | `[p]sticky toggleheader <true/false>` | Show or hide the "Stickied Message" header |
-| `[p]sticky cooldown [seconds]` | Wait at least this long between reposts (minimum and default 3) |
+| `[p]sticky cooldown [seconds]` (alias `setcooldown`) | Wait at least this long between reposts (minimum and default 3). Omitting the seconds resets the cooldown to 3 |
 | `[p]unsticky [yes]` | Remove the sticky; `yes` skips the confirmation |
 
 ## Migrating from Tobo-Cogs

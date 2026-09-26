@@ -112,7 +112,7 @@ If a new feature introduces a new recipient, this table is updated before that f
 | Staff web site login sessions | In memory only; at most 12 hours |
 | Presence and activity | Not retained at all |
 | Diagnostic moderation output | Up to one hour, then deleted automatically |
-| XP, currency, inventory, profiles, tickets, warnings, roleplay settings, hammer-lift and Disboard bump counts | Until you request deletion or the record is no longer needed |
+| XP, currency, inventory, profiles, tickets, warnings, roleplay settings, hammer-lift and Disboard bump counts, contest payouts | Until you request deletion or the record is no longer needed |
 | Quarantine role snapshots | Until the quarantine is resolved and the record cleared |
 | Boost timestamps | Retained to prevent duplicate awards for the same boost |
 | Supporter payment records (section 3.7) | Until you request deletion |
