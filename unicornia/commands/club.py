@@ -112,7 +112,7 @@ class ClubCommands(UnicorniaMixinBase):
         """
         Create and manage clubs.
 
-        Clubs allow users to group together, share a bank, and chat.
+        Clubs let users group together, earn XP as a team, and compete on the club leaderboard.
 
         **Syntax**
         `[p]club <subcommand>`

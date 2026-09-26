@@ -16,7 +16,7 @@ class RulesAccept(commands.Cog):
         super().__init__()
         self.bot = bot
         self.config = Config.get_conf(self, identifier=862735937)
-        default_guild = {"rules_channel_id": 684360255798509582, "member_role_id": 686098839651876908}
+        default_guild = {"member_role_id": 686098839651876908}
         self.config.register_guild(**default_guild)
 
     def _preflight_role_edit(self, guild, role):

@@ -24,7 +24,6 @@ def _make_config_mock() -> MagicMock:
     config.register_guild = MagicMock()
 
     guild_group = MagicMock()
-    guild_group.rules_channel_id = _make_config_attr(684360255798509582)
     guild_group.member_role_id = _make_config_attr(686098839651876908)
 
     config.guild = MagicMock(return_value=guild_group)

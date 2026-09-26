@@ -82,5 +82,5 @@ coverage/
 .idea
 .vscode
 openspec/
-# One-time automod import file with word lists; never commit (the repo is public)
-automod-rules.json
+.zcode/
+.zcodeignore

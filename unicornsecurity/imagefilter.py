@@ -1,4 +1,5 @@
 import ipaddress
+import logging
 import re
 import socket
 from urllib.parse import urljoin, urlsplit
@@ -6,6 +7,8 @@ from urllib.parse import urljoin, urlsplit
 import aiohttp
 import discord
 from redbot.core import Config, commands
+
+log = logging.getLogger("red.unicornsecurity.imagefilter")
 
 URL_PATTERN = re.compile(r"https?://\S+")
 REDIRECT_STATUSES = {301, 302, 303, 307, 308}
@@ -172,8 +175,8 @@ class ImageFilter(commands.Cog):
                     )
                 except discord.Forbidden:
                     pass  # Bot doesn't have permission to delete
-                except Exception as e:
-                    print(f"Error deleting message: {e}")
+                except discord.HTTPException:
+                    log.exception("Failed to delete a non-Tenor image message")
 
                 # No need to check other URLs in this message since it's deleted
                 break

@@ -101,7 +101,6 @@ def persona_mock() -> Persona:
         name="Test",
         description="A test persona",
         system_prompt="You are a test.",
-        personality="Testy",
         avatar_url="http://test.png",
         history_limit=10,
         allow_summon=True,

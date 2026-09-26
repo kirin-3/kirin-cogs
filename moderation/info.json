@@ -5,7 +5,7 @@
     ],
     "short": "Warnings viewer, role-strip mutes, kicks, bans, and user info",
     "description": "Replaces Red's [p]warnings with a dated, paginated list and sends custom DMs for warns, mutes, kicks, bans, and unbans. Mutes strip a member's roles and give them back on unmute.",
-    "install_msg": "Unload Red's Mod and Mutes cogs first, and load this after the Warnings cog.",
+    "install_msg": "Unload Red's Mod and Mutes cogs first. Keep Red's Warnings cog loaded (in any order) and run `[p]warningset senddm false`.",
     "end_user_data_statement": "This cog stores the roles a member had when they were muted and when the mute ends, so the roles can be given back on unmute. Warnings are stored by Red's core Warnings cog.",
     "min_bot_version": "3.5.0",
     "min_python_version": [

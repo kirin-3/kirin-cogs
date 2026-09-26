@@ -16,7 +16,9 @@
     "hidden": false,
     "disabled": false,
     "type": "COG",
-    "required_cogs": {},
+    "required_cogs": {
+        "unicornia": "https://github.com/kirin-3/kirin-cogs"
+    },
     "requirements": [],
     "tags": [
         "unicornia",

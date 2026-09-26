@@ -15,12 +15,9 @@ def test_persona_from_dict_defaults() -> None:
     assert persona.name == "Test Persona"
     assert persona.description == ""
     assert persona.system_prompt == ""
-    assert persona.personality == ""
     assert persona.avatar_url is None
     assert persona.after_context is None
     assert persona.history_limit is None
-    assert persona.first_message is None
-    assert persona.examples == []
     assert persona.allow_summon is False
 
 
@@ -29,12 +26,9 @@ def test_persona_from_dict_full() -> None:
         "name": "Full",
         "description": "Desc",
         "system_prompt": "Sys",
-        "personality": "Pers",
         "avatar_url": "Url",
         "after_context": "After",
         "history_limit": "42",
-        "first_message": "Hello",
-        "examples": [{"user": "hi", "bot": "hello"}],
         "allow_summon": True,
     }
     persona = Persona.from_dict(data)
@@ -42,8 +36,6 @@ def test_persona_from_dict_full() -> None:
     assert persona.name == "Full"
     assert persona.history_limit == 42
     assert persona.allow_summon is True
-    assert persona.examples is not None
-    assert len(persona.examples) == 1
 
 
 def test_persona_from_dict_invalid_history_limit() -> None:

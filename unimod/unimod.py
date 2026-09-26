@@ -379,7 +379,7 @@ Analyze this conversation against the server rules, paying close attention to ch
         api_key = api_tokens.get("api_key")
 
         if not api_key:
-            raise ValueError("OpenAI API key not configured. Use `[p]set api openai <api_key>` to set it.")
+            raise ValueError("OpenAI API key not configured. Use `[p]set api openai api_key,<api_key>` to set it.")
 
         # Diagnostic logging: prompt sizes
         system_len = len(system_prompt)

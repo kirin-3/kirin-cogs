@@ -280,6 +280,9 @@ class Moderation(commands.Cog):
         discord.py adds and removes commands by name, so two cogs can't share one: whichever loads second
         fails, and unloading either removes the other's. Giving the name back while Warnings is away lets it
         load in any order; on_cog_add takes the name over again once it has.
+
+        Not dead code: setup() calls this after add_cog, and on_cog_add calls it on every Warnings load. Unloading
+        Warnings needs no handler, since d.py drops [p]warnings by name and ours goes with it (the intended state).
         """
         ours = self.warnings
         current = self.bot.get_command("warnings")

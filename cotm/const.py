@@ -3,20 +3,6 @@ from pathlib import Path
 
 LOGGER_LEVEL = logging.INFO
 
-# server IDs
-RUFFIANAS_PLAYGROUND_ID = 760220886460137513
-UNICORNIA_ID = 684360255798509578
-
-# channel IDs per server
-CONTEST_CHANNEL_IDS = {
-    RUFFIANAS_PLAYGROUND_ID: {
-        "info": 1318299981668552735,
-    },
-    UNICORNIA_ID: {
-        "info": 1081656723904921651,
-    },
-}
-
 # These roles and channels are specific to Unicornia Server
 CUTIE_OF_THE_MONTH_ROLE_ID = 707303996389589045
 CUTIE_ROLE_MENTION = f"<@&{CUTIE_OF_THE_MONTH_ROLE_ID}>"

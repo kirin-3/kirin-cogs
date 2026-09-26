@@ -12,12 +12,9 @@ class Persona:
     name: str
     description: str
     system_prompt: str
-    personality: str
     avatar_url: str | None = None
     after_context: str | None = None
     history_limit: int | None = None
-    first_message: str | None = None
-    examples: list[dict[str, str]] | None = None
     allow_summon: bool = False
 
     @classmethod
@@ -35,12 +32,9 @@ class Persona:
             name=data.get("name", "Unknown"),
             description=data.get("description", ""),
             system_prompt=data.get("system_prompt", ""),
-            personality=data.get("personality", ""),
             avatar_url=data.get("avatar_url"),
             after_context=data.get("after_context"),
             history_limit=history_limit,
-            first_message=data.get("first_message"),
-            examples=data.get("examples", []),
             allow_summon=data.get("allow_summon", False),
         )
 

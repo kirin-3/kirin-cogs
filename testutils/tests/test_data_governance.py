@@ -15,6 +15,7 @@ PERSISTENT_COGS = {
     "antinuke",
     "automod",
     "banlog",
+    "cotm",
     "customcommand",
     "customemoji",
     "customrolecolor",
