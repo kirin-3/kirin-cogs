@@ -1,6 +1,10 @@
 *.pyc
 /redenv/*
 /redenv
+# Unicornia writes these into its package folder at runtime (live DB, downloaded font, cached XP backgrounds)
+unicornia/data/unicornia.db*
+unicornia/data/fonts/
+unicornia/data/xpimages/
 # Logs
 logs
 *.log
