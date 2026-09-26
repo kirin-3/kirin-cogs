@@ -7,6 +7,7 @@ import discord
 import pytest
 from redbot.core import commands
 
+from antinuke.actions import QuarantineActions
 from antinuke.antinuke import AntiNuke, _settings_authority
 from antinuke.constants import SETTINGS_AUTHORITY_USER_ID
 
@@ -69,6 +70,7 @@ def _cog(store: dict[str, Any]) -> AntiNuke:
     cog = AntiNuke.__new__(AntiNuke)
     cog.config = MagicMock()
     cog.config.guild.return_value = _GuildConfig(store)
+    cog.quarantine_actions = QuarantineActions(MagicMock(), cog.config)
     return cog
 
 

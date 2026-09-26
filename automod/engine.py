@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import heapq
 import logging
 import math
 import unicodedata
@@ -17,7 +18,7 @@ from .types import TRIGGERS
 log = logging.getLogger("red.kirin_cogs.automod")
 
 REGEX_TIMEOUT = 0.1  # seconds; a slower pattern counts as no match
-HISTORY_CAP = 100  # entries per member
+HISTORY_CAP = 100  # entries per member per channel; the highest trigger count
 
 INVITE_RE = regex.compile(r"(?i)(?:discord\.gg|discord(?:app)?\.com/invite)/[\w-]+")
 LINK_RE = regex.compile(r"(?i)https?://\S+|\bwww\.\S+|(?:discord\.gg|discord(?:app)?\.com/invite)/[\w-]+")
@@ -290,35 +291,45 @@ def is_counted(trigger: dict) -> bool:
 
 
 class Counts:
-    """Per-member history of new messages for counted triggers. In memory only."""
+    """Per-member history of new messages for counted triggers. In memory only.
+
+    Capped per channel set, not per member: channel conditions only ever keep or
+    drop whole channels, so traffic in one channel can't evict what another counts.
+    """
 
     def __init__(self) -> None:
-        self.members: dict[int, deque[Entry]] = {}
+        self.members: dict[int, dict[frozenset[int], deque[Entry]]] = {}
 
     def add(self, event: Event, window: int) -> deque[Entry]:
-        if event.kind != "message" or window <= 0:
-            return self.members.get(event.member_id, deque())
-        history = self.members.setdefault(event.member_id, deque(maxlen=HISTORY_CAP))
-        while history and history[0].at < event.at - window:
-            history.popleft()
-        history.append(
-            Entry(
-                event.at,
-                event.channel_id,
-                event.channel_ids,
-                event.text,
-                event.attachments,
-                event.links,
-                event.mentions,
-                event.mention_tokens,
+        channels = self.members.get(event.member_id, {})
+        if event.kind == "message" and window > 0:
+            channels = self.members.setdefault(event.member_id, {})
+            since = event.at - window
+            for key, entries in list(channels.items()):
+                while entries and entries[0].at < since:
+                    entries.popleft()
+                if not entries:
+                    del channels[key]
+            channels.setdefault(event.channel_ids, deque(maxlen=HISTORY_CAP)).append(
+                Entry(
+                    event.at,
+                    event.channel_id,
+                    event.channel_ids,
+                    event.text,
+                    event.attachments,
+                    event.links,
+                    event.mentions,
+                    event.mention_tokens,
+                )
             )
-        )
-        return history
+        return deque(heapq.merge(*channels.values(), key=lambda e: e.at))
 
     def reset(self, member_id: int) -> None:
         self.members.pop(member_id, None)
 
     def sweep(self, now: float, window: int) -> None:
         """Drop members with nothing inside the window."""
-        for member_id in [m for m, h in self.members.items() if not h or h[-1].at < now - window]:
+        cutoff = now - window
+        stale = [m for m, chans in self.members.items() if all(d[-1].at < cutoff for d in chans.values() if d)]
+        for member_id in stale:
             del self.members[member_id]

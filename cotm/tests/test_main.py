@@ -24,6 +24,7 @@ async def cog(bot_mock: MagicMock) -> ContestCog:
     cog = ContestCog(bot_mock)
     # Red's test config is shared across tests, so saved contest results would leak between them
     await cog.config.payouts.clear()
+    await cog.config.dashboards.clear()
     return cog
 
 
@@ -50,6 +51,7 @@ def ctx_mock() -> MagicMock:
 async def test_post_contest_info(cog: ContestCog, ctx_mock: MagicMock) -> None:
     cog._import_txt = MagicMock(return_value="test text")  # type: ignore[method-assign]
     cog._format_text = MagicMock(return_value="formatted text")  # type: ignore[method-assign]
+    ctx_mock.channel.send.return_value = SimpleNamespace(id=4242)
 
     await cog.contest.callback(cog, ctx_mock, 5)  # type: ignore[arg-type]
 
@@ -68,6 +70,7 @@ async def test_post_contest_info(cog: ContestCog, ctx_mock: MagicMock) -> None:
     # contest_number must be persisted to Config
     saved = await cog.config.contest_number()
     assert saved == 5
+    assert await cog.config.dashboards() == {"4242": 5}
 
 
 @pytest.mark.asyncio
@@ -101,6 +104,20 @@ async def test_cog_load_restores_number_and_registers_view(cog: ContestCog, bot_
     from cotm.cotm_views import ContestDashboardView
 
     assert isinstance(view_arg, ContestDashboardView)
+
+
+@pytest.mark.asyncio
+async def test_cog_load_binds_recorded_dashboards_to_their_contest(cog: ContestCog, bot_mock: MagicMock) -> None:
+    """A dashboard posted for an older contest keeps that contest after a restart."""
+    await cog.config.contest_number.set(7)
+    await cog.config.dashboards.set({"1001": 6, "junk": 5, "1002": None})
+    cog._import_txt = MagicMock(return_value="{contest_number}")  # type: ignore[method-assign]
+
+    await cog.cog_load()
+
+    bound = [(c.args[0], c.kwargs.get("message_id")) for c in bot_mock.add_view.call_args_list]
+    assert [(v.contest_number, mid) for v, mid in bound] == [(7, None), (6, 1001)]
+    assert bound[1][0].texts["description"] == "6th"
 
 
 @pytest.mark.asyncio

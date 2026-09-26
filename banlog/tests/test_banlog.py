@@ -136,6 +136,18 @@ async def test_cancelled_flush_keeps_its_batch_for_the_next_one(cog: BanLog, mon
 
 
 @pytest.mark.asyncio
+async def test_failed_flush_keeps_its_batch_for_the_next_one(cog: BanLog, monkeypatch: pytest.MonkeyPatch) -> None:
+    await cog.on_message(_message(1))
+    monkeypatch.setattr(cog.db, "execute", AsyncMock(side_effect=aiosqlite.OperationalError("disk I/O error")))
+
+    await cog._flush()  # logged, not raised
+    monkeypatch.undo()
+    await cog._flush()
+
+    assert [row["id"] for row in await _rows(cog, "SELECT id FROM messages")] == [1]
+
+
+@pytest.mark.asyncio
 async def test_unload_writes_queued_messages(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(banlog_module, "cog_data_path", lambda cog: tmp_path)
     bot = MagicMock()

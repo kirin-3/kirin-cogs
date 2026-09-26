@@ -2,6 +2,9 @@ import discord
 from discord import ButtonStyle, Interaction, TextStyle
 from discord.ui import Button, Modal, TextInput, View
 
+CONFESSION_HEADER = "**Anonymous Confession**\n>>> "
+MAX_CONFESSION_LENGTH = 2000 - len(CONFESSION_HEADER)
+
 
 class ConfessionModal(Modal):
     def __init__(self, cog):
@@ -13,7 +16,7 @@ class ConfessionModal(Modal):
             placeholder="Type your confession here...",
             style=TextStyle.long,
             min_length=5,
-            max_length=2000,
+            max_length=MAX_CONFESSION_LENGTH,
             required=True,
         )
         self.add_item(self.confession_input)

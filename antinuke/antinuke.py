@@ -618,11 +618,9 @@ class AntiNuke(
         guild = ctx.guild
         if not guild:
             return
-        async with self.config.guild(guild).quarantined_users() as q_users:
-            if str(user.id) not in q_users:
-                await ctx.send(f"❌ {user.mention} is not in quarantine records.")
-                return
-            del q_users[str(user.id)]
+        if not await self.quarantine_actions.clear_user(guild, user.id):
+            await ctx.send(f"❌ {user.mention} is not in quarantine records.")
+            return
 
         await ctx.send(f"✅ {user.mention} has been cleared from quarantine records.")
 

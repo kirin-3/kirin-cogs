@@ -40,7 +40,8 @@ class ContestCog(commands.Cog):
 
         self.config = Config.get_conf(self, identifier=906144832, force_registration=True)
         # payouts: contest number -> {"channel_id", "placements"}, saved before the first deposit
-        self.config.register_global(contest_number=1, payouts={})
+        # dashboards: message id -> contest number, so each dashboard keeps its own contest across restarts
+        self.config.register_global(contest_number=1, payouts={}, dashboards={})
 
         self.logger.info("-" * 32)
         self.logger.info(f"{self.__class__.__name__} v({__version__}) initialized!")
@@ -52,8 +53,13 @@ class ContestCog(commands.Cog):
         This ensures the contest dashboard buttons remain interactive across bot restarts.
         """
         self._contest_number = await self.config.contest_number()
-        texts = self._load_texts()
-        self.bot.add_view(ContestDashboardView(self, self._contest_number, texts))
+        # Unbound fallback for dashboards posted before they were recorded.
+        self.bot.add_view(ContestDashboardView(self, self._contest_number, self._load_texts()))
+        # Message-bound views take precedence over the fallback for their own message.
+        for message_id, number in (await self.config.dashboards()).items():
+            if str(message_id).isdigit() and isinstance(number, int):
+                view = ContestDashboardView(self, number, self._load_texts(number))
+                self.bot.add_view(view, message_id=int(message_id))
         self.logger.info(f"Registered persistent ContestDashboardView (contest #{self._contest_number})")
 
     @property
@@ -109,7 +115,7 @@ class ContestCog(commands.Cog):
 
         return embed
 
-    def _format_text(self, text: str) -> str:
+    def _format_text(self, text: str, number: int | None = None) -> str:
         """
         Formats the given text with contest-specific details.
 
@@ -121,23 +127,23 @@ class ContestCog(commands.Cog):
         """
         return strings.format_string(
             text,
-            contest_number=self.contest_number,
+            contest_number=self.contest_number if number is None else strings.add_ordinal_suffix(number),
             cutie_role=const.CUTIE_ROLE_MENTION,
             entries_channel=const.ENTRIES_CHANNEL_MENTION,
             winners_channel=const.WINNERS_CHANNEL_MENTION,
         )
 
-    def _load_texts(self) -> dict[str, str]:
+    def _load_texts(self, number: int | None = None) -> dict[str, str]:
         """Loads and formats all contest text sections from disk.
 
         Returns:
             dict[str, str]: Mapping of section name to formatted text content.
         """
         return {
-            "description": self._format_text(self._import_txt(const.CONTEST_DESCRIPTION)),
-            "terms": self._format_text(self._import_txt(const.TERMS_DESCRIPTION)),
-            "prizes": self._format_text(self._import_txt(const.PRIZES_DESCRIPTION)),
-            "votes": self._format_text(self._import_txt(const.VOTES_DESCRIPTION)),
+            "description": self._format_text(self._import_txt(const.CONTEST_DESCRIPTION), number),
+            "terms": self._format_text(self._import_txt(const.TERMS_DESCRIPTION), number),
+            "prizes": self._format_text(self._import_txt(const.PRIZES_DESCRIPTION), number),
+            "votes": self._format_text(self._import_txt(const.VOTES_DESCRIPTION), number),
         }
 
     async def _post_contest_info(self, ctx: commands.Context, contest_number: int | None = None) -> None:
@@ -160,7 +166,9 @@ class ContestCog(commands.Cog):
         texts = self._load_texts()
 
         dashboard_view = ContestDashboardView(self, self._contest_number, texts)
-        await cast(discord.TextChannel, ctx.channel).send(view=dashboard_view)
+        message = await cast(discord.TextChannel, ctx.channel).send(view=dashboard_view)
+        async with self.config.dashboards() as dashboards:
+            dashboards[str(message.id)] = self._contest_number
 
     @commands.command(aliases=["cotm"])  # pyright: ignore[reportArgumentType]
     @commands.admin_or_permissions(administrator=True)

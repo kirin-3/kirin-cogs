@@ -206,3 +206,15 @@ def test_counted_triggers_skip_channels_the_rule_ignores() -> None:
         event = Event("message", 7, channel_ids=frozenset({channel}), channel_id=channel, at=100.0 + n)
         fired.append(bool(evaluate(s, event, counts.add(event, s.window))))
     assert fired == [False, False, False, False, True]
+
+
+def test_ignored_channel_traffic_does_not_evict_counted_messages() -> None:
+    burst = {"type": "message_rate", "count": 100, "seconds": 3600}
+    s = snap(ruleset("spam", [rule("r", [burst])], conditions=[{"type": "ignore_channels", "channels": [99]}]))
+    counts = Counts()
+    fired = []
+    for n in range(200):  # alternate an ignored game command with a counted message
+        channel = 99 if n % 2 == 0 else 10
+        event = Event("message", 7, channel_ids=frozenset({channel}), channel_id=channel, at=100.0 + n)
+        fired.append(bool(evaluate(s, event, counts.add(event, s.window))))
+    assert fired == [False] * 199 + [True]

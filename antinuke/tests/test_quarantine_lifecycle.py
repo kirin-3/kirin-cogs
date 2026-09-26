@@ -142,6 +142,34 @@ async def test_concurrent_quarantine_keeps_first_snapshot(actions: QuarantineAct
 
 
 @pytest.mark.asyncio
+async def test_restore_waits_for_an_in_flight_quarantine(actions: QuarantineActions, config_mock: MagicMock) -> None:
+    """A restore issued mid-quarantine runs after it, so it can't be overwritten by the finalize step."""
+    guild = _guild()
+    user = _member(roles=[guild.default_role, _role(101)])
+    gate = asyncio.Event()
+    calls: list[str] = []
+
+    async def edit(**kwargs: Any) -> None:
+        calls.append("restore" if calls else "quarantine")
+        if len(calls) == 1:
+            await gate.wait()
+
+    user.edit = edit
+
+    quarantine = asyncio.create_task(actions.execute_quarantine(guild, user, "ban"))
+    await asyncio.sleep(0)
+    restore = asyncio.create_task(actions.restore_user(guild, user, "test"))
+    await asyncio.sleep(0)
+    assert calls == ["quarantine"]  # restore is blocked on the member lock
+    gate.set()
+    assert await asyncio.gather(quarantine, restore) == [True, True]
+    await _drain(actions)
+
+    assert calls == ["quarantine", "restore"]
+    assert str(user.id) not in config_mock.guild.return_value.quarantined_users.return_value
+
+
+@pytest.mark.asyncio
 async def test_completed_quarantine_is_idempotent(actions: QuarantineActions, config_mock: MagicMock) -> None:
     """A second quarantine after completion preserves the original snapshot."""
     guild = _guild()

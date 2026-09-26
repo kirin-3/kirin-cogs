@@ -248,63 +248,70 @@ class QuarantineActions:
         bool
             True if successful, False otherwise.
         """
-        # Get stored quarantine data
-        q_users = await self.config.guild(guild).quarantined_users()
-        user_data = q_users.get(str(user.id))
+        async with self._quarantine_lock(guild.id, user.id):
+            # Get stored quarantine data
+            q_users = await self.config.guild(guild).quarantined_users()
+            user_data = q_users.get(str(user.id))
 
-        if not user_data:
-            return False
+            if not user_data:
+                return False
 
-        # Get role objects for stored role IDs
-        roles_to_restore: list[discord.Role] = []
-        missing_roles: list[int] = []
+            # Get role objects for stored role IDs
+            roles_to_restore: list[discord.Role] = []
+            missing_roles: list[int] = []
 
-        for role_id in user_data.get("roles", []):
-            role = guild.get_role(role_id)
-            if role:
-                # Check if bot can assign this role
-                if guild.me.top_role > role:
-                    roles_to_restore.append(role)
+            for role_id in user_data.get("roles", []):
+                role = guild.get_role(role_id)
+                if role:
+                    # Check if bot can assign this role
+                    if guild.me.top_role > role:
+                        roles_to_restore.append(role)
+                    else:
+                        log.warning(f"Cannot restore role {role_id} to user {user.id}: role is above bot's top role")
                 else:
-                    log.warning(f"Cannot restore role {role_id} to user {user.id}: role is above bot's top role")
-            else:
-                missing_roles.append(role_id)
+                    missing_roles.append(role_id)
 
-        # Remove quarantine role if present
-        quarantine_role_id = await self.config.guild(guild).quarantine_role()
-        quarantine_role = guild.get_role(quarantine_role_id) if quarantine_role_id else None
+            # Remove quarantine role if present
+            quarantine_role_id = await self.config.guild(guild).quarantine_role()
+            quarantine_role = guild.get_role(quarantine_role_id) if quarantine_role_id else None
 
-        try:
-            # Build final role list
-            final_roles = roles_to_restore.copy()
+            try:
+                # Build final role list
+                final_roles = roles_to_restore.copy()
 
-            # Add back any roles the user should have (excluding quarantine)
-            for role in user.roles:
-                if role != guild.default_role and role != quarantine_role and role not in final_roles:
-                    final_roles.append(role)
+                # Add back any roles the user should have (excluding quarantine)
+                for role in user.roles:
+                    if role != guild.default_role and role != quarantine_role and role not in final_roles:
+                        final_roles.append(role)
 
-            # Restore roles
-            await user.edit(
-                roles=final_roles,
-                reason=f"AntiNuke: User unquaranted by {restored_by}",
-            )
+                # Restore roles
+                await user.edit(
+                    roles=final_roles,
+                    reason=f"AntiNuke: User unquaranted by {restored_by}",
+                )
 
-            # Remove from quarantine storage
+                # Remove from quarantine storage
+                async with self.config.guild(guild).quarantined_users() as q_users:
+                    if str(user.id) in q_users:
+                        del q_users[str(user.id)]
+
+                # Log restoration
+                self._create_task(self.log_restoration(guild, user, restored_by, missing_roles))
+
+                return True
+
+            except discord.Forbidden:
+                log.error(f"Failed to restore user {user.id} in guild {guild.id}: missing permissions")
+                return False
+            except discord.HTTPException as e:
+                log.error(f"Failed to restore user {user.id} in guild {guild.id}: {e}")
+                return False
+
+    async def clear_user(self, guild: discord.Guild, user_id: int) -> bool:
+        """Drop a quarantine record without restoring roles. Returns False if none existed."""
+        async with self._quarantine_lock(guild.id, user_id):
             async with self.config.guild(guild).quarantined_users() as q_users:
-                if str(user.id) in q_users:
-                    del q_users[str(user.id)]
-
-            # Log restoration
-            self._create_task(self.log_restoration(guild, user, restored_by, missing_roles))
-
-            return True
-
-        except discord.Forbidden:
-            log.error(f"Failed to restore user {user.id} in guild {guild.id}: missing permissions")
-            return False
-        except discord.HTTPException as e:
-            log.error(f"Failed to restore user {user.id} in guild {guild.id}: {e}")
-            return False
+                return q_users.pop(str(user_id), None) is not None
 
     async def remove_bot(
         self,

@@ -12,6 +12,7 @@ from redbot.core import Config
 from redbot.core.bot import Red
 
 from confess.confess import CONFESSION_CHANNEL_ID, Confess
+from confess.views import CONFESSION_HEADER, MAX_CONFESSION_LENGTH
 
 
 @pytest.fixture
@@ -99,7 +100,8 @@ async def test_process_confession_success(cog: Confess, bot_mock: MagicMock) -> 
     bot_mock.fetch_user = AsyncMock(return_value=owner)
 
     interaction = MagicMock(spec=discord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     interaction.user = MagicMock(spec=discord.Member)
     interaction.user.id = 999
     interaction.user.display_avatar.url = "https://example.com/avatar.png"
@@ -121,7 +123,8 @@ async def test_process_confession_success(cog: Confess, bot_mock: MagicMock) -> 
     assert am.roles is False
 
     # User got ephemeral confirmation
-    interaction.response.send_message.assert_called_once_with(
+    interaction.response.defer.assert_called_once_with(ephemeral=True, thinking=True)
+    interaction.followup.send.assert_called_once_with(
         "Your confession has been sent, you are forgiven now.", ephemeral=True
     )
 
@@ -144,12 +147,13 @@ async def test_process_confession_forbidden(cog: Confess, bot_mock: MagicMock) -
     cog.get_confession_channel = AsyncMock(return_value=channel)  # type: ignore[method-assign]
 
     interaction = MagicMock(spec=discord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     interaction.user = MagicMock(spec=discord.Member)
 
     await cog.process_confession(interaction, "a secret")
 
-    interaction.response.send_message.assert_called_once_with(
+    interaction.followup.send.assert_called_once_with(
         "I don't have permission to send messages to the confession room.",
         ephemeral=True,
     )
@@ -165,12 +169,30 @@ async def test_process_confession_generic_error(cog: Confess) -> None:
     cog.get_confession_channel = AsyncMock(return_value=channel)  # type: ignore[method-assign]
 
     interaction = MagicMock(spec=discord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     interaction.user = MagicMock(spec=discord.Member)
 
     await cog.process_confession(interaction, "a confession")
 
-    interaction.response.send_message.assert_called_once_with("Something went wrong.", ephemeral=True)
+    interaction.followup.send.assert_called_once_with("Something went wrong.", ephemeral=True)
+
+
+@pytest.mark.asyncio
+async def test_process_confession_fits_one_message(cog: Confess) -> None:
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+    cog.get_confession_channel = AsyncMock(return_value=channel)  # type: ignore[method-assign]
+    interaction = MagicMock(spec=discord.Interaction)
+    interaction.response.send_message = AsyncMock()
+
+    await cog.process_confession(interaction, "@everyone " + "x" * (MAX_CONFESSION_LENGTH - 10))
+
+    channel.send.assert_not_called()
+    interaction.response.send_message.assert_called_once_with(
+        "Your confession is too long. Please shorten it.", ephemeral=True
+    )
+    assert len(CONFESSION_HEADER) + MAX_CONFESSION_LENGTH == 2000
 
 
 # ---------------------------------------------------------------------------

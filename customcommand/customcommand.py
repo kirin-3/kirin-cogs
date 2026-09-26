@@ -191,7 +191,8 @@ class CustomCommand(commands.Cog):
         if limit < 1:
             await ctx.send("Limit must be at least 1.")
             return
-        await self.config.guild(ctx.guild).user_limits.set_raw(str(member.id), value=limit)  # pyright: ignore[reportAttributeAccessIssue]
+        async with self._guild_lock(ctx.guild.id):  # creation rewrites the whole guild record
+            await self.config.guild(ctx.guild).user_limits.set_raw(str(member.id), value=limit)  # pyright: ignore[reportAttributeAccessIssue]
         await ctx.send(f"Custom command limit for {member.display_name} set to {limit}.")
 
     @customcommand.command(name="list")
@@ -364,100 +365,102 @@ class CustomCommand(commands.Cog):
         guild = ctx.guild
         is_mod = author.guild_permissions.ban_members
 
-        # Mod deletion logic
-        if is_mod and trigger:
+        # Same lock as creation: both rewrite the guild's commands and owner records.
+        async with self._guild_lock(guild.id):
+            # Mod deletion logic
+            if is_mod and trigger:
+                trigger = trigger.lower()
+                all_commands = self.command_cache.get(guild.id, {})
+
+                if trigger in all_commands:
+                    # Find owner to clean up
+                    command_owners = await self.config.guild(guild).command_owners()
+                    owner_found = None
+
+                    for user_id, triggers in command_owners.items():
+                        if isinstance(triggers, str):
+                            triggers = [triggers]
+                        if trigger in triggers:
+                            owner_found = user_id
+                            break
+
+                    # Delete from config
+                    async with self.config.guild(guild).commands() as commands:
+                        if trigger in commands:
+                            del commands[trigger]
+
+                    # Delete from cache
+                    if guild.id in self.command_cache and trigger in self.command_cache[guild.id]:
+                        del self.command_cache[guild.id][trigger]
+
+                    # Cleanup cooldown
+                    if (guild.id, trigger) in self.trigger_cooldowns:
+                        del self.trigger_cooldowns[(guild.id, trigger)]
+                    await self._delete_attachment(guild.id, trigger)
+
+                    if owner_found:
+                        triggers = command_owners[owner_found]
+                        if isinstance(triggers, str):
+                            triggers = [triggers]
+                        if trigger in triggers:
+                            triggers.remove(trigger)
+                            if not triggers:
+                                await self.config.guild(guild).command_owners.clear_raw(owner_found)  # pyright: ignore[reportAttributeAccessIssue]
+                            else:
+                                await self.config.guild(guild).command_owners.set_raw(owner_found, value=triggers)  # pyright: ignore[reportAttributeAccessIssue]
+
+                    await self.log_action(ctx, "Deleted (Mod)", trigger)
+                    await ctx.send(f"Custom command `{trigger}` has been deleted by moderator.")
+                    return
+                elif trigger not in all_commands:
+                    await ctx.send("Command not found.")
+                    return
+
+            # Regular user logic
+            command_owners = await self.config.guild(guild).command_owners()
+            user_commands = command_owners.get(str(author.id))
+
+            if not user_commands:
+                await ctx.send("You don't have a custom command to delete.")
+                return
+
+            if isinstance(user_commands, str):
+                user_commands = [user_commands]
+
+            if trigger is None:
+                if len(user_commands) == 1:
+                    trigger = user_commands[0]
+                else:
+                    cmd_list = ", ".join(f"`{c}`" for c in user_commands)
+                    await ctx.send(f"You have multiple commands: {cmd_list}. Please specify which one to delete.")
+                    return
+
+            assert trigger is not None
             trigger = trigger.lower()
-            all_commands = self.command_cache.get(guild.id, {})
-
-            if trigger in all_commands:
-                # Find owner to clean up
-                command_owners = await self.config.guild(guild).command_owners()
-                owner_found = None
-
-                for user_id, triggers in command_owners.items():
-                    if isinstance(triggers, str):
-                        triggers = [triggers]
-                    if trigger in triggers:
-                        owner_found = user_id
-                        break
-
-                # Delete from config
-                async with self.config.guild(guild).commands() as commands:
-                    if trigger in commands:
-                        del commands[trigger]
-
-                # Delete from cache
-                if guild.id in self.command_cache and trigger in self.command_cache[guild.id]:
-                    del self.command_cache[guild.id][trigger]
-
-                # Cleanup cooldown
-                if (guild.id, trigger) in self.trigger_cooldowns:
-                    del self.trigger_cooldowns[(guild.id, trigger)]
-                await self._delete_attachment(guild.id, trigger)
-
-                if owner_found:
-                    triggers = command_owners[owner_found]
-                    if isinstance(triggers, str):
-                        triggers = [triggers]
-                    if trigger in triggers:
-                        triggers.remove(trigger)
-                        if not triggers:
-                            await self.config.guild(guild).command_owners.clear_raw(owner_found)  # pyright: ignore[reportAttributeAccessIssue]
-                        else:
-                            await self.config.guild(guild).command_owners.set_raw(owner_found, value=triggers)  # pyright: ignore[reportAttributeAccessIssue]
-
-                await self.log_action(ctx, "Deleted (Mod)", trigger)
-                await ctx.send(f"Custom command `{trigger}` has been deleted by moderator.")
-                return
-            elif trigger not in all_commands:
-                await ctx.send("Command not found.")
+            if trigger not in user_commands:
+                await ctx.send("You don't own a command with that name.")
                 return
 
-        # Regular user logic
-        command_owners = await self.config.guild(guild).command_owners()
-        user_commands = command_owners.get(str(author.id))
+            # Delete from config and cache
+            async with self.config.guild(guild).commands() as commands:
+                if trigger in commands:
+                    del commands[trigger]
+            if guild.id in self.command_cache and trigger in self.command_cache[guild.id]:
+                del self.command_cache[guild.id][trigger]
 
-        if not user_commands:
-            await ctx.send("You don't have a custom command to delete.")
-            return
+            # Cleanup cooldown
+            if (guild.id, trigger) in self.trigger_cooldowns:
+                del self.trigger_cooldowns[(guild.id, trigger)]
+            await self._delete_attachment(guild.id, trigger)
 
-        if isinstance(user_commands, str):
-            user_commands = [user_commands]
-
-        if trigger is None:
-            if len(user_commands) == 1:
-                trigger = user_commands[0]
+            user_commands.remove(trigger)
+            if not user_commands:
+                await self.config.guild(guild).command_owners.clear_raw(str(author.id))  # pyright: ignore[reportAttributeAccessIssue]
             else:
-                cmd_list = ", ".join(f"`{c}`" for c in user_commands)
-                await ctx.send(f"You have multiple commands: {cmd_list}. Please specify which one to delete.")
-                return
+                await self.config.guild(guild).command_owners.set_raw(str(author.id), value=user_commands)  # pyright: ignore[reportAttributeAccessIssue]
 
-        assert trigger is not None
-        trigger = trigger.lower()
-        if trigger not in user_commands:
-            await ctx.send("You don't own a command with that name.")
-            return
-
-        # Delete from config and cache
-        async with self.config.guild(guild).commands() as commands:
-            if trigger in commands:
-                del commands[trigger]
-        if guild.id in self.command_cache and trigger in self.command_cache[guild.id]:
-            del self.command_cache[guild.id][trigger]
-
-        # Cleanup cooldown
-        if (guild.id, trigger) in self.trigger_cooldowns:
-            del self.trigger_cooldowns[(guild.id, trigger)]
-        await self._delete_attachment(guild.id, trigger)
-
-        user_commands.remove(trigger)
-        if not user_commands:
-            await self.config.guild(guild).command_owners.clear_raw(str(author.id))  # pyright: ignore[reportAttributeAccessIssue]
-        else:
-            await self.config.guild(guild).command_owners.set_raw(str(author.id), value=user_commands)  # pyright: ignore[reportAttributeAccessIssue]
-
-        await self.log_action(ctx, "Deleted", trigger)
-        await ctx.send(f"Your custom command `{trigger}` has been deleted.")
+            await self.log_action(ctx, "Deleted", trigger)
+            await ctx.send(f"Your custom command `{trigger}` has been deleted.")
 
     @commands.Cog.listener()
     async def on_message_without_command(self, message: discord.Message):

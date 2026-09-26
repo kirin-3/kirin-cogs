@@ -130,10 +130,10 @@ class BanLog(commands.Cog):
                     await self.db.execute(sql, params)
                 yield self.db
                 await self.db.commit()
-            except BaseException as exc:
+            except BaseException:
+                # Keep the batch for the next flush (or unload's final flush, if cancelled).
+                self._ops[:0] = ops
                 await self.db.rollback()
-                if isinstance(exc, asyncio.CancelledError):
-                    self._ops[:0] = ops  # cancelled by unload, whose final flush writes them
                 raise
 
     async def _flush(self) -> None:

@@ -6,7 +6,7 @@ import discord
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 
-from .views import StickyView
+from .views import CONFESSION_HEADER, StickyView
 
 log = logging.getLogger("red.kirin_cogs.confess")
 
@@ -42,23 +42,28 @@ class Confess(commands.Cog):
         if not channel:
             return await interaction.response.send_message("Confession channel not found.", ephemeral=True)
 
-        confession_content = f"**Anonymous Confession**\n>>> {discord.utils.escape_mentions(content)}"
+        confession_content = CONFESSION_HEADER + discord.utils.escape_mentions(content)
+        if len(confession_content) > 2000:  # escaping mentions can push a max-length confession over
+            return await interaction.response.send_message(
+                "Your confession is too long. Please shorten it.", ephemeral=True
+            )
 
+        await interaction.response.defer(ephemeral=True, thinking=True)
         try:
             await channel.send(
                 content=confession_content,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
         except discord.Forbidden:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "I don't have permission to send messages to the confession room.",
                 ephemeral=True,
             )
         except Exception as e:
             log.error(f"Failed to send confession: {e}")
-            return await interaction.response.send_message("Something went wrong.", ephemeral=True)
+            return await interaction.followup.send("Something went wrong.", ephemeral=True)
 
-        await interaction.response.send_message("Your confession has been sent, you are forgiven now.", ephemeral=True)
+        await interaction.followup.send("Your confession has been sent, you are forgiven now.", ephemeral=True)
 
         # Logging to bot owners
         log_embed = discord.Embed(
