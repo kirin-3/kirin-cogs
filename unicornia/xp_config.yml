@@ -120,7 +120,8 @@ shop:
     makima3:
       desc: ''
       name: Makima 3
-      preview: ''
+      preview: https://unicornia.net/images/makima3.webp
+      still: https://unicornia.net/images/makima3-still.webp
       price: 20
       url: https://unicornia.net/images/makima3.gif
       hidden: true
