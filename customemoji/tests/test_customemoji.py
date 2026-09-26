@@ -864,7 +864,7 @@ async def test_rename_without_the_role_is_refused(cog: Any, bot_mock: MagicMock,
     await cog.ce_rename.callback(cog, ctx, emoji, "newname")
 
     emoji.edit.assert_not_awaited()
-    ctx.send.assert_called_once_with("You do not have the required role to create emojis.")
+    ctx.send.assert_called_once_with("You do not have the required role to rename emojis.")
 
 
 @pytest.mark.asyncio

@@ -130,7 +130,7 @@ class CustomEmoji(commands.Cog):
         if not EMOJI_NAME.fullmatch(name):
             raise ValueError("Emoji names should be 2 to 32 alphanumeric characters and underscores.")
 
-    async def _require_role(self, member: discord.Member) -> None:
+    async def _require_role(self, member: discord.Member, action: str = "create") -> None:
         """Creating and renaming need the role set with `[p]ce setrole`, when one is set."""
         required_role_id = await self.config.guild(member.guild).required_role_id()
         if not required_role_id:
@@ -141,7 +141,7 @@ class CustomEmoji(commands.Cog):
                 "The required role for creating emojis no longer exists. Please ask an admin to reconfigure it."
             )
         if role not in member.roles:
-            raise ValueError("You do not have the required role to create emojis.")
+            raise ValueError(f"You do not have the required role to {action} emojis.")
 
     async def can_create(self, member: discord.Member) -> bool:
         try:
@@ -195,7 +195,7 @@ class CustomEmoji(commands.Cog):
     async def rename_emoji(self, member: discord.Member, emoji: discord.Emoji, name: str) -> None:
         """Rename one of the member's own emojis, or raise ValueError."""
         self._check_name(name)
-        await self._require_role(member)
+        await self._require_role(member, "rename")
         if not await self._owns(member, emoji):
             raise ValueError("You do not own this emoji.")
         self._cooldown(member.id, stamp=True)
