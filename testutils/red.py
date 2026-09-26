@@ -29,6 +29,7 @@ from redbot.core import config as red_config
 from redbot.core._cli import parse_cli_flags
 from redbot.core._drivers import json as json_driver
 from redbot.core.bot import Red
+from redbot.core.core_commands import Core
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PREFIX = "!"
@@ -57,6 +58,11 @@ async def simcord_bot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, red_cogs:
     monkeypatch.setattr(json_driver, "_finalizers", [])
     # Locks bind to the event loop that first used them, and each test gets a new loop.
     monkeypatch.setattr(json_driver, "_locks", defaultdict(asyncio.Lock))
+    # `[p]slash sync` has a 60 s global cooldown, and every bot's copy of the command shares one
+    # Cooldown object, so one test's sync would block the next test's with "recently syncing".
+    sync_cooldown = Core.slash_sync._buckets._cooldown
+    assert sync_cooldown is not None
+    sync_cooldown.reset()
     # on_ready checks PyPI for a newer Red; tests stay offline.
     # By dotted path: importing redbot.core._events before redbot.core.bot is a circular import.
     monkeypatch.setattr(
