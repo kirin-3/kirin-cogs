@@ -626,6 +626,77 @@ async def test_manual_sync_reports_busy_lock() -> None:
     world = World()
     ctx = MagicMock()
     ctx.send = AsyncMock()
-    async with world.cog.lock:
+    async with world.cog.sync_lock:
         await Patron.manual_sync.callback(world.cog, ctx)  # type: ignore[arg-type]
     assert "already in progress" in ctx.send.call_args[0][0]
+
+
+# ---------------------------------------------------------------------------
+# Review fixes
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_at_period_end_stops_pay_but_keeps_role_until_period_end() -> None:
+    state = _state(links={"bob@example.com": 22})
+    period_end = int(NOW + 10 * DAY)
+    apply_bmc_event(
+        state, _event("membership.updated", status="active", canceled="true", current_period_end=period_end), NOW
+    )
+    (entry,) = plan_entries(state, NOW)
+    assert not entry.payable and entry.active
+    (entry,) = plan_entries(state, period_end + 1)
+    assert not entry.active
+
+
+def test_staff_link_overrides_patreon_discord_connection() -> None:
+    state = _state(
+        links={"alice@example.com": 99},
+        patreon_members={"m1": {"charge": "c", "email": "alice@example.com", "discord_id": 11}},
+    )
+    (entry,) = plan_entries(state, NOW)
+    assert entry.user_id == 99
+
+
+@pytest.mark.asyncio
+async def test_empty_first_sync_does_not_baseline() -> None:
+    world = World()
+    await world.cog._merge_patreon([])
+    assert not world.config.guild_from_id(GUILD_ID).raw().get("patreon_baselined")
+
+
+@pytest.mark.asyncio
+async def test_syncs_never_overlap() -> None:
+    world = World()
+    running = 0
+    peak = 0
+
+    async def members() -> list[PatreonMember]:
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        await asyncio.sleep(0.01)
+        running -= 1
+        return [_member()]
+
+    world.cog.patreon = MagicMock()
+    world.cog.patreon.members = members
+    await asyncio.gather(world.cog.sync(), world.cog.sync())
+    assert peak == 1
+
+
+@pytest.mark.asyncio
+async def test_unlinked_lists_only_current_or_held() -> None:
+    world = World(
+        {
+            "patreon_members": {
+                "old": {"charge": "c", "status": "former_patron", "email": "old@example.com", "paid": 1},
+                "new": {"charge": "c", "status": "active_patron", "email": "new@example.com", "paid": 1},
+            }
+        }
+    )
+    ctx = MagicMock()
+    ctx.send = AsyncMock()
+    await Patron.list_unlinked.callback(world.cog, ctx)  # type: ignore[arg-type]
+    text = ctx.send.call_args[0][0]
+    assert "new@example.com" in text
+    assert "old@example.com" not in text

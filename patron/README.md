@@ -16,6 +16,7 @@ Requires the Unicornia cog for currency. It works for one hard-coded server (`GU
   Members the cog has no payment record for are never touched.
 - **Linking**: a payment without a Discord account (every Buy Me a Coffee supporter, and patrons who have not connected
   Discord on Patreon) is announced once in the log channel and held. `[p]patronset link @user <email>` releases it.
+  A staff link also overrides the Discord account a patron connected on Patreon.
 
 Rewards are 3,000 currency per unit of money (dollar, euro…), with bonuses of 5% from 5, 10% from 10, 15% from 20 and 20%
 from 40. Each payment has its own operation key in Unicornia, so retries and replayed webhooks never pay twice.

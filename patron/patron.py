@@ -167,6 +167,7 @@ def apply_bmc_event(state: State, event: dict[str, Any], now: float) -> str | No
         rec.update(
             details,
             status=data.get("status"),
+            canceled=str(data.get("canceled")).lower() == "true",  # also set while active until the period ends
             duration="year" if data.get("duration_type") == "year" else "month",
             period_end=_int(data.get("current_period_end")) or 0,
             updated=created,
@@ -209,7 +210,7 @@ def add_bmc_member(state: State, email: str, user_id: int, amount: Decimal, dura
     rec = subs.get(key)
     if not isinstance(rec, dict):
         rec = {"name": "", "anchor": now, "paid": 1, "updated": 0, "manual": True}
-    rec.update(email=email, amount=str(amount), duration=duration, status="active", period_end=0)
+    rec.update(email=email, amount=str(amount), duration=duration, status="active", canceled=False, period_end=0)
     subs[key] = rec
     state["links"][email] = user_id
     return True
@@ -236,7 +237,8 @@ def plan_entries(state: State, now: float) -> list[Entry]:
     links = state["links"]
 
     def user_id(rec: dict[str, Any]) -> int | None:
-        return _int(rec.get("discord_id")) or _int(links.get(rec.get("email") or ""))
+        # A staff link overrides the Discord account connected on Patreon.
+        return _int(links.get(rec.get("email") or "")) or _int(rec.get("discord_id"))
 
     entries = []
     for rid, rec in _records(state["patreon_members"]):
@@ -262,7 +264,7 @@ def plan_entries(state: State, now: float) -> list[Entry]:
         amount = _decimal(rec.get("amount"))
         if rec.get("duration") == "year":
             amount = (amount / 12).quantize(_CENT, rounding=ROUND_HALF_UP)
-        paying = rec.get("status") == "active"
+        paying = rec.get("status") == "active" and not rec.get("canceled")
         reward = calculate_reward(amount)
         active = paying or now < (_int(rec.get("period_end")) or 0)
         entries.append(
@@ -327,7 +329,8 @@ class Patron(commands.Cog):
             annual_tracking={},
         )
         self.bg_task: asyncio.Task | None = None
-        self.lock = asyncio.Lock()
+        self.lock = asyncio.Lock()  # guards stored state
+        self.sync_lock = asyncio.Lock()  # one Patreon poll at a time, so token refreshes never race
         self.patreon: PatreonClient
 
     async def cog_load(self) -> None:
@@ -411,23 +414,25 @@ class Patron(commands.Cog):
 
     async def sync(self) -> str | None:
         """Poll Patreon, then pay what is due and sync roles. Returns the Patreon error, if any."""
-        error = None
-        members: list[PatreonMember] | None = None
-        try:
-            members = await self.patreon.members()
-        except (ApiError, aiohttp.ClientError, TimeoutError) as exc:
-            error = str(exc) or type(exc).__name__
-            log.warning("Patreon sync failed: %s", error)
-        async with self.lock:
-            if members is not None:
-                await self._merge_patreon(members)
-            await self._settle()
-        return error
+        async with self.sync_lock:
+            error = None
+            members: list[PatreonMember] | None = None
+            try:
+                members = await self.patreon.members()  # outside self.lock so webhooks are not held up
+            except (ApiError, aiohttp.ClientError, TimeoutError) as exc:
+                error = str(exc) or type(exc).__name__
+                log.warning("Patreon sync failed: %s", error)
+            async with self.lock:
+                if members is not None:
+                    await self._merge_patreon(members)
+                await self._settle()
+            return error
 
     async def _merge_patreon(self, members: list[PatreonMember]) -> None:
         group = self.config.guild_from_id(GUILD_ID)
         state = await self._load()
-        if not members and state["patreon_members"]:
+        if not members:
+            # Never baseline or mark everyone gone on an empty answer: the next real list would pay twice.
             log.warning("Patreon returned no members; keeping the stored ones.")
             return
         baseline = not await group.patreon_baselined()
@@ -578,6 +583,7 @@ class Patron(commands.Cog):
         if not isinstance(event, dict) or not isinstance(event.get("data"), dict):
             return web.Response(status=400)
         if not event.get("live_mode"):
+            log.info("Buy Me a Coffee test event %s received and ignored.", event.get("type"))
             return web.Response(text="test event ignored")
         event_type = str(event.get("type"))
         async with self.lock:
@@ -627,7 +633,7 @@ class Patron(commands.Cog):
     @patronset.command(name="sync")
     async def manual_sync(self, ctx):
         """Poll Patreon now and pay anything due."""
-        if self.lock.locked():
+        if self.sync_lock.locked():
             return await ctx.send("A sync is already in progress. Please wait.")
         async with ctx.typing():
             error = await self.sync()
@@ -658,11 +664,21 @@ class Patron(commands.Cog):
 
     @patronset.command(name="unlinked")
     async def list_unlinked(self, ctx):
-        """List payment records that are not linked to a Discord user."""
+        """List current supporters and held payments that are not linked to a Discord user."""
         state = await self._load()
-        entries = [entry for entry in plan_entries(state, time.time()) if entry.user_id is None]
+        now = time.time()
+
+        def waiting(entry: Entry) -> bool:
+            if entry.active:
+                return True
+            if not entry.payable or not isinstance(entry.anchor, int | float):
+                return False
+            paid = _int(state[entry.bucket][entry.record_id].get("paid")) or 0
+            return paid < periods_due(entry.anchor, now, entry.limit)
+
+        entries = [entry for entry in plan_entries(state, now) if entry.user_id is None and waiting(entry)]
         if not entries:
-            return await ctx.send("Every supporter is linked.")
+            return await ctx.send("Every current supporter is linked.")
         lines = []
         for entry in entries:
             rec = state[entry.bucket][entry.record_id]
