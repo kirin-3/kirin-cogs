@@ -1,6 +1,7 @@
 import logging
 
 import discord
+from discord.ext import tasks
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 
@@ -10,6 +11,7 @@ log = logging.getLogger("red.kirin_cogs.nitroaward")
 
 # Amount of currency to award when a user boosts the server
 AWARD_AMOUNT = 5000
+RETRY_MINUTES = 15
 
 
 class NitroAward(commands.Cog):
@@ -26,6 +28,8 @@ class NitroAward(commands.Cog):
         self.config.register_global(schema_version=0, legacy_boost_records={})
         default_member = {
             "last_boost_timestamp": None,
+            # A seen boost whose reward hasn't settled yet; retried until it does.
+            "pending_boost_timestamp": None,
         }
         self.config.register_member(**default_member)
         # In-memory set to prevent concurrent processing of the same
@@ -34,6 +38,38 @@ class NitroAward(commands.Cog):
 
     async def cog_load(self) -> None:
         await migrate_global_schema(self.config)
+        self.retry_pending.start()
+
+    async def cog_unload(self) -> None:
+        self.retry_pending.cancel()
+
+    @tasks.loop(minutes=RETRY_MINUTES)
+    async def retry_pending(self) -> None:
+        """Retry boosts whose reward failed (Unicornia unloaded, not ready, or erroring)."""
+        for guild_id, members in (await self.config.all_members()).items():
+            guild = self.bot.get_guild(guild_id)
+            if guild is None or guild.unavailable or not isinstance(members, dict):
+                continue
+            for member_id, data in members.items():
+                pending = data.get("pending_boost_timestamp") if isinstance(data, dict) else None
+                if not isinstance(pending, int | float):
+                    continue
+                member = guild.get_member(int(member_id))
+                if member is None:  # left the server; nothing to credit in it
+                    await self.config.member_from_ids(guild_id, int(member_id)).pending_boost_timestamp.clear()
+                    continue
+                key = (guild_id, member.id)
+                if key in self.processing_members:
+                    continue
+                self.processing_members.add(key)
+                try:
+                    await self.process_boost_reward(member, float(pending))
+                finally:
+                    self.processing_members.discard(key)
+
+    @retry_pending.before_loop
+    async def _before_retry_pending(self) -> None:
+        await self.bot.wait_until_red_ready()
 
     async def red_delete_data_for_user(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, *, requester, user_id: int
@@ -83,16 +119,26 @@ class NitroAward(commands.Cog):
             return True
         return False
 
-    async def process_boost_reward(self, member: discord.Member) -> None:
-        # Robustness check: Ensure premium_since is still present
-        if member.premium_since is None:
-            return
+    async def _settle_pending(self, member: discord.Member, boost_timestamp: float) -> None:
+        group = self.config.member(member)
+        if await group.pending_boost_timestamp() == boost_timestamp:
+            await group.pending_boost_timestamp.clear()
 
-        boost_timestamp = member.premium_since.timestamp()
+    async def process_boost_reward(self, member: discord.Member, boost_timestamp: float | None = None) -> None:
+        """Reward a boost: the member's current one, or a recorded `boost_timestamp` being retried."""
+        if boost_timestamp is None:
+            # Robustness check: Ensure premium_since is still present
+            if member.premium_since is None:
+                return
+            boost_timestamp = member.premium_since.timestamp()
 
         # Check if we already awarded for this specific boost instance
         if await self._already_awarded(member, boost_timestamp):
+            await self._settle_pending(member, boost_timestamp)
             return
+
+        # Record the boost before trying, so any failure below is retried by retry_pending.
+        await self.config.member(member).pending_boost_timestamp.set(boost_timestamp)
 
         unicornia = self.bot.get_cog("Unicornia")
         if not unicornia:
@@ -135,6 +181,7 @@ class NitroAward(commands.Cog):
                 # The operation is durably settled (now or previously); local
                 # completion is safe to record.
                 await self.config.member(member).last_boost_timestamp.set(boost_timestamp)
+                await self._settle_pending(member, boost_timestamp)
             else:
                 log.error(
                     "Failed to award currency to %s (%s): unexpected operation state %s.",

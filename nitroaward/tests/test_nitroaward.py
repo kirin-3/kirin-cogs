@@ -37,6 +37,9 @@ def _make_config_mock(
     member_group = MagicMock()
     member_group.last_boost_timestamp = AsyncMock(return_value=last_boost_timestamp)
     member_group.last_boost_timestamp.set = AsyncMock()
+    member_group.pending_boost_timestamp = AsyncMock(return_value=None)
+    member_group.pending_boost_timestamp.set = AsyncMock()
+    member_group.pending_boost_timestamp.clear = AsyncMock()
     config.member.return_value = member_group
 
     config.schema_version = AsyncMock(return_value=2)
@@ -47,6 +50,7 @@ def _make_config_mock(
     config.all_members = AsyncMock(return_value={GUILD_ID: {1: {"last_boost_timestamp": 1.0}}})
     member_from_ids = MagicMock()
     member_from_ids.clear = AsyncMock()
+    member_from_ids.pending_boost_timestamp.clear = AsyncMock()
     config.member_from_ids.return_value = member_from_ids
     legacy_user = MagicMock()
     legacy_user.clear = AsyncMock()
@@ -238,6 +242,47 @@ async def test_process_boost_reward_logs_warning_when_unicornia_missing() -> Non
     await cog.process_boost_reward(member)
 
     config.member(member).last_boost_timestamp.set.assert_not_awaited()
+    # Kept for retry_pending
+    config.member(member).pending_boost_timestamp.set.assert_awaited_once_with(ts.timestamp())
+
+
+@pytest.mark.asyncio
+async def test_retry_pending_awards_a_failed_boost_with_its_original_key() -> None:
+    """A boost that failed earlier is credited by the retry loop once Unicornia is back."""
+    ts = datetime(2024, 3, 1, tzinfo=UTC).timestamp()
+    config = _make_config_mock(last_boost_timestamp=None)
+    config.all_members = AsyncMock(return_value={GUILD_ID: {1: {"pending_boost_timestamp": ts}}})
+    config.member.return_value.pending_boost_timestamp.return_value = ts
+    member = _make_member(premium_since=None)  # the reward is owed even if they've stopped boosting since
+    bot = MagicMock()
+    bot.get_guild.return_value.unavailable = False
+    bot.get_guild.return_value.get_member.return_value = member
+    unicornia = MagicMock()
+    unicornia.apply_operation = AsyncMock(return_value=_outcome("settled"))
+    bot.get_cog.return_value = unicornia
+    cog = _make_cog(bot, config)
+
+    await cog.retry_pending.coro(cog)
+
+    assert unicornia.apply_operation.await_args.kwargs["key"] == f"nitro:{GUILD_ID}:{member.id}:{ts}"
+    config.member(member).last_boost_timestamp.set.assert_awaited_once_with(ts)
+    config.member(member).pending_boost_timestamp.clear.assert_awaited_once()
+    assert not cog.processing_members
+
+
+@pytest.mark.asyncio
+async def test_retry_pending_drops_members_who_left() -> None:
+    config = _make_config_mock()
+    config.all_members = AsyncMock(return_value={GUILD_ID: {1: {"pending_boost_timestamp": 5.0}}})
+    bot = MagicMock()
+    bot.get_guild.return_value.unavailable = False
+    bot.get_guild.return_value.get_member.return_value = None
+    cog = _make_cog(bot, config)
+
+    await cog.retry_pending.coro(cog)
+
+    config.member_from_ids(GUILD_ID, 1).pending_boost_timestamp.clear.assert_awaited_once()
+    bot.get_cog.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -397,7 +442,6 @@ async def bot() -> AsyncGenerator[dpy_commands.Bot, None]:
     dpytest.configure(real_bot)
 
     yield real_bot
-
     await dpytest.empty_queue()
 
 
@@ -411,6 +455,7 @@ async def test_dpytest_member_update_new_boost_calls_process_reward(
 
     cog.process_boost_reward = AsyncMock()
     await bot.add_cog(cog)
+    cog.retry_pending.cancel()  # a 15-minute loop; these tests only exercise the listener
 
     guild = dpytest.get_config().guilds[0]
     member = guild.members[0]
@@ -448,6 +493,7 @@ async def test_dpytest_member_update_no_boost_does_not_call_process_reward(
 
     cog.process_boost_reward = AsyncMock()
     await bot.add_cog(cog)
+    cog.retry_pending.cancel()  # a 15-minute loop; these tests only exercise the listener
 
     ts = datetime(2024, 1, 1, tzinfo=UTC)
     guild = dpytest.get_config().guilds[0]

@@ -30,6 +30,7 @@ The system is designed to be robust and handles edge cases like:
 - Concurrent boost events for the same user
 - Ensuring the user is still boosting when the reward is processed
 - Graceful handling when the Unicornia cog isn't available
+- Retrying failed rewards: a boost whose reward fails (Unicornia unloaded, not ready, or erroring) is recorded and retried every 15 minutes with the same idempotency key, so it is credited once
 
 ## Commands
 
