@@ -89,7 +89,7 @@ class MemberSite:
     # --- home and roleplay -----------------------------------------------------------------------
 
     async def home(self, request: web.Request) -> web.StreamResponse:
-        return self._render(request, "home.html")
+        return self._render(request, "home.html", member=request["member"])
 
     async def roleplay(self, request: web.Request, *, error: str = "", status: int = 200) -> web.StreamResponse:
         rp = self._cog("Roleplay")

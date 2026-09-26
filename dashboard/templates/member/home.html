@@ -1,15 +1,37 @@
 {% extends "member/base.html" %}
 {% block title %}Home{% endblock %}
 {% block content %}
-<h1>Welcome, {{ user_name(session.user_id) }}</h1>
+<section class="hello">
+  {% if user_avatar(session.user_id) %}<img src="{{ user_avatar(session.user_id) }}" alt="" width="72" height="72">{% endif %}
+  <div>
+    <h1>Hi, {{ member.display_name }}!</h1>
+    <p>Here's everything you can change about yourself on Unicornia.</p>
+  </div>
+</section>
 <div class="tiles">
-  <a class="panel tile" href="/roleplay"><h2>Roleplay</h2><p>Your consent settings for roleplay commands.</p></a>
+  <a class="tile washi tone-pink" href="/roleplay">
+    <span class="sticker" aria-hidden="true">🎭</span>
+    <h2>Roleplay</h2>
+    <p>Your consent settings for roleplay commands.</p>
+  </a>
   {% if nav.supporter %}
-  <a class="panel tile" href="/commands"><h2>Custom commands</h2><p>The commands you've made for the server.</p></a>
-  <a class="panel tile" href="/emojis"><h2>Custom emojis</h2><p>The emojis you've added to the server.</p></a>
+  <a class="tile washi tone-sky" href="/commands">
+    <span class="sticker" aria-hidden="true">💬</span>
+    <h2>Custom commands</h2>
+    <p>The commands you've made for the server.</p>
+  </a>
+  <a class="tile washi tone-butter" href="/emojis">
+    <span class="sticker" aria-hidden="true">😺</span>
+    <h2>Custom emojis</h2>
+    <p>The emojis you've added to the server.</p>
+  </a>
   {% endif %}
   {% if nav.role %}
-  <a class="panel tile" href="/role"><h2>Custom role</h2><p>Your role's color, name, icon and mentions.</p></a>
+  <a class="tile washi tone-mint" href="/role">
+    <span class="sticker" aria-hidden="true">🎨</span>
+    <h2>Custom role</h2>
+    <p>Your role's color, name, icon and mentions.</p>
+  </a>
   {% endif %}
 </div>
 {% endblock %}

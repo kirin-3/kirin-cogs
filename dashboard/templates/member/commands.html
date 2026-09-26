@@ -5,7 +5,7 @@
 {% if missing %}
 <p class="notice">Custom commands are unavailable right now. Try again later.</p>
 {% else %}
-<p class="empty">{{ commands|length }} of {{ limit }} used.</p>
+<p class="sub"><span class="badge">{{ commands|length }} of {{ limit }} used</span></p>
 {% if commands %}
 <div class="scroll">
 <table>

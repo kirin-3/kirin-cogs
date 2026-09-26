@@ -4,12 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ title }}{% endblock %} · Unicornia</title>
+<link rel="icon" type="image/png" href="/static/logo.png">
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/site.js" defer></script>
 </head>
 <body>
+<div class="rainbow-bar" aria-hidden="true"></div>
 <header class="top">
-  <a class="brand" href="/">Unicornia</a>
+  <a class="brand" href="/"><img src="/static/logo.png" alt="" width="36" height="36"><span>Unicornia</span></a>
   {% if session %}
   <nav class="nav">
     <a href="/roleplay"{% if path == "/roleplay" %} class="on"{% endif %}>Roleplay</a>
@@ -22,6 +24,7 @@
     {% endif %}
   </nav>
   <form class="logout" method="post" action="/logout">
+    {% if user_avatar(session.user_id) %}<img class="avatar" src="{{ user_avatar(session.user_id) }}" alt="" width="32" height="32">{% endif %}
     <span>{{ user_name(session.user_id) }}</span>
     <input type="hidden" name="csrf" value="{{ session.csrf }}">
     <button type="submit">Log out</button>

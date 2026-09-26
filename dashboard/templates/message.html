@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="card">
+<section class="card washi">
+  <img class="hero-logo" src="/static/logo.png" alt="" width="104" height="104">
   <h1>{{ title }}</h1>
   <p>{{ text }}</p>
-  {% if login %}<p><a class="button" href="/login">Log in with Discord</a></p>{% endif %}
+  {% if login %}<p><a class="button big" href="/login">Log in with Discord</a></p>{% endif %}
 </section>
 {% endblock %}

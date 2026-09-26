@@ -204,7 +204,9 @@ class Dashboard(commands.Cog):
         self._blocked_until = 0.0
         self._templates = jinja2.Environment(loader=jinja2.FileSystemLoader(HERE / "templates"), autoescape=True)
         self._templates.filters["when"] = _when
-        self._templates.globals.update(user_name=self._user_name, channel_name=self._channel_name)
+        self._templates.globals.update(
+            user_name=self._user_name, user_avatar=self._user_avatar, channel_name=self._channel_name
+        )
         self.member_site = MemberSite(self)
 
     async def cog_load(self) -> None:
@@ -808,6 +810,11 @@ class Dashboard(commands.Cog):
             return "Deleted user"
         user = self.bot.get_user(user_id)
         return user.name if user else str(user_id)
+
+    def _user_avatar(self, user_id: int) -> str:
+        """The user's Discord avatar URL, or "". Only the member site's CSP allows Discord's CDN."""
+        user = self.bot.get_user(user_id)
+        return user.display_avatar.with_size(128).url if user else ""
 
     def _channel_name(self, channel_id: int) -> str:
         guild = self.bot.get_guild(GUILD_ID)

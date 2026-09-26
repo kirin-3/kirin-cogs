@@ -5,34 +5,26 @@
 {% if missing %}
 <p class="notice">Custom emojis are unavailable right now. Try again later.</p>
 {% else %}
-<p class="empty">{{ used }} of {{ limit }} slots used.</p>
+<p class="sub"><span class="badge">{{ used }} of {{ limit }} slots used</span></p>
 {% if emojis %}
-<div class="scroll">
-<table>
-  <thead><tr><th>Emoji</th><th>Name</th><th></th></tr></thead>
-  <tbody>
+<div class="emoji-grid">
   {% for emoji in emojis %}
-  <tr>
-    <td><img class="emoji" src="{{ emoji.url }}" alt="" width="32" height="32"></td>
-    <td class="mono">:{{ emoji.name }}:
-      {% if can_create %}
-      <form class="inline" method="post" action="/emojis/{{ emoji.id }}/rename">
-        <input type="hidden" name="csrf" value="{{ session.csrf }}">
-        <input type="text" name="name" value="{{ emoji.name }}" required pattern="[A-Za-z0-9_]{2,32}" aria-label="New name">
-        <button type="submit">Rename</button>
-      </form>
-      {% endif %}
-    </td>
-    <td class="num">
-      <form method="post" action="/emojis/{{ emoji.id }}/delete" data-confirm="Delete the emoji :{{ emoji.name }}:?">
-        <input type="hidden" name="csrf" value="{{ session.csrf }}">
-        <button class="quiet" type="submit">Delete</button>
-      </form>
-    </td>
-  </tr>
+  <article class="emoji-card">
+    <img src="{{ emoji.url }}" alt="" width="64" height="64">
+    <p class="mono">:{{ emoji.name }}:</p>
+    {% if can_create %}
+    <form class="inline" method="post" action="/emojis/{{ emoji.id }}/rename">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <input type="text" name="name" value="{{ emoji.name }}" required pattern="[A-Za-z0-9_]{2,32}" aria-label="New name for :{{ emoji.name }}:">
+      <button type="submit">Rename</button>
+    </form>
+    {% endif %}
+    <form method="post" action="/emojis/{{ emoji.id }}/delete" data-confirm="Delete the emoji :{{ emoji.name }}:?">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <button class="quiet" type="submit">Delete</button>
+    </form>
+  </article>
   {% endfor %}
-  </tbody>
-</table>
 </div>
 {% else %}
 <p class="empty">You don't have any custom emojis.</p>

@@ -4,12 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ title }}{% endblock %} · Unicornia staff</title>
+<link rel="icon" type="image/png" href="/static/logo.png">
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/site.js" defer></script>
 </head>
 <body>
+<div class="rainbow-bar" aria-hidden="true"></div>
 <header class="top">
-  <a class="brand" href="/">Unicornia staff</a>
+  <a class="brand" href="/"><img src="/static/logo.png" alt="" width="36" height="36"><span>Unicornia <small>staff</small></span></a>
   {% if session %}
   <nav class="nav">
     <a href="/"{% if path == "/" or path.startswith("/bans/") %} class="on"{% endif %}>Bans</a>
