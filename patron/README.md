@@ -45,12 +45,13 @@ from 40. Each payment has its own operation key in Unicornia, so retries and rep
    [p]patronset logchannel #supporter-log
    ```
    The bot needs Manage Roles and a role above both.
-5. **Existing Buy Me a Coffee members** (once): create a token at <https://developers.buymeacoffee.com>, then
+5. **Existing Buy Me a Coffee members** (once each): the webhook only sees members from their next event, so add
+   everyone who joined before it:
    ```
-   [p]set api buymeacoffee api_token,<token>
-   [p]patronset bmcimport
+   [p]patronset bmcadd @user <email> <amount> [month|year]
    ```
-   Their current period counts as paid. Link them with `[p]patronset link`.
+   Their current period counts as paid; rewards start with the next one. When BMC later sends an event for that email,
+   the webhook takes the membership over without paying it twice.
 
 The first Patreon sync records every current charge as already paid, so switching from the Google Sheet does not pay
 anyone twice for the current month.
@@ -66,4 +67,4 @@ anyone twice for the current month.
 | `[p]patronset link <user> <email>` | Links a Patreon/Buy Me a Coffee email to a Discord user |
 | `[p]patronset unlink <email>` | Removes a link |
 | `[p]patronset unlinked` | Lists payments not linked to anyone (shows emails, so run it in a staff channel) |
-| `[p]patronset bmcimport` | Imports active Buy Me a Coffee memberships once |
+| `[p]patronset bmcadd <user> <email> <amount> [month\|year]` | Adds a Buy Me a Coffee member who joined before the webhook |

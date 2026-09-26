@@ -1,16 +1,14 @@
-"""Patreon API v2 and Buy Me a Coffee REST clients, plus payload parsing."""
+"""Patreon API v2 client and Buy Me a Coffee webhook signature check."""
 
 import hashlib
 import hmac
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
 
 PATREON_API = "https://www.patreon.com/api/oauth2/v2"
 PATREON_TOKEN_URL = "https://www.patreon.com/api/oauth2/token"
-BMC_API = "https://developers.buymeacoffee.com/api/v1"
 MEMBER_FIELDS = (
     "full_name,email,patron_status,last_charge_date,last_charge_status,currently_entitled_amount_cents,pledge_cadence"
 )
@@ -140,29 +138,3 @@ def verify_bmc_signature(body: bytes, secret: str, signature: str) -> bool:
     """Check Buy Me a Coffee's x-signature-sha256 header: hex HMAC-SHA256 of the raw body."""
     expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected.encode(), signature.strip().lower().encode())
-
-
-def parse_bmc_time(value: Any) -> int | None:
-    """Parse the REST API's "YYYY-MM-DD HH:MM:SS" (UTC) into a Unix timestamp."""
-    try:
-        return int(datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC).timestamp())
-    except ValueError:
-        return None
-
-
-async def bmc_active_subscriptions(session: aiohttp.ClientSession, token: str) -> list[dict[str, Any]]:
-    """All active memberships from the Buy Me a Coffee REST API (used once, to import existing members)."""
-    url: str | None = f"{BMC_API}/subscriptions"
-    params: dict[str, str] | None = {"status": "active"}
-    rows: list[dict[str, Any]] = []
-    while url:
-        async with session.get(url, params=params, headers={"Authorization": f"Bearer {token}"}) as resp:
-            if resp.status == 404:  # the API answers 404 when there are no subscriptions
-                break
-            if resp.status != 200:
-                raise ApiError(f"Buy Me a Coffee returned HTTP {resp.status}.")
-            payload = await resp.json()
-        rows += [row for row in payload.get("data") or [] if isinstance(row, dict)]
-        url = payload.get("next_page_url")
-        params = None
-    return rows

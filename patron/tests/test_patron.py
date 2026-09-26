@@ -26,9 +26,9 @@ from patron.patron import (
     GUILD_ID,
     PERIOD_SECONDS,
     Patron,
+    add_bmc_member,
     apply_bmc_event,
     calculate_reward,
-    import_bmc_subscriptions,
     merge_patreon,
     periods_due,
     plan_entries,
@@ -170,11 +170,14 @@ def test_stale_membership_event_is_ignored() -> None:
     assert state["bmc_members"]["membership:7"]["status"] == "canceled"
 
 
-def test_webhook_adopts_imported_membership() -> None:
-    state = _state(bmc_members={"membership:999": {"email": "bob@example.com", "imported": True, "paid": 3}})
+def test_webhook_adopts_manual_membership() -> None:
+    state = _state()
+    add_bmc_member(state, "bob@example.com", 22, Decimal(5), "month", NOW - 3 * PERIOD_SECONDS)
+    state["bmc_members"]["manual:bob@example.com"]["paid"] = 4
     apply_bmc_event(state, _event("membership.updated"), NOW)
-    assert "membership:999" not in state["bmc_members"]
-    assert state["bmc_members"]["membership:7"]["paid"] == 3
+    assert list(state["bmc_members"]) == ["membership:7"]
+    assert state["bmc_members"]["membership:7"]["paid"] == 4
+    assert "manual" not in state["bmc_members"]["membership:7"]
 
 
 def test_tip_and_refund() -> None:
@@ -191,25 +194,24 @@ def test_unhandled_event_changes_nothing() -> None:
     assert apply_bmc_event(_state(), _event("extra_purchase.created"), NOW) is None
 
 
-def test_import_bmc_subscriptions_baselines_and_skips_known() -> None:
-    state = _state(bmc_members={"membership:1": {"email": "known@example.com"}})
-    rows = [
-        {
-            "subscription_id": 2,
-            "payer_email": "New@Example.com",
-            "payer_name": "New",
-            "subscription_coffee_price": "5.00",
-            "subscription_coffee_num": 2,
-            "subscription_duration_type": "month",
-            "subscription_created_on": "2026-01-01 00:00:00",
-        },
-        {"subscription_id": 3, "payer_email": "known@example.com", "subscription_created_on": "2026-01-01 00:00:00"},
-        {"subscription_id": 4, "subscription_created_on": "garbage"},
-    ]
-    assert import_bmc_subscriptions(state, rows, NOW) == 1
-    rec = state["bmc_members"]["membership:2"]
-    assert rec["amount"] == "10.00"
-    assert rec["paid"] == periods_due(rec["anchor"], NOW, None)
+def test_add_bmc_member_counts_current_period_and_corrects_in_place() -> None:
+    state = _state()
+    assert add_bmc_member(state, "bob@example.com", 22, Decimal(5), "month", NOW)
+    assert state["links"] == {"bob@example.com": 22}
+    (entry,) = plan_entries(state, NOW + PERIOD_SECONDS - 1)
+    assert entry.user_id == 22 and entry.active
+    assert periods_due(entry.anchor or 0, NOW + PERIOD_SECONDS - 1, None) == 1  # first period already paid
+
+    assert add_bmc_member(state, "bob@example.com", 23, Decimal(60), "year", NOW + DAY)
+    rec = state["bmc_members"]["manual:bob@example.com"]
+    assert rec["anchor"] == NOW and rec["amount"] == "60" and rec["duration"] == "year"
+    assert state["links"]["bob@example.com"] == 23
+
+
+def test_add_bmc_member_refuses_email_the_webhook_tracks() -> None:
+    state = _state()
+    apply_bmc_event(state, _event("membership.started"), NOW)
+    assert not add_bmc_member(state, "bob@example.com", 22, Decimal(5), "month", NOW)
 
 
 def test_plan_entries_links_by_email_and_splits_yearly() -> None:
@@ -602,6 +604,21 @@ async def test_cog_load_starts_webhook_and_task_and_unload_stops_them() -> None:
     await world.cog.cog_unload()
     assert world.cog.bg_task is None
     assert world.cog._http.closed
+
+
+@pytest.mark.asyncio
+async def test_bmcadd_command_links_and_grants_role_without_paying() -> None:
+    bob = _discord_member(22)
+    world = World({}, [bob])
+    ctx = MagicMock()
+    ctx.send = AsyncMock()
+    user = MagicMock(spec=discord.User)
+    user.id = 22
+    user.mention = "<@22>"
+    await Patron.bmc_add.callback(world.cog, ctx, user, "Bob@Example.com", "€5,00")  # type: ignore[arg-type]
+    assert world.keys == []
+    assert bob.roles == [world.role_active]
+    assert world.stored("bmc_members")["manual:bob@example.com"]["amount"] == "5.00"
 
 
 @pytest.mark.asyncio

@@ -24,9 +24,7 @@ from .api import (
     ApiError,
     PatreonClient,
     PatreonMember,
-    bmc_active_subscriptions,
     normalize_email,
-    parse_bmc_time,
     verify_bmc_signature,
 )
 from .migrations import migrate_guild_schemas
@@ -158,7 +156,7 @@ def apply_bmc_event(state: State, event: dict[str, Any], now: float) -> str | No
         sub_id = f"{event_type.split('.')[0]}:{data['id']}"
         rec: dict[str, Any] | None = subs.get(sub_id)
         if not isinstance(rec, dict):
-            rec = _adopt_imported(subs, email)
+            rec = _adopt_manual(subs, email)
         if rec is None:
             started = _int(data.get("started_at")) or created
             # Seen first mid-membership (joined before the webhook existed): earlier periods are not back-paid.
@@ -188,43 +186,33 @@ def apply_bmc_event(state: State, event: dict[str, Any], now: float) -> str | No
     return None
 
 
-def _adopt_imported(subs: dict[str, Any], email: str) -> dict[str, Any] | None:
-    """Move a REST-imported membership under its webhook key so it is not paid twice."""
+def _adopt_manual(subs: dict[str, Any], email: str) -> dict[str, Any] | None:
+    """Move a membership added with ``bmcadd`` under its webhook key so it is not paid twice."""
     for sub_id, rec in _records(subs):
-        if rec.get("imported") and email and rec.get("email") == email:
+        if rec.get("manual") and email and rec.get("email") == email:
             del subs[sub_id]
-            rec.pop("imported")
+            rec.pop("manual")
             return rec
     return None
 
 
-def import_bmc_subscriptions(state: State, rows: list[dict[str, Any]], now: float) -> int:
-    """Seed memberships from the REST API. Periods already started count as paid. Returns how many were added."""
+def add_bmc_member(state: State, email: str, user_id: int, amount: Decimal, duration: str, now: float) -> bool:
+    """Record a membership that started before the webhook existed and link its email.
+
+    The current period counts as paid. Adding the same email again corrects amount, duration and user. Returns
+    False if the webhook already tracks an active membership for the email.
+    """
     subs = state["bmc_members"]
-    known_emails = {rec.get("email") for _, rec in _records(subs)}
-    added = 0
-    for row in rows:
-        sub_id, email = row.get("subscription_id"), normalize_email(row.get("payer_email"))
-        started = parse_bmc_time(row.get("subscription_created_on"))
-        key = f"membership:{sub_id}"
-        if sub_id is None or started is None or key in subs or (email and email in known_emails):
-            continue
-        amount = _decimal(row.get("subscription_coffee_price")) * max(1, _int(row.get("subscription_coffee_num")) or 1)
-        subs[key] = {
-            "name": str(row.get("payer_name") or ""),
-            "email": email,
-            "amount": str(amount),
-            "status": "active",
-            "duration": "year" if row.get("subscription_duration_type") == "year" else "month",
-            "anchor": started,
-            "paid": periods_due(started, now, None),
-            "period_end": parse_bmc_time(row.get("subscription_current_period_end")) or 0,
-            "updated": 0,
-            "imported": True,
-        }
-        known_emails.add(email)
-        added += 1
-    return added
+    key = f"manual:{email}"
+    if any(rid != key and rec.get("email") == email and rec.get("status") == "active" for rid, rec in _records(subs)):
+        return False
+    rec = subs.get(key)
+    if not isinstance(rec, dict):
+        rec = {"name": "", "anchor": now, "paid": 1, "updated": 0, "manual": True}
+    rec.update(email=email, amount=str(amount), duration=duration, status="active", period_end=0)
+    subs[key] = rec
+    state["links"][email] = user_id
+    return True
 
 
 @dataclass(frozen=True)
@@ -683,26 +671,28 @@ class Patron(commands.Cog):
         for page in pagify("\n".join(lines)):
             await ctx.send(page)
 
-    @patronset.command(name="bmcimport")
-    async def bmc_import(self, ctx):
-        """Import active Buy Me a Coffee memberships that started before the webhook existed.
+    @patronset.command(name="bmcadd")
+    async def bmc_add(self, ctx, user: discord.User, email: str, amount: str, duration: str = "month"):
+        """Add a Buy Me a Coffee member who joined before the webhook existed.
 
-        Their current period counts as paid; later periods pay out once they are linked.
+        `amount` is what they pay per month, or per year with `year`. Their current period counts as paid, so rewards
+        start with the next one. Run it again for the same email to correct the amount, duration or user.
         """
-        token = (await self.bot.get_shared_api_tokens("buymeacoffee")).get("api_token")
-        if not token:
-            return await ctx.send("Set the token first: `[p]set api buymeacoffee api_token,<token>`")
-        try:
-            rows = await bmc_active_subscriptions(self._http, token)
-        except (ApiError, aiohttp.ClientError, TimeoutError) as exc:
-            return await ctx.send(f"Buy Me a Coffee import failed: {exc or type(exc).__name__}")
+        duration = duration.lower()
+        value = _decimal(amount.strip("$€£ ").replace(",", "."))
+        if duration not in ("month", "year") or value <= 0:
+            return await ctx.send_help()
+        email = normalize_email(email)
         async with self.lock:
             state = await self._load()
-            added = import_bmc_subscriptions(state, rows, time.time())
+            if not add_bmc_member(state, email, user.id, value, duration, time.time()):
+                return await ctx.send(f"`{email}` already has an active membership from the webhook.")
             await self._save(state, "bmc_members")
+            await self._save(state, "links")
+            await self._settle()
         await ctx.send(
-            f"Imported {added} of {len(rows)} active memberships. Link them with `patronset link`; "
-            "`patronset unlinked` lists who is left."
+            f"Added {user.mention}: {value} per {duration} (`{email}`). Rewards start with the next period.",
+            allowed_mentions=discord.AllowedMentions.none(),
         )
 
     @patronset.command(name="creds")
@@ -714,7 +704,7 @@ class Patron(commands.Cog):
             "client_id,<client id>,client_secret,<client secret>`\n"
             "Connect Patreon's Discord integration on your page so patrons' Discord IDs come through.\n\n"
             "**Buy Me a Coffee** (Integrations → Webhooks, events: memberships, recurring and one-time donations):\n"
-            f"Webhook URL: `https://<your webhook host>{WEBHOOK_PATH}` (Caddy → {HOST}:{WEBHOOK_PORT})\n"
+            f"Webhook URL: `https://hooks.unicornia.net{WEBHOOK_PATH}` (Caddy → {HOST}:{WEBHOOK_PORT})\n"
             "`[p]set api buymeacoffee webhook_secret,<signing secret>`\n"
-            "Optional, for `patronset bmcimport`: `[p]set api buymeacoffee api_token,<developer API token>`"
+            "Members who joined before the webhook: `patronset bmcadd <user> <email> <amount> [month|year]`"
         )
