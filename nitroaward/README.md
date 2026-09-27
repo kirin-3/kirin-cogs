@@ -31,6 +31,7 @@ The system is designed to be robust and handles edge cases like:
 - Ensuring the user is still boosting when the reward is first processed (the 15-minute retry path credits recorded boosts without re-checking, by design — the boost event did happen)
 - Graceful handling when the Unicornia cog isn't available
 - Retrying failed rewards: a boost whose reward fails (Unicornia unloaded, not ready, or erroring) is recorded and retried every 15 minutes with the same idempotency key, so it is credited once
+- Boosts that start while the bot is offline or restarting: right after startup, and every 15 minutes after that, the cog checks the server's current boosters and rewards any boost that started after its catch-up cutoff and hasn't been rewarded yet. The cutoff is set once, the first time this version loads, to the newest boost the cog had already recorded (or the load time if it had none), so boosts from before the cog was watching are never paid
 
 ## Commands
 
@@ -46,7 +47,7 @@ There are currently no user-configurable settings for this cog. The currency amo
 
 ## Notes
 
-- The cog stores, per member, the timestamp of the last boost rewarded and the timestamp of a boost awaiting a retry, plus a global map of legacy boost records migrated from older versions — all to prevent duplicate rewards
+- The cog stores, per member, the timestamp of the last boost rewarded and the timestamp of a boost awaiting a retry, plus a global map of legacy boost records migrated from older versions — all to prevent duplicate rewards — and one global catch-up cutoff time
 - No personal data is stored beyond the minimum necessary to prevent duplicate rewards
 - The system is designed to be efficient and will not award currency if the Unicornia cog is not available
 - Boost detection rides Discord's member-update events, which need the **Server Members** privileged intent enabled for the bot

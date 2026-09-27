@@ -1,4 +1,5 @@
 import logging
+import time
 
 import discord
 from discord.ext import tasks
@@ -25,7 +26,9 @@ class NitroAward(commands.Cog):
         # Marker for migrations.py; 0 = legacy unmigrated record
         # legacy_boost_records: {user_id_str: boost_timestamp} moved out of the
         # legacy global user scope; only consulted for exact-event matches.
-        self.config.register_global(schema_version=0, legacy_boost_records={})
+        # catch_up_since: boosts that started after this POSIX time are rewarded even if their
+        # member update was missed (bot offline or restarting). Set once, never moved.
+        self.config.register_global(schema_version=0, legacy_boost_records={}, catch_up_since=None)
         default_member = {
             "last_boost_timestamp": None,
             # A seen boost whose reward hasn't settled yet; retried until it does.
@@ -38,14 +41,54 @@ class NitroAward(commands.Cog):
 
     async def cog_load(self) -> None:
         await migrate_global_schema(self.config)
+        if not isinstance(await self.config.catch_up_since(), int | float):
+            await self.config.catch_up_since.set(await self._latest_recorded_boost() or time.time())
         self.retry_pending.start()
+
+    async def _latest_recorded_boost(self) -> float | None:
+        """The newest boost this cog has seen. Any later, unrewarded boost was missed."""
+        seen = [
+            ts
+            for members in (await self.config.all_members()).values()
+            if isinstance(members, dict)
+            for data in members.values()
+            if isinstance(data, dict)
+            for ts in (data.get("last_boost_timestamp"), data.get("pending_boost_timestamp"))
+            if isinstance(ts, int | float)
+        ]
+        legacy = await self.config.legacy_boost_records()
+        if isinstance(legacy, dict):
+            seen += [ts for ts in legacy.values() if isinstance(ts, int | float)]
+        return max(seen, default=None)
+
+    async def _catch_up_boosts(self) -> None:
+        """Reward current boosters whose boost started after catch_up_since and was never rewarded."""
+        since = await self.config.catch_up_since()
+        if not isinstance(since, int | float):
+            return
+        for guild in self.bot.guilds:
+            if guild.unavailable:
+                continue
+            for member in guild.premium_subscribers:
+                if member.premium_since is None or member.premium_since.timestamp() <= since:
+                    continue
+                key = (guild.id, member.id)
+                if key in self.processing_members:
+                    continue
+                self.processing_members.add(key)
+                try:
+                    # Already-rewarded boosts return early inside process_boost_reward.
+                    await self.process_boost_reward(member)
+                finally:
+                    self.processing_members.discard(key)
 
     async def cog_unload(self) -> None:
         self.retry_pending.cancel()
 
     @tasks.loop(minutes=RETRY_MINUTES)
     async def retry_pending(self) -> None:
-        """Retry boosts whose reward failed (Unicornia unloaded, not ready, or erroring)."""
+        """Retry boosts whose reward failed (Unicornia unloaded, not ready, or erroring), then
+        reward boosts missed while offline. The first run is right after startup."""
         for guild_id, members in (await self.config.all_members()).items():
             guild = self.bot.get_guild(guild_id)
             if guild is None or guild.unavailable or not isinstance(members, dict):
@@ -66,6 +109,7 @@ class NitroAward(commands.Cog):
                     await self.process_boost_reward(member, float(pending))
                 finally:
                     self.processing_members.discard(key)
+        await self._catch_up_boosts()
 
     @retry_pending.before_loop
     async def _before_retry_pending(self) -> None:

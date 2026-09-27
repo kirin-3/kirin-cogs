@@ -47,6 +47,8 @@ def _make_config_mock(
     config.all_users = AsyncMock(return_value={})
     config.legacy_boost_records = AsyncMock(return_value=dict(legacy_records or {}))
     config.legacy_boost_records.set = AsyncMock()
+    config.catch_up_since = AsyncMock(return_value=None)
+    config.catch_up_since.set = AsyncMock()
     config.all_members = AsyncMock(return_value={GUILD_ID: {1: {"last_boost_timestamp": 1.0}}})
     member_from_ids = MagicMock()
     member_from_ids.clear = AsyncMock()
@@ -516,3 +518,80 @@ async def test_dpytest_member_update_no_boost_does_not_call_process_reward(
         await asyncio.gather(*pending, return_exceptions=True)
 
     cog.process_boost_reward.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Catching up on boosts missed while the bot was offline
+# ---------------------------------------------------------------------------
+
+
+def _booster_guild(*members: MagicMock) -> SimpleNamespace:
+    return SimpleNamespace(id=GUILD_ID, unavailable=False, premium_subscribers=list(members))
+
+
+@pytest.mark.asyncio
+async def test_catch_up_rewards_only_boosts_after_the_cutoff() -> None:
+    cutoff = datetime(2026, 9, 1, tzinfo=UTC)
+    missed = _make_member(1, premium_since=datetime(2026, 9, 20, tzinfo=UTC))
+    before_cutoff = _make_member(2, premium_since=datetime(2026, 8, 1, tzinfo=UTC))
+    config = _make_config_mock()
+    config.catch_up_since = AsyncMock(return_value=cutoff.timestamp())
+    bot = MagicMock()
+    bot.guilds = [_booster_guild(missed, before_cutoff)]
+    cog = _make_cog(bot, config)
+    cog.process_boost_reward = AsyncMock()
+
+    await cog._catch_up_boosts()
+
+    cog.process_boost_reward.assert_awaited_once_with(missed)
+    assert not cog.processing_members
+
+
+@pytest.mark.asyncio
+async def test_catch_up_does_not_pay_a_boost_that_was_already_rewarded() -> None:
+    boosted = datetime(2026, 9, 20, tzinfo=UTC)
+    config = _make_config_mock(last_boost_timestamp=boosted.timestamp())
+    config.catch_up_since = AsyncMock(return_value=datetime(2026, 9, 1, tzinfo=UTC).timestamp())
+    bot = MagicMock()
+    bot.guilds = [_booster_guild(_make_member(1, premium_since=boosted))]
+    unicornia = MagicMock()
+    unicornia.apply_operation = AsyncMock(return_value=_outcome())
+    bot.get_cog.return_value = unicornia
+    cog = _make_cog(bot, config)
+
+    await cog._catch_up_boosts()
+
+    unicornia.apply_operation.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stored", "members", "legacy", "expected"),
+    [
+        (
+            None,
+            {GUILD_ID: {1: {"last_boost_timestamp": 50.0}, 2: {"pending_boost_timestamp": 70.0}}},
+            {"3": 60.0},
+            70.0,
+        ),
+        (None, {}, {"3": 60.0}, 60.0),
+        (None, {}, {}, "now"),
+        (40.0, {GUILD_ID: {1: {"last_boost_timestamp": 90.0}}}, {}, None),
+    ],
+)
+async def test_the_cutoff_starts_at_the_newest_boost_seen_and_never_moves(
+    stored: float | None, members: dict, legacy: dict, expected: float | str | None
+) -> None:
+    config = _make_config_mock(legacy_records=legacy)
+    config.catch_up_since = AsyncMock(return_value=stored)
+    config.all_members = AsyncMock(return_value=members)
+    cog = _make_cog(config=config)
+    cog.retry_pending = MagicMock()
+
+    with patch("nitroaward.nitroaward.time.time", return_value=12345.0):
+        await cog.cog_load()
+
+    if expected is None:
+        config.catch_up_since.set.assert_not_awaited()
+    else:
+        config.catch_up_since.set.assert_awaited_once_with(12345.0 if expected == "now" else expected)
