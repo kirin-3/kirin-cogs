@@ -175,3 +175,33 @@ async def test_settings_api_and_data_deletion(red_env: simcord.Env) -> None:
 
     await cog.red_delete_data_for_user(requester="user", user_id=1)
     assert await cog.config.all_users() == {}
+
+
+@pytest.mark.asyncio
+async def test_kirin_opt_outs_stay_on_their_own_responders(red_env: simcord.Env) -> None:
+    const = importlib.import_module("responder.const")
+    ignores_kirin = {type(r).__name__: const.KIRIN_ID in r.never_respond for r in _responder(red_env).responders}
+    assert ignores_kirin["LongCatResponder"] and ignores_kirin["TableUnflipResponder"]
+    assert not ignores_kirin["ImDaddyResponder"] and not ignores_kirin["TheGameResponder"]
+    assert const.KIRIN_ID not in const.NEVER_RESPOND
+
+
+@pytest.mark.asyncio
+async def test_rate_anything_keeps_its_topic_while_tenor_answers(red_env: simcord.Env, tenor: AsyncMock) -> None:
+    guild, allowed, _ = _world(red_env)
+    admin_role = guild.create_role("Admin", permissions=discord.Permissions(administrator=True))
+    admin = guild.add_member(red_env.create_user("admin"), roles=[admin_role])
+    await red_env.settle()
+    rate = next(r for r in _responder(red_env).responders if type(r).__name__ == "RateResponder")
+    default = rate.rate_classes["default"]
+
+    async def another_message_arrives(term: str) -> list[str]:
+        default.topic = "carrot"  # a second "carrot rate" dispatched during the Tenor request
+        return [GIF]
+
+    tenor.side_effect = another_message_arrives
+    await admin.send(allowed, "potato rate")
+    [reply] = _bot_messages(red_env, allowed)
+    assert reply.embeds[0].title == "❯ Potato Rate"
+    assert reply.embeds[0].description is not None and reply.embeds[0].description.endswith("% potato")
+    simcord.assert_no_errors(red_env)

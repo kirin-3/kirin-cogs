@@ -19,9 +19,9 @@ log = logging.getLogger("red.kirin_cogs.responder.rate_anything")
 class RateAnything(BaseRateResponder):
     SUPPORTER_ROLE_IDS = {700121551483437128, 1458440559713718466}
 
-    async def get_random_gif(self) -> str | None:
+    async def get_random_gif(self, topic: str) -> str | None:
         # Search tenor for an appropriate thumbnail image; the embed falls back to the avatar without one
-        search_term = self.topic.replace(" ", "-")
+        search_term = topic.replace(" ", "-")
         try:
             gifs = await web.get_tenor_gifs(search_term)
         except Exception:
@@ -47,14 +47,16 @@ class RateAnything(BaseRateResponder):
         if not self.is_approved(message):
             return
 
+        # Read once: the dispatcher sets `topic` per message, and another message can change it while Tenor answers.
+        topic = self.topic
         rating = self.get_rating()
 
-        title = " ".join(word.capitalize() for word in self.topic.split())
+        title = " ".join(word.capitalize() for word in topic.split())
         title = f"❯ {title} Rate"
 
-        thumbnail = await self.get_random_gif() or target.display_avatar.url
+        thumbnail = await self.get_random_gif(topic) or target.display_avatar.url
 
-        description = f"{target.display_name} is {rating}% {self.topic}"
+        description = f"{target.display_name} is {rating}% {topic}"
 
         footer = r"The rate anything command is only available to supporters."
 

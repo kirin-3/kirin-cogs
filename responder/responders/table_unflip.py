@@ -20,7 +20,8 @@ class TableUnflipResponder(BaseTextResponder):
     def __init__(self, parent, bot: Red):
         super().__init__(parent, bot)
 
-        self.never_respond.extend([const.KIRIN_ID])
+        # A copy: the class default is the list every responder shares.
+        self.never_respond = [*self.never_respond, const.KIRIN_ID]
 
     async def respond(
         self,
