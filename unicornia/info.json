@@ -6,7 +6,7 @@
     "short": "Drop-in Nadeko migration cog for leveling and economy features",
     "description": "A Red bot cog that serves as a direct drop-in replacement for Nadeko Bot's Economy and XP systems. It is fully compatible with Nadeko's SQLite database schema (v3+), allowing you to use your existing `nadeko.db` file without data loss. Features include Currency, Banking, Gambling (Slots, Blackjack, etc.), Waifus, Shops, Clubs, and XP/Leveling.",
     "install_msg": "Unicornia cog loaded! To import existing Nadeko data, run `[p]unicornia migration setpath <path to nadeko.db>`, then `[p]unicornia migration run`.",
-    "end_user_data_statement": "This cog stores Discord user IDs with XP, balances, inventory, game (including unicorn stables and the names members give their unicorns), relationship, and complete financial transaction history in SQLite. Data exports include the full available transaction history. Deletion removes operational user state and anonymizes accounting rows that must be retained for financial integrity.",
+    "end_user_data_statement": "This cog stores Discord user IDs with XP, balances, inventory, game (including unicorn stables, the unicorns' names, and the stable collection of every breed the member has hatched), relationship, and complete financial transaction history in SQLite. Data exports include the full available transaction history. Deletion removes operational user state and anonymizes accounting rows that must be retained for financial integrity.",
     "min_bot_version": "3.5.0",
     "min_python_version": [
         3,

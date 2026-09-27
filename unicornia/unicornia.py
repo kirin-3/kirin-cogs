@@ -750,7 +750,10 @@ class Unicornia(
             return cached[2]
         image = await asyncio.to_thread(render_stable_card, state, member.display_name, active_season(time.time()))
         payload = image.getvalue()
-        self._stable_cards[member.id] = (signature, time.monotonic() + STABLE_CARD_CACHE_SECONDS, payload)
+        # Prune expired entries on the way in, so members who stop visiting don't keep their bytes forever
+        moment = time.monotonic()
+        self._stable_cards = {user_id: entry for user_id, entry in self._stable_cards.items() if entry[1] > moment}
+        self._stable_cards[member.id] = (signature, moment + STABLE_CARD_CACHE_SECONDS, payload)
         return payload
 
     async def stable_art_path(self, member_id: int, breed: str) -> Path | None:

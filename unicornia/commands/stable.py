@@ -54,6 +54,18 @@ def menu_label(slot: int, unicorn: Unicorn) -> str:
     return f"#{slot} {'✨ ' if unicorn.shiny else ''}{unicorn.label}"[:100]
 
 
+def ascend_question(state: StableState) -> str:
+    """What the Ascend button and `[p]stable ascend` both ask first: what's lost and what's gained."""
+    question = (
+        f"Ascend? Your {len(state.unicorns)} unicorns trot off and you keep the **{int(state.box):,}** coins "
+        f"in your box, your coin box size and your collection, and reach ascension "
+        f"{state.ascensions + 1}: **+10% earnings**, but prices rise **20%**."
+    )
+    if any(u.shiny for u in state.unicorns):
+        question += "\n✨ Your stable includes a **shiny** — it will be lost!"
+    return question
+
+
 async def card_file(system: StableSystem, member: discord.abc.User, state: StableState | None = None) -> discord.File:
     state = state or await system.state(member.id)
     image = await asyncio.to_thread(stable_card.render, state, member.display_name, active_season(time.time()))
@@ -150,15 +162,8 @@ class StableView(discord.ui.View):
     @discord.ui.button(label="Ascend", emoji="✨", style=discord.ButtonStyle.secondary)
     async def ascend(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         state = await self.system.state(self.owner.id)
-        question = (
-            f"Ascend? Your {len(state.unicorns)} unicorns trot off and you keep the **{int(state.box):,}** coins "
-            f"in your box, your coin box size and your collection, and reach ascension "
-            f"{state.ascensions + 1}: **+10% earnings**, but prices rise **20%**."
-        )
-        if any(u.shiny for u in state.unicorns):
-            question += "\n✨ Your stable includes a **shiny** — it will be lost!"
         await interaction.response.send_message(
-            question, view=ConfirmChoice(self, "Ascend", self._ascend_now), ephemeral=True
+            ascend_question(state), view=ConfirmChoice(self, "Ascend", self._ascend_now), ephemeral=True
         )
 
     async def _ascend_now(self) -> str:
@@ -363,15 +368,8 @@ class StableCommands(UnicorniaMixinBase):
         if problem is not None:
             await ctx.send(problem)
             return
-        question = (
-            f"Ascend? Your {len(state.unicorns)} unicorns trot off and you keep the **{int(state.box):,}** coins "
-            f"in your box, your coin box size and your collection, and reach ascension "
-            f"{state.ascensions + 1}: **+10% earnings**, but prices rise **20%**."
-        )
-        if any(u.shiny for u in state.unicorns):
-            question += "\n✨ Your stable includes a **shiny** — it will be lost!"
         view = ConfirmView(ctx.author, disable_buttons=True)
-        view.message = await ctx.send(question, view=view, allowed_mentions=NO_MENTIONS)
+        view.message = await ctx.send(ascend_question(state), view=view, allowed_mentions=NO_MENTIONS)
         await view.wait()
         if not view.result:
             await ctx.send("Not yet, then.")

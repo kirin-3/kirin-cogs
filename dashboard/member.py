@@ -234,7 +234,7 @@ class MemberSite:
     def _unicornia(self, request: web.Request) -> tuple[discord.Member, Any]:
         uni = self._cog("Unicornia")
         if uni is None:
-            self._missing(request, "Profiles, stocks, clubs, waifus and the leaderboard")
+            self._missing(request, "Profiles, stocks, clubs, waifus, the stable and the leaderboard")
         return request["member"], uni
 
     async def me(self, request: web.Request) -> web.StreamResponse:
