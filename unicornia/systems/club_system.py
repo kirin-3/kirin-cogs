@@ -294,144 +294,128 @@ class ClubSystem:
         await self.db.club.apply_to_club(user.id, target_club[0])
         return True, f"Applied to **{target_club[1]}**."
 
-    async def accept_application(self, admin: discord.Member, applicant_name: str) -> tuple[bool, str]:
+    @staticmethod
+    def display_name(guild: discord.Guild, user_id: int, stored: str | None = None) -> str:
+        """Display name in the guild, else the name stored by the Nadeko import, else "Unknown user"."""
+        member = guild.get_member(user_id)
+        if member is not None:
+            return member.display_name
+        return stored or "Unknown user"
+
+    async def _club_they_run(self, user: discord.Member, action: str) -> tuple[tuple | None, str]:
+        """The club ``user`` owns (or can manage with Manage Server), else None and why not."""
+        club = await self.db.club.get_club_by_member(user.id)
+        if not club:
+            return None, "You are not in a club."
+        if not self._check_permission(user, club[6], True):
+            return None, f"Only the club owner can {action}."
+        return club, ""
+
+    async def accept_application(self, admin: discord.Member, applicant_id: int) -> tuple[bool, str]:
         """Accept a club application.
 
         Args:
             admin: Club owner.
-            applicant_name: Username of applicant.
+            applicant_id: Discord user ID of the applicant.
 
         Returns:
             Tuple of (success, message).
         """
-        club = await self.db.club.get_club_by_member(admin.id)
+        club, error = await self._club_they_run(admin, "accept applications")
         if not club:
-            return False, "You are not in a club."
+            return False, error
 
-        if not self._check_permission(admin, club[6], True):
-            return False, "Only the club owner can accept applications."
-
-        # Find applicant by name (simple search)
-        applicants = await self.db.club.get_club_applicants(club[0])
-        # applicant tuple: UserId, Username, AvatarId, TotalXp
-        target = next((a for a in applicants if a[1].lower() == applicant_name.lower()), None)
-
-        if not target:
+        if not await self.db.club.check_club_application(club[0], applicant_id):
             return False, "Applicant not found."
 
-        await self.db.club.accept_club_application(club[0], target[0])
-        return True, f"Accepted **{target[1]}** into the club."
+        await self.db.club.accept_club_application(club[0], applicant_id)
+        return True, f"Accepted **{self.display_name(admin.guild, applicant_id)}** into the club."
 
-    async def reject_application(self, admin: discord.Member, applicant_name: str) -> tuple[bool, str]:
+    async def reject_application(self, admin: discord.Member, applicant_id: int) -> tuple[bool, str]:
         """Reject a club application.
 
         Args:
             admin: Club owner.
-            applicant_name: Username of applicant.
+            applicant_id: Discord user ID of the applicant.
 
         Returns:
             Tuple of (success, message).
         """
-        club = await self.db.club.get_club_by_member(admin.id)
+        club, error = await self._club_they_run(admin, "reject applications")
         if not club:
-            return False, "You are not in a club."
+            return False, error
 
-        if not self._check_permission(admin, club[6], True):
-            return False, "Only the club owner can reject applications."
-
-        applicants = await self.db.club.get_club_applicants(club[0])
-        target = next((a for a in applicants if a[1].lower() == applicant_name.lower()), None)
-
-        if not target:
+        if not await self.db.club.check_club_application(club[0], applicant_id):
             return False, "Applicant not found."
 
-        await self.db.club.reject_club_application(club[0], target[0])
-        return True, f"Rejected application from **{target[1]}**."
+        await self.db.club.reject_club_application(club[0], applicant_id)
+        return True, f"Rejected application from **{self.display_name(admin.guild, applicant_id)}**."
 
-    async def kick_member(self, admin: discord.Member, member_name: str) -> tuple[bool, str]:
+    async def _member_to_remove(self, admin: discord.Member, member_id: int, action: str) -> tuple[tuple | None, str]:
+        """The admin's club, if ``member_id`` is a member other than its owner, else None and why not."""
+        club, error = await self._club_they_run(admin, f"{action} members")
+        if not club:
+            return None, error
+        member_club = await self.db.club.get_club_by_member(member_id)
+        if not member_club or member_club[0] != club[0]:
+            return None, "User not found in club."
+        if member_id == club[6]:
+            return None, f"Cannot {action} the owner."
+        return club, ""
+
+    async def kick_member(self, admin: discord.Member, member_id: int) -> tuple[bool, str]:
         """Kick a member.
 
         Args:
             admin: Club owner.
-            member_name: Username of member to kick.
+            member_id: Discord user ID of the member to kick.
 
         Returns:
             Tuple of (success, message).
         """
-        club = await self.db.club.get_club_by_member(admin.id)
-
+        club, error = await self._member_to_remove(admin, member_id, "kick")
         if not club:
-            return False, "You are not in a club."
+            return False, error
 
-        if not self._check_permission(admin, club[6], True):
-            return False, "Only the club owner can kick members."
+        await self.db.club.kick_club_member(member_id)
+        return True, f"Kicked **{self.display_name(admin.guild, member_id)}** from the club."
 
-        members = await self.db.club.get_club_members(club[0])
-        target = next((m for m in members if m[1].lower() == member_name.lower()), None)
-
-        if not target:
-            return False, "User not found in club."
-
-        if target[0] == club[6]:  # Owner
-            return False, "Cannot kick the owner."
-
-        await self.db.club.kick_club_member(target[0])
-        return True, f"Kicked **{target[1]}** from the club."
-
-    async def ban_member(self, admin: discord.Member, member_name: str) -> tuple[bool, str]:
+    async def ban_member(self, admin: discord.Member, member_id: int) -> tuple[bool, str]:
         """Ban a member.
 
         Args:
             admin: Club owner.
-            member_name: Username of member to ban.
+            member_id: Discord user ID of the member to ban.
 
         Returns:
             Tuple of (success, message).
         """
-        club = await self.db.club.get_club_by_member(admin.id)
+        club, error = await self._member_to_remove(admin, member_id, "ban")
         if not club:
-            return False, "You are not in a club."
+            return False, error
 
-        if not self._check_permission(admin, club[6], True):
-            return False, "Only the club owner can ban members."
+        await self.db.club.ban_club_member(club[0], member_id)
+        return True, f"Banned **{self.display_name(admin.guild, member_id)}** from the club."
 
-        members = await self.db.club.get_club_members(club[0])
-        target = next((m for m in members if m[1].lower() == member_name.lower()), None)
-
-        if not target:
-            return False, "User not found in club."
-
-        if target[0] == club[6]:
-            return False, "Cannot ban the owner."
-
-        await self.db.club.ban_club_member(club[0], target[0])
-        return True, f"Banned **{target[1]}** from the club."
-
-    async def unban_member(self, admin: discord.Member, member_name: str) -> tuple[bool, str]:
+    async def unban_member(self, admin: discord.Member, member_id: int) -> tuple[bool, str]:
         """Unban a member.
 
         Args:
             admin: Club owner.
-            member_name: Username of member to unban.
+            member_id: Discord user ID of the member to unban.
 
         Returns:
             Tuple of (success, message).
         """
-        club = await self.db.club.get_club_by_member(admin.id)
+        club, error = await self._club_they_run(admin, "unban members")
         if not club:
-            return False, "You are not in a club."
+            return False, error
 
-        if not self._check_permission(admin, club[6], True):
-            return False, "Only the club owner can unban members."
-
-        bans = await self.db.club.get_club_bans(club[0])
-        target = next((b for b in bans if b[1].lower() == member_name.lower()), None)
-
-        if not target:
+        if not await self.db.club.check_club_ban(club[0], member_id):
             return False, "User not found in ban list."
 
-        await self.db.club.unban_club_member(club[0], target[0])
-        return True, f"Unbanned **{target[1]}**."
+        await self.db.club.unban_club_member(club[0], member_id)
+        return True, f"Unbanned **{self.display_name(admin.guild, member_id)}**."
 
     async def get_members(self, club_id: int) -> list[ClubMember]:
         """Get formatted list of members.
@@ -482,7 +466,15 @@ class ClubSystem:
         applicants = await self.db.club.get_club_applicants(club[0])
         # applicant tuple: UserId, Username, AvatarId, TotalXp
 
-        return [{"user_id": a[0], "username": a[1], "avatar_id": a[2], "total_xp": a[3]} for a in applicants], "Success"
+        return [
+            {
+                "user_id": a[0],
+                "username": self.display_name(user.guild, a[0], a[1]),
+                "avatar_id": a[2],
+                "total_xp": a[3],
+            }
+            for a in applicants
+        ], "Success"
 
     async def get_banned_members(self, user: discord.Member) -> tuple[list[ClubUserInfo] | None, str]:
         """Get list of banned members.
@@ -503,7 +495,15 @@ class ClubSystem:
         bans = await self.db.club.get_club_bans(club[0])
         # ban tuple: UserId, Username, AvatarId, TotalXp
 
-        return [{"user_id": b[0], "username": b[1], "avatar_id": b[2], "total_xp": b[3]} for b in bans], "Success"
+        return [
+            {
+                "user_id": b[0],
+                "username": self.display_name(user.guild, b[0], b[1]),
+                "avatar_id": b[2],
+                "total_xp": b[3],
+            }
+            for b in bans
+        ], "Success"
 
     async def invite_member(self, owner: discord.Member, user: discord.Member) -> tuple[bool, str]:
         """Invite a user to the club.

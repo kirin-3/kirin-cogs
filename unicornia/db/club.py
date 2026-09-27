@@ -126,9 +126,9 @@ class ClubRepository:
         async with self.db._get_connection() as db:
             cursor = await db.execute(
                 """
-                SELECT u.UserId, u.Username, u.AvatarId, u.TotalXp
+                SELECT ca.UserId, u.Username, u.AvatarId, COALESCE(u.TotalXp, 0)
                 FROM ClubApplicants ca
-                JOIN DiscordUser u ON ca.UserId = u.UserId
+                LEFT JOIN DiscordUser u ON ca.UserId = u.UserId
                 WHERE ca.ClubId = ?
             """,
                 (club_id,),
@@ -147,9 +147,9 @@ class ClubRepository:
         async with self.db._get_connection() as db:
             cursor = await db.execute(
                 """
-                SELECT u.UserId, u.Username, u.AvatarId, u.TotalXp
+                SELECT cb.UserId, u.Username, u.AvatarId, COALESCE(u.TotalXp, 0)
                 FROM ClubBans cb
-                JOIN DiscordUser u ON cb.UserId = u.UserId
+                LEFT JOIN DiscordUser u ON cb.UserId = u.UserId
                 WHERE cb.ClubId = ?
             """,
                 (club_id,),
@@ -274,12 +274,13 @@ class ClubRepository:
                 (club_id, user_id),
             )
 
-            # Update user
+            # Upsert: a member who never earned or chatted has no DiscordUser row yet
             await db.execute(
                 """
-                UPDATE DiscordUser SET ClubId = ?, IsClubAdmin = 0 WHERE UserId = ?
+                INSERT INTO DiscordUser (UserId, ClubId, IsClubAdmin) VALUES (?, ?, 0)
+                ON CONFLICT(UserId) DO UPDATE SET ClubId = excluded.ClubId, IsClubAdmin = 0
             """,
-                (club_id, user_id),
+                (user_id, club_id),
             )
 
             await db.commit()

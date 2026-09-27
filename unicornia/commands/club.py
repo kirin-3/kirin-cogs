@@ -188,7 +188,7 @@ class ClubCommands(UnicorniaMixinBase):
         members = await self.db.club.get_club_members(data["id"])
         member_list = []
         for m in members[:10]:  # Limit display
-            name = m[1]
+            name = self.club_system.display_name(ctx.guild, m[0], m[1])
             if m[4]:  # IsAdmin
                 name += " ⭐"
             if m[0] == data["owner_id"]:
@@ -245,7 +245,7 @@ class ClubCommands(UnicorniaMixinBase):
         `[p]club accept <user>`
         """
 
-        success, message = await self.club_system.accept_application(ctx.author, user.name)
+        success, message = await self.club_system.accept_application(ctx.author, user.id)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
@@ -262,7 +262,7 @@ class ClubCommands(UnicorniaMixinBase):
         `[p]club reject <user>`
         """
 
-        success, message = await self.club_system.reject_application(ctx.author, user.name)
+        success, message = await self.club_system.reject_application(ctx.author, user.id)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
@@ -279,7 +279,7 @@ class ClubCommands(UnicorniaMixinBase):
         `[p]club kick <user>`
         """
 
-        success, message = await self.club_system.kick_member(ctx.author, user.name)
+        success, message = await self.club_system.kick_member(ctx.author, user.id)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
@@ -297,7 +297,7 @@ class ClubCommands(UnicorniaMixinBase):
         `[p]club ban <user>`
         """
 
-        success, message = await self.club_system.ban_member(ctx.author, user.name)
+        success, message = await self.club_system.ban_member(ctx.author, user.id)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
@@ -314,7 +314,7 @@ class ClubCommands(UnicorniaMixinBase):
         `[p]club unban <user>`
         """
 
-        success, message = await self.club_system.unban_member(ctx.author, user.name)
+        success, message = await self.club_system.unban_member(ctx.author, user.id)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:

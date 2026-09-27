@@ -398,3 +398,58 @@ async def test_affinity_discount_lowers_the_payment_not_the_price(red_env: simco
     assert await db.waifu.get_waifu_price(waifu.id) == 100
     assert await _cog(red_env).get_balance(claimer.id) == (wallet - 80, 0)
     simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_club_moderation_finds_members_by_id(red_env: simcord.Env) -> None:
+    """Nothing stores a username for members who joined after the Nadeko import."""
+    bot = cast(Red, red_env.bot)
+    guild, _owner = _guild_with_owner(red_env)
+    leader = guild.add_member(red_env.create_user("leader"))
+    fan = guild.add_member(red_env.create_user("fan"))
+    rival = guild.add_member(red_env.create_user("rival"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    db = _cog(red_env).db
+    assert db is not None
+
+    async def club_of(actor: simcord.MemberActor) -> int | None:
+        assert db is not None
+        club = await db.club.get_club_by_member(actor.id)
+        return club[0] if club else None
+
+    # Not through [p]club create: its 24-hour cooldown carries over from the other club test's same-ID user
+    club_id = await db.club.create_club(leader.id, "Unicorns")
+    await fan.send(channel, "!club apply Unicorns")
+    await rival.send(channel, "!club apply Unicorns")
+
+    # One applicant through the applicants menu, the other by command
+    await leader.send(channel, "!club applicants")
+    menu = _bot_messages(channel, bot)[-1]
+    await leader.select(menu, [str(fan.id)])
+    await leader.click(menu, label="Accept")
+    await leader.send(channel, f"!club reject {_member(rival).mention}")
+    assert "Rejected application from **rival**" in _last_text(channel, bot)
+    assert await club_of(fan) == club_id
+    assert await club_of(rival) is None
+
+    await leader.send(channel, "!club info")
+    info = _bot_messages(channel, bot)[-1].embeds[0]
+    members = next(f.value or "" for f in info.fields if (f.name or "").startswith("Members"))
+    assert "leader ⭐ 👑" in members and "fan" in members
+
+    await leader.send(channel, f"!club ban {_member(fan).mention}")
+    assert "Banned **fan**" in _last_text(channel, bot)
+    assert await club_of(fan) is None
+    await leader.send(channel, "!club bans")
+    assert "**fan**" in (_bot_messages(channel, bot)[-1].embeds[0].description or "")
+    await leader.send(channel, f"!club unban {_member(fan).mention}")
+    assert "Unbanned **fan**" in _last_text(channel, bot)
+
+    await rival.send(channel, "!club apply Unicorns")
+    await leader.send(channel, f"!club accept {_member(rival).mention}")
+    assert "Accepted **rival**" in _last_text(channel, bot)
+    await leader.send(channel, f"!club kick {_member(rival).mention}")
+    assert "Kicked **rival**" in _last_text(channel, bot)
+    assert await club_of(rival) is None
+    simcord.assert_no_errors(red_env)

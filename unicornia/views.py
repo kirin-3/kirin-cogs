@@ -260,11 +260,10 @@ class ApplicantProcessView(ui.View):
 
         await interaction.response.defer()
 
-        name = applicant["username"]
         if accepted:
-            success, msg = await self.club_system.accept_application(self.ctx.author, name)
+            success, msg = await self.club_system.accept_application(self.ctx.author, applicant["user_id"])
         else:
-            success, msg = await self.club_system.reject_application(self.ctx.author, name)
+            success, msg = await self.club_system.reject_application(self.ctx.author, applicant["user_id"])
 
         if success:
             # Remove from list
