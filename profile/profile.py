@@ -7,6 +7,7 @@ import discord
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 
+from . import compatibility
 from .migrations import migrate_global_schema
 from .models import ATTACHMENT_PREFIX, PROFILE_CHANNEL_ID, UNIQUE_ID, ProfileData, canonicalize_profile_data
 from .views import ProfileBuilderView, ProfileDeleteConfirmView, ProfileStickyView, UploadedPicture
@@ -166,6 +167,50 @@ class Profile(commands.Cog):
                 " and that I can manage messages there."
             )
         await ctx.send(text)
+
+    @commands.hybrid_command()  # pyright: ignore[reportArgumentType]
+    @commands.guild_only()
+    @commands.bot_has_permissions(embed_links=True)
+    async def compat(
+        self, ctx: commands.GuildContext, member: discord.Member, other: discord.Member | None = None
+    ) -> None:
+        """How compatible two members are, going by their profiles and roles.
+
+        Compares you with `member`, or `member` with `other`. Only the score is shown.
+        """
+        first, second = (member, other) if other else (ctx.author, member)
+        if first.bot or second.bot:
+            await ctx.send("Bots don't have profiles.")
+            return
+        if first == second:
+            await ctx.send(f"**{first.display_name}** & **{first.display_name}**: 100%. Self-love counts. 💖")
+            return
+
+        await self._ensure_guild_data(ctx.guild)
+        a, b = [
+            compatibility.side(await self.config.member(m).profile_data(), [role.id for role in m.roles])
+            for m in (first, second)
+        ]
+        percent = compatibility.score(a, b)
+        if percent is None:
+            channel = await self.get_profile_channel(ctx.guild)
+            unknown = [m.display_name for m, s in ((first, a), (second, b)) if not s.known] or [
+                f"{first.display_name} and {second.display_name}"
+            ]
+            where = f"a profile in {channel.mention}" if channel else "a profile"
+            await ctx.send(
+                f"Not enough to go on for **{' and '.join(unknown)}** yet. Fill out {where} or pick some roles."
+            )
+            return
+
+        embed = discord.Embed(
+            title="💘 Compatibility",
+            description=f"**{first.display_name}** & **{second.display_name}**\n"
+            f"{compatibility.bar(percent)} **{percent}%**\n{compatibility.verdict(percent)}",
+            color=discord.Color.from_rgb(255, 105, 180),
+        )
+        embed.set_footer(text="Going by profiles and roles.")
+        await ctx.send(embed=embed)
 
     async def handle_create_edit(self, interaction: discord.Interaction):
         if not isinstance(interaction.user, discord.Member) or interaction.guild is None:

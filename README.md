@@ -56,7 +56,7 @@ Awards economy currency to users when they boost the server via the Unicornia co
 Supporter roles and currency rewards from the Patreon API and Buy Me a Coffee webhooks, using idempotent payments. See [patron/README.md](patron/README.md).
 
 ### Profile
-Create and manage user profiles with interactive modals and sticky messages.
+Create and manage user profiles with interactive modals and sticky messages, and score how well two members match with `[p]compat`.
 
 ### Responder
 Fun auto-responses in Unicornia's bot channels: `<topic> rate` embeds, "I'm ..." daddy jokes, long cat, The Game and table unflipping. Ported from the Unicornia repo (originally by Ruffiana). See [responder/README.md](responder/README.md).

@@ -75,6 +75,23 @@ If the sticky message gets deleted or needs to be refreshed:
 
 Users interact with the profile system through buttons on the sticky message in the profile channel. No text commands are needed.
 
+### Compatibility
+
+**`[p]compat <member> [other]`** (also `/compat` once enabled with `[p]slash enable compat`) scores how well you and
+`member`, or `member` and `other`, match: a percentage, a bar and a verdict line. It never says what matched.
+
+The score comes from `profile/compatibility.py`:
+- **Dynamic** (35%): Dom, sub or switch, from the Role answer and the dom/sub roles (the same weights as Responder's
+  `dom rate`, plus the switch role). A dom with a sub scores highest; anyone with a switch scores well.
+- **Kinks** (45%): kinks both members named in their Kinks answers, in any common spelling. The pet play, hypnosis,
+  age play, furry, free use and attention whore roles count as that kink, and sharing the role itself counts double.
+- **Interests** (20%): words the two Likes answers share.
+- **Limits**: each kink of one member that is on the other's Limits takes 15 points off.
+
+Parts neither member has filled in are left out, and a neutral 50% is mixed in so one lone match can't decide the
+whole score. The weights were tuned on the live profiles so random pairs spread from about 10% to 85%. Nothing is
+stored.
+
 ### Creating or Editing a Profile
 
 1. Navigate to the profile channel
