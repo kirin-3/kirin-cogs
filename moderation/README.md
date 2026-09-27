@@ -40,7 +40,7 @@ permission checks silently).
 | `[p]mute <member> [duration] [reason]` | Manage Roles | Takes all their roles, gives them Muted, and disconnects them from voice. Duration like `30m`, `2h`, `7d`, `1d12h`; leave it out for a mute that lasts until someone unmutes. |
 | `[p]unmute <user> [reason]` | Manage Roles | Removes Muted and gives back the roles the mute took. Accepts an ID to lift the mute of someone who left. |
 | `[p]kick <member> [reason]` | Kick Members | DMs them, then kicks. |
-| `[p]ban <user> [days] [reason]` | Ban Members | DMs them, then bans. `days` (0-7) deletes that many days of their messages. Accepts an ID for users who aren't in the server. |
+| `[p]ban <user> [days] [reason]` | Ban Members | DMs them, then bans. `days` (0-7) deletes that many days of their messages (default 1). Accepts an ID for users who aren't in the server. |
 | `[p]unban <user ID> [reason]` | Ban Members | Unbans and sends them a one-use invite to the rules channel. |
 | `[p]userinfo [user]` | - | Account age, join date, warning count, mute status, and which of a few key roles they hold (`USERINFO_ROLE_IDS` in `moderation.py`; the field is left out when they have none). Also `[p]whois`. |
 

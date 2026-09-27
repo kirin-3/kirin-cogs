@@ -766,14 +766,14 @@ class Moderation(commands.Cog):
     ) -> None:
         """DM a user, then ban them. Works with an ID for users who aren't in the server.
 
-        `days` (0-7) deletes that many days of their messages. Leave it out to delete none.
+        `days` (0-7) deletes that many days of their messages. Leave it out to delete 1 day.
         """
         assert ctx.guild is not None
         member = await self._find_member(ctx.guild, user.id)
         if member is not None and (error := self._hierarchy_error(ctx, member)):
             await ctx.send(error)
             return
-        error, notes = await self._ban(ctx.guild, user, reason, days or 0, ctx.author)
+        error, notes = await self._ban(ctx.guild, user, reason, 1 if days is None else days, ctx.author)
         if error:
             await ctx.send(error)
             return
