@@ -11,6 +11,8 @@ Intelligent auto-moderation system that combines **VADER sentiment analysis** fo
 - **Per-Channel Buffers**: Collects 20 messages per channel for conversation context
 - **Idle Buffer Processing**: Background task handles conversations that stop abruptly
 - **Extreme Toxicity Detection**: Immediate processing for severely negative content (compound score below the configured threshold minus 0.3, i.e. -0.8 at the default threshold)
+- **Age-Claim Detection**: A message claiming an age under 18 ("lol I'm 16", "17yo", "in high school") is sent for review immediately, whatever its tone, since rule 1 is usually broken in a neutral tone that sentiment never flags
+- **Failed-Review Alerts**: If the AI review of a flagged conversation fails (API error, timeout, empty or unreadable reply), staff get a "Flagged Conversation Not Reviewed" alert with a link and context, so they can check it by hand
 - **Flexible Notifications**: Alerts to configured channel or DM to bot owner
 
 ## Installation
@@ -109,20 +111,22 @@ Discord Message
       ↓ Yes
   Add to Buffer (max 20)
       ↓
-  Extreme (score < threshold-0.3)? ──Yes──→ Trigger AI Review Now
+  Extreme (score < threshold-0.3) or under-18 age claim? ──Yes──→ Trigger AI Review Now
       ↓ No
   Buffer Full or Idle 2 min? ──No──→ Wait
       ↓ Yes
-  Any Message Below Threshold? ──No──→ Discard
+  Any Message Below Threshold or Claiming an Age Under 18? ──No──→ Discard
       ↓ Yes
   AI Review
       ↓
   Build Prompt with Rules
       ↓
-  Send to GLM-5.3 via the NanoGPT endpoint
+  Send to GLM-5.3 via the NanoGPT endpoint (max 10,000 tokens, room for its reasoning)
       ↓
   Parse JSON Response
       ↓
+  Review Failed? ──Yes──→ Send "Not Reviewed" Alert
+      ↓ No
   Violation Detected? ──No──→ Log & Stop
       ↓ Yes
   Severity ≥ Floor? ──No──→ Log & Stop
@@ -137,6 +141,7 @@ VADER (Valence Aware Dictionary and sEntiment Reasoner) is a lexicon and rule-ba
 - **Compound Score**: Normalized weighted composite score (-1 to +1)
 - **Threshold**: A message with compound below the threshold (default -0.5) marks its buffer for review; the review runs once the buffer fills, sits idle for 2 minutes, or the message is extreme
 - **Extreme Threshold**: Messages with compound < (threshold - 0.3) trigger immediate review
+- **Age Claims**: Messages claiming an age under 18 trigger immediate review regardless of their score. The match is loose on purpose; the AI decides whether it's a real violation
 
 **Important**: Each message is analyzed individually, not combined. This prevents toxicity dilution where one toxic message among many positive ones would be missed.
 

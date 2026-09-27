@@ -32,6 +32,20 @@ SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3}
 # Discord rejects an embed field value longer than this, which would drop the whole alert.
 EMBED_FIELD_LIMIT = 1024
 
+# Rule 1 (no minors) is usually broken in a neutral tone ("lol I'm 16"), which sentiment never flags,
+# so an under-18 age claim sends the conversation to the AI straight away. Loose on purpose: the AI decides.
+MINOR_AGE_RE = re.compile(
+    r"\b(?:i['’]?m|i am|am|age|aged|turn(?:ed|ing)?)\s+(?:only\s+|just\s+|like\s+)?(?:1[0-7])\b"  # noqa: RUF001 - curly apostrophe from phones
+    r"(?!\s*(?:%|\$|cm|kg|lbs?|min|mins|minutes|hours?|hrs?|days?|weeks?|months?|miles?|km|inch(?:es)?|ft|feet)\b)"
+    r"|\b1[0-7]\s*(?:yo|y/o|y\.o\.?|yrs?\s+old|years?\s+old|years?\s+of\s+age)\b"
+    r"|\b(?:in|at|from)\s+(?:high|middle|junior\s+high)\s*school\b",
+    re.IGNORECASE,
+)
+
+
+def mentions_minor_age(text: str) -> bool:
+    return MINOR_AGE_RE.search(text) is not None
+
 
 @dataclass
 class BufferedMessage:
@@ -194,14 +208,14 @@ Analyze this conversation against the server rules, paying close attention to ch
 
     def _vader_check_single(self, msg: BufferedMessage, threshold: float) -> tuple[bool, float, bool]:
         """
-        Check a single message for negative sentiment.
+        Check a single message for negative sentiment, or an under-18 age claim.
 
         Args:
             msg: The message to check
             threshold: The VADER threshold (e.g., -0.5)
 
         Returns:
-            tuple: (should_trigger, score, is_extreme)
+            tuple: (should_trigger, score, is_extreme). An age claim counts as extreme, so it is reviewed now.
         """
         if not msg.content.strip() or self.vader_analyzer is None:
             return False, 0.0, False
@@ -209,15 +223,16 @@ Analyze this conversation against the server rules, paying close attention to ch
         scores = self.vader_analyzer.polarity_scores(msg.content)
         compound = scores["compound"]
 
-        should_trigger = compound < threshold
+        minor = mentions_minor_age(msg.content)
+        should_trigger = minor or compound < threshold
         # Extreme threshold is 0.3 below the base threshold
-        is_extreme = compound < (threshold - 0.3)
+        is_extreme = minor or compound < (threshold - 0.3)
 
         return should_trigger, compound, is_extreme
 
     def check_vader_scores(self, messages: list[BufferedMessage], threshold: float) -> tuple[bool, float, bool]:
         """
-        Check each message individually for negative sentiment.
+        Check each message individually for negative sentiment, or an under-18 age claim.
 
         Args:
             messages: List of messages to check
@@ -241,7 +256,7 @@ Analyze this conversation against the server rules, paying close attention to ch
             if compound < lowest_score:
                 lowest_score = compound
 
-            if compound < threshold:
+            if compound < threshold or mentions_minor_age(msg.content):
                 should_trigger = True
 
             # Extreme threshold is 0.3 below the base threshold
@@ -405,7 +420,8 @@ Analyze this conversation against the server rules, paying close attention to ch
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt},
                         ],
-                        "max_tokens": 1000,
+                        # The thinking model spends tokens reasoning before it answers; too few leaves no answer.
+                        "max_tokens": 10000,
                         "temperature": 0.3,
                     },
                     timeout=aiohttp.ClientTimeout(total=timeout_seconds),
@@ -422,8 +438,12 @@ Analyze this conversation against the server rules, paying close attention to ch
                         )
                     result = await response.json()
 
-            raw_content = result["choices"][0]["message"]["content"]
+            choice = result["choices"][0]
+            raw_content = choice["message"].get("content") or ""
             request_duration = time.monotonic() - request_start
+            if not raw_content.strip():
+                self._last_ai_error = f"Empty AI reply (finish_reason: {choice.get('finish_reason')})"
+                raise ValueError(self._last_ai_error)
 
             # Save response for debugging
             self._last_ai_response = raw_content
@@ -540,17 +560,11 @@ Analyze this conversation against the server rules, paying close attention to ch
             else:
                 log.info(f"AI determined no violation (confidence: {result.confidence:.2f})")
 
-        except aiohttp.ClientError as e:
-            log.error(f"API error during AI analysis: {e}")
-        except json.JSONDecodeError as e:
-            log.error(f"Failed to parse AI response: {e}")
-        except ValueError as e:
-            log.error(f"Value error in AI analysis: {e}")
         except Exception as e:
-            log.error(f"Unexpected error in _process_buffer: {type(e).__name__}: {e}")
-            import traceback
-
-            log.error(traceback.format_exc())
+            # The pre-filter flagged this conversation, so a failed review must not pass silently.
+            reason = self._safe_exception_text(e)
+            log.exception(f"AI review of #{channel.name} failed: {reason}")
+            await self._send_review_failed_alert(guild, channel, messages, reason)
 
     async def _send_alert(
         self,
@@ -561,10 +575,35 @@ Analyze this conversation against the server rules, paying close attention to ch
     ):
         """Send alert to configured channel or DM owner."""
         log.info(f"_send_alert called for guild {guild.name}, channel #{channel.name}")
+        await self._deliver_alert(guild, self._build_alert_embed(guild, channel, messages, result))
 
-        embed = self._build_alert_embed(guild, channel, messages, result)
-        log.debug("Alert embed built successfully")
+    async def _send_review_failed_alert(
+        self,
+        guild: discord.Guild,
+        channel: discord.TextChannel | discord.Thread,
+        messages: list[BufferedMessage],
+        reason: str,
+    ) -> None:
+        """Tell staff a flagged conversation could not be reviewed, so they can check it by hand."""
+        embed = discord.Embed(title="⚠️ Flagged Conversation Not Reviewed", color=0x808080, timestamp=datetime.now(UTC))
+        embed.add_field(name="Server", value=guild.name, inline=True)
+        embed.add_field(name="Channel", value=f"#{channel.name}", inline=True)
+        embed.add_field(
+            name="Reason",
+            value=reason[: EMBED_FIELD_LIMIT - 3] + "..." if len(reason) > EMBED_FIELD_LIMIT else reason or "Unknown",
+            inline=False,
+        )
+        if messages:
+            link = f"https://discord.com/channels/{guild.id}/{channel.id}/{messages[-1].id}"
+            embed.add_field(name="Jump to Conversation", value=f"[Click Here]({link})", inline=False)
+            self._add_context_field(embed, messages)
+        try:
+            await self._deliver_alert(guild, embed)
+        except Exception:
+            log.exception("Could not send the review-failed alert")
 
+    async def _deliver_alert(self, guild: discord.Guild, embed: discord.Embed) -> None:
+        """Send an alert embed to the configured channel, or DM the bot owners."""
         alert_channel_id = await self.config.guild(guild).alert_channel_id()
         log.info(f"Alert channel ID from config: {alert_channel_id}")
 
@@ -644,16 +683,19 @@ Analyze this conversation against the server rules, paying close attention to ch
             link = f"https://discord.com/channels/{guild.id}/{channel.id}/{result.primary_message_id}"
             embed.add_field(name="Jump to Message", value=f"[Click Here]({link})", inline=False)
 
-        # Add context snippet
+        self._add_context_field(embed, messages)
+        return embed
+
+    @staticmethod
+    def _add_context_field(embed: discord.Embed, messages: list[BufferedMessage]) -> None:
+        """Add the last 5 messages as a context snippet."""
         if messages:
             context_lines = []
-            for msg in messages[-5:]:  # Last 5 messages for context
+            for msg in messages[-5:]:
                 author_name = msg.author_name[:20]
                 content_preview = msg.content[:100] + "..." if len(msg.content) > 100 else msg.content
                 context_lines.append(f"**{author_name}**: {content_preview}")
             embed.add_field(name="Recent Context", value="\n".join(context_lines), inline=False)
-
-        return embed
 
     @commands.Cog.listener()
     async def on_message_without_command(self, message: discord.Message):
@@ -711,7 +753,7 @@ Analyze this conversation against the server rules, paying close attention to ch
             # 7. Determine if we should process now
             if is_extreme:
                 should_process = True
-                log.warning(f"Extreme toxicity detected in #{channel.name}: {score}")
+                log.warning(f"Urgent pre-filter hit in #{channel.name} (sentiment {score}, or an under-18 age claim)")
             elif len(buffer) >= (buffer.maxlen or 0):
                 should_process = True
 
