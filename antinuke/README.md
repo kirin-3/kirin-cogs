@@ -22,7 +22,7 @@ All commands are prefix-only (no slash commands).
 
 ### Core Protection
 - **Channel Monitoring**: Tracks channel creation and deletion
-- **Role Monitoring**: Tracks role creation and deletion, plus grants of dangerous permissions
+- **Role Monitoring**: Tracks role creation and deletion, plus grants of dangerous permissions, whether added to a role or given to a member through an existing role
 - **Ban/Kick Monitoring**: Monitors member bans and kicks
 - **Webhook Monitoring**: Tracks webhook creation and deletion
 - **Guild Prune Detection**: Instantly quarantines anyone who starts a member prune
@@ -189,7 +189,7 @@ All commands are under the `[p]antinuke` group (alias: `[p]an`). Every command, 
 |---------|-------------|
 | `[p]antinuke trust` (alias `trusted`) | Manage trusted users and roles |
 | `[p]antinuke trust adduser <user>` | Add a user or bot to the trust list |
-| `[p]antinuke trust removeuser <user>` | Remove a user from the trust list (aliases `deluser`, `rmuser`) |
+| `[p]antinuke trust removeuser <user>` | Remove a user from the trust list; takes an ID for someone who left (aliases `deluser`, `rmuser`) |
 | `[p]antinuke trust addrole <role>` | Add a role to the trust list |
 | `[p]antinuke trust removerole <role>` | Remove a role from the trust list (aliases `delrole`, `rmrole`) |
 | `[p]antinuke trust list` (alias `show`) | Show all trusted users and roles |
@@ -245,11 +245,11 @@ The trust system allows you to whitelist certain users and roles that will bypas
 When a user triggers AntiNuke:
 
 1. **Role Snapshot**: All of the user's current roles are saved to Config
-2. **Atomic Strip**: The user's roles are replaced with only the quarantine role in a single API call
+2. **Atomic Strip**: The user's roles are replaced with only the quarantine role in a single API call. Managed roles such as Server Booster stay, because Discord won't let a bot remove them
 3. **Notification**: Alert is sent to the log channel. Without a log channel, quarantines, bot kicks, and restorations are not announced anywhere — the only owner DMs AntiNuke sends are hierarchy-failure alerts, when it cannot act because the offender outranks the bot
 4. **Bot Handling**: If the offender is a bot, it is kicked instead, since quarantine cannot strip a bot's managed role
 
-Quarantine operations are serialized per user and tracked with a pending/completed/failed state, so failed operations stay retryable.
+Quarantine operations are serialized per user and tracked with a pending/completed/failed state, so failed operations stay retryable. If staff take the quarantine role off by hand instead of using `restore`, the next trigger quarantines the user again and keeps the earlier role snapshot.
 
 ### Quarantine Role Requirements
 
@@ -286,13 +286,13 @@ This will:
 | `webhook_create` | Webhooks created | 2 / 60s |
 | `webhook_delete` | Webhooks deleted | 2 / 60s |
 | `guild_prune` | Member prune started (instant) | 0 / 60s |
-| `dangerous_permission_add` | Dangerous permission granted to a role | 1 / 60s |
+| `dangerous_permission_add` | Dangerous permission granted to a role, or a role with one given to a member | 1 / 60s |
 | `vanity_change` | Vanity URL changed | 1 / 60s |
 | `bot_add` | Bot added to the server | 1 / 60s |
 
 **Special: Dangerous Permission Detection**
 
-The `dangerous_permission_add` action triggers when any of these permissions is granted to a role:
+The `dangerous_permission_add` action triggers when any of these permissions is granted to a role, or when someone gives a member an existing role that has one. Trust staff who hand out such roles:
 
 - `administrator`
 - `manage_guild`

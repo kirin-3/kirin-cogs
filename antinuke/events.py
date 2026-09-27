@@ -95,14 +95,24 @@ class EventHandlers:
         if action_type := AUDIT_ACTION_TYPES.get(entry.action):
             return action_type
 
+        dangerous_perms = monitor.get("dangerous_permission_add", {}).get("permissions", DANGEROUS_PERMISSIONS)
         if entry.action == discord.AuditLogAction.role_update:
             after = getattr(entry.after, "permissions", None)
             if after is None:
                 return None
             before = getattr(entry.before, "permissions", None) or discord.Permissions.none()
-            dangerous_perms = monitor.get("dangerous_permission_add", {}).get("permissions", DANGEROUS_PERMISSIONS)
             if has_dangerous_permission(before, after, dangerous_perms):
                 return "dangerous_permission_add"
+            return None
+
+        if entry.action == discord.AuditLogAction.member_role_update:
+            # Handing someone an existing role that holds a dangerous permission.
+            for granted in getattr(entry.after, "roles", None) or []:
+                role = entry.guild.get_role(granted.id)
+                if role is not None and has_dangerous_permission(
+                    discord.Permissions.none(), role.permissions, dangerous_perms
+                ):
+                    return "dangerous_permission_add"
             return None
 
         if entry.action == discord.AuditLogAction.guild_update and hasattr(entry.after, "vanity_url_code"):

@@ -100,47 +100,12 @@ class AntiNuke(
                 await group.trusted_users.set(trusted)
                 await group.quarantined_users.set(quarantined)
 
-    # Expose config for command classes
-    @property
-    def config_ref(self) -> Config:
-        """Reference to config for command classes."""
-        return self.config
-
-    # Expose action_cache for command classes
-    @property
-    def action_cache_ref(self) -> ActionCache:
-        """Reference to action cache for command classes."""
-        return self.action_cache
-
-    # Expose quarantine_actions for command classes
-    @property
-    def quarantine_actions_ref(self) -> QuarantineActions:
-        """Reference to quarantine actions for command classes."""
-        return self.quarantine_actions
-
     # ==================== Event Listeners ====================
 
     @commands.Cog.listener()
     async def on_audit_log_entry_create(self, entry: discord.AuditLogEntry) -> None:
         """Handle audit log entries; every monitored action is detected from here."""
         await self.event_handlers.on_audit_log_entry_create(entry)
-
-    # ==================== Helper Methods ====================
-
-    async def is_enabled(self, guild: discord.Guild) -> bool:
-        """Check if AntiNuke is enabled for a guild."""
-        return await self.config.guild(guild).enabled()
-
-    async def is_trusted(self, guild: discord.Guild, user: discord.Member) -> bool:
-        """Check if a user is trusted."""
-        return await self.event_handlers.is_trusted(guild, user)
-
-    async def get_quarantine_role(self, guild: discord.Guild) -> discord.Role | None:
-        """Get the configured quarantine role for a guild."""
-        role_id = await self.config.guild(guild).quarantine_role()
-        if role_id:
-            return guild.get_role(role_id)
-        return None
 
     # ==================== Commands from config.py ====================
 
@@ -417,8 +382,8 @@ class AntiNuke(
         await ctx.send(f"✅ {user.mention} has been added to the trusted list.")
 
     @antinuke_trust.command(name="removeuser", aliases=["deluser", "rmuser"])
-    async def trust_removeuser(self, ctx: commands.Context, user: discord.Member) -> None:
-        """Remove a user from the trusted list."""
+    async def trust_removeuser(self, ctx: commands.Context, user: discord.User) -> None:
+        """Remove a user from the trusted list. Takes a mention or ID, so it works after they leave."""
         guild = ctx.guild
         if not guild:
             return

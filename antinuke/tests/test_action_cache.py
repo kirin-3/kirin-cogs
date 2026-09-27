@@ -56,21 +56,6 @@ class TestActionCache:
         assert self.cache.get_count(guild_id=1, user_id=2, action_type="test", timeframe=10) == 0
         assert self.cache.get_count(guild_id=1, user_id=3, action_type="test", timeframe=10) == 1
 
-    @patch("time.time")
-    def test_clear_guild(self, mock_time):
-        mock_time.return_value = 100.0
-        self.cache.record_action(guild_id=1, user_id=2, action_type="test", timeframe=10)
-        self.cache.record_action(guild_id=2, user_id=2, action_type="test", timeframe=10)
-
-        self.cache.clear_guild(guild_id=1)
-
-        assert self.cache.get_count(guild_id=1, user_id=2, action_type="test", timeframe=10) == 0
-        assert self.cache.get_count(guild_id=2, user_id=2, action_type="test", timeframe=10) == 1
-
     def test_clear_user_nonexistent(self):
         # Should not raise any exceptions
         self.cache.clear_user(guild_id=999, user_id=999)
-
-    def test_clear_guild_nonexistent(self):
-        # Should not raise any exceptions
-        self.cache.clear_guild(guild_id=999)

@@ -118,6 +118,7 @@ async def test_concurrent_quarantine_keeps_first_snapshot(actions: QuarantineAct
         nonlocal edits
         edits += 1
         await gate.wait()
+        user.roles = [guild.default_role, *kwargs["roles"]]  # the member update Discord sends back
 
     user.edit = slow_edit
 
@@ -184,6 +185,37 @@ async def test_completed_quarantine_is_idempotent(actions: QuarantineActions, co
 
     stored = config_mock.guild.return_value.quarantined_users.return_value[str(user.id)]
     assert stored["roles"] == [101]
+    await _drain(actions)
+
+
+@pytest.mark.asyncio
+async def test_managed_roles_are_kept(actions: QuarantineActions, config_mock: MagicMock) -> None:
+    """Discord refuses to remove a managed role like Server Booster, so the edit leaves it on."""
+    guild = _guild()
+    booster = _role(150)
+    booster.is_assignable.return_value = False
+    user = _member(roles=[guild.default_role, _role(101), booster])
+
+    assert await actions.execute_quarantine(guild, user, "ban") is True
+    assert user.edit.await_args.kwargs["roles"] == [booster, guild.get_role(999)]
+    stored = config_mock.guild.return_value.quarantined_users.return_value[str(user.id)]
+    assert stored["roles"] == [101]
+    await _drain(actions)
+
+
+@pytest.mark.asyncio
+async def test_quarantine_lifted_by_hand_is_applied_again(actions: QuarantineActions, config_mock: MagicMock) -> None:
+    """Staff removed the quarantine role without `restore`: the next trigger quarantines again."""
+    guild = _guild()
+    user = _member(roles=[guild.default_role, _role(101)])
+    assert await actions.execute_quarantine(guild, user, "ban") is True
+
+    user.roles = [guild.default_role, _role(102)]  # quarantine role taken off, another role given
+    assert await actions.execute_quarantine(guild, user, "ban") is True
+    assert user.edit.await_count == 2
+    stored = config_mock.guild.return_value.quarantined_users.return_value[str(user.id)]
+    assert stored["roles"] == [101, 102]  # the earlier snapshot is kept
+    assert stored["state"] == "completed"
     await _drain(actions)
 
 

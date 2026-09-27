@@ -1,33 +1,10 @@
 # Mock discord and other potential missing modules
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import antinuke.utils
 from antinuke.utils import (
-    format_permission_name,
     has_dangerous_permission,
     is_above_in_hierarchy,
 )
-
-
-def test_format_permission_name_single_word():
-    assert format_permission_name("administrator") == "Administrator"
-
-
-def test_format_permission_name_multiple_words():
-    assert format_permission_name("manage_guild") == "Manage Guild"
-    assert format_permission_name("view_audit_log") == "View Audit Log"
-
-
-def test_format_permission_name_already_formatted():
-    assert format_permission_name("Manage Roles") == "Manage Roles"
-
-
-def test_format_permission_name_mixed_case():
-    assert format_permission_name("MANAGE_WEBHOOKS") == "Manage Webhooks"
-
-
-def test_format_permission_name_empty_string():
-    assert format_permission_name("") == ""
 
 
 def test_has_dangerous_permission():
@@ -82,43 +59,6 @@ def test_has_dangerous_permission_missing_attr():
 
     # It should skip "not_a_real_perm" and find "administrator"
     assert has_dangerous_permission(before, after, dangerous_perms) == "administrator"
-
-
-def test_get_permission_diff():
-    # We need to mock discord.Permissions.VALID_FLAGS
-    class MockPermissions:
-        VALID_FLAGS = {
-            "administrator": 8,
-            "manage_guild": 32,
-            "ban_members": 4,
-            "kick_members": 2,
-        }
-
-    with patch("antinuke.utils.discord.Permissions", MockPermissions):
-        before = MagicMock()
-        after = MagicMock()
-
-        # Added
-        before.administrator = False
-        after.administrator = True
-
-        before.manage_guild = False
-        after.manage_guild = True
-
-        # Removed
-        before.ban_members = True
-        after.ban_members = False
-
-        # Unchanged
-        before.kick_members = True
-        after.kick_members = True
-
-        diff = antinuke.utils.get_permission_diff(before, after)
-
-        # Both orderless check
-        assert len(diff) == 2
-        assert "administrator" in diff
-        assert "manage_guild" in diff
 
 
 def test_is_above_in_hierarchy():

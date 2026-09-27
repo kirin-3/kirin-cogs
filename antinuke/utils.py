@@ -95,18 +95,6 @@ class ActionCache:
         if guild_id in self._cache and user_id in self._cache[guild_id]:
             del self._cache[guild_id][user_id]
 
-    def clear_guild(self, guild_id: int) -> None:
-        """
-        Clear all actions for a guild.
-
-        Parameters
-        ----------
-        guild_id : int
-            The guild ID to clear.
-        """
-        if guild_id in self._cache:
-            del self._cache[guild_id]
-
 
 def has_dangerous_permission(
     before: discord.Permissions, after: discord.Permissions, dangerous_perms: list[str]
@@ -136,46 +124,6 @@ def has_dangerous_permission(
         if not getattr(before, perm_name, False) and getattr(after, perm_name, False):
             return perm_name
     return None
-
-
-def get_permission_diff(before: discord.Permissions, after: discord.Permissions) -> list[str]:
-    """
-    Get list of permissions that were added.
-
-    Parameters
-    ----------
-    before : discord.Permissions
-        Permissions before the change.
-    after : discord.Permissions
-        Permissions after the change.
-
-    Returns
-    -------
-    List[str]
-        List of permission names that were added.
-    """
-    added = []
-    for perm_name, _perm_value in discord.Permissions.VALID_FLAGS.items():
-        if not getattr(before, perm_name) and getattr(after, perm_name):
-            added.append(perm_name)
-    return added
-
-
-def format_permission_name(perm_name: str) -> str:
-    """
-    Format a permission name for display.
-
-    Parameters
-    ----------
-    perm_name : str
-        The internal permission name.
-
-    Returns
-    -------
-    str
-        Human-readable permission name.
-    """
-    return perm_name.replace("_", " ").title()
 
 
 def is_above_in_hierarchy(bot_member: discord.Member, target: discord.Member) -> bool:

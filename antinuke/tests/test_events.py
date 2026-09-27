@@ -144,6 +144,22 @@ def test_classify_role_update_respects_configured_permissions(guild: MagicMock) 
     assert EventHandlers.classify(entry, monitor) is None
 
 
+def test_classify_member_role_update_grants_a_dangerous_role(guild: MagicMock) -> None:
+    admin = MagicMock(spec=discord.Role, id=501, permissions=discord.Permissions(administrator=True))
+    colour = MagicMock(spec=discord.Role, id=502, permissions=discord.Permissions(send_messages=True))
+    guild.get_role.side_effect = {501: admin, 502: colour}.get
+
+    def grant(*role_ids: int) -> MagicMock:
+        roles = [discord.Object(id=rid) for rid in role_ids]
+        return _entry(guild, discord.AuditLogAction.member_role_update, after=_diff(roles=roles))
+
+    assert EventHandlers.classify(grant(502, 501), {}) == "dangerous_permission_add"
+    assert EventHandlers.classify(grant(502), {}) is None
+    assert EventHandlers.classify(grant(777), {}) is None  # role deleted since
+    removed = _entry(guild, discord.AuditLogAction.member_role_update, before=_diff(roles=[admin]))
+    assert EventHandlers.classify(removed, {}) is None
+
+
 def test_classify_guild_update_only_for_vanity(guild: MagicMock) -> None:
     vanity = _entry(guild, discord.AuditLogAction.guild_update, after=_diff(vanity_url_code="stolen"))
     renamed = _entry(guild, discord.AuditLogAction.guild_update, after=_diff(name="new"))

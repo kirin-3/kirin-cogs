@@ -148,19 +148,25 @@ class QuarantineActions:
             existing_users = await self.config.guild(guild).quarantined_users()
             existing = existing_users.get(str(user.id)) if isinstance(existing_users, dict) else None
 
+            keep, current = self._partition_roles(guild, user, quarantine_role)
             if isinstance(existing, dict):
+                stored = [rid for rid in existing.get("roles", []) if isinstance(rid, int)]
                 # Records without a state predate the state model: those users
                 # are already quarantined, so preserve the first snapshot.
-                state = existing.get("state", "completed")
-                if state == "completed":
+                if existing.get("state", "completed") != "completed":
+                    # pending/failed: safe retry reusing the FIRST snapshot — never
+                    # re-capture roles from a member already wearing quarantine.
+                    role_ids = stored
+                elif any(r.id == quarantine_role.id for r in user.roles) and not current:
                     log.debug(f"User {user.id} in guild {guild.id} is already quarantined")
                     return True
-                # pending/failed: safe retry reusing the FIRST snapshot — never
-                # re-capture roles from a member already wearing quarantine.
-                role_ids = [rid for rid in existing.get("roles", []) if isinstance(rid, int)]
+                else:
+                    # Staff lifted the quarantine by hand instead of `restore`. Quarantine
+                    # again, keeping the earlier snapshot plus the roles held now.
+                    role_ids = stored + [rid for rid in current if rid not in stored]
             else:
                 # First quarantine: capture the original manageable roles now.
-                role_ids = [role.id for role in user.roles if role != guild.default_role]
+                role_ids = current
 
             now_iso = datetime.datetime.now(datetime.UTC).isoformat()
             quarantine_data = {
@@ -179,7 +185,7 @@ class QuarantineActions:
             try:
                 # SINGLE API CALL - Atomic role replacement
                 await user.edit(
-                    roles=[quarantine_role],
+                    roles=[*keep, quarantine_role],
                     reason=f"AntiNuke: {ACTION_NAMES.get(trigger_action, trigger_action)} threshold exceeded",
                 )
             except discord.Forbidden:
@@ -210,6 +216,26 @@ class QuarantineActions:
             self._create_task(self.log_quarantine(guild, user, trigger_action, stripped_count))
 
             return True
+
+    @staticmethod
+    def _partition_roles(
+        guild: discord.Guild, user: discord.Member, quarantine_role: discord.Role
+    ) -> tuple[list[discord.Role], list[int]]:
+        """(roles the edit keeps, ids of roles quarantine strips).
+
+        Managed roles such as Server Booster can't be removed, and Discord rejects
+        the whole edit if it tries, so they stay.
+        """
+        keep: list[discord.Role] = []
+        strip: list[int] = []
+        for role in user.roles:
+            if role.id in (guild.default_role.id, quarantine_role.id):
+                continue
+            if role.is_assignable():
+                strip.append(role.id)
+            else:
+                keep.append(role)
+        return keep, strip
 
     @staticmethod
     def _stripped_count(guild: discord.Guild, bot_member: discord.Member, role_ids: list[int]) -> int:
@@ -264,10 +290,10 @@ class QuarantineActions:
                 role = guild.get_role(role_id)
                 if role:
                     # Check if bot can assign this role
-                    if guild.me.top_role > role:
+                    if role.is_assignable():
                         roles_to_restore.append(role)
                     else:
-                        log.warning(f"Cannot restore role {role_id} to user {user.id}: role is above bot's top role")
+                        log.warning(f"Cannot restore role {role_id} to user {user.id}: managed or above the bot")
                 else:
                     missing_roles.append(role_id)
 
@@ -620,39 +646,3 @@ class QuarantineActions:
                 await owner.send(embed=embed)
             except discord.Forbidden:
                 log.warning(f"Cannot DM owner {owner.id} about hierarchy issue in guild {guild.id}")
-
-    async def notify_owner_missing_permissions(self, guild: discord.Guild, permission: str) -> None:
-        """
-        Notify the server owner about missing permissions.
-
-        Parameters
-        ----------
-        guild : discord.Guild
-            The guild where permissions are missing.
-        permission : str
-            The missing permission name.
-        """
-        # Try log channel first
-        log_channel_id = await self.config.guild(guild).log_channel()
-        if log_channel_id:
-            log_channel = guild.get_channel(log_channel_id)
-            if isinstance(log_channel, discord.TextChannel):
-                try:
-                    await log_channel.send(
-                        f"⚠️ AntiNuke is missing the `{permission}` permission. Some features may not work correctly."
-                    )
-                    return
-                except discord.Forbidden:
-                    pass
-
-        # DM the owner as fallback
-        owner = guild.owner
-        if owner:
-            try:
-                await owner.send(
-                    f"⚠️ **AntiNuke Alert** in **{guild.name}**\n\n"
-                    f"AntiNuke is missing the `{permission}` permission. "
-                    "Some features may not work correctly."
-                )
-            except discord.Forbidden:
-                log.warning(f"Cannot DM owner {owner.id} about missing permissions in guild {guild.id}")

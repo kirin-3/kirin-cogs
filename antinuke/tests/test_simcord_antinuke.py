@@ -327,3 +327,33 @@ async def test_quarantine_list_info_and_cleanup(red_env: simcord.Env) -> None:
     assert any("✅ Cleaned up 1 quarantine record(s)" in m.content for m in _bot_replies(setup.channel, setup.bot))
     assert await _quarantined(setup) == {}
     simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_granting_an_existing_admin_role_quarantines_the_granter(red_env: simcord.Env) -> None:
+    setup = await _setup(red_env)
+    admin_role = next(r for r in setup.guild.me.guild.roles if r.name == "Admin")  # pyright: ignore[reportOptionalMemberAccess]
+    red_env.backend.record_audit_log(
+        setup.guild.id,
+        discord.AuditLogAction.member_role_update.value,
+        user_id=setup.culprit.id,
+        target_id=setup.admin.id,
+        changes=[{"key": "$add", "new_value": [{"id": str(admin_role.id), "name": admin_role.name}]}],
+    )
+    await red_env.settle()
+
+    assert (await _quarantined(setup))[str(setup.culprit.id)]["trigger_action"] == "dangerous_permission_add"
+    assert setup.quarantine_role.id in _role_ids(setup.culprit)
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_trust_removeuser_works_after_the_member_left(red_env: simcord.Env) -> None:
+    setup = await _setup(red_env)
+    await setup.owner.send(setup.channel, f"!an trust adduser {setup.culprit.mention}")
+    setup.guild.remove_member(setup.culprit)
+    await red_env.settle()
+
+    await setup.owner.send(setup.channel, f"!an trust removeuser {setup.culprit.id}")
+    assert await setup.cog.config.guild_from_id(setup.guild.id).trusted_users() == []
+    simcord.assert_no_errors(red_env)
