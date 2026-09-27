@@ -41,7 +41,6 @@ async def db(tmp_path: Path) -> AsyncGenerator[DatabaseManager, None]:
 @pytest_asyncio.fixture
 async def xp(db: DatabaseManager) -> AsyncGenerator[XPSystem, None]:
     config = MagicMock()
-    config.xp_enabled = AsyncMock(return_value=True)
     config.xp_cooldown = AsyncMock(return_value=0)
     config.xp_per_message = AsyncMock(return_value=1)
     config.guild.return_value.xp_included_channels = AsyncMock(return_value=[CHANNEL])
@@ -665,11 +664,10 @@ async def test_malformed_channel_configuration_does_not_award_xp(xp: XPSystem, r
 
 @pytest.mark.asyncio
 async def test_config_cache_handles_missing_values_and_preserves_zero_rate(xp: XPSystem) -> None:
-    xp.config.xp_enabled.return_value = None
     xp.config.xp_cooldown.return_value = {}
     xp.config.xp_per_message.return_value = None
     await xp._init_config_cache()
-    assert xp._config_cache == {"xp_enabled": True, "xp_cooldown": 60, "xp_per_message": 1}
+    assert xp._config_cache == {"xp_cooldown": 60, "xp_per_message": 1}
     xp.config.xp_per_message.return_value = 0
     await xp._init_config_cache()
     await xp.process_message(message())

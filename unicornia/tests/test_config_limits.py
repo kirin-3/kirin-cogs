@@ -104,7 +104,7 @@ async def test_minimum_equal_to_maximum_is_allowed() -> None:
 @pytest.mark.asyncio
 async def test_spawning_survives_a_stored_minimum_above_the_maximum() -> None:
     _, config = _cog(generation_min_amount=200, generation_max_amount=100, generation_chance=1.0)
-    config._global.update(currency_generation_enabled=True, generation_channels=[5], currency_symbol="$")
+    config._global.update(generation_channels=[5], currency_symbol="$")
     generation = CurrencyGeneration(MagicMock(), config, MagicMock())
     await generation.refresh_config_cache()
     generation._create_plant = AsyncMock(return_value=1)  # type: ignore[method-assign]

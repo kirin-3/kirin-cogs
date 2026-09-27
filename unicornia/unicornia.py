@@ -90,16 +90,11 @@ class Unicornia(
         default_global = {
             "currency_name": "Slut points",
             "currency_symbol": "<:slut:686148402941001730>",
-            "xp_enabled": True,
-            "economy_enabled": True,
-            "gambling_enabled": True,
-            "shop_enabled": True,
             "timely_amount": 500,
             "timely_cooldown": 24,  # hours
             "xp_per_message": 3,
             "xp_cooldown": 180,  # seconds
             # Currency generation
-            "currency_generation_enabled": True,
             "generation_chance": 0.005,  # 0.5%
             "generation_cooldown": 10,  # seconds
             "generation_min_amount": 60,
@@ -118,8 +113,6 @@ class Unicornia(
             "gambling_max_bet": 1000000,
             "reservation_recovery_seconds": 300,
             "dividend_period_hours": 168,
-            # Migration
-            "nadeko_db_path": None,
         }
 
         default_guild = {
@@ -160,11 +153,8 @@ class Unicornia(
             cog_dir = os.path.dirname(os.path.abspath(__file__))
             db_path = os.path.join(cog_dir, "data", "unicornia.db")
 
-            nadeko_db_path = await self.config.nadeko_db_path()
-
             self.db = DatabaseManager(
                 db_path,
-                nadeko_db_path,
                 reconcile_reserved_on_initialize=False,
             )
             await self.db.connect()  # Establish persistent connection

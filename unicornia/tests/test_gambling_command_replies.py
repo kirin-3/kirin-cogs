@@ -15,8 +15,6 @@ ERROR_PREFIX = "Error in"
 def _cog(game_result: tuple[bool, dict[str, Any]], *, balance: int = 1_000) -> Any:
     cog = object.__new__(GamblingCommands)
     cog.config = MagicMock()  # type: ignore[attr-defined]
-    cog.config.gambling_enabled = AsyncMock(return_value=True)  # type: ignore[attr-defined]
-    cog.config.economy_enabled = AsyncMock(return_value=True)  # type: ignore[attr-defined]
     cog.config.currency_symbol = AsyncMock(return_value="$")  # type: ignore[attr-defined]
     cog.db = MagicMock()  # type: ignore[attr-defined]
     cog.db.economy.get_user_currency = AsyncMock(return_value=balance)  # type: ignore[attr-defined]

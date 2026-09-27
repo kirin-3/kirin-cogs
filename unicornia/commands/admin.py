@@ -11,14 +11,16 @@ from ..views import UnicorniaHelpView
 
 RTP_TOLERANCE = 0.005
 LOW_CONFIDENCE_ROUNDS = 100
-# Left out of the dashboard's config view: a file path, internal bookkeeping, and the on/off switches nothing reads
+# Left out of the dashboard's config view: internal bookkeeping, and removed settings (the Nadeko import path and
+# the on/off switches) that Red still returns while they're in the stored config
 HIDDEN_SETTINGS = {
-    "nadeko_db_path",
     "decay_last_run",
+    "nadeko_db_path",
     "xp_enabled",
     "economy_enabled",
     "gambling_enabled",
     "shop_enabled",
+    "currency_generation_enabled",
 }
 
 # Integer settings where 0 would remove the limit entirely (a daily every minute, decay every minute) or spawn nothing
@@ -173,61 +175,6 @@ class AdminCommands(UnicorniaMixinBase):
             "currency_rewards": await self.db.xp.get_xp_currency_rewards(guild.id),
         }
 
-    @unicornia_group.group(name="migration")
-    @checks.is_owner()
-    async def migration_group(self, ctx):
-        """
-        Manage Nadeko database migration.
-
-        **Owner only.**
-        """
-        pass
-
-    @migration_group.command(name="setpath")
-    async def migration_setpath(self, ctx, path: str):
-        """
-        Set path to Nadeko DB.
-
-        **Owner only.**
-
-        **Syntax**
-        `[p]unicornia migration setpath <path>`
-        """
-        await self.config.nadeko_db_path.set(path)
-
-        # Update current instance
-        if self.db:
-            self.db.nadeko_db_path = path
-
-        await ctx.send(f"✅ Nadeko DB path set to: `{path}`")
-
-    @migration_group.command(name="run")
-    async def migration_run(self, ctx):
-        """
-        Run migration from Nadeko.
-
-        This process may take some time.
-        **Owner only.**
-
-        **Syntax**
-        `[p]unicornia migration run`
-        """
-        nadeko_path = await self.config.nadeko_db_path()
-        if not nadeko_path:
-            await ctx.send("❌ No Nadeko DB path configured. Use `[p]unicornia migration setpath` first.")
-            return
-
-        await ctx.send(f"⏳ Starting migration from `{nadeko_path}`... Check console for progress.")
-        try:
-            # Re-initialize DB with correct path if needed
-            if self.db and self.db.nadeko_db_path != nadeko_path:
-                self.db.nadeko_db_path = nadeko_path
-
-            await self.db.migrate_from_nadeko()
-            await ctx.send("✅ Migration completed successfully!")
-        except Exception as e:
-            await ctx.send(f"❌ Migration failed: {e}")
-
     @unicornia_group.group(name="gen")
     @checks.is_owner()
     async def gen_group(self, ctx):
@@ -309,15 +256,10 @@ class AdminCommands(UnicorniaMixinBase):
         valid_settings = [
             "currency_name",
             "currency_symbol",
-            "xp_enabled",
-            "economy_enabled",
-            "gambling_enabled",
-            "shop_enabled",
             "timely_amount",
             "timely_cooldown",
             "xp_per_message",
             "xp_cooldown",
-            "currency_generation_enabled",
             "generation_chance",
             "generation_cooldown",
             "generation_min_amount",
@@ -350,10 +292,6 @@ class AdminCommands(UnicorniaMixinBase):
             settings_display.append("[General]")
             settings_display.append(f"Currency Name:       {await self.config.currency_name()}")
             settings_display.append(f"Currency Symbol:     {await self.config.currency_symbol()}")
-            settings_display.append(f"XP System:           {await get_val('xp_enabled')}")
-            settings_display.append(f"Economy System:      {await get_val('economy_enabled')}")
-            settings_display.append(f"Gambling System:     {await get_val('gambling_enabled')}")
-            settings_display.append(f"Shop System:         {await get_val('shop_enabled')}")
 
             settings_display.append("\n[XP & Rewards]")
             settings_display.append(f"XP Per Message:      {await get_val('xp_per_message')}")
@@ -362,7 +300,6 @@ class AdminCommands(UnicorniaMixinBase):
             settings_display.append(f"Daily Cooldown:      {await get_val('timely_cooldown')}h")
 
             settings_display.append("\n[Currency Generation]")
-            settings_display.append(f"Enabled:             {await get_val('currency_generation_enabled')}")
             settings_display.append(f"Chance:              {await get_val('generation_chance')}")
             settings_display.append(f"Cooldown:            {await get_val('generation_cooldown')}s")
             settings_display.append(f"Min Amount:          {await get_val('generation_min_amount')}")
@@ -399,14 +336,7 @@ class AdminCommands(UnicorniaMixinBase):
 
         # Update setting
         try:
-            if setting in [
-                "xp_enabled",
-                "economy_enabled",
-                "gambling_enabled",
-                "shop_enabled",
-                "currency_generation_enabled",
-                "generation_has_password",
-            ]:
+            if setting == "generation_has_password":
                 enabled = value.lower() in ["true", "yes", "1", "on"]
                 await getattr(self.config, setting).set(enabled)
                 await ctx.send(f"✅ {setting} {'enabled' if enabled else 'disabled'}")
@@ -482,16 +412,6 @@ class AdminCommands(UnicorniaMixinBase):
             color=discord.Color.green(),
             description="Full-featured leveling and economy system",
         )
-
-        xp_enabled = await self.config.xp_enabled()
-        economy_enabled = await self.config.economy_enabled()
-        gambling_enabled = await self.config.gambling_enabled()
-        shop_enabled = await self.config.shop_enabled()
-
-        embed.add_field(name="XP System", value="✅ Enabled" if xp_enabled else "❌ Disabled", inline=True)
-        embed.add_field(name="Economy System", value="✅ Enabled" if economy_enabled else "❌ Disabled", inline=True)
-        embed.add_field(name="Gambling", value="✅ Enabled" if gambling_enabled else "❌ Disabled", inline=True)
-        embed.add_field(name="Shop", value="✅ Enabled" if shop_enabled else "❌ Disabled", inline=True)
 
         currency_name = await self.config.currency_name()
         currency_symbol = await self.config.currency_symbol()

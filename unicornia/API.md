@@ -135,7 +135,7 @@ that change anything; the rest never write to the database.
 | `member_summary(guild, user_id, *, transactions=20, details=False) -> dict` | Wallet, bank, `LevelStats`, rank (`None` past 300 or without XP), club, equipped background and recent transactions. `details=True` adds rakeback, bet stats, shop inventory and owned backgrounds. |
 | `richest(guild, limit=25) -> list[tuple[int, int]]` | `(user_id, wallet + bank)` of current non-bot members. |
 | `house_stats() -> dict` | The `[p]unicornia yieldstats` figures as numbers: per-game RTP against the target, the yield pool and recent dividend runs. |
-| `config_snapshot(guild) -> dict` | The settings, channels, whitelists and level rewards, without the Nadeko migration path, market message ID or on/off switches. |
+| `config_snapshot(guild) -> dict` | The settings, channels, whitelists and level rewards, without internal bookkeeping, the market message ID, or removed settings still in the stored config. |
 | `stocks() -> list[dict]` | Every listed stock. |
 | `portfolio(user_id) -> dict` | `holdings` (biggest first, each with `value`, `cost`, `profit` and `profit_pct`), `totals` computed as `stock portfolio` does, and every `dividends` payout, newest first. |
 | `club_for(user_id) -> dict` | `{"club": ..., "invitations": [...]}`. `club` has the name, description, image and banner URLs, XP, `owner_id`, rank and `members` (`user_id`, stored `name`, `xp`, `owner`, `admin`; owner, then admins, then by XP), or is `None`, when `invitations` lists the inviting clubs' names and descriptions. |

@@ -37,7 +37,7 @@ class XPSystem:
         self.xp_cooldowns: dict[int, float] = {}
         self.xp_buffer: dict[tuple[int, int], int] = {}
         # Config Cache
-        self._config_cache = {"xp_enabled": True, "xp_cooldown": 60, "xp_per_message": 1}
+        self._config_cache = {"xp_cooldown": 60, "xp_per_message": 1}
         self._guild_config_cache = {}  # {guild_id: {'xp_included_channels': set(), 'excluded_roles': set()}}
 
         # Entries contain effective XP (including pending messages) and a cumulative threshold.
@@ -75,10 +75,8 @@ class XPSystem:
 
     async def _init_config_cache(self):
         """Initialize configuration cache"""
-        enabled = await self.config.xp_enabled()
         cooldown = await self.config.xp_cooldown()
         per_message = await self.config.xp_per_message()
-        self._config_cache["xp_enabled"] = enabled if isinstance(enabled, bool) else True
         self._config_cache["xp_cooldown"] = cooldown if type(cooldown) is int and cooldown >= 0 else 60
         self._config_cache["xp_per_message"] = per_message if type(per_message) is int and per_message >= 0 else 1
 
@@ -132,10 +130,6 @@ class XPSystem:
             try:
                 # Wait for 1 minute
                 await asyncio.sleep(60)
-
-                # Check global enable (Cached)
-                if not self._config_cache.get("xp_enabled", True):
-                    continue
 
                 xp_amount = 1  # Trickle amount per minute
                 pending_updates = []
@@ -357,10 +351,6 @@ class XPSystem:
         Called from on_message_without_command, so commands are already filtered out.
         """
         if self._stopping or message.author.bot or not message.guild:
-            return
-
-        # Check cached config
-        if not self._config_cache.get("xp_enabled", True):
             return
 
         # Check cooldown

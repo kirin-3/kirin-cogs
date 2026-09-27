@@ -23,13 +23,11 @@ class DatabaseManager(CoreDB):
     def __init__(
         self,
         db_path: str,
-        nadeko_db_path: str | None = None,
         *,
         reconcile_reserved_on_initialize: bool = True,
     ):
         super().__init__(
             db_path,
-            nadeko_db_path,
             reconcile_reserved_on_initialize=reconcile_reserved_on_initialize,
         )
         self.club = ClubRepository(self)

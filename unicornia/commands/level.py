@@ -63,10 +63,6 @@ class LevelCommands(UnicorniaMixinBase):
 
     async def _level_check_logic(self, ctx, member: discord.Member | None = None):
         """Logic for checking level/XP"""
-        if not await self.config.xp_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> XP system is disabled.", mention_author=False)
-            return
-
         member = member or ctx.author
 
         try:
@@ -150,10 +146,6 @@ class LevelCommands(UnicorniaMixinBase):
         **Syntax**
         `[p]level leaderboard`
         """
-        if not await self.config.xp_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> XP system is disabled.", mention_author=False)
-            return
-
         try:
             # Use filtered leaderboard (only members in server)
             top_users = await self.xp_system.get_filtered_leaderboard(ctx.guild)
@@ -209,10 +201,6 @@ class LevelCommands(UnicorniaMixinBase):
         `[p]level award 100 @User`
         `[p]level award 500 @User For being helpful`
         """
-        if not await self.config.xp_enabled():
-            await ctx.send("<a:zz_NoTick:729318761655435355> XP system is disabled.")
-            return
-
         if amount <= 0:
             await ctx.send("<a:zz_NoTick:729318761655435355> Amount must be positive.")
             return

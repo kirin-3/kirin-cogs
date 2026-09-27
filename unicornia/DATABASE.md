@@ -1,6 +1,6 @@
 # Unicornia Database Documentation
 
-This document explains the database architecture, file location, and migration process for the Unicornia cog.
+This document explains the database architecture and file location for the Unicornia cog.
 
 ## Database Location
 
@@ -23,27 +23,9 @@ Unicornia uses **WAL (Write-Ahead Logging) Mode** for performance and data integ
 
 Every hour the cog runs a passive WAL checkpoint and `PRAGMA quick_check`. The check reads the whole file, so it runs on its own read-only connection: in WAL mode a reader doesn't block writers, and economy commands keep working while it runs. A failed check is logged as `Database integrity check failed`.
 
-## Migration from Nadeko
+## Data from Nadeko
 
-Migration is manual, not automatic: point the cog at the source database with `[p]unicornia migration setpath <path>` and run `[p]unicornia migration run`. The migration looks for `nadeko.db` at the configured path, falling back to bot-working-directory locations (`/data/nadeko.db`, `data/nadeko.db`, `nadeko.db`, `data/nadeko/nadeko.db`).
-
-### Migration Process
-1.  **Detection**: Reads `nadeko.db` from the configured path (or the fallback locations above).
-2.  **Mapping**: Reads data from Nadeko's tables and inserts it into Unicornia's tables.
-3.  **ID Translation**:
-    *   Nadeko uses internal Integer IDs for linking users (e.g., in Waifu and Club tables).
-    *   Unicornia translates these internal IDs to Discord Snowflake IDs (User IDs) by joining with the `DiscordUser` table during migration. This ensures that waifus and clubs are correctly linked to users even though the underlying ID system changed.
-4.  **Completion**: Logs "Migration from Nadeko database completed successfully" to the console.
-
-### Migrated Tables
-*   `DiscordUser` (Currency, XP, Club Membership)
-*   `BankUsers` (Bank Balance)
-*   `WaifuInfo`, `WaifuItem`, `WaifuUpdates` (Waifu System)
-*   `Clubs`, `ClubApplicants`, `ClubBans` (Club System)
-*   `XpSettings`, `XpRoleReward`, `XpExcludedItem` (XP Configuration)
-*   `GamblingStats`, `UserBetStats` (Gambling Statistics)
-*   `ShopEntry`, `ShopEntryItem` (Shop Items)
-*   `XpShopOwnedItem` (XP Card Backgrounds)
+The data was imported once from Nadeko's `nadeko.db`. The importer has since been removed; names stored by the import are still kept in `DiscordUser.Username` and shown for members who have left the server.
 
 ## Database Schema
 
@@ -54,7 +36,7 @@ Unicornia uses a schema compatible with Nadeko Bot but optimized for Red.
 #### `DiscordUser`
 The central table for user data.
 *   `UserId` (Integer, PK): Discord User ID.
-*   `Username` (Text): Cached username (for migration/display).
+*   `Username` (Text): Name stored by the Nadeko import (display fallback).
 *   `AvatarId` (Text): Cached avatar hash.
 *   `ClubId` (Integer): ID of the club the user belongs to.
 *   `IsClubAdmin` (Integer): 1 if admin, 0 otherwise.

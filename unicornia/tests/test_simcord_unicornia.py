@@ -453,3 +453,19 @@ async def test_club_moderation_finds_members_by_id(red_env: simcord.Env) -> None
     assert "Kicked **rival**" in _last_text(channel, bot)
     assert await club_of(rival) is None
     simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_config_and_status_render_without_the_removed_switches(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild, owner = _guild_with_owner(red_env)
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+
+    await owner.send(channel, "!unicornia config")
+    assert "[General]" in _last_text(channel, bot) and "Enabled" not in _last_text(channel, bot)
+    await owner.send(channel, "!unicornia config economy_enabled false")
+    assert "Invalid setting" in _last_text(channel, bot)
+    await owner.send(channel, "!unicornia status")
+    assert _bot_messages(channel, bot)[-1].embeds[0].title == "🦄 Unicornia Status"
+    simcord.assert_no_errors(red_env)

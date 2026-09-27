@@ -1,6 +1,6 @@
 # Unicornia
 
-Unicornia is a full Nadeko-compatible leveling and economy suite in one cog, backed by its own SQLite database (`data/unicornia.db`, Nadeko schema v3+). It can migrate data from an existing Nadeko `nadeko.db` via `[p]unicornia migration setpath` / `[p]unicornia migration run`.
+Unicornia is a full Nadeko-compatible leveling and economy suite in one cog, backed by its own SQLite database (`data/unicornia.db`, Nadeko schema v3+).
 
 ## Features
 
@@ -14,7 +14,7 @@ Unicornia is a full Nadeko-compatible leveling and economy suite in one cog, bac
 - **Waifus**: Claim, snipe, gift, divorce, and set affinity with other members.
 - **Nitro Shop**: Redeem Nitro boosted/basic rewards.
 - **Stock Market**: IPOs, buy/sell with pricing and slippage, portfolios, stock-trade tax, dividends funded by a house yield pool (including realized gambling edge), and a persistent live Components V2 dashboard (`[p]stock dashboard`). Review history with `[p]stock dividends`.
-- **Owner Tooling**: Global config, RTP/yield dashboard (`[p]unicornia yieldstats`), command/system whitelists, market unwind, and Nadeko migration.
+- **Owner Tooling**: Global config, RTP/yield dashboard (`[p]unicornia yieldstats`), command/system whitelists, and market unwind.
 
 ## Requirements
 

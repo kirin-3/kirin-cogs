@@ -28,7 +28,6 @@ def _make_config_mock() -> MagicMock:
     config = MagicMock(spec=Config)
     config.register_global = MagicMock()
     config.register_guild = MagicMock()
-    config.nadeko_db_path = AsyncMock(return_value=None)
     config.generation_channels = AsyncMock(return_value=[])
 
     guild_group = MagicMock()

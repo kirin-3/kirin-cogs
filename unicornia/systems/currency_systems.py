@@ -29,7 +29,6 @@ class CurrencyGeneration:
         self.active_plants = {}  # {guild_id: {channel_id: plant_data}}
 
         # Config cache
-        self.gen_enabled = False
         self.gen_channels = set()
         self.gen_cooldown = 10
         self.gen_chance = 0.005
@@ -48,7 +47,6 @@ class CurrencyGeneration:
 
     async def refresh_config_cache(self):
         """Refresh configuration cache"""
-        self.gen_enabled = await self.config.currency_generation_enabled()
         self.gen_channels = set(await self.config.generation_channels())
         self.gen_cooldown = await self.config.generation_cooldown()
         self.gen_chance = await self.config.generation_chance()
@@ -71,9 +69,6 @@ class CurrencyGeneration:
             return
 
         # Fast checks using cache
-        if not self.gen_enabled:
-            return
-
         if message.channel.id not in self.gen_channels:
             return
 

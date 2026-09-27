@@ -35,9 +35,6 @@ class GamblingCommands(UnicorniaMixinBase):
     @app_commands.describe(opponent="Player to challenge", amount="Stake paid by each player")
     async def duel(self, ctx, opponent: discord.Member, amount: str):
         """Challenge another player to a staked rock-paper-scissors duel."""
-        if not await self.config.gambling_enabled() or not await self.config.economy_enabled():
-            await ctx.reply("Gambling or the economy is currently disabled.", mention_author=False)
-            return
         stake = await self._resolve_bet(ctx, amount)
         if stake is None:
             return
@@ -71,14 +68,6 @@ class GamblingCommands(UnicorniaMixinBase):
         **Examples**
         `[p]gambling betroll 100`
         """
-        if not await self.config.gambling_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
-            return
-
-        if not await self.config.economy_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
-            return
-
         amount_int = await self._resolve_bet(ctx, amount)
         if amount_int is None:
             return
@@ -129,14 +118,6 @@ class GamblingCommands(UnicorniaMixinBase):
         `[p]gambling rps rock 100`
         `[p]gambling rps 100`
         """
-        if not await self.config.gambling_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
-            return
-
-        if not await self.config.economy_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
-            return
-
         # Handle flexible arguments: [p]rps 100 -> choice="100", amount=0
         if choice and (choice.isdigit() or choice.lower() == "all") and (amount == "0" or amount == 0):
             amount = choice
@@ -228,14 +209,6 @@ class GamblingCommands(UnicorniaMixinBase):
         **Examples**
         `[p]gambling slots 500`
         """
-        if not await self.config.gambling_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
-            return
-
-        if not await self.config.economy_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
-            return
-
         amount_int = await self._resolve_bet(ctx, amount)
         if amount_int is None:
             return
@@ -283,14 +256,6 @@ class GamblingCommands(UnicorniaMixinBase):
         **Syntax**
         `[p]gambling blackjack <amount>`
         """
-        if not await self.config.gambling_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
-            return
-
-        if not await self.config.economy_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
-            return
-
         amount_int = await self._resolve_bet(ctx, amount)
         if amount_int is None:
             return
@@ -316,14 +281,6 @@ class GamblingCommands(UnicorniaMixinBase):
         `[p]gambling betflip 100 heads`
         `[p]gambling betflip 100` (Interactive)
         """
-        if not await self.config.gambling_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
-            return
-
-        if not await self.config.economy_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
-            return
-
         amount_int = await self._resolve_bet(ctx, amount)
         if amount_int is None:
             return
@@ -406,14 +363,6 @@ class GamblingCommands(UnicorniaMixinBase):
         **Syntax**
         `[p]gambling luckyladder <amount>`
         """
-        if not await self.config.gambling_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
-            return
-
-        if not await self.config.economy_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
-            return
-
         amount_int = await self._resolve_bet(ctx, amount)
         if amount_int is None:
             return
@@ -489,14 +438,6 @@ class GamblingCommands(UnicorniaMixinBase):
             )
             embed.set_footer(text="Default mines: 3. Max mines: 19.")
             await ctx.send(embed=embed)
-            return
-
-        if not await self.config.gambling_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Gambling is disabled.", mention_author=False)
-            return
-
-        if not await self.config.economy_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
             return
 
         amount_int = await self._resolve_bet(ctx, amount)

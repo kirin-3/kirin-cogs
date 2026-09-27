@@ -31,10 +31,6 @@ class WaifuCommands(UnicorniaMixinBase):
         `[p]waifu claim @User`
         `[p]waifu claim @User 100`
         """
-        if not await self.config.economy_enabled():
-            await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
-            return
-
         if member.bot:
             await ctx.send("<a:zz_NoTick:729318761655435355> You can't claim bots as waifus!")
             return

@@ -164,10 +164,6 @@ class ShopCommands(UnicorniaMixinBase):
         **Syntax**
         `[p]shop list`
         """
-        if not await self.config.shop_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Shop system is disabled.", mention_author=False)
-            return
-
         try:
             items = await self.shop_system.get_shop_items(ctx.guild.id)
             if not items:
@@ -195,10 +191,6 @@ class ShopCommands(UnicorniaMixinBase):
         `[p]shop buy 1`
         `[p]shop buy 5`
         """
-        if not await self.config.shop_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Shop system is disabled.", mention_author=False)
-            return
-
         try:
             success, message, data = await self.shop_system.purchase_item(ctx.author, ctx.guild.id, index_or_id)
             if success:
@@ -231,10 +223,6 @@ class ShopCommands(UnicorniaMixinBase):
         **Syntax**
         `[p]shop info <index>`
         """
-        if not await self.config.shop_enabled():
-            await ctx.send("<a:zz_NoTick:729318761655435355> Shop system is disabled.")
-            return
-
         try:
             item = await self.shop_system.get_shop_item(ctx.guild.id, index_or_id)
             if not item:
@@ -288,10 +276,6 @@ class ShopCommands(UnicorniaMixinBase):
         `[p]shop add role 1000 "VIP Role" @VIPRole`
         `[p]shop add item 500 "Mystery Box"`
         """
-        if not await self.config.shop_enabled():
-            await ctx.send("<a:zz_NoTick:729318761655435355> Shop system is disabled.")
-            return
-
         try:
             # Parse item type
             type_map = {
@@ -380,10 +364,6 @@ class ShopCommands(UnicorniaMixinBase):
         `[p]shop edit 1 price 5000`
         `[p]shop edit 1 name Super VIP`
         """
-        if not await self.config.shop_enabled():
-            await ctx.send("<a:zz_NoTick:729318761655435355> Shop system is disabled.")
-            return
-
         try:
             # Get item
             item = await self.shop_system.get_shop_item(ctx.guild.id, item_id)
@@ -504,10 +484,6 @@ class ShopCommands(UnicorniaMixinBase):
         **Syntax**
         `[p]shop remove <index>`
         """
-        if not await self.config.shop_enabled():
-            await ctx.send("<a:zz_NoTick:729318761655435355> Shop system is disabled.")
-            return
-
         try:
             # Get item info before deleting
             item = await self.shop_system.get_shop_item(ctx.guild.id, item_id)

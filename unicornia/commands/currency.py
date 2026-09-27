@@ -28,10 +28,6 @@ class CurrencyCommands(UnicorniaMixinBase):
         **Syntax**
         `[p]pick`
         """
-        if not await self.config.economy_enabled():
-            await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
-            return
-
         try:
             result = await self.currency_generation.pick_plant(ctx.author.id, ctx.channel.id)
             if result:

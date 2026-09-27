@@ -81,10 +81,6 @@ class EconomyCommands(UnicorniaMixinBase):
 
     async def _balance_logic(self, ctx, member: discord.Member | None = None):
         """Shared logic for balance commands"""
-        if not await self.config.economy_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
-            return
-
         member = member or ctx.author
 
         try:
@@ -123,10 +119,6 @@ class EconomyCommands(UnicorniaMixinBase):
         `[p]economy give 100 @User`
         `[p]economy give 500 @User For pizza`
         """
-        if not await self.config.economy_enabled():
-            await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
-            return
-
         if amount <= 0:
             await ctx.send("<a:zz_NoTick:729318761655435355> Amount must be positive.")
             return
@@ -189,10 +181,6 @@ class EconomyCommands(UnicorniaMixinBase):
 
     async def _timely_logic(self, ctx):
         """Shared logic for timely commands"""
-        if not await self.config.economy_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
-            return
-
         try:
             success, amount_or_ts, streak, breakdown = await self.economy_system.claim_timely(ctx.author)
 
@@ -409,10 +397,6 @@ class EconomyCommands(UnicorniaMixinBase):
         **Syntax**
         `[p]economy award <amount> <member> [note]`
         """
-        if not await self.config.economy_enabled():
-            await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
-            return
-
         if amount <= 0:
             await ctx.send("<a:zz_NoTick:729318761655435355> Amount must be positive.")
             return
@@ -444,10 +428,6 @@ class EconomyCommands(UnicorniaMixinBase):
         **Syntax**
         `[p]economy take <amount> <member> [note]`
         """
-        if not await self.config.economy_enabled():
-            await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
-            return
-
         if amount <= 0:
             await ctx.send("<a:zz_NoTick:729318761655435355> Amount must be positive.")
             return
@@ -484,10 +464,6 @@ class EconomyCommands(UnicorniaMixinBase):
         **Syntax**
         `[p]economy leaderboard`
         """
-        if not await self.config.economy_enabled():
-            await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
-            return
-
         try:
             # Get filtered leaderboard (only members in server)
             top_users = await self.economy_system.get_filtered_leaderboard(ctx.guild, limit=10, offset=0)
@@ -547,10 +523,6 @@ class EconomyCommands(UnicorniaMixinBase):
         `[p]bank deposit all`
         """
         try:
-            if not await self.config.economy_enabled():
-                await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
-                return
-
             amount_int: int
             if amount.lower() == "all":
                 wallet, _ = await self.economy_system.get_balance(ctx.author.id)
@@ -600,10 +572,6 @@ class EconomyCommands(UnicorniaMixinBase):
         `[p]bank withdraw all`
         """
         try:
-            if not await self.config.economy_enabled():
-                await ctx.send("<a:zz_NoTick:729318761655435355> Economy system is disabled.")
-                return
-
             amount_int: int
             if amount.lower() == "all":
                 _, bank = await self.economy_system.get_balance(ctx.author.id)
@@ -645,10 +613,6 @@ class EconomyCommands(UnicorniaMixinBase):
         **Syntax**
         `[p]bank balance`
         """
-        if not await self.config.economy_enabled():
-            await ctx.reply("<a:zz_NoTick:729318761655435355> Economy system is disabled.", mention_author=False)
-            return
-
         try:
             _wallet_balance, bank_balance = await self.economy_system.get_balance(ctx.author.id)
             currency_symbol = await self.config.currency_symbol()

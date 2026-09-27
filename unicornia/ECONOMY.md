@@ -137,14 +137,6 @@ Admins can configure the economy via `[p]unicornia config` or by editing `unicor
 
 Values saved before these limits existed are tolerated: a zero daily cooldown or decay interval is treated as one hour, and a spawn minimum above the maximum is swapped (with a warning in the log). Check `[p]unicornia config` and correct them.
 
-## Migration Guide (Nadeko -> Unicornia)
-
-Migration is manual: set the source database with `[p]unicornia migration setpath` and run `[p]unicornia migration run`. The migration script (`db.migrate_from_nadeko`) looks for `nadeko.db` at the configured path and in a few bot-working-directory locations. It:
-1.  Reads user balances from Nadeko's `DiscordUser`.
-2.  Transfers Bank balances from `BankUsers`.
-3.  Preserves transaction history (where schema permits).
-4.  Maps internal Integer IDs to Discord Snowflake IDs to ensure data continuity.
-
 ## Security Considerations
 
 *   **Input Validation**: All text inputs (notes, names) are sanitized to prevent formatting exploits.

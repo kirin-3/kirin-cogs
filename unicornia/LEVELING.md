@@ -121,7 +121,6 @@ Inventory for XP card customizations.
 
 ### Admin (Configuration)
 #### Global Settings (Owner)
-*   `[p]unicornia config xp_enabled <true/false>`: Global toggle.
 *   `[p]unicornia config xp_per_message <int>`: XP per message (Default: 3).
 *   `[p]unicornia config xp_cooldown <seconds>`: Cooldown between gains (Default: 180).
 

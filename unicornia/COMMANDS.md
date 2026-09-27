@@ -12,8 +12,6 @@ Commands for configuring the Unicornia system.
 | `[p]unicornia config [setting] [value]` | Configure global Unicornia settings. | Bot Owner |
 | `[p]unicornia status` | Check the current status and configuration of Unicornia systems. | |
 | `[p]unicornia yieldstats` | View aggregate RTP and yield-pool health. Aliases: `housedashboard`, `rtpdashboard`. | Bot Owner |
-| `[p]unicornia migration setpath <path>` | Set the path to a Nadeko `nadeko.db` file for migration. | Bot Owner |
-| `[p]unicornia migration run` | Run the Nadeko data migration. | Bot Owner |
 | `[p]unicornia gen channel <operation> <channel>` | Add or remove a channel for currency generation. Operation: `add` or `remove`. | Bot Owner |
 | `[p]unicornia gen list` | List currency generation channels. | |
 | `[p]unicornia guild` | Base command for guild-specific configuration. | Admin |
