@@ -192,6 +192,9 @@ async def ms() -> AsyncIterator[SimpleNamespace]:
     rp = SimpleNamespace(user_settings=SimpleNamespace(config=rp_config))
     rp.settings_for = lambda user_id: Roleplay.settings_for(rp, user_id)  # type: ignore[arg-type]
     rp.set_toggle = lambda user_id, key, value: Roleplay.set_toggle(rp, user_id, key, value)  # type: ignore[arg-type]
+    rp.setting_changed = AsyncMock()
+    rp.stats_for = AsyncMock(return_value={"untracked": True})
+    rp.top_pairs = AsyncMock(return_value=[])
 
     cc = _FakeCustomCommand()
     cogs: dict[str, Any] = {"CustomCommand": cc, "CustomEmoji": ce, "CustomRoleColor": crc, "Roleplay": rp}
@@ -713,6 +716,35 @@ async def test_roleplay_page_explains_when_the_cog_is_unloaded(ms: SimpleNamespa
     status, page = await _get(ms, REGULAR, "/roleplay")
 
     assert status == 200 and "Roleplay settings are unavailable" in page
+
+
+@pytest.mark.asyncio
+async def test_roleplay_page_shows_stats_and_top_pairs_by_name(ms: SimpleNamespace) -> None:
+    rp = ms.cogs["Roleplay"]
+    rp.stats_for.return_value = {
+        "untracked": False,
+        "given": [("hug", 3)],
+        "given_total": 3,
+        "received": [],
+        "received_total": 0,
+        "partners": [(ACTIVE, 3)],
+    }
+    rp.top_pairs.return_value = [{"a": ACTIVE, "b": 42, "total": 3, "actions": [("hug", 3)]}]
+
+    _, page = await _get(ms, REGULAR, "/roleplay")
+
+    assert "Favourite partners" in page and "member2" in page
+    assert "Unknown user" in page and "hug 3" in page
+
+
+@pytest.mark.asyncio
+async def test_untracked_members_see_why_they_have_no_stats(ms: SimpleNamespace) -> None:
+    response = await _post(ms, REGULAR, "/roleplay", {"key": "untracked", "value": "on"})
+    _, page = await _get(ms, REGULAR, "/roleplay")
+
+    assert response.status == 302
+    ms.cogs["Roleplay"].setting_changed.assert_awaited_once_with(REGULAR, "untracked", True)
+    assert "aren't counted" in page
 
 
 # --- settings ------------------------------------------------------------------------------------

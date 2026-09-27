@@ -49,6 +49,7 @@ def _cog(settings: dict[int, dict[str, Any]], owners: dict[int, _Member]) -> Rol
         SimpleNamespace(config=SimpleNamespace(user=user), users_manager=SimpleNamespace(get_owner=get_owner)),
     )
     cog.send_action_message = AsyncMock()
+    cog.tally = cast(Any, SimpleNamespace(record=AsyncMock()))
     return cog
 
 

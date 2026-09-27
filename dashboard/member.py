@@ -167,7 +167,13 @@ class MemberSite:
             else:
                 ids = value if isinstance(value, list) else []
                 lists.append({"key": key, **item, "names": [self._name(user_id) for user_id in ids]})
-        return self._render(request, "roleplay.html", status=status, toggles=toggles, lists=lists, error=error)
+        stats = await rp.stats_for(request["member"].id)
+        if not stats["untracked"]:
+            stats["partners"] = [(self._name(user_id), times) for user_id, times in stats["partners"]]
+        pairs = [{**pair, "a": self._name(pair["a"]), "b": self._name(pair["b"])} for pair in await rp.top_pairs()]
+        return self._render(
+            request, "roleplay.html", status=status, toggles=toggles, lists=lists, stats=stats, pairs=pairs, error=error
+        )
 
     def _name(self, user_id: object) -> str:
         if not isinstance(user_id, int):

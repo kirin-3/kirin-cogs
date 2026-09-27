@@ -37,6 +37,11 @@ class Help:
         # Subcommands field
         subcommands = f"- **{prefix}roleplay settings**: Show and manage your settings for Roleplay.\nUse `{prefix}roleplay settings help` for more detailed help on managing your settings."
         embed.add_field(name="Settings", value=subcommands, inline=False)
+        embed.add_field(
+            name="Stats",
+            value=f"- **{prefix}rpstats** [member] [other]: Action counts, yours, a member's or between two members.",
+            inline=False,
+        )
 
         # Actions field
         actions = ""

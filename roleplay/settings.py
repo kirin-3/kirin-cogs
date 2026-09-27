@@ -243,6 +243,7 @@ class Settings:
                 return
 
             await self.config.user(target).get_attr(property).set(state)
+            await self.parent.setting_changed(target.id, property, state)
             await ctx.send(
                 f"{target.display_name} is now {get_indefinite_article(label)} {label}."
                 if state

@@ -42,5 +42,44 @@
   {% endfor %}
 </div>
 <p class="empty">Add or remove people from these lists with the bot's <code>roleplay settings</code> commands in Discord.</p>
+<h2>Your stats</h2>
+{% if stats.untracked %}
+<p class="empty">You're an Untracked Member, so your roleplay actions aren't counted.</p>
+{% elif not stats.given_total and not stats.received_total %}
+<p class="empty">Nothing counted yet. Actions count once they go through.</p>
+{% else %}
+<div class="flow">
+  {% for title, total, rows in [("Given", stats.given_total, stats.given), ("Received", stats.received_total, stats.received)] %}
+  <section class="panel">
+    <h3>{{ title }} <small>{{ "{:,}".format(total) }}</small></h3>
+    {% if rows %}
+    <table><tbody>{% for action, times in rows %}<tr><td>{{ action }}</td><td class="num">{{ "{:,}".format(times) }}</td></tr>{% endfor %}</tbody></table>
+    {% else %}<p class="empty">Nothing yet.</p>{% endif %}
+  </section>
+  {% endfor %}
+  <section class="panel">
+    <h3>Favourite partners</h3>
+    <table><tbody>{% for name, times in stats.partners %}<tr><td>{{ name }}</td><td class="num">{{ "{:,}".format(times) }}</td></tr>{% endfor %}</tbody></table>
+  </section>
+</div>
+{% endif %}
+<h2>Top pairs</h2>
+{% if pairs %}
+<section class="panel">
+  <table>
+    <tbody>
+    {% for pair in pairs %}
+    <tr>
+      <td><strong>{{ pair.a }}</strong> &amp; <strong>{{ pair.b }}</strong><small>{% for action, times in pair.actions %}{{ action }} {{ "{:,}".format(times) }}{% if not loop.last %} · {% endif %}{% endfor %}</small></td>
+      <td class="num">{{ "{:,}".format(pair.total) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% else %}
+<p class="empty">Nobody has been counted yet.</p>
+{% endif %}
+<p class="empty">Actions between two members count both ways round once they go through. <code>rpstats</code> shows the same in Discord.</p>
 {% endif %}
 {% endblock %}

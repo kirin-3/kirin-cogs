@@ -68,6 +68,8 @@ order:
 | `[p]roleplay settings selective [member] [true/false]` | self; others need admin | Reject everyone not in your allowed list |
 | `[p]roleplay settings public [member] [true/false]` | self; others need admin | Consent to any action from a member |
 | `[p]roleplay settings servant [member] [true/false]` | self; others need admin | Consent to any request on you |
+| `[p]roleplay settings untracked [member] [true/false]` | self; others need admin | Stop counting your actions and delete your counts |
+| `[p]rpstats [member] [other]` | everyone (server-only) | Action counts: yours, a member's, or between two members. Also `/rpstats` once enabled |
 | `[p]roleplay admin download` | bot admin | Cache all action images locally |
 | `[p]roleplay admin logger_settings [level]` | bot admin | Show or set the cog's log level |
 
@@ -80,11 +82,26 @@ shows, so a member whose owner left can remove them and add a new one.
 
 - Settings are **user-scoped**: your lists and flags are the same in every server that shares this bot.
 - Guild admins can view or toggle any member's settings; only the first owner in a member's owner list is used.
-- `[p]roleplay` itself is prefix-only; there are no slash commands.
+- `[p]roleplay` itself is prefix-only; `[p]rpstats` is the only slash command.
+
+## Stats
+
+Every action that goes through between two members is counted for the pair, the right way round: `[p]ask`ed
+actions count for the member who performed them. Actions performed by the bot (no target) and refused or
+unanswered ones aren't counted. Counting started with version 2.7.0, so earlier actions aren't included.
+
+- `[p]rpstats` shows your totals and top actions, given and received, and your favourite partners.
+  `[p]rpstats @member` shows theirs; `[p]rpstats @a @b` shows what each did to the other.
+- The member site's Roleplay page shows the same for you, and the ten busiest pairs on the server.
+- **Untracked Member** (`[p]roleplay settings untracked true`, or the switch on the member site) stops counting
+  your actions both ways round, deletes everything already counted for you, and makes `rpstats` about you say
+  your stats are private.
 
 ## Data storage and deletion
 
-Per-user settings only: the `selective`, `public` and `servant` flags, and the user IDs in each member's owner,
-allowed and blocked lists, stored in Red Config under the pinned `Settings` cog name. Red data-deletion requests
-clear a user's own settings and scrub their ID from every other member's lists. Downloaded images live in the cog's
+Per-user settings: the `selective`, `public`, `servant` and `untracked` flags, and the user IDs in each member's owner,
+allowed and blocked lists, stored in Red Config under the pinned `Settings` cog name. Action counts: for each pair
+of member user IDs, how many times one performed each action on the other, in the cog's own `Roleplay` Config.
+Red data-deletion requests clear a user's own settings and counts, and scrub their ID from every other member's
+lists and counts. Downloaded images live in the cog's
 data folder and are not user data.

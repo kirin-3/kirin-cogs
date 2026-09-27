@@ -5,6 +5,13 @@
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
  - UI interface for editing settings. This may require creating an app command ('/settings') in order to utilize discords interaction objects and ephemeral messaging
 
+## [2.7.0] - 2026-09-27
+
+### Added
+
+- Every action that goes through between two members is counted. `[p]rpstats` shows a member's totals, top actions and favourite partners, or what two members did to each other; the member site shows your stats and the busiest pairs
+- The Untracked Member setting stops counting your actions and deletes what was counted
+
 ## [2.6.0] - 2026-09-25
 
 ### Changed

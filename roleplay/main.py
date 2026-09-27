@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 import aiohttp
 import discord
-from redbot.core import commands
+from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.data_manager import cog_data_path
 from redbot.core.utils.chat_formatting import humanize_list, inline
@@ -17,12 +17,13 @@ from .actions import Action, ActionManager
 from .embed import Embed
 from .help import Help
 from .settings import Settings
+from .tally import Tally, member_stats, summary, top_pairs
 from .unicornia import strings, web
 from .user_settings import USER_SETTINGS
 from .views import request_consent
 
 # The settings the member site may change; the user lists stay command-only
-WEB_TOGGLES = ("selective", "public", "servant")
+WEB_TOGGLES = ("selective", "public", "servant", "untracked")
 
 
 class Roleplay(commands.Cog):
@@ -35,6 +36,9 @@ class Roleplay(commands.Cog):
         self.action_manager = ActionManager()
         self.helper = Help(self.action_manager)
         self.user_settings = Settings(bot, self)
+        # The Settings config above keeps member settings; this one keeps the action counts
+        self.config = Config.get_conf(self, identifier=const.COG_IDENTIFIER, force_registration=True)
+        self.tally = Tally(self.config, self.is_untracked)
 
         # action commands are added to the bot directly, see create_action_command()
         self.action_commands: list[commands.Command] = []
@@ -80,8 +84,17 @@ class Roleplay(commands.Cog):
             await self.session.close()
 
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
-        """Remove the user's roleplay settings and their ID from every other member's lists."""
+        """Remove the user's roleplay settings, their ID from every other member's lists, and their action counts."""
         await self.user_settings.users_manager.delete_user_data(user_id)
+        await self.tally.forget(user_id)
+
+    async def is_untracked(self, user_id: int) -> bool:
+        return bool(await self.user_settings.config.user_from_id(user_id).untracked())
+
+    async def setting_changed(self, user_id: int, key: str, value: bool) -> None:
+        """Turning Untracked on deletes what was counted for the member."""
+        if key == "untracked" and value:
+            await self.tally.forget(user_id)
 
     # --- For the member site ---
 
@@ -104,6 +117,76 @@ class Roleplay(commands.Cog):
         if key not in WEB_TOGGLES:
             raise ValueError(f"{key!r} can't be changed here.")
         await self.user_settings.config.user_from_id(user_id).get_attr(key).set(bool(value))
+        await self.setting_changed(user_id, key, bool(value))
+
+    async def stats_for(self, user_id: int) -> dict:
+        """A member's own counts for the member site: totals, top actions and top partners (as user IDs)."""
+        if await self.is_untracked(user_id):
+            return {"untracked": True}
+        given, received, partners = member_stats(await self.tally.pairs(), user_id)
+        return {
+            "untracked": False,
+            "given": given.most_common(5),
+            "given_total": given.total(),
+            "received": received.most_common(5),
+            "received_total": received.total(),
+            "partners": partners.most_common(5),
+        }
+
+    async def top_pairs(self, limit: int = 10) -> list[dict]:
+        """The busiest pairs on the server for the member site, as user IDs, with their top actions."""
+        return [
+            {"a": a, "b": b, "total": counts.total(), "actions": counts.most_common(3)}
+            for a, b, counts in top_pairs(await self.tally.pairs(), limit)
+        ]
+
+    @commands.hybrid_command()  # pyright: ignore[reportArgumentType]
+    @commands.guild_only()
+    @commands.bot_has_permissions(embed_links=True)
+    async def rpstats(
+        self, ctx: commands.GuildContext, member: discord.Member | None = None, other: discord.Member | None = None
+    ) -> None:
+        """Roleplay action counts: yours, a member's, or between two members."""
+        members = [m for m in (member or ctx.author, other) if m is not None]
+        for m in members:
+            if await self.is_untracked(m.id):
+                await ctx.send(f"**{m.display_name}** keeps their roleplay stats private.")
+                return
+        pairs = await self.tally.pairs()
+
+        if len(members) == 2:
+            a, b = members
+            ab, ba = pairs.get((a.id, b.id)), pairs.get((b.id, a.id))
+            total = (ab.total() if ab else 0) + (ba.total() if ba else 0)
+            embed = discord.Embed(
+                title=f"Roleplay stats: {a.display_name} & {b.display_name}",
+                description=f"**{total:,}** actions between them.",
+                color=const.EMBED_COLOR,
+            )
+            embed.add_field(name=f"{a.display_name} → {b.display_name}", value=summary(ab, 5) if ab else "Nothing yet")
+            embed.add_field(name=f"{b.display_name} → {a.display_name}", value=summary(ba, 5) if ba else "Nothing yet")
+            await ctx.send(embed=embed)
+            return
+
+        (target,) = members
+        given, received, partners = member_stats(pairs, target.id)
+        if not (given or received):
+            await ctx.send(f"**{target.display_name}** hasn't done or received any roleplay actions yet.")
+            return
+        embed = discord.Embed(title=f"Roleplay stats: {target.display_name}", color=const.EMBED_COLOR)
+        embed.set_thumbnail(url=target.display_avatar.url)
+        embed.add_field(name=f"Given ({given.total():,})", value=summary(given, 5) or "Nothing yet", inline=False)
+        embed.add_field(
+            name=f"Received ({received.total():,})", value=summary(received, 5) or "Nothing yet", inline=False
+        )
+        top = partners.most_common(5)
+        names = await self.user_settings.users_manager.display_names([user_id for user_id, _ in top])
+        embed.add_field(
+            name="Favourite partners",
+            value="\n".join(f"{name}: **{times:,}**" for name, (_, times) in zip(names, top, strict=True)),
+            inline=False,
+        )
+        await ctx.send(embed=embed)
 
     @commands.group(invoke_without_command=True)
     async def roleplay(self, ctx: commands.Context):
@@ -392,6 +475,15 @@ class Roleplay(commands.Cog):
             action,
             interaction_type=interaction_type,
         )
+
+        # Passive (asked-for) actions are performed by the target on the invoker
+        doer, receiver = (
+            (target_member, invoker_member)
+            if interaction_type == const.InteractionType.PASSIVE
+            else (invoker_member, target_member)
+        )
+        if not (doer.bot or receiver.bot):
+            await self.tally.record(doer.id, receiver.id, action.name)
         return True
 
     async def get_party(

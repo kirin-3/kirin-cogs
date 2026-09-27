@@ -10,7 +10,8 @@ Cloudflare. They share the login code but keep separate sessions and cookies.
   thread the modmail bot has kept since October 2020, read-only.
 - **Member site**, `my.unicornia.net` on `127.0.0.1:8012`. Every member can see their Unicornia profile, stocks, club
   and waifu standing, buy and equip rank-card backgrounds, see the XP leaderboard and their own warnings, and turn
-  their roleplay settings (Selective, Public and Servant), the bot's daddy replies and the UnicornAI opt-out on or off. Supporters also manage their custom commands, custom emojis and, if they
+  their roleplay settings (Selective, Public, Servant and Untracked) on or off and see their roleplay stats and the busiest
+  pairs, and turn the bot's daddy replies and the UnicornAI opt-out on or off. Supporters also manage their custom commands, custom emojis and, if they
   were given one with `[p]assignrole`, their custom role.
 
 ## Who can log in

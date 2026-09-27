@@ -50,6 +50,12 @@ USER_SETTINGS = {
         "description": "Always consent to any request to perform an action *on* a member (except those in your blocked list.)",
         "emoji": "🧹",
     },
+    "untracked": {
+        "default": False,
+        "label": "Untracked Member",
+        "description": "Don't count your roleplay actions in the stats, and delete what was already counted.",
+        "emoji": "🙈",
+    },
     # "chastity": {
     #     "default : False",
     #     "label": "Chastity",
