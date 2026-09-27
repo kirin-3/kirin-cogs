@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 
 import discord
-from redbot.core import Config, checks, commands
+from redbot.core import Config, commands
 from redbot.core.bot import Red
 
 from .migrations import migrate_global_schema
@@ -117,7 +117,7 @@ class Profile(commands.Cog):
 
     @commands.group()  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
-    @checks.admin_or_permissions(manage_guild=True)
+    @commands.admin_or_permissions(manage_guild=True)
     async def profileset(self, ctx: commands.Context):
         """Settings for the profile cog."""
         pass

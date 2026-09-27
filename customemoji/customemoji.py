@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 
 import aiohttp
 import discord
-from redbot.core import Config, checks, commands
+from redbot.core import Config, commands
 
 # Discord's upload limit for custom emojis
 MAX_EMOJI_BYTES = 256 * 1024
@@ -249,7 +249,7 @@ class CustomEmoji(commands.Cog):
         pass
 
     @customemoji.command(name="setrole")
-    @checks.is_owner()
+    @commands.is_owner()
     async def ce_setrole(self, ctx, role: discord.Role | None = None):
         """
         Set the role required to create emojis.
@@ -264,7 +264,7 @@ class CustomEmoji(commands.Cog):
             await ctx.send("Required role removed. Anyone can use this (subject to slot limits).")
 
     @customemoji.command(name="limit")
-    @checks.is_owner()
+    @commands.is_owner()
     async def ce_limit(self, ctx, member: discord.Member, limit: int):
         """Set the emoji limit for a specific user."""
         if limit < 0:
@@ -276,7 +276,7 @@ class CustomEmoji(commands.Cog):
         await ctx.send(f"Set emoji limit for {member.display_name} to {limit}.")
 
     @customemoji.command(name="resetlimit")
-    @checks.is_owner()
+    @commands.is_owner()
     async def ce_resetlimit(self, ctx, member: discord.Member):
         """Reset the emoji limit for a user to the default (2)."""
         async with self.config.guild(ctx.guild).user_limits() as limits:

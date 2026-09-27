@@ -810,7 +810,7 @@ async def dpytest_bot() -> AsyncGenerator[dpy_commands.Bot, None]:
 async def test_dpytest_ce_list_self_no_emojis(dpytest_bot: dpy_commands.Bot) -> None:
     """Invoking ce_list callback when user has no emojis sends the appropriate message.
 
-    We invoke the callback directly because Redbot's ``@checks.is_owner()`` decorator
+    We invoke the callback directly because Redbot's ``@commands.is_owner()`` decorator
     requires a full Red bot environment incompatible with plain discord.py + dpytest.
     """
     config_mock = MagicMock(spec=Config)

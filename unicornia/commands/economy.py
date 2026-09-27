@@ -1,5 +1,5 @@
 import discord
-from redbot.core import app_commands, checks, commands
+from redbot.core import app_commands, commands
 
 from ..mixins import UnicorniaMixinBase
 from ..utils import validate_text_input
@@ -386,7 +386,7 @@ class EconomyCommands(UnicorniaMixinBase):
             )
 
     @economy_group.command(name="award")
-    @checks.is_owner()
+    @commands.is_owner()
     async def economy_award(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
         """
         Award currency to a user.
@@ -417,7 +417,7 @@ class EconomyCommands(UnicorniaMixinBase):
             await ctx.send(f"<a:zz_NoTick:729318761655435355> Error awarding Slut points: {e}")
 
     @economy_group.command(name="take")
-    @checks.is_owner()
+    @commands.is_owner()
     async def economy_take(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
         """
         Take currency from a user.

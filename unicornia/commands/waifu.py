@@ -1,5 +1,5 @@
 import discord
-from redbot.core import app_commands, checks, commands
+from redbot.core import app_commands, commands
 
 from ..mixins import UnicorniaMixinBase
 
@@ -179,7 +179,7 @@ class WaifuCommands(UnicorniaMixinBase):
             await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @waifu_group.command(name="reset")
-    @checks.is_owner()
+    @commands.is_owner()
     async def waifu_reset(self, ctx, member: discord.Member):
         """
         Reset a waifu to initial state.

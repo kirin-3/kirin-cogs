@@ -1,5 +1,5 @@
 import discord
-from redbot.core import app_commands, checks, commands
+from redbot.core import app_commands, commands
 
 from ..mixins import UnicorniaMixinBase
 from ..views import LeaderboardView
@@ -185,7 +185,7 @@ class LevelCommands(UnicorniaMixinBase):
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error retrieving leaderboard: {e}", mention_author=False)
 
     @level_group.command(name="award")
-    @checks.is_owner()
+    @commands.is_owner()
     @app_commands.describe(amount="The amount of XP to award", member="The user to award XP to")
     async def level_award(self, ctx, amount: int, member: discord.Member, *, note: str = ""):
         """

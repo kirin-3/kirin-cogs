@@ -1,5 +1,5 @@
 import discord
-from redbot.core import app_commands, checks, commands
+from redbot.core import app_commands, commands
 
 from ..market_views import (
     StockDashboardView,
@@ -145,7 +145,7 @@ class StockCommands(UnicorniaMixinBase):
             await ctx.send(f"❌ {msg}")
 
     @stock_group.command(name="unwind")
-    @checks.is_owner()
+    @commands.is_owner()
     async def stock_unwind(self, ctx, confirmation: str | None = None):
         """Dry-run or confirm the owner-only market position unwind.
 
@@ -206,7 +206,7 @@ class StockCommands(UnicorniaMixinBase):
         await send_in_chunks(ctx, "\n".join(lines))
 
     @stock_group.command(name="dashboard")
-    @checks.admin_or_permissions(manage_guild=True)
+    @commands.admin_or_permissions(manage_guild=True)
     async def stock_dashboard(self, ctx, channel: discord.TextChannel | None = None):
         """
         Create a live stock dashboard.
@@ -230,7 +230,7 @@ class StockCommands(UnicorniaMixinBase):
         await ctx.send(f"Dashboard created in {channel.mention}.")
 
     @stock_group.command(name="ipo")
-    @checks.is_owner()
+    @commands.is_owner()
     async def stock_ipo(self, ctx, symbol: str, price: int, emoji: str, *, name: str):
         """
         Launch a new stock (IPO).
@@ -253,7 +253,7 @@ class StockCommands(UnicorniaMixinBase):
             await ctx.send("Failed to launch IPO. Symbol might already exist.")
 
     @stock_group.command(name="delist")
-    @checks.is_owner()
+    @commands.is_owner()
     async def stock_delist(self, ctx, symbol: str):
         """
         Delist a stock.
@@ -269,7 +269,7 @@ class StockCommands(UnicorniaMixinBase):
         await ctx.send(f"🗑️ Delisted **{symbol}**.")
 
     @stock_group.command(name="cleanup")
-    @checks.is_owner()
+    @commands.is_owner()
     async def stock_cleanup(self, ctx):
         """
         Cleanup dashboard config.

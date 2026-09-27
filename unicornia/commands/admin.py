@@ -1,7 +1,7 @@
 from typing import Any
 
 import discord
-from redbot.core import checks, commands
+from redbot.core import commands
 from redbot.core.utils.chat_formatting import box, humanize_number
 from redbot.core.utils.menus import DEFAULT_CONTROLS, menu
 
@@ -80,7 +80,7 @@ class AdminCommands(UnicorniaMixinBase):
         view.message = await ctx.send(embed=view.get_embed(), view=view)
 
     @unicornia_group.command(name="yieldstats", aliases=["housedashboard", "rtpdashboard"])
-    @checks.is_owner()
+    @commands.is_owner()
     async def yield_stats_dashboard(self, ctx):
         """Report aggregate payout performance and yield-pool flows."""
         house = await self.house_stats()
@@ -176,7 +176,7 @@ class AdminCommands(UnicorniaMixinBase):
         }
 
     @unicornia_group.group(name="gen")
-    @checks.is_owner()
+    @commands.is_owner()
     async def gen_group(self, ctx):
         """
         Configure currency generation.
@@ -240,7 +240,7 @@ class AdminCommands(UnicorniaMixinBase):
         await ctx.send(f"**Generation Channels:**\n{', '.join(channel_mentions)}")
 
     @unicornia_group.command(name="config")
-    @checks.is_owner()
+    @commands.is_owner()
     async def config_cmd(self, ctx, setting: str | None = None, *, value: str | None = None):
         """
         Configure global settings.
@@ -430,7 +430,7 @@ class AdminCommands(UnicorniaMixinBase):
         await ctx.send(embed=embed)
 
     @unicornia_group.group(name="guild")
-    @checks.admin()
+    @commands.admin()
     async def guild_config(self, ctx):
         """
         Guild-specific configuration.
@@ -510,7 +510,7 @@ class AdminCommands(UnicorniaMixinBase):
         await ctx.send(f"**XP Whitelisted Channels:**\n{', '.join(channel_mentions)}")
 
     @guild_xp_group.group(name="double")
-    @checks.is_owner()
+    @commands.is_owner()
     async def xp_double_group(self, ctx):
         """
         Manage Double XP channels.
@@ -679,7 +679,7 @@ class AdminCommands(UnicorniaMixinBase):
             await menu(ctx, pages, DEFAULT_CONTROLS)
 
     @unicornia_group.group(name="whitelist", aliases=["wl"])
-    @checks.admin_or_permissions(manage_guild=True)
+    @commands.admin_or_permissions(manage_guild=True)
     async def whitelist_group(self, ctx):
         """
         Manage channel restrictions.

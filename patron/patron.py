@@ -16,7 +16,7 @@ from typing import Any
 import aiohttp
 import discord
 from aiohttp import web
-from redbot.core import Config, checks, commands
+from redbot.core import Config, commands
 from redbot.core.errors import CogLoadError
 from redbot.core.utils.chat_formatting import escape, pagify
 
@@ -611,7 +611,7 @@ class Patron(commands.Cog):
     # -- commands ------------------------------------------------------------------------------------------------
 
     @commands.group()  # pyright: ignore[reportArgumentType]
-    @checks.is_owner()
+    @commands.is_owner()
     async def patronset(self, ctx):
         """Settings for the Patron cog."""
 

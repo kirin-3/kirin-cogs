@@ -5,7 +5,7 @@ import time
 
 import discord
 from PIL import Image, ImageDraw, ImageFont
-from redbot.core import Config, checks, commands
+from redbot.core import Config, commands
 
 # Seconds between one member's role edits, counted across the commands and the member site
 COOLDOWN = 10
@@ -272,7 +272,7 @@ class CustomRoleColor(commands.Cog):
 
     @commands.command()  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
-    @checks.admin_or_permissions(manage_roles=True)
+    @commands.admin_or_permissions(manage_roles=True)
     async def assignrole(self, ctx, member: discord.Member, role: discord.Role):
         """
         Assign a role to a user for color, name, and icon management.
