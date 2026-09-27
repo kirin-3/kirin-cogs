@@ -208,16 +208,18 @@ async def test_guard_gauntlet_has_no_side_effects_and_thread_is_accepted() -> No
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("joined_at", "expected_path"),
+    ("tenure", "expected_path"),
     [
-        (datetime.now(UTC) - timedelta(days=3) + timedelta(seconds=30), "ban"),
-        (datetime.now(UTC) - timedelta(days=3), "quarantine"),
+        (timedelta(days=3) - timedelta(seconds=30), "ban"),
+        (timedelta(days=3), "quarantine"),
         (None, "quarantine"),
     ],
 )
-async def test_tenure_boundary_routes_to_expected_path(joined_at: datetime | None, expected_path: str) -> None:
+async def test_tenure_boundary_routes_to_expected_path(tenure: timedelta | None, expected_path: str) -> None:
     cog = _make_cog()
     guild = _guild()
+    # Build joined_at here, not in parametrize: collection time can be minutes before the test runs.
+    joined_at = None if tenure is None else datetime.now(UTC) - tenure
     member = _member(guild, joined_at=joined_at)
     message = _message(guild, member)
     ban = AsyncMock(return_value=True)
