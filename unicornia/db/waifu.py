@@ -156,7 +156,7 @@ class WaifuRepository:
             owner_note: Note for old owner's transaction log.
 
         Returns:
-            bool: True if successful, False if insufficient funds or other error.
+            bool: True if successful, False if insufficient funds or ``old_owner_id`` no longer owns the waifu.
         """
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
@@ -185,15 +185,18 @@ class WaifuRepository:
                     (old_owner_id, price, price),
                 )
 
-                # 3. Transfer Waifu
-                await db.execute(
+                # 3. Transfer Waifu, but only from the owner the caller priced against
+                cursor = await db.execute(
                     """
                     UPDATE WaifuInfo
                     SET ClaimerId = ?, Price = ?
-                    WHERE WaifuId = ?
+                    WHERE WaifuId = ? AND ClaimerId = ?
                 """,
-                    (claimer_id, price, waifu_id),
+                    (claimer_id, price, waifu_id, old_owner_id),
                 )
+                if cursor.rowcount == 0:
+                    await db.execute("ROLLBACK")
+                    return False
 
                 # 4. Logs
 

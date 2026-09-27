@@ -76,3 +76,18 @@ async def test_transfer_does_not_overwrite_a_purchase_that_landed_first(db: Data
     info = await db.waifu.get_waifu_info(WAIFU)
     assert info is not None
     assert info[1] == BUYER
+
+
+@pytest.mark.asyncio
+async def test_force_claim_fails_when_the_owner_changed(db: DatabaseManager) -> None:
+    await db.waifu.claim_waifu(WAIFU, NEW_OWNER, 1000)
+    await db.economy.add_currency(BUYER, 10_000, "test")
+
+    # The buyer priced the claim while USER still owned the waifu
+    assert not await db.waifu.force_claim_waifu(WAIFU, BUYER, USER, 1200, "claim", "sold")
+
+    info = await db.waifu.get_waifu_info(WAIFU)
+    assert info is not None
+    assert (info[1], info[2]) == (NEW_OWNER, 1000)
+    assert await db.economy.get_user_currency(BUYER) == 10_000
+    assert await db.economy.get_user_currency(USER) == 0

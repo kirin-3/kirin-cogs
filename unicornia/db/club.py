@@ -24,14 +24,13 @@ class ClubRepository:
             )
             club_id = cursor.lastrowid
 
-            # Update user
+            # Upsert: a member who never earned or chatted has no DiscordUser row yet
             await db.execute(
                 """
-                UPDATE DiscordUser
-                SET ClubId = ?, IsClubAdmin = 1
-                WHERE UserId = ?
+                INSERT INTO DiscordUser (UserId, ClubId, IsClubAdmin) VALUES (?, ?, 1)
+                ON CONFLICT(UserId) DO UPDATE SET ClubId = excluded.ClubId, IsClubAdmin = 1
             """,
-                (club_id, owner_id),
+                (owner_id, club_id),
             )
 
             await db.commit()

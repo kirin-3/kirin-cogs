@@ -20,7 +20,7 @@ from redbot.core.bot import Red
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from testutils.bots import RedLikeBot
-from unicornia.errors import SystemNotReadyError, UnicorniaError
+from unicornia.errors import SystemNotReadyError
 from unicornia.unicornia import Unicornia
 
 
@@ -289,22 +289,6 @@ async def test_invalidating_one_guild_keeps_other_guild_cached(cog: Unicornia, c
     cog.invalidate_whitelist_cache(1)
 
     assert set(cog._whitelist_cache) == {2}
-
-
-@pytest.mark.asyncio
-async def test_on_command_error_handles_unicornia_error(cog: Unicornia) -> None:
-    command = _make_command(
-        name="balance",
-        qualified_name="balance",
-        module_name="unicornia.commands.economy",
-        cog_name=cog.qualified_name,
-    )
-    ctx = _make_ctx(command=command)
-
-    await cog.on_command_error(ctx, UnicorniaError("failed gracefully"))
-
-    ctx.send.assert_awaited_once_with("failed gracefully")
-    assert ctx.command_failed is False
 
 
 @pytest.mark.asyncio

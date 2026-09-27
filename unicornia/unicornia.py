@@ -31,7 +31,7 @@ from .commands import (
 from .database import DatabaseManager
 from .db.economy import OperationDirection, OperationOutcome
 from .db.waifu import DEFAULT_WAIFU_PRICE
-from .errors import SystemNotReadyError, UnicorniaError
+from .errors import SystemNotReadyError
 from .market_views import StockDashboardView, portfolio_totals
 from .systems import (
     ClubSystem,
@@ -49,6 +49,10 @@ from .systems import (
 from .types import LevelStats
 
 log = logging.getLogger("red.kirin_cogs.unicornia")
+
+# A live game settles on its own view timeout (30-60 s idle), so a stake reserved this long ago
+# was stranded by a crash mid-game and is refunded while the bot runs
+STUCK_STAKE_SECONDS = 3600
 
 
 # See: https://docs.discord-red.com/en/stable/framework_commands.html
@@ -212,7 +216,7 @@ class Unicornia(
             await self.currency_decay.start_decay_loop()
 
             # Start WAL maintenance task
-            self.wal_task = asyncio.create_task(self._wal_maintenance_loop())
+            self.wal_task = asyncio.create_task(self._maintenance_loop())
             self.market_task = asyncio.create_task(self.market_loop())
             self.yield_task = asyncio.create_task(self.yield_loop())
             self.nitro_task = asyncio.create_task(self.nitro_system.reconcile_loop())
@@ -796,38 +800,19 @@ class Unicornia(
                 log.error("Error in dividend loop: %s", e)
                 await asyncio.sleep(60)
 
-    async def _wal_maintenance_loop(self):
-        """Periodic WAL maintenance to prevent corruption and optimize performance"""
+    async def _maintenance_loop(self):
+        """Hourly WAL maintenance, and refunds for stakes a crashed game left reserved"""
         while True:
             try:
                 await asyncio.sleep(3600)  # Run every hour
                 if self.db:
                     await self.db.check_wal_integrity()
+                    await self.db.economy.refund_stale_reservations(STUCK_STAKE_SECONDS)
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                log.error(f"WAL maintenance error: {e}")
+                log.error(f"Maintenance error: {e}")
                 await asyncio.sleep(300)  # Wait 5 minutes before retrying
-
-    @commands.Cog.listener()
-    async def on_command_error(self, ctx: commands.Context, error: Exception):
-        """Global error handler for Unicornia commands"""
-        # Only handle errors for commands in this cog
-        if ctx.command and ctx.command.cog_name == self.qualified_name:
-            # Unwrap CommandInvokeError
-            if isinstance(error, commands.CommandInvokeError):
-                error = error.original
-
-            # Handle Custom Errors
-            if isinstance(error, UnicorniaError):
-                await ctx.send(str(error))
-                # Mark as handled to prevent Red's default handler from firing
-                ctx.command_failed = False
-            elif isinstance(error, commands.UserFeedbackCheckFailure):
-                # Let Red handle standard feedback checks (includes our custom ones if we didn't catch them above)
-                pass
-            elif isinstance(error, commands.CommandInvokeError):  # Should be unwrapped already, but just in case
-                log.error(f"Error in command '{ctx.command.qualified_name}': {error}", exc_info=error)
 
     @commands.Cog.listener()
     async def on_message(self, message):

@@ -40,12 +40,13 @@ class StockRepository:
             async with self.db._get_connection() as connection:
                 return await self.get_time_weighted_holdings(period_start, period_end, connection)
 
+        # UserId 0 holds the anonymized ledger rows of deleted users, who hold nothing
         rows = await (
             await db.execute(
                 """
                 SELECT UserId, Symbol, Side, Shares, DateAdded
                 FROM StockTransactions
-                WHERE DateAdded <= ?
+                WHERE DateAdded <= ? AND UserId != 0
                 ORDER BY UserId, Symbol, DateAdded, Id
                 """,
                 (period_end.isoformat(sep=" "),),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -106,3 +107,21 @@ async def test_backfill_is_flagged_and_not_repeated(db: DatabaseManager) -> None
     assert len(history) == 1
     assert history[0]["symbol"] == "OLD"
     assert history[0]["imported"] is True
+
+
+@pytest.mark.asyncio
+async def test_deleted_holder_leaves_no_dividend_weight_or_held_shares(db: DatabaseManager) -> None:
+    await db.stock.create_stock("ABC", "Example", "📈", 100)
+    await db.economy.add_currency(USER, 10_000, "test", "test")
+    market = await _market(db)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    bought, _ = await market.buy_stock(SimpleNamespace(id=USER), "ABC", 10)  # type: ignore[arg-type]
+    assert bought
+
+    await db.delete_user_data(USER)
+
+    # The anonymized ledger rows live on under UserId 0, which must not earn dividends
+    assert await db.stock.get_time_weighted_holdings(now - timedelta(hours=1), now + timedelta(hours=1)) == {}
+    stock = await db.stock.get_stock("ABC")
+    assert stock is not None
+    assert stock["total_shares"] == 0

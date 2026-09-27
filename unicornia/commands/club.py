@@ -133,6 +133,7 @@ class ClubCommands(UnicorniaMixinBase):
         """
 
         if not validate_club_name(club_name):
+            ctx.command.reset_cooldown(ctx)
             await ctx.send(
                 "<a:zz_NoTick:729318761655435355> Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols."
             )
@@ -142,6 +143,7 @@ class ClubCommands(UnicorniaMixinBase):
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
+            ctx.command.reset_cooldown(ctx)
             await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @club_group.command(name="info", aliases=["profile"])
@@ -467,7 +469,6 @@ class ClubCommands(UnicorniaMixinBase):
 
     @club_group.command(name="rename")
     @commands.cooldown(1, 86400, commands.BucketType.user)
-    @commands.admin_or_permissions(manage_guild=True)
     async def club_rename(self, ctx, *, new_name: str):
         """
         Rename the club.
@@ -480,25 +481,26 @@ class ClubCommands(UnicorniaMixinBase):
         """
         # Immediate length check to prevent DoS from massive input strings
         if len(new_name) > 20:
+            ctx.command.reset_cooldown(ctx)
             await ctx.send("<a:zz_NoTick:729318761655435355> Club name is too long (max 20 chars).")
             return
 
         if not validate_club_name(new_name):
+            ctx.command.reset_cooldown(ctx)
             await ctx.send(
                 "<a:zz_NoTick:729318761655435355> Invalid club name. Must be under 20 chars and contain only letters, numbers, and safe symbols."
             )
             return
 
-        # Passed checks (Owner via logic or Mod via permission decorator)
-        # We pass True to allow override if they have permissions
+        # The club system allows the club owner, or anyone with Manage Server
         success, message = await self.club_system.rename_club(ctx.author, new_name, True)
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
+            ctx.command.reset_cooldown(ctx)
             await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @club_group.command(name="icon")
-    @commands.admin_or_permissions(manage_guild=True)
     async def club_icon(self, ctx, url: str):
         """
         Set club icon.
@@ -520,7 +522,6 @@ class ClubCommands(UnicorniaMixinBase):
             await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @club_group.command(name="banner")
-    @commands.admin_or_permissions(manage_guild=True)
     async def club_banner(self, ctx, url: str):
         """
         Set club banner.
@@ -542,7 +543,6 @@ class ClubCommands(UnicorniaMixinBase):
             await ctx.send(f"❌ {message}")
 
     @club_group.command(name="desc")
-    @commands.admin_or_permissions(manage_guild=True)
     async def club_desc(self, ctx, *, description: str):
         """
         Set club description.
@@ -569,7 +569,6 @@ class ClubCommands(UnicorniaMixinBase):
 
     @club_group.command(name="disband")
     @commands.cooldown(1, 86400, commands.BucketType.user)
-    @commands.admin_or_permissions(manage_guild=True)
     async def club_disband(self, ctx):
         """
         Disband the club.
@@ -586,6 +585,7 @@ class ClubCommands(UnicorniaMixinBase):
         await view.wait()
 
         if not view.result:
+            ctx.command.reset_cooldown(ctx)
             await msg.edit(content="<a:zz_NoTick:729318761655435355> Disband cancelled.")
             return
 
@@ -593,6 +593,7 @@ class ClubCommands(UnicorniaMixinBase):
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
+            ctx.command.reset_cooldown(ctx)
             await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @club_group.command(name="leaderboard", aliases=["lb"])

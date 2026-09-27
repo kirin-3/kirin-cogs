@@ -21,6 +21,7 @@ class WaifuCommands(UnicorniaMixinBase):
         """
         Claim a user as your waifu.
 
+        You can offer more than their current price, but not less.
         If already claimed, you must pay 120% of the current price to snipe them.
 
         **Syntax**
@@ -67,7 +68,12 @@ class WaifuCommands(UnicorniaMixinBase):
                 final_price = int(current_waifu_price * 1.2)
                 # Ignore user provided price for force claims to enforce rule
             else:
-                # Normal Claim logic
+                # Normal Claim logic. The price paid becomes the waifu's price, so it can't undercut gifted value.
+                if price is not None and price < current_waifu_price:
+                    await ctx.send(
+                        f"<a:zz_NoTick:729318761655435355> {member.display_name}'s price is {currency_symbol}{current_waifu_price:,}. You can't claim them for less."
+                    )
+                    return
                 base_price = price if price is not None else current_waifu_price
 
                 # Check affinity for discount
@@ -106,7 +112,7 @@ class WaifuCommands(UnicorniaMixinBase):
 
                 if not success:
                     await ctx.send(
-                        "<a:zz_NoTick:729318761655435355> Transaction failed (Insufficient funds during processing)."
+                        "<a:zz_NoTick:729318761655435355> Failed to claim waifu. Their owner might have changed or you have insufficient funds."
                     )
                     return
 
@@ -172,6 +178,7 @@ class WaifuCommands(UnicorniaMixinBase):
         if success:
             await ctx.send(f"<a:zz_YesTick:729318762356015124> {message}")
         else:
+            ctx.command.reset_cooldown(ctx)
             await ctx.send(f"<a:zz_NoTick:729318761655435355> {message}")
 
     @waifu_group.command(name="reset")

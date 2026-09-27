@@ -816,6 +816,10 @@ class TransactionModal(ui.Modal):
                     await interaction.response.send_message("❌ You cannot give money to yourself.", ephemeral=True)
                     return
 
+                if target_user.bot:
+                    await interaction.response.send_message("❌ You can't give Slut points to bots.", ephemeral=True)
+                    return
+
                 success = await self.cog.economy_system.give_currency(interaction.user.id, target_user.id, amount)
                 msg = f"<a:zz_YesTick:729318762356015124> Gave {currency_symbol}{amount:,} to {target_user.mention}!"
                 fail_msg = "❌ Insufficient funds in your wallet."

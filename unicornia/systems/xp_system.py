@@ -151,15 +151,24 @@ class XPSystem:
                         if channel.id in double_xp_channels:
                             current_xp_amount *= 2
 
-                        # Process members
-                        for member in channel.members:
-                            if member.bot:
-                                continue
+                        # Only members who can talk and listen earn, and only with someone to talk to,
+                        # so an idle member parked alone or muted doesn't farm XP around the clock
+                        active = [
+                            member
+                            for member in channel.members
+                            if not member.bot
+                            and member.voice
+                            and not (
+                                member.voice.self_deaf
+                                or member.voice.deaf
+                                or member.voice.self_mute
+                                or member.voice.mute
+                            )
+                        ]
+                        if len(active) < 2:
+                            continue
 
-                            # Skip self-deafened or afk (optional, but good for anti-abuse)
-                            if member.voice.self_deaf or member.voice.deaf:
-                                continue
-
+                        for member in active:
                             # Skip excluded roles
                             if any(role.id in excluded_roles for role in member.roles):
                                 continue
@@ -173,8 +182,8 @@ class XPSystem:
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                print(f"Error in voice XP loop: {e}")
+            except Exception:
+                log.exception("Error in voice XP loop")
                 await asyncio.sleep(60)  # Wait before retry
 
     async def _message_xp_loop(self):
@@ -194,8 +203,8 @@ class XPSystem:
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                print(f"Error in message XP loop: {e}")
+            except Exception:
+                log.exception("Error in message XP loop")
                 await asyncio.sleep(30)
 
     def _cleanup_cooldowns(self):

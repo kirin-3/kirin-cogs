@@ -1452,6 +1452,16 @@ class CoreDB:
             )
             with suppress(aiosqlite.OperationalError):
                 await db.execute("UPDATE StockTransactions SET UserId = 0 WHERE UserId = ?", (user_id,))
+            # Their holdings are deleted below, so stop counting those shares as held
+            with suppress(aiosqlite.OperationalError):
+                await db.execute(
+                    """
+                    UPDATE Stocks SET TotalShares = MAX(0, TotalShares - (
+                        SELECT Amount FROM StockHoldings WHERE UserId = ? AND Symbol = Stocks.Symbol))
+                    WHERE Symbol IN (SELECT Symbol FROM StockHoldings WHERE UserId = ?)
+                    """,
+                    (user_id, user_id),
+                )
             with suppress(aiosqlite.OperationalError):
                 await db.execute("UPDATE DividendPayouts SET UserId = 0 WHERE UserId = ?", (user_id,))
 

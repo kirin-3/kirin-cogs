@@ -6,7 +6,7 @@ The Unicornia Waifu System is a trading game where users can "claim" each other 
 
 ### 1. Claiming
 *   **Base Price**: Every unclaimed user starts with a price of **50** Slut points.
-*   **Buying**: To claim a user, you must pay their current price.
+*   **Buying**: To claim a user, you must pay at least their current price. What you pay becomes their new price.
 *   **Force Claim**: You can claim a waifu owned by someone else by paying **120%** of their current price. The previous owner receives this payment.
 
 ### 2. Affinity

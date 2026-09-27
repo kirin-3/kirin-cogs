@@ -127,7 +127,7 @@ class CurrencyGeneration:
                 file = discord.File(image_path, filename="currency.png")
                 sent_message = await message.channel.send(content=msg_content, file=file)
             except Exception as e:
-                print(f"Error sending currency generation image: {e}")
+                log.warning("Error sending currency generation image: %s", e)
                 sent_message = await message.channel.send(content=msg_content)
         else:
             sent_message = await message.channel.send(content=msg_content)

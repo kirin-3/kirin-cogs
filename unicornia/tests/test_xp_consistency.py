@@ -444,19 +444,40 @@ async def test_slow_side_effect_does_not_hold_state_lock(xp: XPSystem, stage: st
             await chat
 
 
+def voice_member(user: int, *, muted: bool = False) -> MagicMock:
+    voice = MagicMock(self_deaf=False, deaf=False, self_mute=muted, mute=False)
+    return MagicMock(spec=discord.Member, id=user, bot=False, roles=[], voice=voice)
+
+
+async def voice_tick(xp: XPSystem, guild: MagicMock, members: list[MagicMock]) -> None:
+    """Run the voice XP loop once, with ``members`` in the one voice channel."""
+    guild.voice_channels = [MagicMock(id=CHANNEL, members=members)]
+    xp.bot.guilds = [guild]
+    with patch(
+        "unicornia.systems.xp_system.asyncio.sleep", new=AsyncMock(side_effect=[None, asyncio.CancelledError()])
+    ):
+        await xp._voice_xp_loop()
+
+
+@pytest.mark.asyncio
+async def test_voice_xp_needs_two_unmuted_members(xp: XPSystem) -> None:
+    guild = message().guild
+    await voice_tick(xp, guild, [voice_member(USER)])
+    await voice_tick(xp, guild, [voice_member(USER), voice_member(USER + 1, muted=True)])
+    assert await xp.db.xp.get_user_xp(USER, GUILD) == 0
+
+    await voice_tick(xp, guild, [voice_member(USER), voice_member(USER + 1, muted=True), voice_member(USER + 2)])
+    assert await xp.db.xp.get_user_xp(USER, GUILD) == 1
+    assert await xp.db.xp.get_user_xp(USER + 1, GUILD) == 0
+
+
 @pytest.mark.asyncio
 async def test_voice_loop_invalidates_cached_message_level(xp: XPSystem) -> None:
     await xp.db.xp.add_xp(USER, GUILD, 197)
     await xp.get_user_level_stats(USER, GUILD)
     msg = message()
-    msg.author.voice = MagicMock(self_deaf=False, deaf=False)
-    voice = MagicMock(id=CHANNEL, members=[msg.author])
-    msg.guild.voice_channels = [voice]
-    xp.bot.guilds = [msg.guild]
-    with patch(
-        "unicornia.systems.xp_system.asyncio.sleep", new=AsyncMock(side_effect=[None, asyncio.CancelledError()])
-    ):
-        await xp._voice_xp_loop()
+    msg.author.voice = voice_member(USER).voice
+    await voice_tick(xp, msg.guild, [msg.author, voice_member(USER + 1)])
     assert (USER, GUILD) not in xp.user_xp_cache
     assert await xp.db.xp.get_user_xp(USER, GUILD) == 198
     await xp.process_message(msg)

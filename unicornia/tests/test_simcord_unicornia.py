@@ -271,3 +271,109 @@ async def test_xpshop_buy_and_use_reply_as_before(red_env: simcord.Env) -> None:
     assert await cog.equipped_backgrounds([member.id]) == {member.id: "default"}
     assert await cog.get_balance(member.id) == (5_000, 0)
     simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_waifu_claim_cannot_undercut_the_current_price(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild, _owner = _guild_with_owner(red_env)
+    claimer = guild.add_member(red_env.create_user("claimer"))
+    waifu = guild.add_member(red_env.create_user("waifu"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    db = _cog(red_env).db
+    assert db is not None
+
+    await claimer.send(channel, "!timely")
+    await claimer.send(channel, f"!waifu claim {_member(waifu).mention} 1")
+    assert "You can't claim them for less" in _last_text(channel, bot)
+    assert await db.waifu.get_waifu_owner(waifu.id) is None
+
+    await claimer.send(channel, f"!waifu claim {_member(waifu).mention} 60")
+    assert await db.waifu.get_waifu_owner(waifu.id) == claimer.id
+    assert await db.waifu.get_waifu_price(waifu.id) == 60
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_failed_waifu_transfer_keeps_the_cooldown(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild, _owner = _guild_with_owner(red_env)
+    member = guild.add_member(red_env.create_user("member"))
+    waifu = guild.add_member(red_env.create_user("waifu"))
+    other = guild.add_member(red_env.create_user("other"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+
+    for _ in range(2):
+        await member.send(channel, f"!waifu transfer {_member(waifu).mention} {_member(other).mention}")
+        assert "You don't own this waifu" in _last_text(channel, bot)
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_club_owner_edits_their_club_without_manage_server(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild, _owner = _guild_with_owner(red_env)
+    member = guild.add_member(red_env.create_user("member"))
+    rival = guild.add_member(red_env.create_user("rival"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    db = _cog(red_env).db
+    assert db is not None
+
+    await member.send(channel, "!club create Unicorns")
+    await rival.send(channel, "!club create Rivals")
+    await member.send(channel, "!club desc We ride at dawn")
+    assert "Club description updated" in _last_text(channel, bot)
+
+    # A failed rename doesn't use up the 24-hour cooldown
+    await member.send(channel, "!club rename Rivals")
+    assert "already exists" in _last_text(channel, bot)
+    await member.send(channel, "!club rename Pegasi")
+    assert "Club renamed" in _last_text(channel, bot)
+    club = await db.club.get_club_by_member(member.id)
+    assert club is not None
+    assert (club[1], club[2]) == ("Pegasi", "We ride at dawn")
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_bank_give_refuses_bots(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    assert bot.user is not None
+    guild, _owner = _guild_with_owner(red_env)
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+
+    await member.send(channel, "!timely")
+    wallet, _bank = await _cog(red_env).get_balance(member.id)
+    await member.send(channel, "!balance")
+    balance_reply = next(m for m in reversed(_bot_messages(channel, bot)) if m.embeds)
+
+    shown = await member.click(balance_reply, label="Give Cash")
+    amount_id, recipient_id = _modal_text_input_ids(shown)
+    done = await member.submit_modal(shown, {amount_id: "100", recipient_id: str(bot.user.id)})
+    assert done.response is not None
+    assert "can't give Slut points to bots" in done.response.content
+    assert await _cog(red_env).get_balance(member.id) == (wallet, 0)
+    assert await _cog(red_env).get_balance(bot.user.id) == (0, 0)
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_not_ready_message_is_sent_once(red_env: simcord.Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    bot = cast(Red, red_env.bot)
+    guild, _owner = _guild_with_owner(red_env)
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    monkeypatch.setattr(_cog(red_env), "market_system", None)
+
+    await member.send(channel, "!balance")
+
+    assert isinstance(red_env.errors.pop(), commands.UserFeedbackCheckFailure)
+    replies = [m.content for m in _bot_messages(channel, bot)]
+    assert [text for text in replies if "still initializing" in (text or "")] == [replies[-1]]
+    simcord.assert_no_errors(red_env)
