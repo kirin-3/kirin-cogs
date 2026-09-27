@@ -7,6 +7,7 @@ from typing import cast
 import discord
 import pytest
 import simcord
+from redbot.core import commands
 from redbot.core.bot import Red
 
 DOM = 686097057190379537
@@ -101,9 +102,51 @@ async def test_compat_command_shows_only_the_score(red_env: simcord.Env) -> None
     assert "%" in embed.description
     assert "bondage" not in embed.description and "praise" not in embed.description
 
+    await red_env.advance_time(61)
     await alice.send(channel, f"!compat {stranger.id}")
     assert "Not enough to go on for **stranger**" in last(channel).content
 
+    await red_env.advance_time(61)
     await stranger.send(channel, f"!compat {alice.id} {bob.id}")
     assert last(channel).embeds[0].description == embed.description
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_compat_has_a_one_minute_cooldown_per_channel_and_per_member(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild = red_env.create_guild()
+    alice = guild.add_member(red_env.create_user("alice"))
+    bob = guild.add_member(red_env.create_user("bob"))
+    general = guild.create_text_channel("general")
+    other = guild.create_text_channel("other")
+    await red_env.settle()
+
+    def answers(channel: simcord.ChannelHandle) -> int:
+        """Compat's own replies, not Red's cooldown and usage messages."""
+        assert bot.user is not None
+        return sum(
+            1
+            for message in channel.history()
+            if message.author.id == bot.user.id and (message.embeds or "Not enough to go on" in message.content)
+        )
+
+    await bob.send(general, "!compat nobody")  # a mistyped member doesn't use up the channel's minute
+    assert isinstance(red_env.errors.pop(), commands.BadArgument)
+    await alice.send(general, f"!compat {bob.id}")
+    assert answers(general) == 1
+
+    await bob.send(general, f"!compat {alice.id}")
+    error = red_env.errors.pop()
+    assert isinstance(error, commands.CommandOnCooldown) and error.type is commands.BucketType.channel
+
+    await alice.send(other, f"!compat {bob.id}")
+    error = red_env.errors.pop()
+    assert isinstance(error, commands.CommandOnCooldown) and error.type is commands.BucketType.user
+    await bob.send(other, f"!compat {alice.id}")  # alice's refused try didn't use up this channel's minute
+    assert answers(other) == 1
+
+    await red_env.advance_time(61)
+    await alice.send(general, f"!compat {bob.id}")
+    assert answers(general) == 2
     simcord.assert_no_errors(red_env)

@@ -14,6 +14,8 @@ from .views import ProfileBuilderView, ProfileDeleteConfirmView, ProfileStickyVi
 
 log = logging.getLogger("red.kirin_cogs.profile")
 
+COMPAT_COOLDOWN = 60  # seconds, per channel and per member
+
 
 class Profile(commands.Cog):
     """Create and manage user profiles in a specific channel."""
@@ -51,6 +53,10 @@ class Profile(commands.Cog):
 
         self.locked_channels = set()
         self._channel_cvs: dict[discord.TextChannel, asyncio.Condition] = {}
+        self._compat_cooldowns = [
+            (commands.CooldownMapping.from_cooldown(1, COMPAT_COOLDOWN, bucket_type), bucket_type)
+            for bucket_type in (commands.BucketType.channel, commands.BucketType.user)
+        ]
         self.bot.add_view(ProfileStickyView(self))
 
     async def cog_load(self):
@@ -177,7 +183,21 @@ class Profile(commands.Cog):
         """How compatible two members are, going by their profiles and roles.
 
         Compares you with `member`, or `member` with `other`. Only the score is shown.
+        Once a minute per channel, and once a minute per member.
         """
+        # A command takes only one cooldown decorator, so both are checked here, and used up only together.
+        # Timed by the message, as discord.py times its own cooldowns.
+        now = (ctx.message.edited_at or ctx.message.created_at).timestamp()
+        buckets = [
+            (mapping.get_bucket(ctx.message, now), bucket_type) for mapping, bucket_type in self._compat_cooldowns
+        ]
+        for bucket, bucket_type in buckets:
+            if bucket is not None and (retry_after := bucket.get_retry_after(now)):
+                raise commands.CommandOnCooldown(bucket, retry_after, bucket_type)
+        for bucket, _ in buckets:
+            if bucket is not None:
+                bucket.update_rate_limit(now)
+
         first, second = (member, other) if other else (ctx.author, member)
         if first.bot or second.bot:
             await ctx.send("Bots don't have profiles.")

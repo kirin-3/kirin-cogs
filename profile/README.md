@@ -79,6 +79,7 @@ Users interact with the profile system through buttons on the sticky message in 
 
 **`[p]compat <member> [other]`** (also `/compat` once enabled with `[p]slash enable compat`) scores how well you and
 `member`, or `member` and `other`, match: a percentage, a bar and a verdict line. It never says what matched.
+It can be used once a minute per channel and once a minute per member; Red says when it can be used again.
 
 The score comes from `profile/compatibility.py`:
 - **Dynamic** (35%): Dom, sub or switch, from the Role answer and the dom/sub roles (the same weights as Responder's
