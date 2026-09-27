@@ -6,7 +6,7 @@
     "description": "Single-panel Discord support ticket system with a verification flow!",
     "install_msg": "Thank you for installing Tickets! type `[p]tickets setuphelp` to get started!",
     "end_user_data_statement": "This cog stores ticket owner Discord IDs, questionnaire answers, channel/message IDs, avatar URLs, timestamps, and lifecycle state. Red data-deletion requests remove that user's tracking and blacklist records.",
-    "min_bot_version": "3.5.0",
+    "min_bot_version": "3.5.23",
     "min_python_version": [
         3,
         11,

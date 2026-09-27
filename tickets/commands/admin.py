@@ -1223,6 +1223,7 @@ class AdminCommands(MixinMeta):
             await ctx.send(f"Failed to send embed!\nException: {box(str(e), 'py')}")
 
     @commands.hybrid_command(name="openfor")  # pyright: ignore[reportArgumentType]
+    @commands.guild_only()
     @commands.mod_or_permissions(manage_messages=True)
     async def openfor(self, ctx: commands.Context, user: discord.Member):
         """Open a ticket for another user"""

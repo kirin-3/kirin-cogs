@@ -351,42 +351,6 @@ class CloseView(View):
         await interaction.response.send_message(embed=embed)
 
 
-class SimpleAttachment:
-    def __init__(self, url, filename):
-        self.url = url
-        self.filename = filename
-
-
-class FileUpload(discord.ui.Item):
-    def __init__(self, custom_id: str, required: bool = True, min_values: int = 1, max_values: int = 3):
-        super().__init__()
-        self.custom_id = custom_id
-        self.required = required
-        self.min_values = min_values
-        self.max_values = max_values
-        self._uploaded_attachments = []
-
-    @property
-    def type(self) -> discord.ComponentType:
-        return discord.ComponentType(19)
-
-    def to_component_dict(self):
-        return {
-            "type": 19,
-            "custom_id": self.custom_id,
-            "required": self.required,
-            "min_values": self.min_values,
-            "max_values": self.max_values,
-        }
-
-    def refresh_component(self, component):
-        self._uploaded_attachments = component.values
-
-    @property
-    def values(self):
-        return self._uploaded_attachments
-
-
 class VerificationModal(discord.ui.Modal):
     def __init__(self, bot: Red, guild: discord.Guild, config: Config, user: discord.Member, conf: dict):
         super().__init__(title=conf.get("modal_title") or "Verification")
@@ -395,8 +359,8 @@ class VerificationModal(discord.ui.Modal):
         self.config = config
         self.user = user
 
-        # 1. Use custom FileUpload component
-        self.image = FileUpload(
+        # 1. Image upload
+        self.image = discord.ui.FileUpload(
             custom_id="verification_image",
             required=True,
             min_values=1,
@@ -433,25 +397,7 @@ class VerificationModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
 
-        attachments = []
-        if self.image.values:
-            attachments = self.image.values
-
-        # Fallback: check interaction data directly if custom component retrieval failed
-        if (
-            not attachments
-            and interaction.data is not None
-            and "resolved" in interaction.data
-            and "attachments" in interaction.data["resolved"]  # pyright: ignore[reportOptionalSubscript]
-        ):
-            raw_attachments = interaction.data["resolved"]["attachments"]  # pyright: ignore[reportOptionalSubscript]
-            if raw_attachments:
-                for attachment_data in raw_attachments.values():
-                    attachments.append(
-                        SimpleAttachment(
-                            url=attachment_data.get("url"), filename=attachment_data.get("filename", "image.png")
-                        )
-                    )
+        attachments = self.image.values
 
         from ..common.functions import Functions as TicketFunctions
 

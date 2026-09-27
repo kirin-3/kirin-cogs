@@ -2,6 +2,8 @@
 
 A robust, single-panel support ticket system for Red Discord Bot.
 
+Requires Red 3.5.23 or newer (discord.py 2.7), which provides the modal's image upload component.
+
 ## Features
 - **Single Panel**: Easy to set up and manage.
 - **Button Interaction**: Users open tickets with a simple button click.
@@ -83,7 +85,7 @@ The ticket panel opens the verification modal (image upload). These commands cus
 - `[p]tickets updatemessage <source> <target>`: Update a message with another message (copies embeds from source to target).
 
 ### Mod Commands
-- `[p]openfor <user>`: Open a ticket on behalf of another user.
+- `[p]openfor <user>`: Open a ticket on behalf of another user (server only).
 
 ## Lifecycle recovery
 

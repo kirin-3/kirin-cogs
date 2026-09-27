@@ -1,11 +1,9 @@
 import asyncio
 import dataclasses
 import datetime
-import json
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from pathlib import Path
 from time import perf_counter
 
 import discord
@@ -134,7 +132,6 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
 
     async def _startup(self) -> None:
         await self.bot.wait_until_red_ready()
-        await self._import_settings()
         await asyncio.sleep(6)
         await self._reconcile_stale_tickets()
         await self.initialize()
@@ -228,37 +225,6 @@ class Tickets(TicketCommands, Functions, commands.Cog, metaclass=CompositeMetaCl
                     f"Reconciled tickets in {guild.name}: "
                     f"{len(tickets_to_remove)} removed, {len(tickets_to_promote)} promoted"
                 )
-
-    async def _import_settings(self) -> None:
-        settings_path = Path(__file__).parent / "settings.json"
-        if not settings_path.exists():
-            return
-
-        try:
-            text = settings_path.read_text(encoding="utf-8")
-            data = json.loads(text)
-        except Exception as e:
-            log.error("Failed to load settings.json", exc_info=e)
-            return
-
-        conf_data = data.get("117117", {}).get("GUILD", {})
-        if not conf_data:
-            log.debug("No guild data found in settings.json")
-            return
-
-        count = 0
-        for guild_id, guild_data in conf_data.items():
-            try:
-                guild_group = self.config.guild_from_id(int(guild_id))
-                current_data = await guild_group.all()
-                current_data.update(guild_data)
-                await guild_group.set(current_data)
-                count += 1
-            except Exception as e:
-                log.error(f"Failed to import settings for guild {guild_id}", exc_info=e)
-
-        if count:
-            log.info(f"Imported settings for {count} guilds from settings.json")
 
     async def initialize(self, target_guild: discord.Guild | None = None) -> None:
         if target_guild:

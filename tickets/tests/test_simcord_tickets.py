@@ -395,3 +395,15 @@ async def test_remind_instructions_button_posts_the_format(red_env: simcord.Env)
     assert result.response is not None
     assert "PLEASE ADHERE TO THE FOLLOWING FORMAT" in (result.response.embeds[0].description or "")
     simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_openfor_is_refused_in_dms(red_env: simcord.Env) -> None:
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    await red_env.settle()
+
+    await member.send_dm(f"!openfor {member.id}")
+
+    assert isinstance(red_env.errors.pop(), commands.NoPrivateMessage)
+    simcord.assert_no_errors(red_env)
