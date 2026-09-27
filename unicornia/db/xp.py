@@ -83,6 +83,12 @@ class XPRepository:
                     user_params,
                 )
 
+                # A club earns what its members earn while they're in it
+                await db.executemany(
+                    "UPDATE Clubs SET Xp = Xp + ? WHERE Id = (SELECT ClubId FROM DiscordUser WHERE UserId = ?)",
+                    [(a, u) for u, g, a in updates if a > 0],
+                )
+
                 await db.commit()
             except BaseException:
                 # The connection is persistent: do not leave partial XP writes

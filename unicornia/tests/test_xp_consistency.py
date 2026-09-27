@@ -965,3 +965,24 @@ async def test_voice_xp_stops_at_the_daily_cap(xp: XPSystem, monkeypatch: pytest
     xp._voice_xp_day = "2000-01-01"  # the next tick is a new UTC day
     await voice_tick(xp, guild, members)
     assert await xp.db.xp.get_user_xp(USER, GUILD) == 3
+
+
+@pytest.mark.asyncio
+async def test_a_club_earns_the_xp_its_members_earn_while_in_it(db: DatabaseManager) -> None:
+    other = USER + 1
+
+    async def club_xp() -> int:
+        club = await db.club.get_club(club_id)
+        assert club is not None
+        return club[5]
+
+    await db.xp.add_xp(USER, GUILD, 50)  # before joining
+    club_id = await db.club.create_club(USER, "Unicorns")
+    await db.club.apply_to_club(other, club_id)
+    await db.club.accept_club_application(club_id, other)
+    await db.xp.add_xp_bulk([(USER, GUILD, 100), (other, GUILD, 30)])
+    assert await club_xp() == 130
+
+    await db.club.leave_club(other)
+    await db.xp.add_xp_bulk([(USER, GUILD, 5), (other, GUILD, 1000)])
+    assert await club_xp() == 135

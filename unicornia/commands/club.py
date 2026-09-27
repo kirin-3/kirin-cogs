@@ -176,8 +176,8 @@ class ClubCommands(UnicorniaMixinBase):
         owner_name = owner.display_name if owner else f"Unknown ({data['owner_id']})"
 
         embed.add_field(name="Owner", value=owner_name, inline=True)
+        embed.add_field(name="Level", value=str(self.db.calculate_level_stats(data["xp"]).level), inline=True)
         embed.add_field(name="XP", value=f"{data['xp']:,}", inline=True)
-        # embed.add_field(name="Level", value=str(data['level']), inline=True) # Calculate if needed
 
         if data["image_url"]:
             embed.set_thumbnail(url=data["image_url"])
@@ -602,7 +602,7 @@ class ClubCommands(UnicorniaMixinBase):
         """
         Show club leaderboard.
 
-        Ranked by total XP.
+        Ranked by the XP members earned while in the club.
 
         **Syntax**
         `[p]club leaderboard [page]`
@@ -617,6 +617,7 @@ class ClubCommands(UnicorniaMixinBase):
 
         for i, (name, xp) in enumerate(clubs):
             idx = (page - 1) * 9 + i + 1
-            embed.add_field(name=f"#{idx} {name}", value=f"{xp:,} XP", inline=False)
+            level = self.db.calculate_level_stats(xp).level
+            embed.add_field(name=f"#{idx} {name}", value=f"Level {level} · {xp:,} XP", inline=False)
 
         await ctx.send(embed=embed)

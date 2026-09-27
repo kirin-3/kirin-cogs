@@ -35,7 +35,8 @@ Commands for configuring the Unicornia system.
 | `[p]unicornia whitelist system list` | List whitelisted systems. Alias: `sys list` | Admin/Manage Guild |
 
 ## Clubs
-Social groups that users can join, level up, and manage.
+Social groups that users can join, level up, and manage. Every XP a member earns while in a club also goes to the
+club, and stops when they leave. A club's level uses the same curve as members' levels.
 
 | Command | Description | Permission |
 | :--- | :--- | :--- |
