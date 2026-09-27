@@ -5,15 +5,6 @@ aliases:
     - blowjob
 description: "{invoker_member} is sucking {target_member}."
 spoiler: True
-images: 
-    - https://panel.unicornia.net/botimages/NvGFyQJ.gif
-    - https://panel.unicornia.net/botimages/LJa2Nag.gif
-    - https://panel.unicornia.net/botimages/xXJePAv.gif
-    - https://panel.unicornia.net/botimages/94HNIeK.gif
-    - https://panel.unicornia.net/botimages/grUtryW.gif
-    - https://panel.unicornia.net/botimages/OS3qkyz.gif
-    - https://panel.unicornia.net/botimages/gEjjKJh.gif
-    - https://panel.unicornia.net/botimages/PAKjLsk.gif
 consent:
     active: "{target_member}, {invoker_member} wants to suck you."
     passive: "{target_member}, {invoker_member} wants you to suck them."

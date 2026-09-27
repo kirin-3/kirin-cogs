@@ -6,6 +6,7 @@ consent decisions are driven by. The consent decision table itself is pure
 logic and already covered by test_roleplay_decide.py.
 """
 
+from pathlib import Path
 from typing import cast
 
 import discord
@@ -20,6 +21,17 @@ from roleplay.main import Roleplay
 @pytest.fixture
 def red_cogs() -> list[str]:
     return ["roleplay"]
+
+
+@pytest.fixture
+def images(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Tiny stand-in gifs for hug and suck, served as the cog's image folder."""
+    for name in ("hug/hug_1.gif", "hug/hug_wlw_2.gif", "suck/suck_1.gif"):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"GIF89a")
+    monkeypatch.setattr(Roleplay, "images_path", property(lambda _self: tmp_path))
+    return tmp_path
 
 
 def _cog(env: simcord.Env) -> Roleplay:
@@ -87,11 +99,14 @@ async def test_roleplay_help_lists_the_actions(red_env: simcord.Env) -> None:
     assert embed.title == "Roleplay Commands"
     actions_field = next(f for f in embed.fields if f.name == "Actions")
     assert "**!hug**: Hug a user." in (actions_field.value or "")
+    assert "**!sadhug**" in (actions_field.value or "")
+    assert len(actions_field.value or "") <= 1024
+    assert any(f.name == "Pairings" for f in embed.fields)
     simcord.assert_no_errors(red_env)
 
 
 @pytest.mark.asyncio
-async def test_action_without_target_is_performed_by_the_bot(red_env: simcord.Env) -> None:
+async def test_action_without_target_is_performed_by_the_bot(red_env: simcord.Env, images: Path) -> None:
     bot = cast(Red, red_env.bot)
     guild = red_env.create_guild()
     member = guild.add_member(red_env.create_user("member"))
@@ -107,10 +122,90 @@ async def test_action_without_target_is_performed_by_the_bot(red_env: simcord.En
     description = embed.description or ""
     assert _me(red_env, guild).mention in description
     assert _member(member).mention in description
+    # without a pairing the wlw gif is never used
     assert embed.image is not None
-    image_url = embed.image.url
-    assert image_url is not None
-    assert image_url.startswith("https://")
+    assert embed.image.url == "attachment://hug_1.gif"
+    assert [a.filename for a in messages[0].attachments] == ["hug_1.gif"]
+    assert "yet" not in (embed.footer.text or "")
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_pairing_picks_the_tagged_gif(red_env: simcord.Env, images: Path) -> None:
+    bot = cast(Red, red_env.bot)
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+
+    await member.send(channel, "!hug WLW")
+
+    (message,) = _bot_messages(channel, bot)
+    assert [a.filename for a in message.attachments] == ["hug_wlw_2.gif"]
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_missing_pairing_falls_back_with_a_note(red_env: simcord.Env, images: Path) -> None:
+    bot = cast(Red, red_env.bot)
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+
+    await member.send(channel, "!hug mlm")
+
+    (message,) = _bot_messages(channel, bot)
+    assert [a.filename for a in message.attachments] == ["hug_1.gif"]
+    assert "No mlm gifs for hug yet" in (message.embeds[0].footer.text or "")
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_spoilered_action_spoilers_any_file(red_env: simcord.Env, images: Path) -> None:
+    bot = cast(Red, red_env.bot)
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+
+    await member.send(channel, "!suck wlw")
+
+    (message,) = _bot_messages(channel, bot)
+    assert not message.embeds
+    assert [a.filename for a in message.attachments] == ["SPOILER_suck_1.gif"]
+    assert message.content.endswith("\n-# No wlw gifs for suck yet, so here's another one.")
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_action_without_images_is_still_performed(red_env: simcord.Env, images: Path) -> None:
+    bot = cast(Red, red_env.bot)
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+
+    await member.send(channel, "!pat")
+
+    (message,) = _bot_messages(channel, bot)
+    assert _member(member).mention in (message.embeds[0].description or "")
+    assert not message.attachments
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_alias_reaches_the_new_hug_actions(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild = red_env.create_guild()
+    hugger = guild.add_member(red_env.create_user("hugger"))
+    target = guild.add_member(red_env.create_user("target"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+
+    question = await _ask_action(channel, bot, hugger, "hugsad", target)
+
+    assert "wants to give you a sad hug" in question.content
     simcord.assert_no_errors(red_env)
 
 
@@ -248,7 +343,7 @@ async def test_public_consent_setting_skips_the_question(red_env: simcord.Env) -
 
 
 @pytest.mark.asyncio
-async def test_ask_passes_the_action_to_the_target(red_env: simcord.Env) -> None:
+async def test_ask_passes_the_action_to_the_target(red_env: simcord.Env, images: Path) -> None:
     bot = cast(Red, red_env.bot)
     guild = red_env.create_guild()
     requester = guild.add_member(red_env.create_user("requester"))
@@ -256,7 +351,7 @@ async def test_ask_passes_the_action_to_the_target(red_env: simcord.Env) -> None
     channel = guild.create_text_channel("general")
     await red_env.settle()
 
-    await requester.send(channel, f"!ask hug {_member(target).mention}")
+    await requester.send(channel, f"!ask hug wlw {_member(target).mention}")
     question = _find_message(channel, bot, "Do you consent?")
     assert "**requester** wants you to hug them" in question.content
 
@@ -266,6 +361,7 @@ async def test_ask_passes_the_action_to_the_target(red_env: simcord.Env) -> None
     action = next(m for m in _bot_messages(channel, bot) if m.embeds)
     description = action.embeds[0].description or ""
     assert description.index(_member(target).mention) < description.index(_member(requester).mention)
+    assert [a.filename for a in action.attachments] == ["hug_wlw_2.gif"]
     simcord.assert_no_errors(red_env)
 
 

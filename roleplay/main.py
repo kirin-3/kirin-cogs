@@ -1,11 +1,10 @@
 """Main module for roleplay bot"""
 
+import asyncio
 import logging
 from pathlib import Path
-from random import choice
-from urllib.parse import urlparse
+from typing import Annotated
 
-import aiohttp
 import discord
 from redbot.core import Config, commands
 from redbot.core.bot import Red
@@ -13,17 +12,28 @@ from redbot.core.data_manager import cog_data_path
 from redbot.core.utils.chat_formatting import humanize_list, inline
 
 from . import __version__, consent, const
-from .actions import Action, ActionManager
-from .embed import Embed
+from .actions import PAIRINGS, Action, ActionManager, pick_image
 from .help import Help
 from .settings import Settings
 from .tally import Tally, member_stats, summary, top_pairs
-from .unicornia import strings, web
+from .unicornia import strings
 from .user_settings import USER_SETTINGS
 from .views import request_consent
 
 # The settings the member site may change; the user lists stay command-only
 WEB_TOGGLES = ("selective", "public", "servant", "untracked")
+
+
+def pairing_word(argument: str) -> str:
+    """Converter for a pairing word (mlw, wlm, wlw or mlm) in any case. Used as an
+    optional argument, anything else is left for the next argument."""
+    pairing = argument.lower()
+    if pairing not in PAIRINGS:
+        raise commands.BadArgument(f"{argument} is not a pairing.")
+    return pairing
+
+
+Pairing = Annotated[str, pairing_word]
 
 
 class Roleplay(commands.Cog):
@@ -43,35 +53,16 @@ class Roleplay(commands.Cog):
         # action commands are added to the bot directly, see create_action_command()
         self.action_commands: list[commands.Command] = []
 
-        # for downloading action images, see http_session()
-        self.session: aiohttp.ClientSession | None = None
-
         self.create_action_commands()
 
         self.logger.info("-" * 32)
         self.logger.info(f"{self.__class__.__name__} v({__version__}) initialized!")
         self.logger.info("-" * 32)
 
-        # Asynchronously update the action_manager
-        # this lets us look for locally cached images once Red has set up the cog's
-        # data folder
-        bot.loop.create_task(self.initialize())
-
     @property
     def images_path(self) -> Path:
-        """Locally cached action images, one folder per action."""
+        """The action images, one folder per action. Read each time an action is used."""
         return cog_data_path(self) / "images"
-
-    async def initialize(self):
-        await self.bot.wait_until_red_ready()
-        self.action_manager.update(self.images_path)
-
-    def http_session(self) -> aiohttp.ClientSession:
-        """The cog's HTTP session, created on first use (it has to be created while the
-        bot's event loop is running) and closed when the cog is unloaded."""
-        if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession()
-        return self.session
 
     async def cog_unload(self):
         # the bot only removes the cog's own commands when it's unloaded, so the action
@@ -79,9 +70,6 @@ class Roleplay(commands.Cog):
         for command in self.action_commands:
             if self.bot.all_commands.get(command.name) is command:
                 self.bot.remove_command(command.name)
-
-        if self.session is not None:
-            await self.session.close()
 
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
         """Remove the user's roleplay settings, their ID from every other member's lists, and their action counts."""
@@ -209,33 +197,6 @@ class Roleplay(commands.Cog):
             msg = f'Logger level is currently set to "{level_name}".'
             return await ctx.send(msg)
 
-    @admin.command()
-    async def download(self, ctx: commands.Context):
-        """Downloads all action images into the cog's data folder"""
-        images_path = self.images_path
-        downloaded = skipped = failed = 0
-
-        async with ctx.typing():
-            for action in self.action_manager.actions:
-                for image_url in action.image_urls:
-                    saved = await web.save_image_from_url(
-                        self.http_session(), image_url, images_path, action.name, action.spoiler
-                    )
-                    if saved is None:
-                        failed += 1
-                    elif saved:
-                        downloaded += 1
-                    else:
-                        skipped += 1
-
-        # start using the images just downloaded
-        self.action_manager.update(images_path)
-
-        await ctx.send(
-            f"Roleplay action images saved to: {images_path}\n"
-            f"Downloaded: {downloaded}, already saved: {skipped}, failed: {failed}"
-        )
-
     @logger_settings.command(aliases=["level", "setlevel"])
     async def logger_set_level(self, ctx: commands.Context, level_name: str):
         """Set logger level."""
@@ -282,11 +243,17 @@ class Roleplay(commands.Cog):
         """
 
         # method needs to be defined here so it can be changed for each action
-        async def command_method(ctx: commands.GuildContext, *, target_member: discord.Member | None = None):
+        async def command_method(
+            ctx: commands.GuildContext,
+            pairing: Pairing | None = None,
+            *,
+            target_member: discord.Member | None = None,
+        ):
             """Executes the specified action for the given member.
 
             Args:
                 ctx (commands.GuildContext): The context of the command invocation.
+                pairing (Optional, str): Only use images with this pairing tag.
                 target_member (Optional, discord.Member): The member to perform the action on.
             """
             invoker_member = ctx.author
@@ -304,6 +271,7 @@ class Roleplay(commands.Cog):
                 invoker_member,
                 target_member,
                 interaction_type=const.InteractionType.ACTIVE,
+                pairing=pairing,
             )
 
             # if the interaction wasn't successful, reset the cooldown for this command
@@ -320,7 +288,7 @@ class Roleplay(commands.Cog):
 
         command = commands.command(name=action_name, aliases=all_aliases)(command_method)
         command = commands.cooldown(const.COOLDOWN_RATE, const.COOLDOWN_TIME, commands.BucketType.channel)(command)
-        command = commands.bot_has_permissions(embed_links=True)(command)
+        command = commands.bot_has_permissions(embed_links=True, attach_files=True)(command)
         command = commands.guild_only()(command)
 
         # I don't know why, but this particular configuration makes the command
@@ -341,12 +309,14 @@ class Roleplay(commands.Cog):
         # Add the command to the roleplay group
         self.roleplay.add_command(command)
 
-    @commands.command(aliases=["askfor", "get", "giveme", "gimme", "request"])
+    @commands.command(aliases=["askfor", "get", "giveme", "gimme", "request"])  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
+    @commands.bot_has_permissions(embed_links=True, attach_files=True)
     async def ask(
         self,
         ctx: commands.GuildContext,
         action_name: str,
+        pairing: Pairing | None = None,
         target_member: discord.Member | None = None,
     ):
         """Ask another member to perform an action on you
@@ -357,6 +327,7 @@ class Roleplay(commands.Cog):
         Args:
             ctx (commands.GuildContext): The context of the command invocation.
             action_name (str): The name of the roleplay action.
+            pairing (Optional, str): Only use images with this pairing tag.
             target_member (Optional, discord.Member): The member to perform this action on.
         """
         invoker_member = ctx.author
@@ -379,6 +350,7 @@ class Roleplay(commands.Cog):
             invoker_member,
             target_member,
             interaction_type=const.InteractionType.PASSIVE,
+            pairing=pairing,
         )
 
     # overwriting the .ask() command function docstring here as this is what shows up
@@ -392,6 +364,7 @@ class Roleplay(commands.Cog):
         invoker_member: discord.Member,
         target_member: discord.Member,
         interaction_type: const.InteractionType = const.InteractionType.ACTIVE,
+        pairing: str | None = None,
     ):
         """Attempt to perform an action on another member (or yourself)
 
@@ -402,6 +375,7 @@ class Roleplay(commands.Cog):
             target_member (discord.Member): The member being asked to participate.
             interaction_type (Optional, InteractionType): This flag changes the message tense from active
             to passive
+            pairing (Optional, str): Only use images with this pairing tag.
 
         Order of consent:
             Does the action require consent? If not, execute
@@ -474,6 +448,7 @@ class Roleplay(commands.Cog):
             target_member,
             action,
             interaction_type=interaction_type,
+            pairing=pairing,
         )
 
         # Passive (asked-for) actions are performed by the target on the invoker
@@ -516,6 +491,7 @@ class Roleplay(commands.Cog):
         target_member: discord.Member,
         action: Action,
         interaction_type: const.InteractionType = const.InteractionType.ACTIVE,
+        pairing: str | None = None,
     ):
         """Sends the final message or Embed for the roleplay command
 
@@ -526,6 +502,7 @@ class Roleplay(commands.Cog):
             action (Action): Action object containing properties.
             interaction_type (Optional, InteractionType): This flag changes the message tense from active
             to passive
+            pairing (Optional, str): Only use images with this pairing tag.
         """
         description = action.description
         self.logger.debug(f"description : {description}")
@@ -557,36 +534,27 @@ class Roleplay(commands.Cog):
             footer = f"{footer}\ncredits: {', '.join(action.credits)}"
         self.logger.debug(f"footer : {footer}")
 
-        # get a random image from the list of images: a URL, or a locally cached file
-        image = choice(action.images)
-        is_url = urlparse(image).scheme in ("http", "https")
-        self.logger.debug(f"image {'URL' if is_url else 'filepath'} : {image}")
+        image, pairing_missing = await asyncio.to_thread(pick_image, self.images_path / action.name, pairing)
+        self.logger.debug(f"image : {image}")
+        note = const.PAIRING_MISSING_NOTE.format(pairing=pairing, action=action.name) if pairing_missing else None
 
-        # EMBEDS WON'T SPOILER IMAGES INSIDE THEM
-        # Embed.spoiler_image() creates manages a local cache and uses file attachments
-        # which makes for a bit nicer presentation
-        embed.set_footer(text=footer, icon_url=(ctx.me.avatar or ctx.me.default_avatar).url)
-        if is_url and action.spoiler:
-            try:
-                async with ctx.typing():
-                    file = await Embed.spoiler_image(self.http_session(), image)
-            except (aiohttp.ClientError, TimeoutError):
-                # still show the action, just without its image
-                self.logger.exception(f"Unable to download {image}!")
-                await ctx.send(description)
+        if action.spoiler:
+            # embeds can't spoiler their image, so lewd images are sent as a spoilered attachment
+            content = f"{description}\n-# {note}" if note else description
+            if image is None:
+                await ctx.send(content)
             else:
-                await ctx.send(description, file=file)
-        elif is_url:
-            embed.set_image(url=image)
+                await ctx.send(content, file=discord.File(image, filename=image.name, spoiler=True))
+            return
+
+        if note:
+            footer = f"{footer}\n{note}"
+        embed.set_footer(text=footer, icon_url=(ctx.me.avatar or ctx.me.default_avatar).url)
+        if image is None:
             await ctx.send(embed=embed)
         else:
-            file_path = Path(image)
-            file = discord.File(fp=file_path, filename=file_path.name)
-            if action.spoiler:
-                await ctx.send(description, file=file)
-            else:
-                embed.set_image(url=f"attachment://{file_path.name}")
-                await ctx.send(embed=embed, file=file)
+            embed.set_image(url=f"attachment://{image.name}")
+            await ctx.send(embed=embed, file=discord.File(image, filename=image.name))
 
     async def delete_message(self, ctx: commands.Context, delay: int = const.SHORT_DELETE_TIME):
         """Deletes the command message after a delay, without making the command wait

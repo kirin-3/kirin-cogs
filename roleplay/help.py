@@ -49,6 +49,12 @@ class Help:
             actions += f"- **{prefix}{action.name}**: {action.help}\n"
 
         embed.add_field(name="Actions", value=actions, inline=False)
+        embed.add_field(
+            name="Pairings",
+            value=f"Put `mlw`, `wlm`, `wlw` or `mlm` before the member to pick the gif's pairing, e.g. "
+            f"`{prefix}hug wlw @member`. Without one you get untagged, mlw or wlm gifs.",
+            inline=False,
+        )
 
         await ctx.send(embed=embed, delete_after=const.LONG_DELETE_TIME)
 

@@ -1,0 +1,10 @@
+help: "Give a user a sad hug."
+aliases:
+    - hugsad
+    - sadhugs
+description: "{invoker_member} is giving {target_member} a sad hug."
+consent:
+    active: "{target_member}, {invoker_member} wants to give you a sad hug."
+    passive: "{target_member}, {invoker_member} wants you to give them a sad hug."
+    owner_active: "{owner}, {invoker_member} wants to give {target_member} a sad hug."
+    owner_passive: "{owner}, {invoker_member} wants {target_member} to give them a sad hug."

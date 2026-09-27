@@ -9,7 +9,7 @@ identifier the old install used.
 
 Each action is a YAML file in `actions/`, which becomes both `[p]<action>` and `[p]roleplay <action>`, usable with a
 target (`[p]hug @user`) or without one — with no target, the server's default member performs the action on you.
-The bot needs **Embed Links** to post the result.
+The bot needs **Embed Links** and **Attach Files** to post the result.
 
 | Action | Aliases | Notes |
 | --- | --- | --- |
@@ -17,12 +17,15 @@ The bot needs **Embed Links** to post the result.
 | `highfive` | highfives/high5 | |
 | `holdhands` | | image sent as a spoiler |
 | `hug` | hugs | |
+| `happyhug` | hughappy/happyhugs | |
+| `sadhug` | hugsad/sadhugs | |
 | `kiss` | kisses/smooch | |
 | `lick`, `pat`, `pet`, `poke`, `slap`, `spank`, `tickle` | | |
 | `bow` | bows/bowto | no consent prompt |
 | `smug` | | no consent prompt |
 | `cunnilingus` | eatout/eatsout | spoilered |
 | `fuck` | fucks/bang(s)/havesexwith | spoilered |
+| `nipplesuck` | nipplesucks | spoilered |
 | `peg` | pegs/strapon | spoilered |
 | `ride`, `siton` (sitsons/sitonface/sitsonface) | | spoilered |
 | `suck` | sucks/bj/blowjob | spoilered |
@@ -35,8 +38,21 @@ asks another member to perform the action on you, with the same consent rules. `
 
 - Action commands have a cooldown of one use per **120 seconds per channel**, reset when an interaction fails.
 - All action commands are server-only.
-- Images come from external hosts (weeb.sh, imgur, tenor, …). `[p]roleplay admin download` caches them into the
-  cog's data folder and switches the cog to the local copies.
+
+## Images and pairings
+
+Each action's gifs are the image files in the cog's data folder under `images/<action>/` (subfolders included). The
+folder is read every time the action is used, so adding, renaming or deleting files needs no reload. An action with
+no images still runs, without a gif. Spoilered actions always send their gif as a spoiler.
+
+A file's **pairing** is the `mlw`, `wlm`, `wlw` or `mlm` part of its name, split on `_` (`hug_wlw_1234.gif`). Files
+without one are untagged.
+
+- `[p]hug @member` picks from the untagged, `mlw` and `wlm` gifs, never `wlw` or `mlm`.
+- `[p]hug wlw @member` (any case, before the member, also `[p]ask hug wlw @member`) picks only `wlw` gifs. `mlw` and
+  `wlm` are different pairings.
+- If the action has no gifs for that pairing, a default one is used and the message notes it ("No wlw gifs for suck
+  yet").
 
 ## Consent
 
@@ -56,9 +72,9 @@ order:
 
 | Command | Who | What it does |
 | --- | --- | --- |
-| `[p]<action> [member]` | everyone (server-only) | Perform the action |
-| `[p]roleplay <action> [member]` | everyone | Same thing under the group |
-| `[p]ask <action> [member]` | everyone (server-only) | Ask a member to perform the action on you |
+| `[p]<action> [pairing] [member]` | everyone (server-only) | Perform the action |
+| `[p]roleplay <action> [pairing] [member]` | everyone | Same thing under the group |
+| `[p]ask <action> [pairing] [member]` | everyone (server-only) | Ask a member to perform the action on you |
 | `[p]roleplay help` | everyone | Custom help embed listing settings and actions |
 | `[p]roleplay settings [member]` | self; others need admin | Show a member's consent settings (button, ephemeral) |
 | `[p]roleplay settings help` | everyone | Help for the settings commands |
@@ -70,7 +86,6 @@ order:
 | `[p]roleplay settings servant [member] [true/false]` | self; others need admin | Consent to any request on you |
 | `[p]roleplay settings untracked [member] [true/false]` | self; others need admin | Stop counting your actions and delete your counts |
 | `[p]rpstats [member] [other]` | everyone (server-only) | Action counts: yours, a member's, or between two members. Also `/rpstats` once enabled |
-| `[p]roleplay admin download` | bot admin | Cache all action images locally |
 | `[p]roleplay admin logger_settings [level]` | bot admin | Show or set the cog's log level |
 
 `settings add/remove` commands delete the invoking message after 10 seconds, and help/settings embeds clean

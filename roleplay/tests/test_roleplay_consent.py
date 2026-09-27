@@ -1,14 +1,12 @@
 """Covers asking for consent (the rules themselves are in test_roleplay_decide), the
-consent buttons, looking up members, action lookup, image downloads and reloading
+consent buttons, looking up members, action lookup and reloading
 the cog."""
 
 import logging
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
-import aiohttp
 import discord
 import pytest
 from discord.ext import commands as dpy_commands
@@ -18,7 +16,6 @@ from roleplay import main as main_module
 from roleplay import settings as settings_module
 from roleplay.actions import ActionManager
 from roleplay.main import Roleplay
-from roleplay.unicornia import web
 from roleplay.users import Manager
 from roleplay.views import ConsentView
 
@@ -246,84 +243,6 @@ def test_actions_are_found_by_alias_in_any_case() -> None:
     assert manager.get("nonsense") is None
 
 
-class _Response:
-    def __init__(self, content: bytes, content_type: str) -> None:
-        self.content = content
-        self.content_type = content_type
-        self.request_info = None
-        self.history = ()
-
-    async def __aenter__(self) -> "_Response":
-        return self
-
-    async def __aexit__(self, *_exc: object) -> None:
-        return None
-
-    async def read(self) -> bytes:
-        return self.content
-
-
-class _Session:
-    """Stands in for aiohttp.ClientSession, answering every GET with ``content``, or
-    raising ``error``."""
-
-    def __init__(
-        self, content: bytes = b"gif", error: Exception | None = None, content_type: str = "image/gif"
-    ) -> None:
-        self.content = content
-        self.content_type = content_type
-        self.error = error
-        self.urls: list[str] = []
-
-    def get(self, url: str, **_kwargs: Any) -> _Response:
-        self.urls.append(url)
-        if self.error is not None:
-            raise self.error
-        return _Response(self.content, self.content_type)
-
-
-@pytest.mark.asyncio
-async def test_download_skips_images_already_saved(tmp_path: Path) -> None:
-    session: Any = _Session()
-
-    assert await web.save_image_from_url(session, "https://a.example/x/tenor.gif", tmp_path, "hug") is True
-    assert await web.save_image_from_url(session, "https://a.example/x/tenor.gif", tmp_path, "hug") is False
-    # a different URL with the same file name is saved separately
-    assert await web.save_image_from_url(session, "https://a.example/y/tenor.gif", tmp_path, "hug") is True
-    assert len(session.urls) == 2
-    assert len(list((tmp_path / "hug").iterdir())) == 2
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("error", [aiohttp.ClientConnectionError(), TimeoutError()])
-async def test_download_reports_connection_errors(tmp_path: Path, error: Exception) -> None:
-    session: Any = _Session(error=error)
-
-    assert await web.save_image_from_url(session, "https://a.example/hug.gif", tmp_path, "hug") is None
-
-
-@pytest.mark.asyncio
-async def test_download_rejects_html_served_as_an_image(tmp_path: Path) -> None:
-    # dead image hosts answer 200 with an HTML page
-    session: Any = _Session(content=b"<head>", content_type="text/html")
-
-    assert await web.save_image_from_url(session, "https://a.example/hug.gif", tmp_path, "hug") is None
-    assert not list((tmp_path / "hug").iterdir())
-
-
-@pytest.mark.asyncio
-async def test_spoiler_images_are_cached(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(main_module.Embed, "CACHE_DIR", tmp_path)
-    session: Any = _Session(content=b"lewd")
-
-    first = await main_module.Embed.spoiler_image(session, "https://a.example/x/tenor.gif")
-    second = await main_module.Embed.spoiler_image(session, "https://a.example/x/tenor.gif")
-
-    assert first.spoiler and first.filename == "SPOILER_image.gif"
-    assert first.fp.read() == second.fp.read() == b"lewd"
-    assert len(session.urls) == 1
-
-
 def _guild(members: dict[int, _Member]) -> Any:
     fetch_member = AsyncMock(side_effect=discord.NotFound(MagicMock(status=404), "Unknown Member"))
     return SimpleNamespace(get_member=members.get, fetch_member=fetch_member)
@@ -362,7 +281,6 @@ async def test_display_names_only_fetch_unknown_users() -> None:
 class _Bot(dpy_commands.GroupMixin):
     def __init__(self) -> None:
         super().__init__()
-        self.loop = SimpleNamespace(create_task=lambda coro: coro.close())
 
 
 @pytest.fixture
@@ -402,14 +320,3 @@ async def test_cog_leaves_other_cogs_commands_alone(bot: _Bot) -> None:
     with pytest.raises(dpy_commands.CommandRegistrationError):
         Roleplay(cast(Any, bot))
     assert bot.all_commands["hug"] is other
-
-
-@pytest.mark.asyncio
-async def test_unloading_closes_the_http_session(bot: _Bot) -> None:
-    cog = Roleplay(cast(Any, bot))
-    session = cog.http_session()
-    assert cog.http_session() is session
-
-    await cog.cog_unload()
-
-    assert session.closed

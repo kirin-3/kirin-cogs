@@ -1,0 +1,10 @@
+help: "Give a user a happy hug."
+aliases:
+    - hughappy
+    - happyhugs
+description: "{invoker_member} is giving {target_member} a happy hug."
+consent:
+    active: "{target_member}, {invoker_member} wants to give you a happy hug."
+    passive: "{target_member}, {invoker_member} wants you to give them a happy hug."
+    owner_active: "{owner}, {invoker_member} wants to give {target_member} a happy hug."
+    owner_passive: "{owner}, {invoker_member} wants {target_member} to give them a happy hug."

@@ -1,11 +1,6 @@
 help: "Hold hands with a user!"
 description: "{invoker_member} is holding {target_member}'s hand"
 spoiler: True
-images: 
-    - https://panel.unicornia.net/botimages/4SasCu2.gif
-    - https://panel.unicornia.net/botimages/biFPihV.gif
-    - https://panel.unicornia.net/botimages/lnVGxdN.gif
-    - https://panel.unicornia.net/botimages/DfDKZGT.gif
 consent:
     active: "{target_member}, {invoker_member} wants to hold your hand."
     passive: "{target_member}, {invoker_member} wants you to hold their hand."

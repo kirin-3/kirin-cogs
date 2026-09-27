@@ -1,0 +1,10 @@
+help: "Suck on a user's nipples!"
+aliases:
+    - nipplesucks
+description: "{invoker_member} is sucking on {target_member}'s nipples."
+spoiler: True
+consent:
+    active: "{target_member}, {invoker_member} wants to suck on your nipples."
+    passive: "{target_member}, {invoker_member} wants you to suck on their nipples."
+    owner_active: "{owner}, {invoker_member} wants to suck on {target_member}'s nipples."
+    owner_passive: "{owner}, {invoker_member} wants {target_member} to suck on their nipples."

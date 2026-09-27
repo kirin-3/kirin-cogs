@@ -8,8 +8,39 @@ Roleplay action commands are defined as individual YAML files in "actions" subfo
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from random import choice
 
 import yaml
+
+# Pairing tags in image filenames, e.g. hug_wlw_1234.gif. mlw and wlm are different pairings.
+PAIRINGS = ("mlw", "wlm", "wlw", "mlm")
+# Without a requested pairing, wlw and mlm images are left out
+DEFAULT_PAIRINGS = {None, "mlw", "wlm"}
+IMAGE_SUFFIXES = {".gif", ".png", ".jpg", ".jpeg", ".webp"}
+
+
+def pairing_of(path: Path) -> str | None:
+    """The pairing tag in an image's filename, or None if it's untagged."""
+    return next((part for part in path.stem.lower().split("_") if part in PAIRINGS), None)
+
+
+def pick_image(folder: Path, pairing: str | None = None) -> tuple[Path | None, bool]:
+    """A random image from an action's folder (subfolders included).
+
+    With ``pairing``, only images tagged with it are used; if there are none, the
+    default pool is used instead.
+
+    Returns:
+        The image (None if there's nothing to pick from), and whether the requested
+        pairing had no images.
+    """
+    files = [f for f in folder.rglob("*") if f.is_file() and f.suffix.lower() in IMAGE_SUFFIXES]
+    if pairing:
+        tagged = [f for f in files if pairing_of(f) == pairing]
+        if tagged:
+            return choice(tagged), False
+    pool = [f for f in files if pairing_of(f) in DEFAULT_PAIRINGS]
+    return (choice(pool) if pool else None), pairing is not None
 
 
 @dataclass
@@ -47,7 +78,8 @@ class Action:
         aliases (Optional[List[str]]): Aliases for the command name.
         credits (Optional[List[str]]): Optional credits text included in the Embed footer to acknowledge members who came up with the idea.
         spoiler (Optional[bool]): Use for lewd images. This will spoiler the image in a message instead of displaying it in an Embed.
-        images (Optional[list]): URL for a gif(s) that represents the action.
+
+    The action's images are the files in its folder of the cog's images data folder, see pick_image().
     """
 
     name: str
@@ -57,9 +89,6 @@ class Action:
     aliases: list[str] = field(default_factory=list)
     credits: list[str] | None = None
     spoiler: bool = False
-    images: list[str] = field(default_factory=list)
-    # the image URLs from the action's file, kept after images switches to local files
-    image_urls: list[str] = field(init=False, default_factory=list)
 
     def __post_init__(self):
         # YAML gives plain strings and dicts; normalize them to the declared types
@@ -69,9 +98,6 @@ class Action:
             self.help = f"{self.name}s a member."
         if isinstance(self.aliases, str):
             self.aliases = [self.aliases]
-        if isinstance(self.images, str):
-            self.images = [self.images]
-        self.image_urls = list(self.images)
         if isinstance(self.consent, dict):
             self.consent = Consent(**self.consent)
 
@@ -107,26 +133,6 @@ class ActionManager:
             action = self.load(file_path.stem, file_path)
             if action:
                 self.actions.append(action)
-
-    def update_images(self, action: Action, images_path: Path):
-        # Look for locally cached images and replace the list of URLs with a list
-        # of these filepaths
-        action_images_path = images_path / action.name
-        if not action_images_path.is_dir():
-            self.logger.debug(f"{action_images_path} is not a valid directory.")
-            return
-
-        image_files = [file.as_posix() for file in action_images_path.iterdir() if file.is_file()]
-        if not image_files:
-            self.logger.debug(f"No cached images for {action.name} in {action_images_path}.")
-            return
-
-        action.images = image_files
-        self.logger.debug(f"{action.name} is now using local image cache")
-
-    def update(self, images_path: Path):
-        for action in self.actions:
-            self.update_images(action, images_path)
 
     def get(self, action_name: str) -> Action | None:
         """Find an action by its name or one of its aliases, ignoring case."""

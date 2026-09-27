@@ -43,6 +43,8 @@ LONG_DELETE_TIME = 180
 EMBED_LIST_LIMIT = 25
 EMBED_COLOR = Color.from_str("#9401fe")
 EMBED_FOOTER = f"Roleplay Cog ({__version__})"
+# added to the message when the requested pairing has no images for the action
+PAIRING_MISSING_NOTE = "No {pairing} gifs for {action} yet, so here's another one."
 
 
 class InteractionType(Enum):

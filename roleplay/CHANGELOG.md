@@ -5,6 +5,23 @@
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
  - UI interface for editing settings. This may require creating an app command ('/settings') in order to utilize discords interaction objects and ephemeral messaging
 
+## [2.8.0] - 2026-09-28
+
+### Added
+
+- Pick a gif's pairing by putting `mlw`, `wlm`, `wlw` or `mlm` before the member: `[p]hug wlw @member`, also with `ask` (`[p]ask hug mlm @member`). The pairing comes from the image's file name. Without one, only untagged, mlw and wlm gifs are used. When an action has no gifs for the pairing asked for, another gif is used and the message says so
+- `happyhug` (alias `hughappy`), `sadhug` (alias `hugsad`) and `nipplesuck` (spoilered) actions
+
+### Changed
+
+- The images in the cog's `images/<action>/` data folder are the only source of action gifs. The folder is read each time an action is used, so added, renamed or deleted files take effect without a reload
+- Spoilered actions always send their gif as a spoiler, whatever the file is called
+- Actions and `ask` need the bot to have Attach Files as well as Embed Links
+
+### Removed
+
+- `[p]roleplay admin download` and the image URLs in the action files. It would bring deleted gifs back and re-add renamed ones as duplicates
+
 ## [2.7.0] - 2026-09-27
 
 ### Added
