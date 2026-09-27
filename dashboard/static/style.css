@@ -1,4 +1,4 @@
-/* Unicornia's staff and member sites. The look follows unicornia.net: warm cream and plum, pastel pride accents,
+/* Unicornia's staff and member sites. The look follows unicornia.net: its dark plum theme, pastel pride accents,
    rounded type, paper grain and soft shadows. Fredoka, Nunito and Caveat are the main site's own font files, served
    from /static/fonts (latin only; other scripts fall back to the system font). */
 
@@ -8,22 +8,23 @@
 @font-face { font-family: "Nunito"; font-weight: 700; font-display: swap; src: url("fonts/nunito-latin-700-normal.woff2") format("woff2"); }
 @font-face { font-family: "Caveat"; font-weight: 600; font-display: swap; src: url("fonts/caveat-latin-600-normal.woff2") format("woff2"); }
 
+/* Always the main site's "cozy night" dark theme, whatever the device prefers */
 :root {
-  --bg: #fdf7f2;
-  --panel: #fffcf9;
-  --raised: #f5ebf7;
-  --text: #2d1b3d;
-  --muted: #6e5a7e;
-  --line: #ecdcef;
-  --accent: #7b2cbf;
-  --accent-hover: #6a22a8;
-  --accent-soft: #f1e4fb;
-  --on-accent: #fff;
-  --rose: #b8336f;
-  --ok: #1d6b40;
-  --ok-bg: #d5f2e0;
-  --warn: #b3261e;
-  --warn-bg: #ffe3e6;
+  --bg: #231331;
+  --panel: #2f1b40;
+  --raised: #3d2652;
+  --text: #f8eef6;
+  --muted: #cbb6d6;
+  --line: #46305c;
+  --accent: #c79bff;
+  --accent-hover: #d6b4ff;
+  --accent-soft: #3d2652;
+  --on-accent: #231331;
+  --rose: #ff9ec7;
+  --ok: #8fd9a8;
+  --ok-bg: #1f3a2c;
+  --warn: #ffb4ab;
+  --warn-bg: #4a1f2b;
 
   --pink: #ffc8dd;
   --peach: #ffd8b8;
@@ -33,42 +34,17 @@
   --lavender: #dccbff;
   --ink: #3d1d52;
 
-  --grain-opacity: 0.05;
-  --haze-opacity: 0.55;
-  --shadow: 0 1px 2px rgb(80 40 90 / 4%), 0 10px 28px -12px rgb(80 40 90 / 16%);
-  --shadow-lg: 0 2px 4px rgb(80 40 90 / 5%), 0 22px 44px -16px rgb(80 40 90 / 26%);
-  --glow: 0 6px 18px -6px rgb(123 44 191 / 42%);
+  --grain-opacity: 0.045;
+  --haze-opacity: 0.16;
+  --shadow: 0 1px 2px rgb(8 2 14 / 25%), 0 12px 30px -12px rgb(8 2 14 / 55%);
+  --shadow-lg: 0 2px 4px rgb(8 2 14 / 30%), 0 24px 48px -16px rgb(8 2 14 / 70%);
+  --glow: 0 6px 20px -6px rgb(199 155 255 / 36%);
   --radius: 1.25rem;
   --heading: "Fredoka", "Nunito", ui-rounded, "SF Pro Rounded", "Segoe UI Variable Display", system-ui, sans-serif;
   --body: "Nunito", ui-rounded, "SF Pro Rounded", system-ui, "Segoe UI", sans-serif;
   --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
   --hand: "Caveat", "Comic Sans MS", cursive;
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #231331;
-    --panel: #2f1b40;
-    --raised: #3d2652;
-    --text: #f8eef6;
-    --muted: #cbb6d6;
-    --line: #46305c;
-    --accent: #c79bff;
-    --accent-hover: #d6b4ff;
-    --accent-soft: #3d2652;
-    --on-accent: #231331;
-    --rose: #ff9ec7;
-    --ok: #8fd9a8;
-    --ok-bg: #1f3a2c;
-    --warn: #ffb4ab;
-    --warn-bg: #4a1f2b;
-    --grain-opacity: 0.045;
-    --haze-opacity: 0.16;
-    --shadow: 0 1px 2px rgb(8 2 14 / 25%), 0 12px 30px -12px rgb(8 2 14 / 55%);
-    --shadow-lg: 0 2px 4px rgb(8 2 14 / 30%), 0 24px 48px -16px rgb(8 2 14 / 70%);
-    --glow: 0 6px 20px -6px rgb(199 155 255 / 36%);
-  }
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; border-color: var(--line); }
@@ -121,10 +97,6 @@ body::before {
   z-index: -1;
   background: linear-gradient(90deg, var(--pink), var(--peach), var(--butter), var(--mint), var(--sky), var(--lavender));
   mask: url("squiggle.svg") repeat-x left center / 0.9em 100%;
-}
-
-@media (prefers-color-scheme: light) {
-  .squiggle::after { filter: saturate(2.2) brightness(0.88); } /* pastels read faint on cream */
 }
 
 ::selection { background: var(--pink); color: var(--ink); }
