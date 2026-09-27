@@ -31,6 +31,28 @@ def test_word_lists_match_whole_words_and_fancy_letters() -> None:
     assert fires(s, msg(f"you {bold}")) == ["r"]
     full_width = "".join(chr(0xFF41 + ord(c) - ord("a")) for c in "badword")
     assert fires(s, msg(full_width)) == ["r"]
+    assert fires(s, msg("bad\u200bword")) == ["r"]  # zero-width space
+    assert fires(s, msg("bad\xadword")) == ["r"]  # soft hyphen
+
+
+def test_multi_word_entries_match_as_phrases() -> None:
+    s = snap(
+        ruleset("words", [rule("r", [{"type": "words", "list": 900}])]),
+        ruleset("names", [rule("n", [{"type": "name_words", "list": 900}])]),
+        lists=[word_list("w", ["kill yourself", "don't"], 900)],
+    )
+    assert fires(s, msg("go KILL  yourself!")) == ["r"]
+    assert fires(s, msg(f"i don{chr(0x2019)}t care")) == ["r"]
+    assert fires(s, msg("do it for yourself")) == []
+    assert fires(s, msg("can't stop, won't stop")) == []
+    assert fires(s, msg("yourself kill")) == []
+    assert fires(s, Event("name", 7, names=("kill", "yourself"))) == []  # a phrase can't span two names
+    assert fires(s, Event("name", 7, names=("kill.yourself",))) == ["n"]
+
+
+def test_zero_width_characters_do_not_hide_regex_matches() -> None:
+    s = snap(ruleset("s", [rule("r", [{"type": "regex", "pattern": "badword"}])]))
+    assert fires(s, msg("bad\u200bw\u2060ord")) == ["r"]
 
 
 def test_regex_no_match_links_and_invites() -> None:
@@ -127,6 +149,7 @@ def test_conditions_threads_names_and_deleted_roles() -> None:
     event = msg("https://x.y", role_ids=frozenset({LOW}))
     assert evaluate(need_all, event, deque(), role_exists=lambda r: r != 999)  # role 999 was deleted
     assert not evaluate(need_all, event, deque())
+    assert not evaluate(need_all, event, deque(), role_exists=lambda _: False)  # every listed role was deleted
 
 
 def test_ruleset_conditions_and_disabled_rulesets() -> None:

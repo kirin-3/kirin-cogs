@@ -24,6 +24,7 @@ INVITE_RE = regex.compile(r"(?i)(?:discord\.gg|discord(?:app)?\.com/invite)/[\w-
 LINK_RE = regex.compile(r"(?i)https?://\S+|\bwww\.\S+|(?:discord\.gg|discord(?:app)?\.com/invite)/[\w-]+")
 MENTION_RE = regex.compile(r"<@[!&]?\d+>")
 SPLIT_RE = regex.compile(r"\W+")
+FORMAT_RE = regex.compile(r"\p{Cf}+")  # invisible format characters: zero-width space and joiners, soft hyphen
 
 # Harshest punishment wins: (rank, duration). A mute or timeout ranks by its length.
 RANKS = {"ban": 5, "mute": 4, "timeout": 3, "warn": 2, "nickname": 1}
@@ -32,13 +33,28 @@ TRIGGER_GROUPS = {key: t.group for key, t in TRIGGERS.items()}
 
 
 def fold(text: str) -> str:
-    """Fancy Unicode letters (math script, full-width, ligatures) to plain ones."""
-    return unicodedata.normalize("NFKC", text)
+    """Fancy Unicode letters (math script, full-width, ligatures) to plain ones, invisible characters removed."""
+    return unicodedata.normalize("NFKC", FORMAT_RE.sub("", text))
+
+
+def tokens(text: str) -> list[str]:
+    """Whole words of an already folded text, casefolded."""
+    return [w for w in SPLIT_RE.split(text.casefold()) if w]
 
 
 def words(texts: Iterable[str]) -> frozenset[str]:
-    """Whole words of already folded texts, casefolded."""
-    return frozenset(w for text in texts for w in SPLIT_RE.split(text.casefold()) if w)
+    return frozenset(w for text in texts for w in tokens(text))
+
+
+def spaced(text: str) -> str:
+    """The words one space apart and padded, so a phrase only matches whole words: " kill yourself "."""
+    return f" {' '.join(tokens(text))} "
+
+
+def list_entries(entries: Iterable[str]) -> tuple[frozenset[str], tuple[str, ...]]:
+    """A word list's single words, and its multi-word entries ("kill yourself", "don't") as spaced phrases."""
+    split = [tokens(fold(e)) for e in entries]
+    return frozenset(t[0] for t in split if len(t) == 1), tuple(f" {' '.join(t)} " for t in split if len(t) > 1)
 
 
 @dataclass
@@ -58,12 +74,16 @@ class Event:
     at: float = 0.0
     words: frozenset[str] = field(init=False)
     name_words: frozenset[str] = field(init=False)
+    spaced: tuple[str, ...] = field(init=False)
+    name_spaced: tuple[str, ...] = field(init=False)
     links: int = field(init=False)
     mention_tokens: int = field(init=False)
 
     def __post_init__(self) -> None:
         self.words = words([self.text])
         self.name_words = words(self.names)
+        self.spaced = (spaced(self.text),)
+        self.name_spaced = tuple(spaced(n) for n in self.names)  # per name, so a phrase can't span two
         self.links = len(LINK_RE.findall(self.text))
         self.mention_tokens = len(MENTION_RE.findall(self.text))
 
@@ -91,6 +111,10 @@ class Trigger:
     row: dict
     pattern: Any = None  # compiled regex
     words: frozenset[str] = frozenset()
+    phrases: tuple[str, ...] = ()  # spaced multi-word entries
+
+    def listed(self, words: frozenset[str], spaced: tuple[str, ...]) -> bool:
+        return bool(self.words & words) or any(p in s for p in self.phrases for s in spaced)
 
 
 @dataclass(frozen=True)
@@ -126,7 +150,7 @@ def rank(effects: Iterable[dict]) -> tuple[int, float]:
 
 def compile_document(document: dict) -> Snapshot:
     """Build the snapshot events read from. `document` must already be validated."""
-    lists = {item["id"]: frozenset(words(fold(w) for w in item["words"])) for item in document["lists"]}
+    lists = {item["id"]: list_entries(item["words"]) for item in document["lists"]}
     rules, window = [], 0
     for ruleset in document["rulesets"]:
         if not ruleset["enabled"]:
@@ -140,7 +164,7 @@ def compile_document(document: dict) -> Snapshot:
                     Trigger(
                         row,
                         regex.compile(row["pattern"]) if "pattern" in row else None,
-                        lists.get(row.get("list", 0), frozenset()),
+                        *lists.get(row.get("list", 0), (frozenset(), ())),
                     )
                 )
             rules.append(
@@ -206,7 +230,7 @@ def trigger_matches(trigger: Trigger, event: Event, history: deque[Entry], rule:
             return False
         if kind == "name_regex":
             return _search(trigger.pattern, event.names, rule)
-        return bool(trigger.words & event.name_words)
+        return trigger.listed(event.name_words, event.name_spaced)
     if not event.is_message:
         return False
     if group == "counted":
@@ -220,7 +244,7 @@ def trigger_matches(trigger: Trigger, event: Event, history: deque[Entry], rule:
             log.warning("Automod regex timed out in %s / %s", rule.ruleset, rule.name)
             return False
     if kind == "words":
-        return bool(trigger.words & event.words)
+        return trigger.listed(event.words, event.spaced)
     if kind == "invite":
         return INVITE_RE.search(event.text) is not None
     if kind == "link":
@@ -238,7 +262,9 @@ def condition_holds(row: dict, event: Event, role_exists: Callable[[int], bool])
         return not event.role_ids.intersection(row["roles"])
     if kind == "require_roles":
         if row["all"]:
-            return all(r in event.role_ids for r in row["roles"] if role_exists(r))
+            # Deleted roles are skipped; with none left, nobody qualifies (as with "any of").
+            live = [r for r in row["roles"] if role_exists(r)]
+            return bool(live) and event.role_ids.issuperset(live)
         return bool(event.role_ids.intersection(row["roles"]))
     if kind == "ignore_channels":
         return not event.channel_ids.intersection(row["channels"])

@@ -22,9 +22,10 @@ Rule-based automod for Unicornia, replacing YAGPDB's. Staff read the rules and t
 - **Harshest punishment wins.** When several rules fire on one event, only the harshest rule's punishments run:
   ban > mute > timeout > warn > set nickname, and longer beats shorter. Every fired rule's delete and send message
   effects still run, and the message is deleted once.
-- Text is converted from fancy Unicode letters (math script, full-width) to plain letters before matching. Word
-  lists compare whole words without regard to case. A regex that takes longer than 100 ms counts as no match, and a
-  regex no-match trigger with a slow pattern stays silent — the timeout is treated as a match.
+- Text is converted from fancy Unicode letters (math script, full-width) to plain letters, and invisible characters
+  (zero-width space, soft hyphen) are removed, before matching. Word lists compare whole words without regard to
+  case; an entry of several words, such as `kill yourself` or `don't`, matches only those words in that order. A
+  regex that takes longer than 100 ms counts as no match, and a regex no-match trigger with a slow pattern stays silent — the timeout is treated as a match.
 - Warns, mutes, timeouts and bans go through the Moderation cog, so they send the usual DMs, create modlog cases and
   post to the public mod-log. An automod mute never shortens a mute that is already running.
 
