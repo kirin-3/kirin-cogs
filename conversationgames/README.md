@@ -5,7 +5,9 @@
 > rest of this repo.
 
 Truth or dare, would you rather and never have I ever. The questions are the list Unicornia's copy of the original cog
-had been curated to (in `questions.py`), plus whatever members suggest and staff approve.
+had been curated to, a batch of spicier kink-flavoured ones added since (all in `questions.py`), and whatever
+members suggest and staff approve. Some dares use the bot's `&` roleplay, `compat` and `rpstats` commands, so the
+roleplay consent prompts still apply.
 
 ## Commands
 
