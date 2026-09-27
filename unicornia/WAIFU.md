@@ -11,7 +11,7 @@ The Unicornia Waifu System is a trading game where users can "claim" each other 
 
 ### 2. Affinity
 Users can set an "affinity" towards another user (`[p]waifu affinity @user`). This signifies a special interest or relationship.
-*   **Discount**: If you claim a user who has set their affinity to you, you get a **20% discount** on the price.
+*   **Discount**: If you claim a user who has set their affinity to you, you pay **20% less**. Their price is still set to the full amount.
 
 ### 3. Gifts and Value
 You can increase (or decrease) a waifu's market value by giving them gifts (`[p]waifu gift`).

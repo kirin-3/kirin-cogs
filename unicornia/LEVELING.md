@@ -71,8 +71,8 @@ The system generates dynamic images showing a user's progress.
 
 ### 2. Voice XP
 A background task (`_voice_xp_loop`) awards XP every minute to users in voice channels.
-*   **Rate**: 1 XP per minute.
-*   **Anti-Abuse**: Muted or deafened users (self or server) do not earn XP, and nobody earns in a channel with fewer than two such active members.
+*   **Rate**: 1 XP per minute (2 in double-XP channels), up to 720 voice XP per member per server each UTC day.
+*   **Anti-Abuse**: Muted or deafened users (self or server) do not earn XP, and nobody earns in a channel with fewer than two members who are neither muted nor deafened.
 *   **Exclusions**: Honors the same channel whitelist and role exclusions as text XP.
 
 ### 3. Rewards

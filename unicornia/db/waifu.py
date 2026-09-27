@@ -316,14 +316,17 @@ class WaifuRepository:
                 await db.execute("ROLLBACK")
                 raise
 
-    async def claim_waifu_transaction(self, waifu_id: int, claimer_id: int, price: int, note: str) -> bool:
+    async def claim_waifu_transaction(
+        self, waifu_id: int, claimer_id: int, price: int, note: str, new_price: int | None = None
+    ) -> bool:
         """Atomically claim a waifu: deduct currency and set owner.
 
         Args:
             waifu_id: Waifu ID.
             claimer_id: Claimer ID.
-            price: Price.
+            price: Amount charged.
             note: Transaction note.
+            new_price: The waifu's price afterwards, when it differs from what was charged (a discount).
 
         Returns:
             bool: True if successful, False if insufficient funds or already claimed.
@@ -363,7 +366,7 @@ class WaifuRepository:
                         DateAdded = excluded.DateAdded
                     WHERE WaifuInfo.ClaimerId IS NULL
                 """,
-                    (waifu_id, claimer_id, price),
+                    (waifu_id, claimer_id, price if new_price is None else new_price),
                 )
 
                 if cursor.rowcount == 0:

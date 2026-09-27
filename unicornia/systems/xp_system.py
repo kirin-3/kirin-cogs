@@ -21,6 +21,8 @@ from .card_generator import XPCardGenerator
 log = logging.getLogger("red.kirin_cogs.unicornia.xp")
 
 LEADERBOARD_TTL = 60  # seconds a guild's XP ranking is reused
+# Voice XP is 1 a minute, so up to 1,440 a day; a member earns at most half that per server per UTC day
+VOICE_XP_DAILY_CAP = 720
 
 
 class XPSystem:
@@ -47,6 +49,9 @@ class XPSystem:
         self._voice_xp_task = None
         self._message_xp_task = None
         self._shutdown_task: asyncio.Task[None] | None = None
+        # ponytail: kept in memory, so a reload restarts the day's count; persist it if reloads get frequent
+        self._voice_xp_day = ""
+        self._voice_xp_today: dict[tuple[int, int], int] = {}  # (user_id, guild_id): voice XP earned today
         self._background_tasks: set[asyncio.Task[Any]] = set()
         # (guild_id, user_id) -> (lock, tasks using it); level rewards for one member are applied in order
         self._reward_locks: dict[tuple[int, int], tuple[asyncio.Lock, int]] = {}
@@ -134,6 +139,9 @@ class XPSystem:
 
                 xp_amount = 1  # Trickle amount per minute
                 pending_updates = []
+                today = time.strftime("%Y-%m-%d", time.gmtime())
+                if today != self._voice_xp_day:
+                    self._voice_xp_day, self._voice_xp_today = today, {}
 
                 for guild in self.bot.guilds:
                     # Get whitelist and exclusions (Config)
@@ -173,8 +181,12 @@ class XPSystem:
                             if any(role.id in excluded_roles for role in member.roles):
                                 continue
 
-                            # Add to batch
-                            pending_updates.append((member.id, guild.id, current_xp_amount))
+                            earned = self._voice_xp_today.get((member.id, guild.id), 0)
+                            amount = min(current_xp_amount, VOICE_XP_DAILY_CAP - earned)
+                            if amount <= 0:
+                                continue
+                            self._voice_xp_today[(member.id, guild.id)] = earned + amount
+                            pending_updates.append((member.id, guild.id, amount))
 
                 # Process bulk update
                 if pending_updates:

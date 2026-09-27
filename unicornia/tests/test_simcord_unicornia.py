@@ -377,3 +377,24 @@ async def test_not_ready_message_is_sent_once(red_env: simcord.Env, monkeypatch:
     replies = [m.content for m in _bot_messages(channel, bot)]
     assert [text for text in replies if "still initializing" in (text or "")] == [replies[-1]]
     simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_affinity_discount_lowers_the_payment_not_the_price(red_env: simcord.Env) -> None:
+    guild, _owner = _guild_with_owner(red_env)
+    claimer = guild.add_member(red_env.create_user("claimer"))
+    waifu = guild.add_member(red_env.create_user("waifu"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    db = _cog(red_env).db
+    assert db is not None
+    await db.waifu.set_waifu_affinity(waifu.id, claimer.id)
+    await claimer.send(channel, "!timely")
+    wallet, _bank = await _cog(red_env).get_balance(claimer.id)
+
+    await claimer.send(channel, f"!waifu claim {_member(waifu).mention} 100")
+
+    assert await db.waifu.get_waifu_owner(waifu.id) == claimer.id
+    assert await db.waifu.get_waifu_price(waifu.id) == 100
+    assert await _cog(red_env).get_balance(claimer.id) == (wallet - 80, 0)
+    simcord.assert_no_errors(red_env)

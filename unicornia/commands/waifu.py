@@ -59,7 +59,7 @@ class WaifuCommands(UnicorniaMixinBase):
 
             # Determine claim type and price
             is_force_claim = False
-            final_price = 0
+            base_price = final_price = 0
             discount_text = ""
 
             if current_owner:
@@ -140,6 +140,7 @@ class WaifuCommands(UnicorniaMixinBase):
                     claimer_id=ctx.author.id,
                     price=final_price,
                     note=f"Claimed {member.display_name}",
+                    new_price=base_price,  # the affinity discount lowers the payment, not the waifu's price
                 )
 
                 if success:

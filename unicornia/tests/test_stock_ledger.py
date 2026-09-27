@@ -125,3 +125,28 @@ async def test_deleted_holder_leaves_no_dividend_weight_or_held_shares(db: Datab
     stock = await db.stock.get_stock("ABC")
     assert stock is not None
     assert stock["total_shares"] == 0
+
+
+@pytest.mark.asyncio
+async def test_total_shares_is_recounted_from_holdings_once(db: DatabaseManager) -> None:
+    await db.stock.create_stock("ABC", "Example", "📈", 100)
+    await db.economy.add_currency(USER, 10_000, "test", "test")
+    market = await _market(db)
+    bought, _ = await market.buy_stock(SimpleNamespace(id=USER), "ABC", 10)  # type: ignore[arg-type]
+    assert bought
+
+    async def inflate_and_restart(*, recount: bool) -> int:
+        async with db._get_connection() as connection:
+            await connection.execute("UPDATE Stocks SET TotalShares = TotalShares + 5")
+            if recount:
+                await connection.execute("DELETE FROM BotConfig WHERE Key = 'TotalSharesRecounted'")
+            await connection.commit()
+        await db.initialize()
+        stock = await db.stock.get_stock("ABC")
+        assert stock is not None
+        return stock["total_shares"]
+
+    # Shares a deleted holder left counted are dropped on the first start with the fix
+    assert await inflate_and_restart(recount=True) == 10
+    # Later starts leave TotalShares alone (a stock unwind relies on that)
+    assert await inflate_and_restart(recount=False) == 15

@@ -778,6 +778,24 @@ class CoreDB:
                 await db.commit()
                 log.info("Migration complete.")
 
+            # Once: users deleted before deletion subtracted their shares left them counted in TotalShares.
+            # Not on every start, since an interrupted stock unwind leaves the two apart until it resumes.
+            cursor = await db.execute("SELECT 1 FROM BotConfig WHERE Key = 'TotalSharesRecounted'")
+            if await cursor.fetchone() is None:
+                await db.execute(
+                    """
+                    UPDATE Stocks SET TotalShares = (
+                        SELECT COALESCE(SUM(Amount), 0) FROM StockHoldings WHERE Symbol = Stocks.Symbol)
+                    """
+                )
+                await db.execute(
+                    """
+                    INSERT INTO BotConfig (Key, Value, Description)
+                    VALUES ('TotalSharesRecounted', '1', 'Whether TotalShares was recounted from holdings')
+                    """
+                )
+                await db.commit()
+
         except Exception as e:
             log.error(f"Error updating database schema: {e}")
 

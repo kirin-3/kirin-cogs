@@ -953,3 +953,17 @@ async def test_member_not_cached_is_logged_and_the_award_still_counts(
 
     assert await xp.db.xp.get_user_xp(USER, GUILD) == 198
     assert "level rewards 4-4 were not granted" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_voice_xp_stops_at_the_daily_cap(xp: XPSystem, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("unicornia.systems.xp_system.VOICE_XP_DAILY_CAP", 2)
+    guild = message().guild
+    members = [voice_member(USER), voice_member(USER + 1)]
+    for _ in range(3):
+        await voice_tick(xp, guild, members)
+    assert await xp.db.xp.get_user_xp(USER, GUILD) == 2
+
+    xp._voice_xp_day = "2000-01-01"  # the next tick is a new UTC day
+    await voice_tick(xp, guild, members)
+    assert await xp.db.xp.get_user_xp(USER, GUILD) == 3
