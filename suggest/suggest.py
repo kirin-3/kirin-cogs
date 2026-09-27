@@ -20,6 +20,7 @@ DOWN_EMOJI_ID = 729330876114141215
 
 UP_EMOJI_FALLBACK = "✅"
 DOWN_EMOJI_FALLBACK = "❌"
+MAX_REASON = 1024  # embed field value limit
 
 
 def vote_emoji_kind(emoji: object) -> str | None:
@@ -187,6 +188,9 @@ class Suggest(commands.Cog):
         await self._resolve_suggestion(ctx, suggestion_id, "rejected", reason)
 
     async def _resolve_suggestion(self, ctx, suggestion_id: int, status: str, reason: str | None):
+        if reason and len(reason) > MAX_REASON:
+            # It goes in an embed field, which Discord caps; checked before anything changes.
+            return await ctx.send(f"The reason is {len(reason):,} characters; keep it to {MAX_REASON:,} or fewer.")
         data = await self.config.custom("SUGGESTION", str(suggestion_id)).all()
         if not isinstance(data, dict):
             return await ctx.send("Suggestion not found.")
@@ -238,9 +242,9 @@ class Suggest(commands.Cog):
         for reaction in msg.reactions:
             kind = vote_emoji_kind(reaction.emoji)
             if kind == "up":
-                up_count = reaction.count - 1 if reaction.me else reaction.count
+                up_count += reaction.count - 1 if reaction.me else reaction.count
             elif kind == "down":
-                down_count = reaction.count - 1 if reaction.me else reaction.count
+                down_count += reaction.count - 1 if reaction.me else reaction.count
 
         embed.add_field(name="Results", value=f"{up_emoji} {up_count} - {down_count} {down_emoji}", inline=False)
         embed.set_footer(text=f"{status_text}")

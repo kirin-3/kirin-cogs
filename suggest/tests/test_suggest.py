@@ -9,7 +9,7 @@ import pytest_asyncio
 from redbot.core.bot import Red
 from redbot.core.commands import Context
 
-from suggest.suggest import DOWN_EMOJI_ID, SUGGEST_CHANNEL_ID, UP_EMOJI_ID, Suggest
+from suggest.suggest import DOWN_EMOJI_ID, SUGGEST_CHANNEL_ID, UP_EMOJI_FALLBACK, UP_EMOJI_ID, Suggest
 from suggest.views import StickyView, SuggestionModal
 
 
@@ -232,6 +232,15 @@ async def test_approve_suggestion_already_approved(cog: Suggest, ctx_mock: Magic
 
 
 @pytest.mark.asyncio
+async def test_too_long_reason_is_refused_before_anything_changes(cog: Suggest, ctx_mock: MagicMock) -> None:
+    cog.config.custom = MagicMock()
+    await getattr(cog.reject, "callback")(cog, ctx_mock, 132, reason="x" * 1025)  # noqa: B009
+
+    ctx_mock.send.assert_called_once_with("The reason is 1,025 characters; keep it to 1,024 or fewer.")
+    cog.config.custom.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_approve_suggestion_missing_channel(cog: Suggest, ctx_mock: MagicMock, bot_mock: MagicMock) -> None:
     custom_data = {"msg_id": 888, "status": "pending"}
 
@@ -302,7 +311,12 @@ async def test_approve_suggestion_success(cog: Suggest, ctx_mock: MagicMock, bot
     r2.count = 5
     r2.me = False  # Bot didn't vote (somehow), don't subtract
 
-    msg_mock.reactions = [r1, r2]
+    r3 = MagicMock(spec=discord.Reaction)
+    r3.emoji = UP_EMOJI_FALLBACK  # fallback votes add to the custom emoji's
+    r3.count = 4
+    r3.me = False
+
+    msg_mock.reactions = [r1, r2, r3]
 
     # Setup up/down emojis to match reactions above
     bot_mock.get_emoji.side_effect = lambda emoji_id: str(emoji_id)
@@ -325,9 +339,9 @@ async def test_approve_suggestion_success(cog: Suggest, ctx_mock: MagicMock, bot
     changed_embed.add_field.assert_any_call(name="Reason", value="Great idea.", inline=False)
 
     # Verify stats
-    # Upcount: 3 - 1 (me=True) = 2
+    # Upcount: 3 - 1 (me=True) + 4 fallback = 6
     # Downcount: 5 - 0 (me=False) = 5
-    changed_embed.add_field.assert_any_call(name="Results", value=f"{UP_EMOJI_ID} 2 - 5 {DOWN_EMOJI_ID}", inline=False)
+    changed_embed.add_field.assert_any_call(name="Results", value=f"{UP_EMOJI_ID} 6 - 5 {DOWN_EMOJI_ID}", inline=False)
 
     # Verify tick
     ctx_mock.tick.assert_called_once()
