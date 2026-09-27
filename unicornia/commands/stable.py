@@ -16,7 +16,7 @@ from redbot.core.utils.views import ConfirmView
 
 from ..mixins import UnicorniaMixinBase
 from ..systems import stable_card
-from ..systems.stable_system import DEFAULT_SETTINGS, MAX_NAME, StableState
+from ..systems.stable_system import DEFAULT_SETTINGS, MAX_NAME, StableState, Unicorn
 
 if TYPE_CHECKING:
     from ..systems.stable_system import StableSystem
@@ -72,6 +72,14 @@ class StableView(discord.ui.View):
         self.upgrade.disabled = not options
         self.upgrade.placeholder = "Upgrade a unicorn…" if options else "Every unicorn is at the top level"
 
+        self.release.options = [
+            discord.SelectOption(
+                label=f"#{slot} {unicorn.label}"[:100], description=f"Level {unicorn.level}", value=str(unicorn.id)
+            )
+            for slot, unicorn in enumerate(state.unicorns, start=1)
+        ] or [discord.SelectOption(label="No unicorns", value="0")]
+        self.release.disabled = not state.unicorns
+
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner.id:
             return True
@@ -86,39 +94,87 @@ class StableView(discord.ui.View):
             with contextlib.suppress(discord.HTTPException):
                 await self.message.edit(view=self)
 
-    async def _redraw(self, interaction: discord.Interaction, status: str) -> None:
+    async def _redraw(self, status: str, interaction: discord.Interaction | None = None) -> None:
+        """Redraw the card through the button press that changed it, or straight on the message."""
         state = await self.system.state(self.owner.id)
         self._update(state)
         file = await card_file(self.system, self.owner, state)
-        await interaction.edit_original_response(
-            content=status, attachments=[file], view=self, allowed_mentions=NO_MENTIONS
-        )
+        if interaction is not None:
+            await interaction.edit_original_response(
+                content=status, attachments=[file], view=self, allowed_mentions=NO_MENTIONS
+            )
+        elif self.message is not None:
+            await self.message.edit(content=status, attachments=[file], view=self, allowed_mentions=NO_MENTIONS)
 
     @discord.ui.button(label="Collect", emoji="💰", style=discord.ButtonStyle.success)
     async def collect(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await interaction.response.defer()
         paid = await self.system.collect(self.owner.id)
         await self._redraw(
-            interaction, f"💰 Collected **{humanize_number(paid)}**." if paid else "The coin box is empty."
+            f"💰 Collected **{humanize_number(paid)}**." if paid else "The coin box is empty.", interaction
         )
 
     @discord.ui.button(label="Hatch egg", emoji="🥚", style=discord.ButtonStyle.primary)
     async def hatch(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await interaction.response.defer()
         _breed, message = await self.system.hatch(self.owner.id)
-        await self._redraw(interaction, message)
+        await self._redraw(message, interaction)
 
     @discord.ui.button(label="Bigger box", emoji="📦", style=discord.ButtonStyle.secondary)
     async def box(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await interaction.response.defer()
         _ok, message = await self.system.upgrade_box(self.owner.id)
-        await self._redraw(interaction, message)
+        await self._redraw(message, interaction)
 
     @discord.ui.select(placeholder="Upgrade a unicorn…", row=1)
     async def upgrade(self, interaction: discord.Interaction, select: discord.ui.Select) -> None:
         await interaction.response.defer()
         _ok, message = await self.system.upgrade(self.owner.id, int(select.values[0]))
-        await self._redraw(interaction, message)
+        await self._redraw(message, interaction)
+
+    @discord.ui.select(placeholder="Release a unicorn…", row=2)
+    async def release(self, interaction: discord.Interaction, select: discord.ui.Select) -> None:
+        state = await self.system.state(self.owner.id)
+        found = next(
+            ((slot, u) for slot, u in enumerate(state.unicorns, start=1) if u.id == int(select.values[0])), None
+        )
+        if found is None:
+            await interaction.response.send_message("That unicorn isn't in your stable any more.", ephemeral=True)
+            return
+        slot, unicorn = found
+        await interaction.response.send_message(
+            f"Release **#{slot} {unicorn.safe_label}** (level {unicorn.level})? You get nothing back for it, "
+            "but what it already earned stays in your coin box.",
+            view=ReleaseConfirm(self, unicorn),
+            ephemeral=True,
+        )
+
+
+class ReleaseConfirm(discord.ui.View):
+    """The owner's private yes/no before a unicorn from their card goes."""
+
+    def __init__(self, stable: StableView, unicorn: Unicorn):
+        super().__init__(timeout=60)
+        self.stable = stable
+        self.unicorn = unicorn
+
+    @discord.ui.button(label="Release", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.stop()
+        if await self.stable.system.release(self.stable.owner.id, self.unicorn.id):
+            status = f"👋 **{self.unicorn.safe_label}** trotted off into the sunset."
+        else:
+            status = "That unicorn isn't in your stable any more."
+        await interaction.response.edit_message(content=status, view=None, allowed_mentions=NO_MENTIONS)
+        await self.stable._redraw(status)
+
+    @discord.ui.button(label="Keep", style=discord.ButtonStyle.secondary)
+    async def keep(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.stop()
+        await interaction.response.edit_message(content="Kept it.", view=None)
+        if self.stable.message is not None:  # clears the choice left showing in the menu
+            with contextlib.suppress(discord.HTTPException):
+                await self.stable.message.edit(view=self.stable)
 
 
 class StableCommands(UnicorniaMixinBase):

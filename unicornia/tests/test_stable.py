@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 import pytest_asyncio
 import simcord
@@ -196,6 +197,16 @@ def red_cogs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return ["unicornia"]
 
 
+def release_menu(card: discord.Message) -> str:
+    """The custom ID of the card's Release menu, which the view generates."""
+    for row in card.components:
+        for item in getattr(row, "children", []):
+            if isinstance(item, discord.SelectMenu) and item.placeholder == "Release a unicorn…":
+                assert item.custom_id is not None
+                return item.custom_id
+    raise AssertionError("no Release menu on the card")
+
+
 @pytest.mark.asyncio
 async def test_the_stable_card_and_its_buttons(red_env: simcord.Env) -> None:
     bot = cast(Red, red_env.bot)
@@ -220,6 +231,20 @@ async def test_the_stable_card_and_its_buttons(red_env: simcord.Env) -> None:
     assert card is not None and "The egg hatched into" in card.content
     assert len((await cog.stable_system.state(owner.id)).unicorns) == 1
     assert await cog.db.economy.get_user_currency(owner.id) == 0
+
+    # Releasing from the card asks privately first; Keep changes nothing
+    (unicorn,) = (await cog.stable_system.state(owner.id)).unicorns
+    asked = await owner.select(card, [str(unicorn.id)], custom_id=release_menu(card))
+    assert asked.response is not None and asked.response.ephemeral and "Release **#1" in asked.response.content
+    await owner.click(asked.response.message, label="Keep")
+    assert len((await cog.stable_system.state(owner.id)).unicorns) == 1
+
+    asked = await owner.select(card, [str(unicorn.id)], custom_id=release_menu(card))
+    assert asked.response is not None
+    await owner.click(asked.response.message, label="Release")
+    assert (await cog.stable_system.state(owner.id)).unicorns == []
+    card = channel.last_message
+    assert card is not None and "trotted off into the sunset" in card.content
 
     await visitor.send(channel, f"!stable {owner.id}")  # someone else's stable: the card, no buttons
     shown = channel.last_message

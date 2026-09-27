@@ -151,7 +151,7 @@ HELP_CONTENT = {
             "fills up. Each egg and level costs more than the last."
         ),
         "commands": [
-            "`[p]stable [member]` - Your stable card, with Collect, Hatch, Upgrade and Bigger box buttons.",
+            "`[p]stable [member]` - Your stable card, with Collect, Hatch, Upgrade, Bigger box and Release.",
             "`[p]stable name <number> [name]` - Name a unicorn.",
             "`[p]stable release <number>` - Let a unicorn go to make room.",
             "`[p]stable top` - The stables that earn the most a day.",

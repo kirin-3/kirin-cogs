@@ -12,6 +12,7 @@ up coins.
 | 🥚 **Hatch egg** | Buys an egg; it hatches straight away into a unicorn of a random rarity. |
 | 📦 **Bigger box** | Buys the next coin box size. |
 | **Upgrade a unicorn…** | Raises the chosen unicorn one level. |
+| **Release a unicorn…** | Lets the chosen unicorn go, after a yes/no only you see. You get nothing back. |
 
 Only the owner gets the buttons; `[p]stable @member` shows anyone's card. Buttons stop after 5 minutes; run the
 command again. The rest: `[p]stable name`, `[p]stable release`, `[p]stable top` (see [COMMANDS.md](COMMANDS.md)).
