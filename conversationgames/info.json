@@ -1,0 +1,30 @@
+{
+    "name": "ConversationGames",
+    "author": [
+        "Jintaku",
+        "Kirin"
+    ],
+    "short": "Truth or dare, would you rather and never have I ever, with buttons and live votes.",
+    "description": "Truth or dare, would you rather and never have I ever. Cards have buttons to keep the game going, would you rather and never have I ever count votes live, questions don't repeat until the deck runs out, and members can suggest questions for staff to approve.",
+    "install_msg": "Get yo people grooving. Set a review channel with [p]cgset reviewchannel to take member suggestions.",
+    "end_user_data_statement": "This cog does not persistently store personal data. Votes are counted in memory while a card is live. Suggested questions are posted to the staff review channel with the suggesting member's mention; approved questions are stored without who suggested them.",
+    "min_bot_version": "3.5.22",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "required_cogs": {},
+    "requirements": [],
+    "tags": [
+        "truth",
+        "dare",
+        "would you rather",
+        "never have i ever",
+        "games"
+    ],
+    "license": "AGPL-3.0"
+}

@@ -24,6 +24,9 @@ Confess secretly in a confession room using a button and modal system. Fork of J
 ### ContestCog
 Posts an interactive dashboard (Components V2) for Unicornia's Cutie of the Month (COTM) contest information, prizes, and voting instructions, with reaction-based vote counting and reward distribution.
 
+### ConversationGames
+Truth or dare, would you rather and never have I ever, with buttons to keep playing, live votes, no repeats until the deck runs out, and member suggestions that staff approve. Fork of Jintaku's conversationgames, licensed AGPL-3.0. See [conversationgames/README.md](conversationgames/README.md).
+
 ### CustomCommand
 Allows users with a specific role to create and manage their own single custom command.
 
@@ -140,5 +143,6 @@ All cogs are released under the MIT License, except:
 
 - [Sticky](sticky/), a fork of a GPL-3.0 cog, stays GPL-3.0 (see [sticky/LICENSE](sticky/LICENSE)).
 - [Confess](confess/), a fork of an AGPL-3.0 cog, stays AGPL-3.0 (see [confess/LICENSE](confess/LICENSE)).
+- [ConversationGames](conversationgames/), a fork of an AGPL-3.0 cog, stays AGPL-3.0 (see [conversationgames/LICENSE](conversationgames/LICENSE)).
 
 Forked cogs credit their original authors in their READMEs.
