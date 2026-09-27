@@ -29,7 +29,7 @@ This document is the per-cog annex to the bot's [Privacy Policy](PRIVACY.md), wh
 | Suggest | Author IDs, suggestion text, message IDs, status, and review reason | Removes suggestions authored by the user |
 | Tickets | Owner IDs, answers, channel/message metadata, avatar URL, timestamps, and lifecycle state | Removes ticket tracking and blacklist entries; Discord messages/channels remain subject to server moderation policy |
 | UnicornAI | User opt-out preference | Clears the preference; channel history is processed transiently by the configured provider |
-| Unicornia | XP, balances, inventory, games, relationships, and financial history | Removes operational state; anonymizes accounting rows that must remain internally consistent |
+| Unicornia | XP, balances, inventory, games (including unicorn stables and the names members give their unicorns), relationships, and financial history | Removes operational state; anonymizes accounting rows that must remain internally consistent |
 | UniMod | In-memory message buffers; optional redacted diagnostic response | Buffers vanish on unload; diagnostic files expire within one hour and are removed on unload/restart |
 | VoiceNoteLog | Voice note audio sent to Google for transcription; the text is posted to a staff-only log channel with the author's name and ID | No local record; Google processes the audio transiently and the log messages follow Discord retention |
 

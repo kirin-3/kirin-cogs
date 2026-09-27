@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from .systems.market_system import MarketSystem
     from .systems.nitro_system import NitroSystem
     from .systems.shop_system import ShopSystem
+    from .systems.stable_system import StableSystem
     from .systems.waifu_system import WaifuSystem
     from .systems.xp_system import XPSystem
 
@@ -46,6 +47,7 @@ class UnicorniaMixinBase:
         currency_generation: CurrencyGeneration
         currency_decay: CurrencyDecay
         shop_system: ShopSystem
+        stable_system: StableSystem
         club_system: ClubSystem
         waifu_system: WaifuSystem
         nitro_system: NitroSystem

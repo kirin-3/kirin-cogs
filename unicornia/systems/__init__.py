@@ -5,6 +5,7 @@ from .gambling_system import GamblingSystem
 from .market_system import MarketSystem
 from .nitro_system import NitroSystem
 from .shop_system import ShopSystem
+from .stable_system import StableSystem
 from .waifu_system import WaifuSystem
 from .xp_system import XPSystem
 from .yield_system import YieldSystem
@@ -18,6 +19,7 @@ __all__ = [
     "MarketSystem",
     "NitroSystem",
     "ShopSystem",
+    "StableSystem",
     "WaifuSystem",
     "XPSystem",
     "YieldSystem",

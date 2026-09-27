@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from testutils.bots import RedLikeBot
 from unicornia.errors import SystemNotReadyError
+from unicornia.systems.stable_system import StableState
 from unicornia.unicornia import Unicornia
 
 
@@ -54,6 +55,8 @@ def _mark_systems_ready(
     cog.currency_decay = MagicMock()
     cog.nitro_system = MagicMock()
     cog.market_system = market_system or MagicMock()
+    cog.stable_system = MagicMock()
+    cog.stable_system.state = AsyncMock(return_value=StableState([], 0, 0, 0, {}))
 
 
 def _make_command(

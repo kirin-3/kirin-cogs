@@ -661,11 +661,11 @@ class EconomyRepository:
                 raise
 
     async def _remove_currency(
-        self, user_id: int, amount: int, transaction_type: str, extra: str, other_id: int, note: str, db
+        self, user_id: int, amount: int, transaction_type: str, extra: str, other_id: int | None, note: str, db
     ) -> bool:
         """Internal remove currency (no transaction control).
 
-        Used by ShopRepository to participate in existing transactions.
+        Used by ShopRepository and the stable to participate in existing transactions.
         """
         # Atomic update with WHERE clause to prevent race conditions
         cursor = await db.execute(

@@ -543,6 +543,27 @@ class CoreDB:
             )
             """)
 
+            # Unicorn stable (idle game): the coin box and the unicorns
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS Stable (
+                UserId INTEGER PRIMARY KEY,
+                Box REAL NOT NULL DEFAULT 0,
+                LastSettle REAL NOT NULL,
+                BoxSize INTEGER NOT NULL DEFAULT 0
+            )
+            """)
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS StableUnicorn (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                UserId INTEGER NOT NULL,
+                Breed TEXT NOT NULL,
+                Level INTEGER NOT NULL DEFAULT 1,
+                Name TEXT,
+                DateAdded TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_stable_unicorn_user ON StableUnicorn(UserId)")
+
             # Create Indices for Performance
             await db.execute("CREATE INDEX IF NOT EXISTS idx_xp_guild_xp ON UserXpStats(GuildId, Xp DESC)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_currency_amount ON DiscordUser(CurrencyAmount DESC)")
@@ -930,6 +951,8 @@ class CoreDB:
                 "UserInventory",
                 "StockHoldings",
                 "SpectatorBets",
+                "Stable",
+                "StableUnicorn",
             ):
                 with suppress(aiosqlite.OperationalError):
                     await db.execute(f"DELETE FROM {table} WHERE UserId = ?", (user_id,))

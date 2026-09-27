@@ -12,6 +12,7 @@ Unicornia is a full Nadeko-compatible leveling and economy suite in one cog, bac
 - **Shop**: Guild item/role shop.
 - **Clubs**: Create, join, and manage clubs with shared XP and leaderboards.
 - **Waifus**: Claim, snipe, gift, divorce, and set affinity with other members.
+- **Unicorn Stable**: An idle game with an image card: hatch unicorns of five rarities that earn coins while you're away, upgrade them, and collect the coin box ([STABLE.md](STABLE.md)).
 - **Nitro Shop**: Redeem Nitro boosted/basic rewards.
 - **Stock Market**: IPOs, buy/sell with pricing and slippage, portfolios, stock-trade tax, dividends funded by a house yield pool (including realized gambling edge), and a persistent live Components V2 dashboard (`[p]stock dashboard`). Review history with `[p]stock dividends`.
 - **Owner Tooling**: Global config, RTP/yield dashboard (`[p]unicornia yieldstats`), command/system whitelists, and market unwind.
@@ -25,7 +26,7 @@ Unicornia is a full Nadeko-compatible leveling and economy suite in one cog, bac
 
 - [COMMANDS.md](COMMANDS.md) — full command reference
 - [API.md](API.md) — in-process API for other cogs (`apply_operation`, `add_balance`, ...)
-- [ECONOMY.md](ECONOMY.md) / [LEVELING.md](LEVELING.md) / [STOCKS.md](STOCKS.md) / [WAIFU.md](WAIFU.md) / [XPSHOP.md](XPSHOP.md) / [DATABASE.md](DATABASE.md) — subsystem guides
+- [ECONOMY.md](ECONOMY.md) / [LEVELING.md](LEVELING.md) / [STOCKS.md](STOCKS.md) / [WAIFU.md](WAIFU.md) / [STABLE.md](STABLE.md) / [XPSHOP.md](XPSHOP.md) / [DATABASE.md](DATABASE.md) — subsystem guides
 
 ## Quick Start
 

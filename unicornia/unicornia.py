@@ -25,6 +25,7 @@ from .commands import (
     LevelCommands,
     NitroCommands,
     ShopCommands,
+    StableCommands,
     StockCommands,
     WaifuCommands,
 )
@@ -42,6 +43,7 @@ from .systems import (
     MarketSystem,
     NitroSystem,
     ShopSystem,
+    StableSystem,
     WaifuSystem,
     XPSystem,
     YieldSystem,
@@ -67,6 +69,7 @@ class Unicornia(
     CurrencyCommands,
     NitroCommands,
     StockCommands,
+    StableCommands,
     commands.Cog,
 ):
     """
@@ -113,6 +116,7 @@ class Unicornia(
             "gambling_max_bet": 1000000,
             "reservation_recovery_seconds": 300,
             "dividend_period_hours": 168,
+            "stable_settings": {},  # overrides of stable_system.DEFAULT_SETTINGS
         }
 
         default_guild = {
@@ -138,6 +142,7 @@ class Unicornia(
         self.nitro_system = None  # type: ignore[assignment]
         self.market_system = None  # type: ignore[assignment]
         self.yield_system = None  # type: ignore[assignment]
+        self.stable_system = None  # type: ignore[assignment]
         self.wal_task = None
         self.market_task = None
         self.yield_task = None
@@ -172,6 +177,7 @@ class Unicornia(
             self.nitro_system = NitroSystem(self.config, self.bot, self.economy_system)
             self.market_system = MarketSystem(self.db, self.config, self.bot, self.economy_system)
             self.yield_system = YieldSystem(self.db, self.config)
+            self.stable_system = StableSystem(self.db, self.config)
             await self.market_system.initialize()
 
             raw_recovery_age = await self.config.reservation_recovery_seconds()
@@ -287,6 +293,15 @@ class Unicornia(
             waifus = await self.db.waifu.get_user_waifus(user_id)
             if waifus:
                 data["waifus"] = waifus
+
+            # Unicorn stable
+            stable = await self.stable_system.state(user_id)
+            if stable.unicorns:
+                data["stable"] = {
+                    "coin_box": int(stable.box),
+                    "box_hours": stable.box_hours,
+                    "unicorns": [{"breed": u.breed, "level": u.level, "name": u.name} for u in stable.unicorns],
+                }
 
             # Transaction history
             transactions = await self.db.economy.get_currency_transactions(user_id, limit=None)
@@ -714,6 +729,7 @@ class Unicornia(
                 self.currency_decay is not None,
                 self.nitro_system is not None,
                 self.market_system is not None,
+                self.stable_system is not None,
             ]
         )
 

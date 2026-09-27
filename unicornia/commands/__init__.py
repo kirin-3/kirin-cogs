@@ -6,6 +6,7 @@ from .gambling import GamblingCommands
 from .level import LevelCommands
 from .nitro import NitroCommands
 from .shop import ShopCommands
+from .stable import StableCommands
 from .stock import StockCommands
 from .waifu import WaifuCommands
 
@@ -18,6 +19,7 @@ __all__ = [
     "LevelCommands",
     "NitroCommands",
     "ShopCommands",
+    "StableCommands",
     "StockCommands",
     "WaifuCommands",
 ]

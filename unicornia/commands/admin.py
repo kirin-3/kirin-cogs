@@ -811,7 +811,7 @@ class AdminCommands(UnicorniaMixinBase):
         """
         Restrict a system to a channel.
 
-        Systems: `economy`, `gambling`, `level`, `shop`, `club`, `waifu`.
+        Systems: `economy`, `gambling`, `level`, `shop`, `stable`, `club`, `waifu`.
 
         **Syntax**
         `[p]unicornia whitelist system add <system> [channel]`
@@ -821,7 +821,18 @@ class AdminCommands(UnicorniaMixinBase):
         system = system.lower()
 
         # Valid systems
-        valid_systems = ["admin", "club", "currency", "economy", "gambling", "level", "nitro", "shop", "waifu"]
+        valid_systems = [
+            "admin",
+            "club",
+            "currency",
+            "economy",
+            "gambling",
+            "level",
+            "nitro",
+            "shop",
+            "stable",
+            "waifu",
+        ]
         if system not in valid_systems:
             await ctx.send(f"❌ Invalid system. Valid systems: {', '.join(valid_systems)}")
             return

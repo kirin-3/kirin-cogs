@@ -14,7 +14,8 @@ HELP_CONTENT = {
             "• **Leveling**: Gain XP and unlock role rewards.\n"
             "• **Shop**: Buy items, roles, and upgrades.\n"
             "• **Clubs**: Join forces with other members.\n"
-            "• **Waifus**: Collect and trade characters.\n\n"
+            "• **Waifus**: Collect and trade characters.\n"
+            "• **Stable**: Raise unicorns that earn while you're away.\n\n"
             "*Select a category from the dropdown menu below to learn more about a specific system.*"
         ),
         "commands": [],
@@ -139,6 +140,21 @@ HELP_CONTENT = {
             "`[p]stock sell <ticker> <amount>` - Sell shares.",
             "`[p]stock portfolio` - View your holdings.",
             "`[p]stock dividends` - View your dividend history by stock and period.",
+        ],
+    },
+    "stable": {
+        "title": "🦄 Unicorn Stable",
+        "emoji": "🐴",
+        "description": (
+            "An idle game: unicorns earn coins into your stable's coin box while you're away.\n"
+            "Hatch eggs for unicorns of five rarities, upgrade them to earn more, and collect the box before it "
+            "fills up. Each egg and level costs more than the last."
+        ),
+        "commands": [
+            "`[p]stable [member]` - Your stable card, with Collect, Hatch, Upgrade and Bigger box buttons.",
+            "`[p]stable name <number> [name]` - Name a unicorn.",
+            "`[p]stable release <number>` - Let a unicorn go to make room.",
+            "`[p]stable top` - The stables that earn the most a day.",
         ],
     },
 }

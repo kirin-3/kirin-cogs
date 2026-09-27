@@ -147,6 +147,17 @@ Buy Discord Nitro with currency.
 | `[p]nitrostock <type> <amount>` | Add or remove stock for Nitro items. Types: `boost`, `basic`. | Bot Owner |
 | `[p]nitroprice <type> <price>` | Set the price for Nitro items. Types: `boost`, `basic`. | Bot Owner |
 
+## Unicorn Stable
+An idle game: unicorns earn coins into a coin box while you're away. See [STABLE.md](STABLE.md).
+
+| Command | Description | Permission |
+| :--- | :--- | :--- |
+| `[p]stable [member]` | Show a stable card. Your own has Collect, Hatch egg, Bigger box and Upgrade buttons. Slash: `/stable view`. | |
+| `[p]stable name <number> [name]` | Name a unicorn (up to 20 letters, numbers, spaces and punctuation), or leave the name out to reset it. | |
+| `[p]stable release <number>` | Let a unicorn go to make room. Asks first; you get nothing back. | |
+| `[p]stable top` | The stables in this server that earn the most a day. | |
+| `[p]stableset [key value]` | Show or tune the prices and earnings. | Bot Owner |
+
 ## Shop
 Buy roles, items, and XP card customizations.
 

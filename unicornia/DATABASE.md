@@ -251,6 +251,24 @@ History of claims and transfers.
 *   `UpdateType` (Integer): 0=Claim, 1=Divorce, 2=Transfer, 99=Reset.
 *   `DateAdded` (Text)
 
+### Unicorn Stable
+
+#### `Stable`
+Each player's coin box.
+*   `UserId` (Integer, PK)
+*   `Box` (Real): Coins waiting to be collected, as of `LastSettle`.
+*   `LastSettle` (Real): Unix time the box was last brought up to date.
+*   `BoxSize` (Integer): Index into the box sizes (8, 12, 16 or 24 hours).
+
+#### `StableUnicorn`
+Each player's unicorns.
+*   `Id` (Integer, PK)
+*   `UserId` (Integer)
+*   `Breed` (Text): One of the ten breeds; the breed sets the rarity.
+*   `Level` (Integer): 1 to 10.
+*   `Name` (Text): The name the owner gave it, if any.
+*   `DateAdded` (Text)
+
 ### Gambling Statistics
 
 #### `GamblingStats`
