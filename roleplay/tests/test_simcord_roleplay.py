@@ -333,3 +333,29 @@ async def test_toggle_set_for_the_member_site_shows_in_settings(red_env: simcord
     assert f"Public Use Slut {const.TRUE_EMOJI}" in fields
     assert f"Selective {const.FALSE_EMOJI}" in fields
     simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_listed_users_the_bot_cannot_see_can_still_be_removed(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    cog = _cog(red_env)
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    # Neither shares a server with the bot, the way a listed user is after leaving
+    old_owner = red_env.create_user("oldowner")
+    gone = red_env.create_user("gone")
+    await red_env.settle()
+    config = cog.user_settings.config.user(_member(member))
+    await config.owners.set([old_owner.id])
+    await config.allowed.set([gone.id])
+    assert bot.get_user(old_owner.id) is None
+
+    await member.send(channel, f"!roleplay settings owners remove {old_owner.id}")
+    assert "oldowner has been removed as an Owner for member." in (_bot_messages(channel, bot)[-1].content or "")
+    await member.send(channel, "!roleplay settings allowed remove gone")
+    assert "gone has been removed as an Allowed Users for member." in (_bot_messages(channel, bot)[-1].content or "")
+
+    assert await config.owners() == []
+    assert await config.allowed() == []
+    simcord.assert_no_errors(red_env)

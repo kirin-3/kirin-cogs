@@ -27,6 +27,7 @@
 - Reloading the cog failed because the action commands were left registered
 - When both members' Owners were asked, a refusal always named the target's Owner, even when the other Owner declined
 - Changes to your Owner list made while an Owner request was waiting for an answer could be lost
+- Users who had left every server the bot is in couldn't be removed from a list, so a member whose Owner left could neither remove them nor add a new one. `remove` now finds them by ID or by their listed name
 - Spoilered images were downloaded with TLS certificate checks turned off, and different images with the same file name overwrote each other in the cache. A spoilered image that can't be downloaded now shows the action without it instead of failing
 
 ### Removed

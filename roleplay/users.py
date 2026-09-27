@@ -193,7 +193,7 @@ class Manager:
         user_id: int,
         users_group: str,
     ):
-        """Removes a user from a member's config.
+        """Removes a user from a member's config. Works by ID, so it also removes users the bot can't see anymore.
 
         Args:
             ctx (commands.Context): The context of the command invocation.
@@ -201,22 +201,18 @@ class Manager:
             user_id (int): Discord user ID to be removed.
             users_group (str): Name of the config property for the users group.
         """
-        user = self.bot.get_user(user_id)
-        if not user:
-            await ctx.send(f"User with ID {user_id} not found in this guild.")
-            return
-
+        (name,) = await self.display_names([user_id])
         label = USER_SETTINGS[users_group].get("label", "users list")
         async with self.config.user(member).get_attr(users_group)() as user_ids:
             if user_id not in user_ids:
                 await ctx.send(
-                    f"{user.display_name} is not in {get_indefinite_article(label)} {label} for {member.display_name}. {choice(const.INSULTS)}",
+                    f"{name} is not in {get_indefinite_article(label)} {label} for {member.display_name}. {choice(const.INSULTS)}",
                     delete_after=const.SHORT_DELETE_TIME,
                 )
             else:
                 user_ids.remove(user_id)
                 await ctx.send(
-                    f"{user.display_name} has been removed as {get_indefinite_article(label)} {label} for {member.display_name}.",
+                    f"{name} has been removed as {get_indefinite_article(label)} {label} for {member.display_name}.",
                     delete_after=const.SHORT_DELETE_TIME,
                 )
 
@@ -232,9 +228,11 @@ class Manager:
             removed from the group.
             users_group (str): The name of the group to remove the user from.
         """
-        # make sure the user_id is a valid member
-        user = await self.get_user(ctx, user_key)
-        if user is None:
+        # Listed users may have left every server the bot is in, so match the list by ID or name
+        # instead of requiring the bot to see them.
+        user_ids = await self.list_users(member, users_group)
+        user_id = await self._listed_user_id(ctx, user_key, user_ids)
+        if user_id is None:
             return await ctx.send(
                 f"Please use a valid user ID, username, or mention. {choice(const.INSULTS)}",
                 delete_after=const.SHORT_DELETE_TIME,
@@ -243,19 +241,38 @@ class Manager:
         label = USER_SETTINGS[users_group]["label"]
 
         # You can't remove yourself
-        if user.id == member.id:
+        if user_id == member.id:
             return await ctx.send(
                 f"{member.display_name} tried to remove themselves as {get_indefinite_article(label)} {label}. {choice(const.INSULTS)}",
                 delete_after=const.SHORT_DELETE_TIME,
             )
 
-        if not await self.in_group(member, user.id, users_group):
-            return await ctx.send(
-                f"{user.display_name} is not {get_indefinite_article(label)} {label} for {member.display_name}. {choice(const.INSULTS)}",
-                delete_after=const.SHORT_DELETE_TIME,
-            )
+        return await self.remove_user(ctx, member, user_id, users_group)
 
-        return await self.remove_user(ctx, member, user.id, users_group)
+    async def _listed_user_id(self, ctx: commands.Context, user_key: int | str, user_ids: list[int]) -> int | None:
+        """The user ID ``user_key`` names: an ID or mention as is, else a visible user's name, else a listed user's name."""
+        if isinstance(user_key, int):
+            return user_key
+        if user_key.startswith("<@") and user_key.endswith(">") and user_key[2:-1].lstrip("!").isdigit():
+            return int(user_key[2:-1].lstrip("!"))
+        user = await self.get_user(ctx, user_key)
+        if user is not None:
+            return user.id
+        for listed_id in user_ids:
+            listed = await self._lookup_user(listed_id)
+            if listed is not None and user_key in (listed.name, listed.display_name):
+                return listed_id
+        return None
+
+    async def _lookup_user(self, user_id: int) -> discord.User | None:
+        """A user from the cache, or from Discord when the bot shares no server with them."""
+        user = self.bot.get_user(user_id)
+        if user is None:
+            try:
+                user = await self.bot.fetch_user(user_id)
+            except discord.NotFound:
+                self.logger.error(f"User with ID {user_id} not found.")
+        return user
 
     async def list_users(self, member: discord.abc.User, users_group: str) -> list[int]:
         """Lists the user IDs in a member's config group.
@@ -301,16 +318,8 @@ class Manager:
         """Convert a list of user IDs to a list of display names."""
         display_names = []
         for user_id in user_ids:
-            # only ask Discord for users the bot doesn't already know
-            user = self.bot.get_user(user_id)
-            if user is None:
-                try:
-                    user = await self.bot.fetch_user(user_id)
-                except discord.NotFound:
-                    self.logger.error(f"User with ID {user_id} not found.")
-                    display_names.append(f"Unknown {user_id}")
-                    continue
-            display_names.append(user.display_name)
+            user = await self._lookup_user(user_id)
+            display_names.append(f"Unknown {user_id}" if user is None else user.display_name)
         return display_names
 
     def get_default_member(self, ctx: commands.GuildContext) -> discord.Member:

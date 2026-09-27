@@ -73,6 +73,8 @@ order:
 
 `settings add/remove` commands delete the invoking message after 10 seconds, and help/settings embeds clean
 themselves up after a few minutes. List settings resolve users by ID, mention, username or display name.
+`remove` also works for listed users who have left every server the bot is in, by ID or by the name the list
+shows, so a member whose owner left can remove them and add a new one.
 
 ## Notes
 
