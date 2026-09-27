@@ -134,9 +134,11 @@ so losing the staff role, or leaving the server, ends access on the next click. 
   Both sites may show images from `cdn.discordapp.com`: modmail attachments on the staff site; emojis, role icons and
   avatars on the member site. The member site may also show images from `unicornia.net`, for rank-card backgrounds. All user text is
   HTML-escaped by Jinja2.
+- Fonts (Fredoka, Nunito and Caveat, the main site's, under the OFL in `static/fonts/OFL.txt`) load only from the
+  site itself, and are the only responses a browser may cache.
 - The only script is `static/site.js`. The policy allows the site's own files and nothing else: no inline scripts, no
   other hosts, and no requests from scripts. It adds conveniences only, such as adding editor rows in place, a live
-  preview of the custom role, animating leaderboard backgrounds, local times, filter boxes, and delete confirmations. Every page works without it, and
+  preview of the custom role, animating leaderboard backgrounds, local times, filter boxes, delete confirmations, and blocking a second submit while a form is sending. Every page works without it, and
   every change is still checked by the server. It writes text into the page, never HTML.
 - The login callbacks share one limit, because both sites log in through the bot's IP. Discord gets at most 5 code
   exchanges per minute per client IP and 30 per minute in total, and none at all while it is answering 429. Member

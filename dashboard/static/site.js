@@ -18,6 +18,20 @@ for (const form of document.querySelectorAll("form[data-confirm]")) {
   });
 }
 
+// A second click while a form is sending (an emoji upload, a purchase) would send it twice. This runs after the
+// confirm prompts above, so a cancelled form stays usable; pages restored from the back/forward cache are reset.
+document.addEventListener("submit", (event) => {
+  if (event.defaultPrevented) return;
+  if (event.target.classList.contains("busy")) event.preventDefault();
+  else event.target.classList.add("busy");
+});
+addEventListener("pageshow", (event) => {
+  if (event.persisted) for (const form of document.querySelectorAll("form.busy")) form.classList.remove("busy");
+});
+
+// On narrow screens the nav scrolls sideways; start with the current page in view.
+document.querySelector(".nav a.on")?.scrollIntoView({ block: "nearest", inline: "center" });
+
 // Filter boxes hide the rows (or list items) of the element right after them that don't contain the text.
 function enhance(root) {
   for (const input of root.querySelectorAll("input.filter")) {

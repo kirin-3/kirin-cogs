@@ -4,7 +4,8 @@
 <section class="hello">
   {% if user_avatar(session.user_id) %}<img src="{{ user_avatar(session.user_id) }}" alt="" width="72" height="72">{% endif %}
   <div>
-    <h1>Hi, {{ member.display_name }}!</h1>
+    <p class="eyebrow">hey you, welcome home ♡</p>
+    <h1>Hi, <span class="squiggle">{{ member.display_name }}</span>!</h1>
     <p>Here's everything about you on Unicornia.</p>
   </div>
 </section>

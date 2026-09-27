@@ -199,9 +199,20 @@ async def test_security_headers_on_public_and_protected_pages(site: SimpleNamesp
 async def test_only_the_sites_own_script_may_run(site: SimpleNamespace) -> None:
     policy = SECURITY_HEADERS["Content-Security-Policy"]
     assert "script-src 'self';" in policy and "unsafe" not in policy and "connect-src" not in policy
+    assert "font-src 'self';" in policy
     # nosniff blocks a script served with the wrong type.
     script = await site.client.get("/static/site.js")
     assert script.status == 200 and "javascript" in script.headers["Content-Type"]
+    assert script.headers["Cache-Control"] == "no-store"
+
+
+@pytest.mark.asyncio
+async def test_only_font_files_are_cached(site: SimpleNamespace) -> None:
+    font = await site.client.get("/static/fonts/nunito-latin-400-normal.woff2")
+    assert font.status == 200 and font.headers["Cache-Control"] == "public, max-age=604800, immutable"
+    assert font.headers["X-Content-Type-Options"] == "nosniff"
+    page = await site.client.get("/logged-out")
+    assert page.headers["Cache-Control"] == "no-store"
 
 
 @pytest.mark.asyncio

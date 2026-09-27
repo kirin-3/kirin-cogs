@@ -77,7 +77,7 @@ HERE = Path(__file__).parent
 # __Host- cookies must be Secure with Path=/ and no Domain, so browsers never share them with other subdomains.
 COOKIE_FLAGS: dict[str, Any] = {"httponly": True, "secure": True, "samesite": "Lax", "path": "/"}
 CSP = (
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src {}; form-action 'self'; "
+    "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src {}; form-action 'self'; "
     "frame-ancestors 'none'; base-uri 'none'"
 )
 # Modmail attachments are shown from Discord's CDN.
@@ -204,6 +204,9 @@ def _editing(handler: _Route) -> _Route:
 
 async def _add_security_headers(request: web.Request, response: web.StreamResponse) -> None:
     response.headers.update(request.app[SITE].headers)
+    # Font files are public and never change. Everything else, the site's CSS and JS included, stays no-store.
+    if request.path.startswith("/static/fonts/"):
+        response.headers["Cache-Control"] = "public, max-age=604800, immutable"
 
 
 class Dashboard(commands.Cog):

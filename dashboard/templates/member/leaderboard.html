@@ -9,9 +9,9 @@
 {% if entries %}
 <ol class="lb">
   {% for row in entries %}
-  <li class="lb-row{% if row.me %} me{% endif %}" tabindex="0">
+  <li class="lb-row{% if row.me %} me{% endif %}{% if row.rank <= 3 %} podium {{ ("tone-butter", "tone-lavender", "tone-peach")[row.rank - 1] }}{% endif %}" tabindex="0">
     <img class="bg" src="{{ row.still }}" data-animated="{{ row.animated }}" alt="" loading="lazy">
-    <span class="lb-rank">#{{ row.rank }}</span>
+    <span class="lb-rank"><span>#{{ row.rank }}</span></span>
     {% if row.avatar %}<img class="avatar" src="{{ row.avatar }}" alt="" width="40" height="40" loading="lazy">{% endif %}
     <span class="lb-name">{{ row.name }}</span>
     <span class="lb-xp">Level {{ row.level }}<small>{{ "{:,}".format(row.xp) }} XP</small></span>

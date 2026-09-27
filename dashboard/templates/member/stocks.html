@@ -13,7 +13,7 @@
   </div>
   <div class="panel">
     <h2>Profit / loss</h2>
-    <p class="big">{{ "{:+,.0f}".format(totals.profit) }}</p>
+    <p class="big {{ 'down' if totals.profit < 0 else 'up' }}">{{ "{:+,.0f}".format(totals.profit) }}</p>
     <p class="sub">{{ "{:+.1f}".format(totals.profit_pct) }}% against what you paid</p>
   </div>
 </div>
@@ -29,7 +29,7 @@
         <td class="num">{{ "{:,.1f}".format(h.average_cost) }}</td>
         <td class="num">{{ "{:,.2f}".format(h.current_price) }}</td>
         <td class="num">{{ "{:,.0f}".format(h.value) }}</td>
-        <td class="num">{{ "{:+,.0f}".format(h.profit) }} <small>{{ "{:+.1f}".format(h.profit_pct) }}%</small></td>
+        <td class="num {{ 'down' if h.profit < 0 else 'up' }}">{{ "{:+,.0f}".format(h.profit) }} <small>{{ "{:+.1f}".format(h.profit_pct) }}%</small></td>
       </tr>
       {% endfor %}
     </tbody>
