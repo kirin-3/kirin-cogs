@@ -11,11 +11,15 @@ made here since the import:
 - `cotmreward` pays through Unicornia with one idempotency key per contest and winner, saves each contest's places
   before paying, and reruns pay only those saved places. An optional contest number argument.
 - Red data-deletion requests remove the user from saved results.
+- Contests record a start time on their first dashboard post, and `cotmstart` shows or sets it. Standings and
+  rewards ignore votes from members who joined after the start, and entries posted before it.
 
 ### Changed
 
 - `[p]cotm` posts in the channel the command was used in.
 - Standings hide invalid votes by default, and each author is ranked once by their best entry.
+- Only posts with a photo or video attached, not from bots, are ranked as entries.
+- `cotmreward` is refused for a contest with no start time.
 - Payout text uses the server's custom currency emoji.
 
 ### Removed

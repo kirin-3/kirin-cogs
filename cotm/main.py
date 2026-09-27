@@ -24,6 +24,13 @@ from .cotm_views import ContestDashboardView, StandingsView
 from .unicornia import strings
 
 
+def _is_entry(message: discord.Message) -> bool:
+    """Entries are photos or short clips posted by people; text posts and bot messages aren't."""
+    return not message.author.bot and any(
+        (attachment.content_type or "").startswith(("image/", "video/")) for attachment in message.attachments
+    )
+
+
 class ContestCog(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
@@ -41,7 +48,8 @@ class ContestCog(commands.Cog):
         self.config = Config.get_conf(self, identifier=906144832, force_registration=True)
         # payouts: contest number -> {"channel_id", "placements"}, saved before the first deposit
         # dashboards: message id -> contest number, so each dashboard keeps its own contest across restarts
-        self.config.register_global(contest_number=1, payouts={}, dashboards={})
+        # contest_starts: contest number -> POSIX start time; entries and voters must predate it
+        self.config.register_global(contest_number=1, payouts={}, dashboards={}, contest_starts={})
 
         self.logger.info("-" * 32)
         self.logger.info(f"{self.__class__.__name__} v({__version__}) initialized!")
@@ -169,6 +177,15 @@ class ContestCog(commands.Cog):
         message = await cast(discord.TextChannel, ctx.channel).send(view=dashboard_view)
         async with self.config.dashboards() as dashboards:
             dashboards[str(message.id)] = self._contest_number
+        if contest_number is not None:
+            # The first post of a contest number announces it, so that is when it started.
+            async with self.config.contest_starts() as starts:
+                starts.setdefault(str(contest_number), datetime.now(UTC).timestamp())
+            self._standings_cache = None
+
+    async def _contest_start(self, contest: int) -> datetime | None:
+        value = (await self.config.contest_starts()).get(str(contest))
+        return datetime.fromtimestamp(value, UTC) if isinstance(value, int | float) else None
 
     @commands.command(aliases=["cotm"])  # pyright: ignore[reportArgumentType]
     @commands.admin_or_permissions(administrator=True)
@@ -181,15 +198,45 @@ class ContestCog(commands.Cog):
         """
         await self._post_contest_info(ctx, contest_number)
 
+    @commands.command()  # pyright: ignore[reportArgumentType]
+    @commands.admin_or_permissions(administrator=True)
+    async def cotmstart(self, ctx: commands.Context, contest_number: int, *, start: str | None = None) -> None:
+        """Show or set when a contest started, in UTC (`2026-09-01` or `2026-09-01 18:00`).
+
+        Only entries posted after the start are ranked, and votes from members who joined
+        after it don't count. `[p]contest <number>` records the start the first time it posts that contest.
+        """
+        if start is None:
+            started = await self._contest_start(contest_number)
+            if started is None:
+                await ctx.send(f"No start recorded for contest {contest_number}.")
+            else:
+                await ctx.send(f"Contest {contest_number} started {discord.utils.format_dt(started, 'F')}.")
+            return
+        try:
+            started = datetime.fromisoformat(start)
+        except ValueError:
+            await ctx.send("❌ Use a UTC date like `2026-09-01` or `2026-09-01 18:00`.")
+            return
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=UTC)
+        async with self.config.contest_starts() as starts:
+            starts[str(contest_number)] = started.timestamp()
+        self._standings_cache = None
+        await ctx.send(f"Contest {contest_number} now starts {discord.utils.format_dt(started, 'F')}.")
+
     async def _tally_entries(
         self,
         channel: discord.TextChannel,
         emote: str = const.COTM_VOTE_EMOJI,
         voter_server_age: timedelta | None = None,
         *other_emotes: str,
+        started_at: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """Tally votes in a channel and rank authors, most valid votes first.
 
+        Only posts by people with a photo or video attached are entries. With `started_at`, only
+        entries posted after it count, and votes from members who joined after it are invalid.
         A voter counts once per entry, however many of the vote emojis they used on it.
         Each author is ranked once, by their best entry, so extra entries never earn extra places.
         """
@@ -201,10 +248,13 @@ class ContestCog(commands.Cog):
                 not hasattr(u, "joined_at")
                 or u.joined_at is None
                 or (voter_server_age is not None and u.joined_at >= timenow - voter_server_age)
+                or (started_at is not None and u.joined_at >= started_at)
             )
 
         best_by_author: dict[int, dict[str, Any]] = {}
-        async for message in channel.history(limit=None):
+        async for message in channel.history(limit=None, after=started_at, oldest_first=False):
+            if not _is_entry(message):
+                continue
             valid_voters: set[int] = set()
             invalid_voters: set[int] = set()
             for r in message.reactions:
@@ -231,9 +281,10 @@ class ContestCog(commands.Cog):
         emote: str = const.COTM_VOTE_EMOJI,
         voter_server_age: timedelta | None = None,
         *other_emotes: str,
+        started_at: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """Top 10 authors in a channel, one row per author."""
-        entries = await self._tally_entries(channel, emote, voter_server_age, *other_emotes)
+        entries = await self._tally_entries(channel, emote, voter_server_age, *other_emotes, started_at=started_at)
         return entries[:10]
 
     async def get_standings(self, channel: discord.TextChannel) -> tuple[list[dict[str, Any]], datetime]:
@@ -245,7 +296,8 @@ class ContestCog(commands.Cog):
             cached = self._standings_cache
             if cached is not None and time.monotonic() - cached[0] < const.STANDINGS_CACHE_SECONDS:
                 return cached[1], cached[2]
-            entries = await self._get_contest_results(channel)
+            started_at = await self._contest_start(self._contest_number)
+            entries = await self._get_contest_results(channel, started_at=started_at)
             tallied_at = datetime.now(UTC)
             self._standings_cache = (time.monotonic(), entries, tallied_at)
             return entries, tallied_at
@@ -316,22 +368,31 @@ class ContestCog(commands.Cog):
                         placement["user_id"] = None
                         placement["name"] = "Deleted user"
 
-    async def _reward_placements(self, contest: int, channel: discord.TextChannel) -> list[dict[str, Any]] | int | None:
-        """The paid places for a contest, decided once and then reused.
+    async def _reward_placements(self, contest: int, channel: discord.TextChannel) -> list[dict[str, Any]] | str:
+        """The paid places for a contest, decided once and then reused, or why there are none.
 
         The first run tallies the channel and saves the places before any deposit, so a rerun
-        pays the same people the same amounts even if votes changed in between. Returns None
-        when there is nothing to pay, or the saved channel ID when `channel` is a different one.
+        pays the same people the same amounts even if votes changed in between.
         """
         saved = (await self.config.payouts()).get(str(contest))
         if saved is not None:
             if saved["channel_id"] != channel.id:
-                return saved["channel_id"]
+                return (
+                    f"❌ Rewards for contest {contest} were already decided from <#{saved['channel_id']}>. "
+                    "Run the command on that channel, or pass the right contest number."
+                )
             return saved["placements"]
 
-        entries = [entry for entry in await self._tally_entries(channel) if entry["valid_votes"] > 0]
+        started_at = await self._contest_start(contest)
+        if started_at is None:
+            return (
+                f"❌ No start time is recorded for contest {contest}, so late joiners and old posts can't be "
+                f"told apart. Set it with `cotmstart {contest} <date>` first."
+            )
+        tally = await self._tally_entries(channel, started_at=started_at)
+        entries = [entry for entry in tally if entry["valid_votes"] > 0]
         if not entries:
-            return None
+            return f"No valid entries found for channel {channel.mention}"
         placements = [
             {"user_id": entry["user"].id, "name": entry["name"], "votes": entry["valid_votes"], "amount": amount}
             for entry, amount in zip(entries, const.COTM_REWARDS, strict=False)
@@ -372,14 +433,8 @@ class ContestCog(commands.Cog):
 
         async with self._reward_lock, ctx.typing():
             placements = await self._reward_placements(contest, channel)
-            if placements is None:
-                await ctx.send(f"No valid entries found for channel {channel.mention}")
-                return
-            if isinstance(placements, int):
-                await ctx.send(
-                    f"❌ Rewards for contest {contest} were already decided from <#{placements}>. "
-                    "Run the command on that channel, or pass the right contest number."
-                )
+            if isinstance(placements, str):
+                await ctx.send(placements)
                 return
 
             contest_label = strings.add_ordinal_suffix(contest)

@@ -18,6 +18,8 @@ from redbot.core import commands
 from cotm import const
 from cotm.main import ContestCog
 
+NOW = datetime.now(UTC)
+
 
 @pytest_asyncio.fixture
 async def cog(bot_mock: MagicMock) -> ContestCog:
@@ -25,6 +27,8 @@ async def cog(bot_mock: MagicMock) -> ContestCog:
     # Red's test config is shared across tests, so saved contest results would leak between them
     await cog.config.payouts.clear()
     await cog.config.dashboards.clear()
+    # Every contest in these tests started a week ago, before the entries; start-rule tests override it
+    await cog.config.contest_starts.set({str(n): (NOW - timedelta(days=7)).timestamp() for n in range(1, 100)})
     return cog
 
 
@@ -122,33 +126,9 @@ async def test_cog_load_binds_recorded_dashboards_to_their_contest(cog: ContestC
 
 @pytest.mark.asyncio
 async def test_get_contest_results(cog: ContestCog) -> None:
-    channel = MagicMock(spec=discord.TextChannel)
-
-    msg1 = MagicMock(spec=discord.Message)
-    # author must be a proper mock so str() returns a predictable string
-    author_mock = MagicMock(spec=discord.Member)
-    author_mock.__str__ = MagicMock(return_value="User1")
-    msg1.author = author_mock
-
-    react1 = MagicMock(spec=discord.Reaction)
-    react1.emoji = const.COTM_VOTE_EMOJI
-
-    user1 = MagicMock(spec=discord.Member)
-    user1.joined_at = datetime.now(UTC) - timedelta(days=10)
-    user2 = MagicMock(spec=discord.Member)
-    user2.joined_at = datetime.now(UTC) - timedelta(days=2)
-
-    async def get_users() -> AsyncGenerator[MagicMock, None]:
-        yield user1
-        yield user2
-
-    react1.users.return_value = get_users()
-    msg1.reactions = [react1]
-
-    async def history(limit: int | None = None) -> AsyncGenerator[MagicMock, None]:
-        yield msg1
-
-    channel.history.return_value = history()
+    user1 = _person(1, joined=NOW - timedelta(days=10))
+    user2 = _person(2, joined=NOW - timedelta(days=2))
+    channel = _channel([_entry(_person(10, "User1"), {const.COTM_VOTE_EMOJI: [user1, user2]})])
 
     # voter_server_age = 5 days: user1 (joined 10 days ago) is valid, user2 (joined 2 days ago) is not
     results = await cog._get_contest_results(channel, const.COTM_VOTE_EMOJI, timedelta(days=5))
@@ -198,28 +178,9 @@ async def test_cotmreward(cog: ContestCog, ctx_mock: MagicMock, bot_mock: MagicM
     channel_mock.id = 900
     channel_mock.mention = "#test-channel"
 
-    msg1 = MagicMock(spec=discord.Message)
-    user_author = MagicMock(spec=discord.Member)
-    user_author.id = 123
-    user_author.__str__ = MagicMock(return_value="User1")
-    msg1.author = user_author
-
-    react1 = MagicMock(spec=discord.Reaction)
-    react1.emoji = const.COTM_VOTE_EMOJI
-
-    voter = MagicMock(spec=discord.Member)
-    voter.joined_at = datetime.now(UTC) - timedelta(days=10)
-
-    async def get_users() -> AsyncGenerator[MagicMock, None]:
-        yield voter
-
-    react1.users.return_value = get_users()
-    msg1.reactions = [react1]
-
-    async def history(limit: int | None = None) -> AsyncGenerator[MagicMock, None]:
-        yield msg1
-
-    channel_mock.history.return_value = history()
+    channel_mock.history.side_effect = _channel(
+        [_entry(_person(123, "User1"), {const.COTM_VOTE_EMOJI: [_person(1)]})]
+    ).history.side_effect
 
     await cog.cotmreward.callback(
         cog,  # type: ignore[arg-type]
@@ -279,18 +240,29 @@ async def test_dpytest_message_does_not_raise() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _person(user_id: int, name: str | None = None, *, member: bool = True) -> MagicMock:
+def _person(
+    user_id: int, name: str | None = None, *, member: bool = True, joined: datetime | None = None, bot: bool = False
+) -> MagicMock:
     person = MagicMock(spec=discord.Member)
     person.id = user_id
-    person.joined_at = datetime.now(UTC) - timedelta(days=30) if member else None
+    person.bot = bot
+    person.joined_at = (joined or NOW - timedelta(days=30)) if member else None
     person.__str__ = MagicMock(return_value=name or f"user{user_id}")
     return person
 
 
-def _entry(author: MagicMock, votes: dict[str, list[MagicMock]]) -> MagicMock:
-    """A message by `author` with the given voters per reaction emoji."""
+def _entry(
+    author: MagicMock,
+    votes: dict[str, list[MagicMock]],
+    *,
+    posted: datetime | None = None,
+    content_type: str | None = "image/png",
+) -> MagicMock:
+    """A message by `author` with the given voters per reaction emoji, and one attachment unless content_type is None."""
     message = MagicMock(spec=discord.Message)
     message.author = author
+    message.created_at = posted or NOW - timedelta(days=1)
+    message.attachments = [] if content_type is None else [SimpleNamespace(content_type=content_type)]
     reactions = []
     for emoji, voters in votes.items():
         reaction = MagicMock(spec=discord.Reaction)
@@ -314,10 +286,13 @@ def _channel(messages: list[MagicMock], channel_id: int = 900) -> MagicMock:
     channel.id = channel_id
     channel.mention = "#entries"
 
-    def history(limit: int | None = None) -> AsyncGenerator[MagicMock, None]:
+    def history(
+        limit: int | None = None, after: datetime | None = None, oldest_first: bool | None = None
+    ) -> AsyncGenerator[MagicMock, None]:
         async def gen() -> AsyncGenerator[MagicMock, None]:
             for message in messages:
-                yield message
+                if after is None or message.created_at > after:
+                    yield message
 
         return gen()
 
@@ -585,3 +560,53 @@ async def test_standings_button_uses_the_shared_cache(cog: ContestCog) -> None:
     interaction.client.get_channel.assert_called_once_with(const.ENTRIES_CHANNEL_ID)
     cog.get_standings.assert_awaited_once_with(channel)
     assert isinstance(interaction.edit_original_response.call_args.kwargs["view"], StandingsView)
+
+
+def _contest_channel() -> MagicMock:
+    """Entries for a contest that started a week ago, with every kind of post that must not count."""
+    emote = const.COTM_VOTE_EMOJI
+    late_joiners = [_person(5000 + i, joined=NOW - timedelta(days=2)) for i in range(5)]
+    return _channel(
+        [
+            _entry(_person(1, "last month"), {emote: _voters(9)}, posted=NOW - timedelta(days=40)),
+            _entry(_person(2, "chatter"), {emote: _voters(9, 2000)}, content_type=None),
+            _entry(_person(3, "bot", bot=True), {emote: _voters(9, 3000)}),
+            _entry(_person(4, "popular with newcomers"), {emote: _voters(3, 4000) + late_joiners}),
+            _entry(_person(6, "winner"), {emote: _voters(4, 6000)}),
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_rewards_and_standings_skip_late_joiners_old_posts_and_non_entries(
+    cog: ContestCog, ctx_mock: MagicMock, bot_mock: MagicMock
+) -> None:
+    ledger = _Ledger()
+    bot_mock.get_cog.return_value = ledger
+    ctx_mock.guild = MagicMock(id=555)
+    cog._contest_number = 20
+
+    standings, _ = await cog.get_standings(_contest_channel())
+    await cog.cotmreward.callback(cog, ctx_mock, _contest_channel())  # type: ignore[arg-type]
+
+    assert [(e["name"], e["valid_votes"], e["invalid_votes"]) for e in standings] == [
+        ("winner", 4, 0),
+        ("popular with newcomers", 3, 5),
+    ]
+    assert ledger.paid == {"cotm:20:6": (6, const.COTM_REWARDS[0]), "cotm:20:4": (4, const.COTM_REWARDS[1])}
+
+
+@pytest.mark.asyncio
+async def test_cotmreward_refuses_a_contest_with_no_start(
+    cog: ContestCog, ctx_mock: MagicMock, bot_mock: MagicMock
+) -> None:
+    ledger = _Ledger()
+    bot_mock.get_cog.return_value = ledger
+    ctx_mock.guild = MagicMock(id=555)
+    await cog.config.contest_starts.clear()
+
+    await cog.cotmreward.callback(cog, ctx_mock, _contest_channel(), 20)  # type: ignore[arg-type]
+
+    assert ledger.paid == {}
+    assert "cotmstart 20" in ctx_mock.send.await_args.args[0]
+    assert await cog.config.payouts() == {}

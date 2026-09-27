@@ -6,7 +6,7 @@ A Discord bot cog that manages the Cutie of the Month contest on the Unicornia s
 
 - **Interactive Dashboard**: A persistent message with tabs for contest information, entry terms, prizes, and voting instructions
 - **Check Standings Button**: Any user can press "Check Standings" on the dashboard to see the current top 10 standings (ephemeral reply). The tally is shared and refreshed at most every 5 minutes, so repeated presses don't re-read the entries channel
-- **Vote Counting**: Automated tallying of votes using reaction counts in the contest channel
+- **Vote Counting**: Automated tallying of votes using reaction counts in the contest channel. The standings and rewards count only entries (posts with a photo or video attached, not from bots) posted since the contest started, and only votes from members who joined before it started
 - **Leaderboard Display**: Shows the top 10 contestants based on vote counts. Each person is ranked once, by their best entry
 - **Reward Distribution**: Automatic distribution of special currency rewards to contest winners
 - **Persistent Interface**: Dashboard remains functional across bot restarts
@@ -18,6 +18,7 @@ A Discord bot cog that manages the Cutie of the Month contest on the Unicornia s
 - `[p]contest [contest_number]` or `[p]cotm [contest_number]`
   - Posts the contest dashboard to the current channel
   - Optional contest_number parameter specifies which contest number to display
+  - The first post for a contest number records that contest's start time (see `[p]cotmstart`)
   - Requires administrator permissions
 
 - `[p]contestcount <channel> [emote] [show_invalid] [voter_server_age] [*other_emotes]`
@@ -27,6 +28,13 @@ A Discord bot cog that manages the Cutie of the Month contest on the Unicornia s
   - `show_invalid`: Whether to show invalid vote counts (defaults to false)
   - `voter_server_age`: Timedelta filter for minimum server membership to count votes
   - `*other_emotes`: Additional emojis to count as votes. A voter counts once per entry, whichever of the emojis they used
+  - Counts every entry in the channel's history; it does not use the contest start time
+
+- `[p]cotmstart <contest_number> [start]`
+  - Shows, or sets, when a contest started. `start` is UTC, such as `2026-09-01` or `2026-09-01 18:00`
+  - Only entries posted after the start are ranked, and votes from members who joined after it don't count
+  - Use it for a contest whose dashboard was posted before the cog recorded start times, or to correct one
+  - Requires administrator permissions
 
 ### Owner Commands
 
@@ -35,6 +43,7 @@ A Discord bot cog that manages the Cutie of the Month contest on the Unicornia s
   - The first run saves the places and amounts for that contest number before paying anyone. Running it again (for example after a failed deposit) pays those same saved places, only what is still missing, even if votes changed since
   - Each winner is paid at most once per contest (`cotm:<contest>:<user>` Unicornia operation key)
   - Once a contest's places are saved, running it for that contest number on a different channel is refused
+  - Refused until the contest has a start time (`[p]cotmstart`), so late joiners' votes and older posts are never counted
   - `contest_number` defaults to the number set with `[p]contest`; make sure it is the current contest, or the saved results of an earlier contest with the same number are used
   - Requires the Unicornia cog to be loaded for currency distribution
   - Restricted to bot owners only
@@ -66,7 +75,8 @@ A Discord bot cog that manages the Cutie of the Month contest on the Unicornia s
 - Each reaction counts as one vote toward the contestant's total
 
 ### For Administrators
-- Use `[p]contest [number]` to post the contest dashboard to any channel
+- Use `[p]contest [number]` to post the contest dashboard to any channel. Post it with the new number when a contest opens; that records the start
+- Check the start with `[p]cotmstart <number>` before paying rewards
 - Monitor entries to ensure they meet contest requirements
 - Use `[p]contestcount` to check the current standings during the contest
 
@@ -97,7 +107,8 @@ The top contestants receive various rewards including:
 
 - Voting is done through reactions in the entries channel
 - Only specific emoji reactions count as valid votes
-- A minimum-membership age for voters can be applied by passing `voter_server_age` to `[p]contestcount`; it is not a server-wide setting, and the "Check Standings" button and `[p]cotmreward` count votes without any age filter
+- Votes from members who joined after the contest started don't count in the "Check Standings" button or `[p]cotmreward`, and posts from before the start, text-only posts and bot posts are not ranked
+- `[p]contestcount` ignores the start time; pass `voter_server_age` there for a minimum-membership age instead
 
 ## Technical Details
 
