@@ -35,7 +35,7 @@ CONFIG_IDENTIFIER = 98245173605
 EMBED_FIELD_LIMIT = 1024
 ENFORCEMENT_REASON = "Posted in the Unicornia honeypot channel"
 
-log = logging.getLogger("red.kirin-cogs.honeypot")
+log = logging.getLogger("red.kirin_cogs.honeypot")
 
 
 async def _staff_or_admin(ctx: commands.Context) -> bool:

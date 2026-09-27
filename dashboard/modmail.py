@@ -40,7 +40,7 @@ STATUS = {1: "Open", 2: "Closed", 3: "Suspended"}
 KINDS = {1: "system", 2: "chat", 3: "member", 4: "reply", 6: "command", 7: "to-member", 8: "edited", 9: "deleted"}
 THREAD_COLUMNS = "id, thread_number, status, user_id, user_name, created_at"
 
-log = logging.getLogger("red.kirin-cogs.dashboard.modmail")
+log = logging.getLogger("red.kirin_cogs.dashboard.modmail")
 
 
 class Unavailable(Exception):

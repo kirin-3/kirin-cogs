@@ -19,7 +19,7 @@ from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import bold, box, humanize_number, humanize_timedelta
 
-log = logging.getLogger("red.kirin-cogs.advanceduptime")
+log = logging.getLogger("red.kirin_cogs.advanceduptime")
 
 DEFAULT_GLOBAL = {
     "show_bot_stats": True,

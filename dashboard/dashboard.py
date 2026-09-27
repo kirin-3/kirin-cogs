@@ -95,7 +95,7 @@ MEMBER_SECURITY_HEADERS = {
     "Content-Security-Policy": CSP.format("'self' https://cdn.discordapp.com https://unicornia.net"),
 }
 
-log = logging.getLogger("red.kirin-cogs.dashboard")
+log = logging.getLogger("red.kirin_cogs.dashboard")
 
 
 @dataclass(frozen=True)

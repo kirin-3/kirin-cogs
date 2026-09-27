@@ -14,7 +14,7 @@ from redbot.core import Config, app_commands, commands
 from .openai import DEFAULT_ENDPOINT, DEFAULT_MODEL, AIRequestError, OpenAIClient
 from .persona import PersonaManager
 
-log = logging.getLogger("red.unicorn_ai")
+log = logging.getLogger("red.kirin_cogs.unicorn_ai")
 
 MIN_INTERVAL = 60
 MAX_INTERVAL = 86400

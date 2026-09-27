@@ -4,7 +4,7 @@ from typing import Any
 
 import aiohttp
 
-log = logging.getLogger("red.unicorn_ai.openai")
+log = logging.getLogger("red.kirin_cogs.unicorn_ai.openai")
 
 DEFAULT_ENDPOINT = "https://nano-gpt.com/api/v1/chat/completions"
 DEFAULT_MODEL = "zai-org/glm-5:thinking"

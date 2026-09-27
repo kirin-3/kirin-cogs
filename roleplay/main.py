@@ -29,7 +29,7 @@ class Roleplay(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
 
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger = logging.getLogger("red.kirin_cogs.roleplay")
         self.logger.setLevel(const.LOGGER_LEVEL)
 
         self.action_manager = ActionManager()

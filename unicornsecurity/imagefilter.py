@@ -8,7 +8,7 @@ import aiohttp
 import discord
 from redbot.core import Config, commands
 
-log = logging.getLogger("red.unicornsecurity.imagefilter")
+log = logging.getLogger("red.kirin_cogs.unicornsecurity.imagefilter")
 
 URL_PATTERN = re.compile(r"https?://\S+")
 REDIRECT_STATUSES = {301, 302, 303, 307, 308}

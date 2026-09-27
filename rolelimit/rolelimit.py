@@ -19,7 +19,7 @@ from redbot.core.utils import AsyncIter
 from redbot.core.utils.chat_formatting import humanize_list
 from redbot.core.utils.predicates import MessagePredicate
 
-log = logging.getLogger("red.kirin-cogs.rolelimit")
+log = logging.getLogger("red.kirin_cogs.rolelimit")
 
 # Identifiers of the original cogs; changing them would orphan the saved settings.
 ROLELIMIT_IDENTIFIER = 1471894719841

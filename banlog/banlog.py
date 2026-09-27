@@ -77,7 +77,7 @@ INSERT_MESSAGE = (
 EDIT_MESSAGE = "UPDATE messages SET edited_content = ?, edited_at = ? WHERE id = ?"
 DELETE_MESSAGE = "UPDATE messages SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL"
 
-log = logging.getLogger("red.kirin-cogs.banlog")
+log = logging.getLogger("red.kirin_cogs.banlog")
 
 
 def parse_moderator(moderator_id: int | None, reason: str | None, bot_id: int) -> tuple[int | None, str | None]:

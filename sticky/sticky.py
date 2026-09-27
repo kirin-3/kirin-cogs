@@ -22,7 +22,7 @@ from redbot.core import Config, commands
 from redbot.core.utils.menus import start_adding_reactions
 from redbot.core.utils.predicates import MessagePredicate, ReactionPredicate
 
-log = logging.getLogger("red.kirin-cogs.sticky")
+log = logging.getLogger("red.kirin_cogs.sticky")
 
 UNIQUE_ID = 0x6AFE8000  # the original's identifier; changing it orphans the saved stickies
 DEFAULT_COOLDOWN = 3

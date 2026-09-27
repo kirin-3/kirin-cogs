@@ -50,7 +50,7 @@ class Settings:
         self.bot = bot
         self.parent = parent
 
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger = logging.getLogger("red.kirin_cogs.roleplay.settings")
         self.logger.setLevel(const.LOGGER_LEVEL)
 
         # Existing members' settings are stored under cog name "Settings" +

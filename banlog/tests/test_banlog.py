@@ -294,7 +294,7 @@ def test_warns_when_audit_log_is_hidden(cog: BanLog, caplog: pytest.LogCaptureFi
     guild = SimpleNamespace(me=SimpleNamespace(guild_permissions=SimpleNamespace(view_audit_log=allowed)))
     cast(MagicMock, cog.bot).get_guild.return_value = guild
 
-    with caplog.at_level(logging.WARNING, logger="red.kirin-cogs.banlog"):
+    with caplog.at_level(logging.WARNING, logger="red.kirin_cogs.banlog"):
         cog._check_audit_permission()
 
     assert ("View Audit Log" in caplog.text) is not allowed

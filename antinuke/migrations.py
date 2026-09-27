@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Protocol
 
-log = logging.getLogger("red.kirin-cogs.antinuke.migrations")
+log = logging.getLogger("red.kirin_cogs.antinuke.migrations")
 
 
 class GuildConfigLike(Protocol):

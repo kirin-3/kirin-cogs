@@ -21,7 +21,7 @@ from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import box
 
-log = logging.getLogger("red.kirin-cogs.voicenotelog")
+log = logging.getLogger("red.kirin_cogs.voicenotelog")
 
 MIC_GIF: Final[str] = "https://cdn.discordapp.com/emojis/1164844325973270599.gif"
 # The free Chromium key SpeechRecognition uses; Google may revoke it at any time.

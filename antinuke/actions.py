@@ -16,7 +16,7 @@ from redbot.core.utils.chat_formatting import bold
 from .constants import ACTION_NAMES
 from .utils import is_above_in_hierarchy
 
-log = logging.getLogger("red.kirin-cogs.antinuke.actions")
+log = logging.getLogger("red.kirin_cogs.antinuke.actions")
 
 
 @dataclass

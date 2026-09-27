@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import discord
 from redbot.core import Config, commands
 
-log = logging.getLogger("red.cogs.rulesaccept")
+log = logging.getLogger("red.kirin_cogs.rulesaccept")
 
 MUTED_ROLE_ID = 686252873583165520  # same role the moderation cog mutes with
 

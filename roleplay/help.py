@@ -10,7 +10,7 @@ from .user_settings import USER_SETTINGS
 
 class Help:
     def __init__(self, action_manager: ActionManager):
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger = logging.getLogger("red.kirin_cogs.roleplay.help")
         self.logger.setLevel(const.LOGGER_LEVEL)
 
         self.action_manager = action_manager

@@ -80,7 +80,7 @@ class ActionManager:
     DATA_PATH = Path(__file__).parent / "actions"
 
     def __init__(self):
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger = logging.getLogger("red.kirin_cogs.roleplay.actions")
 
         self.actions: list[Action] = []
 

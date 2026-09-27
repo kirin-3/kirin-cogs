@@ -24,7 +24,7 @@ from discord.ext import tasks
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 
-log = logging.getLogger("red.kirin-cogs.disboardreminder")
+log = logging.getLogger("red.kirin_cogs.disboardreminder")
 
 DISBOARD_BOT_ID: Final[int] = 302050872383242240
 # Disboard's success embed always has this image, whatever language it replies in.

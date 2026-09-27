@@ -66,7 +66,7 @@ async def test_delete_user_data_removes_own_settings_and_references() -> None:
 
 def test_actions_load_with_logger_left_broken_by_pre_port_cog(monkeypatch: pytest.MonkeyPatch) -> None:
     # The pre-port cog ran `logger.setLevel = LOGGER_LEVEL`; loggers outlive a cog reload
-    logger = logging.getLogger("roleplay.actions.ActionManager")
+    logger = logging.getLogger("red.kirin_cogs.roleplay.actions")
     monkeypatch.setattr(logger, "setLevel", 20, raising=False)
 
     assert ActionManager().actions

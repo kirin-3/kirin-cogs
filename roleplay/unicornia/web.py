@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 import aiohttp
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("red.kirin_cogs.roleplay.unicornia.web")
 
 DOWNLOAD_TIMEOUT = aiohttp.ClientTimeout(total=30)
 

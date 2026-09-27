@@ -34,7 +34,7 @@ class Manager:
     """
 
     def __init__(self, bot: Red, config: Config):
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger = logging.getLogger("red.kirin_cogs.roleplay.users")
         self.logger.setLevel(const.LOGGER_LEVEL)
 
         self.bot = bot

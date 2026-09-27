@@ -13,7 +13,7 @@ from .events import EventHandlers
 from .migrations import migrate_guild_schemas
 from .utils import ActionCache
 
-log = logging.getLogger("red.kirin-cogs.antinuke")
+log = logging.getLogger("red.kirin_cogs.antinuke")
 
 
 async def _settings_authority(ctx: commands.Context) -> bool:

@@ -5,7 +5,7 @@ from discord import ui
 
 from . import const
 
-log = logging.getLogger("red.cotm.views")
+log = logging.getLogger("red.kirin_cogs.cotm.views")
 
 
 class ContestDashboardView(ui.LayoutView):

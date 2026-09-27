@@ -35,7 +35,7 @@ class ContestCog(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
 
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger = logging.getLogger("red.kirin_cogs.cotm")
         self.logger.setLevel(const.LOGGER_LEVEL)
 
         self._contest_number: int = 1

@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-log = logging.getLogger("red.unicorn_ai.persona")
+log = logging.getLogger("red.kirin_cogs.unicorn_ai.persona")
 
 
 @dataclass

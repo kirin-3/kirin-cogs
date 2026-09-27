@@ -13,7 +13,7 @@ from .actions import QuarantineActions
 from .constants import DANGEROUS_PERMISSIONS
 from .utils import ActionCache, has_dangerous_permission
 
-log = logging.getLogger("red.kirin-cogs.antinuke.events")
+log = logging.getLogger("red.kirin_cogs.antinuke.events")
 
 # Audit log actions that map straight onto a monitored action type.
 AUDIT_ACTION_TYPES: dict[discord.AuditLogAction, str] = {
