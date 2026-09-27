@@ -93,6 +93,8 @@ def _make_ctx(
     perms.manage_roles = has_manage_roles
     author.guild_permissions = perms
     author.guild = guild
+    author.top_role = MagicMock(spec=discord.Role)
+    author.top_role.position = 100
 
     message = MagicMock(spec=discord.Message)
     message.attachments = attachments or []

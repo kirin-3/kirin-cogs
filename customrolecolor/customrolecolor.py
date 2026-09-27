@@ -282,6 +282,10 @@ class CustomRoleColor(commands.Cog):
         if error_msg:
             await ctx.send(error_msg)
             return
+        # Discord's own rule for giving out roles: below your top role, unless you own the server
+        if ctx.author.id != ctx.guild.owner_id and role >= ctx.author.top_role:
+            await ctx.send("You can't assign a role that is higher than or equal to your top role.")
+            return
 
         if role not in member.roles:
             try:
