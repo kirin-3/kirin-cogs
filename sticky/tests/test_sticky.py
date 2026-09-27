@@ -67,7 +67,10 @@ async def test_new_message_reposts_and_deletes_old_sticky() -> None:
 
     await cog.on_message(message)
 
-    channel.send.assert_awaited_once_with("Rules", embed=discord.utils.MISSING)
+    channel.send.assert_awaited_once()
+    assert channel.send.await_args.args == ("Rules",)
+    assert channel.send.await_args.kwargs["embed"] is discord.utils.MISSING
+    assert channel.send.await_args.kwargs["allowed_mentions"].to_dict() == {"parse": []}  # reposts never ping
     cast(MagicMock, cog.conf.channel).return_value.last.set.assert_awaited_once_with(999)
     old.delete.assert_awaited_once()
 

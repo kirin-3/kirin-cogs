@@ -18,6 +18,7 @@ registered) and only then deliver the reaction.
 import contextlib
 from dataclasses import dataclass
 from typing import Any, cast
+from unittest.mock import patch
 
 import discord
 import pytest
@@ -396,4 +397,21 @@ async def test_commands_are_rejected_in_dms(red_env: simcord.Env) -> None:
     ]
     assert "That command is not available in DMs." in dm_contents
     assert isinstance(red_env.errors.pop(), commands.CheckFailure)  # NoPrivateMessage
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_reposts_do_not_ping_mentioned_users(red_env: simcord.Env) -> None:
+    setup = await _setup(red_env)
+    await _sticky(red_env, setup, f"Ask {setup.owner.mention} for roles")
+
+    # SimCord doesn't model allowed_mentions, so check what the repost asks Discord for.
+    send = discord.abc.Messageable.send
+    with patch.object(discord.abc.Messageable, "send", autospec=True, side_effect=send) as spy:
+        await setup.member.send(setup.channel, "hello!")
+        await red_env.advance_time(4)
+        await red_env.settle()
+
+    [repost] = [c for c in spy.call_args_list if c.args[0].id == setup.channel.id and "for roles" in c.args[1]]
+    assert repost.kwargs["allowed_mentions"].to_dict() == {"parse": []}
     simcord.assert_no_errors(red_env)

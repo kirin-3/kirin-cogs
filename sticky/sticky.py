@@ -230,7 +230,10 @@ class Sticky(commands.Cog):
                 return
             content, embed = build_sticky(data)
             try:
-                new = await channel.send(content, embed=embed or discord.utils.MISSING)
+                # Only the first post pings; reposts would ping the same people after every message.
+                new = await channel.send(
+                    content, embed=embed or discord.utils.MISSING, allowed_mentions=discord.AllowedMentions.none()
+                )
             except discord.HTTPException:
                 log.warning("Could not repost the sticky message in %s", channel.id, exc_info=True)
                 return
