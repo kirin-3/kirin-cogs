@@ -148,12 +148,14 @@ HELP_CONTENT = {
         "description": (
             "An idle game: unicorns earn coins into your stable's coin box while you're away.\n"
             "Hatch eggs for unicorns of five rarities, upgrade them to earn more, and collect the box before it "
-            "fills up. Each egg and level costs more than the last."
+            "fills up. Find shinies, complete your collection, and ascend a full stable for a permanent boost."
         ),
         "commands": [
-            "`[p]stable [member]` - Your stable card, with Collect, Hatch, Upgrade, Bigger box and Release.",
+            "`[p]stable [member]` - Your stable card, with Collect, Hatch, Upgrade, Bigger box, Ascend and Release.",
             "`[p]stable name <number> [name]` - Name a unicorn.",
             "`[p]stable release <number>` - Let a unicorn go to make room.",
+            "`[p]stable collection` - Every breed you've ever hatched, with perks and shinies.",
+            "`[p]stable ascend` - Empty a full stable of level-10s for +10% earnings (prices +20%).",
             "`[p]stable top` - The stables that earn the most a day.",
         ],
     },

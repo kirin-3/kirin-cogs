@@ -1,0 +1,57 @@
+{% extends "member/base.html" %}
+{% block title %}Stable{% endblock %}
+{% block content %}
+{% include "member/_account.html" %}
+<h1>Stable</h1>
+{% if collected is not none %}
+{% if collected > 0 %}
+<p class="notice">💰 Collected {{ "{:,}".format(collected) }} {{ currency }} into your wallet.</p>
+{% else %}
+<p class="notice">The coin box was empty.</p>
+{% endif %}
+{% endif %}
+<p class="sub">Unicorns earn coins while you're away.{% if stable.season %} <span class="badge">{{ stable.season }} season</span>{% endif %}</p>
+<div class="stats">
+  <div class="panel"><h2>Earnings</h2><p class="big">{{ "{:,}".format(stable.per_day) }}</p><p class="sub">{{ currency }} a day</p></div>
+  <div class="panel"><h2>Coin box</h2><p class="big">{{ "{:,}".format(stable.box) }} / {{ "{:,}".format(stable.capacity) }}</p><p class="sub">holds {{ stable.box_hours }} hours of earnings</p></div>
+  <div class="panel"><h2>Ascensions</h2><p class="big">{{ stable.ascensions }}</p><p class="sub">+10% earnings, +20% prices each</p></div>
+  <div class="panel"><h2>Collection</h2><p class="big">{{ stable.found }} / {{ stable.total_breeds }}</p><p class="sub">breeds found · +{{ "{:.0f}".format(stable.bonus * 100) }}% bonus</p></div>
+</div>
+<img class="stable-card" src="/me/stable/card.webp" alt="Your stable card" width="1000" height="600">
+<form method="post" action="/me/stable/collect">
+  <input type="hidden" name="csrf" value="{{ session.csrf }}">
+  <button class="primary big" type="submit">💰 Collect the coin box</button>
+</form>
+{% if not stable.unicorns %}
+<p class="empty">Your stable is empty. Start it with the <code>stable</code> command in Discord.</p>
+{% endif %}
+{% for group in stable.collection %}
+<h2>{{ group.rarity }}</h2>
+<div class="stable-grid">
+  {% for breed in group.breeds %}
+  {% if breed.key %}
+  <div class="stable-breed">
+    <img src="/me/stable/art/{{ breed.key }}.webp" alt="{{ breed.name }}" loading="lazy" width="160" height="160">
+    <p><strong>{{ breed.name }}</strong>{% if breed.shiny %} <span class="badge ok">✨ shiny found</span>{% endif %}</p>
+    <p class="sub">{{ breed.perk }}</p>
+  </div>
+  {% else %}
+  <div class="stable-breed undiscovered">
+    <span class="secret" aria-hidden="true">?</span>
+    <p><strong>???</strong></p>
+    <p class="sub">Hatch one to discover it</p>
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endfor %}
+{% if stable.perks %}
+<h2>Active in your stable</h2>
+<ul class="rows">
+  {% for perk in stable.perks %}
+  <li><strong>{{ perk.name }}</strong> — {{ perk.perk }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+<p class="empty">Hatching, upgrades, releases and ascension stay in Discord, with the <code>stable</code> commands.</p>
+{% endblock %}

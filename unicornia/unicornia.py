@@ -9,7 +9,9 @@ import asyncio
 import contextlib
 import logging
 import os
+import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal
 
 import discord
@@ -48,6 +50,16 @@ from .systems import (
     XPSystem,
     YieldSystem,
 )
+from .systems.stable_card import render as render_stable_card
+from .systems.stable_system import (
+    BREEDS,
+    PERKS,
+    RARITIES,
+    REGULAR_BREEDS,
+    SEASONS,
+    active_season,
+    collection_bonus,
+)
 from .types import LevelStats
 
 log = logging.getLogger("red.kirin_cogs.unicornia")
@@ -55,6 +67,9 @@ log = logging.getLogger("red.kirin_cogs.unicornia")
 # A live game settles on its own view timeout (30-60 s idle), so a stake reserved this long ago
 # was stranded by a crash mid-game and is refunded while the bot runs
 STUCK_STAKE_SECONDS = 3600
+
+STABLE_ART = Path(__file__).resolve().parent / "data" / "stable"
+STABLE_CARD_CACHE_SECONDS = 30
 
 
 # See: https://docs.discord-red.com/en/stable/framework_commands.html
@@ -149,6 +164,8 @@ class Unicornia(
         self.reservation_recovery_task = None
         self.nitro_task = None
         self._whitelist_cache: dict[int, tuple[dict[str, list[int]], dict[str, list[int]]]] = {}
+        # The member site's stable card cache: member id -> (what was rendered, when it expires, the webp bytes)
+        self._stable_cards: dict[int, tuple[tuple, float, bytes]] = {}
 
     async def cog_load(self):
         """Called when the cog is loaded - proper async initialization"""
@@ -296,11 +313,18 @@ class Unicornia(
 
             # Unicorn stable
             stable = await self.stable_system.state(user_id)
-            if stable.unicorns:
+            if stable.unicorns or stable.discovered:
                 data["stable"] = {
                     "coin_box": int(stable.box),
                     "box_hours": stable.box_hours,
-                    "unicorns": [{"breed": u.breed, "level": u.level, "name": u.name} for u in stable.unicorns],
+                    "ascensions": stable.ascensions,
+                    "unicorns": [
+                        {"breed": u.breed, "level": u.level, "name": u.name, "shiny": u.shiny} for u in stable.unicorns
+                    ],
+                    "collection": {
+                        "discovered": sorted(stable.discovered),
+                        "shiny_found": sorted(stable.shiny_found),
+                    },
                 }
 
             # Transaction history
@@ -637,6 +661,112 @@ class Unicornia(
                 for name, emoji, count in await self.db.waifu.get_waifu_gifts_aggregated(user_id)
             ],
         }
+
+    # --- the member site's stable page ------------------------------------------------------------
+
+    @staticmethod
+    def _stable_collection_group(state: Any, rarity: str) -> dict[str, Any]:
+        """One rarity's breeds for the stable page: discovered ones with name, art key and perk, the rest as ???."""
+        breeds = []
+        for key, breed in BREEDS.items():
+            if breed.rarity != rarity:
+                continue
+            if key in state.discovered:
+                breeds.append(
+                    {
+                        "key": key,
+                        "name": breed.name,
+                        "shiny": key in state.shiny_found,
+                        "perk": PERKS[key].description,
+                    }
+                )
+            else:
+                breeds.append({"key": None, "name": None, "shiny": False, "perk": None})
+        return {"rarity": RARITIES[rarity].name, "seasonal": False, "breeds": breeds}
+
+    async def stable_for(self, member: discord.abc.User) -> dict[str, Any]:
+        """The stable page's numbers, collection and perks.
+
+        Undiscovered breeds appear as ??? entries with no key, name or perk, so nothing about them
+        reaches a member who hasn't hatched them.
+        """
+        state = await self.stable_system.state(member.id)
+        season = active_season(time.time())
+        collection = [self._stable_collection_group(state, rarity) for rarity in RARITIES if rarity != "seasonal"]
+        found_seasonal = [key for key in SEASONS if key in state.discovered]
+        if found_seasonal:
+            collection.append(
+                {
+                    "rarity": RARITIES["seasonal"].name,
+                    "seasonal": True,
+                    "breeds": [
+                        {
+                            "key": key,
+                            "name": BREEDS[key].name,
+                            "shiny": key in state.shiny_found,
+                            "perk": f"{RARITIES['seasonal'].rate} a day per level",
+                        }
+                        for key in found_seasonal
+                    ],
+                }
+            )
+        return {
+            "unicorns": [
+                {"breed": u.breed, "name": u.label, "level": u.level, "shiny": u.shiny} for u in state.unicorns
+            ],
+            "per_day": round(state.per_day),
+            "box": int(state.box),
+            "capacity": int(state.capacity),
+            "box_hours": state.box_hours,
+            "ascensions": state.ascensions,
+            "found": state.found,
+            "total_breeds": len(REGULAR_BREEDS),
+            "bonus": collection_bonus(state.discovered),
+            "season": BREEDS[season].name if season is not None else None,
+            "collection": collection,
+            "perks": [
+                {"name": BREEDS[key].name, "perk": PERKS[key].description}
+                for key in sorted({u.breed for u in state.unicorns})
+                if key in PERKS
+            ],
+        }
+
+    async def stable_card(self, member: discord.abc.User) -> bytes:
+        """The member's stable card as webp bytes: cached 30 s per member, re-rendered whenever anything
+        on the card (which is everything the signature covers) has changed since."""
+        state = await self.stable_system.state(member.id)
+        signature = (
+            member.display_name,
+            round(state.per_day),
+            int(state.box),
+            state.box_hours,
+            tuple((u.breed, u.level, u.label, u.shiny) for u in state.unicorns),
+            state.found,
+            state.ascensions,
+            active_season(time.time()),
+        )
+        cached = self._stable_cards.get(member.id)
+        if cached is not None and cached[0] == signature and cached[1] > time.monotonic():
+            return cached[2]
+        image = await asyncio.to_thread(render_stable_card, state, member.display_name, active_season(time.time()))
+        payload = image.getvalue()
+        self._stable_cards[member.id] = (signature, time.monotonic() + STABLE_CARD_CACHE_SECONDS, payload)
+        return payload
+
+    async def stable_art_path(self, member_id: int, breed: str) -> Path | None:
+        """A breed's sprite file, but only when this member has discovered it, so URL guessing can't
+        spoil a breed they haven't hatched."""
+        if breed not in BREEDS:
+            return None
+        state = await self.stable_system.state(member_id)
+        if breed not in state.discovered:
+            return None
+        path = STABLE_ART / f"{breed}.webp"
+        return path if path.is_file() else None
+
+    async def stable_collect(self, user_id: int) -> int:
+        """Pay the coin box into the member's wallet, like the card's Collect button. Returns the amount."""
+        return await self.stable_system.collect(user_id)
 
     async def cog_check(self, ctx: commands.Context) -> bool:  # type: ignore[override]
         """Global check for all commands in this cog"""

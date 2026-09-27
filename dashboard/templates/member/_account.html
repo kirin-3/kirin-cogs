@@ -5,6 +5,7 @@
   <a href="/me/stocks"{% if path == "/me/stocks" %} class="on"{% endif %}>Stocks</a>
   <a href="/me/club"{% if path == "/me/club" %} class="on"{% endif %}>Club</a>
   <a href="/me/waifu"{% if path == "/me/waifu" %} class="on"{% endif %}>Waifu</a>
+  <a href="/me/stable"{% if path.startswith("/me/stable") %} class="on"{% endif %}>Stable</a>
   {% endif %}
   {% if nav.warnings %}
   <a href="/me/warnings"{% if path == "/me/warnings" %} class="on"{% endif %}>Warnings</a>

@@ -56,7 +56,9 @@ def _mark_systems_ready(
     cog.nitro_system = MagicMock()
     cog.market_system = market_system or MagicMock()
     cog.stable_system = MagicMock()
-    cog.stable_system.state = AsyncMock(return_value=StableState([], 0, 0, 0, {}))
+    cog.stable_system.state = AsyncMock(
+        return_value=StableState([], 0, 0, {}, ascensions=2, discovered=frozenset({"cotton", "yule"}))
+    )
 
 
 def _make_command(
@@ -138,6 +140,13 @@ async def test_red_get_data_for_user_collects_available_sections(cog: Unicornia)
     assert data["currency"] == 500
     assert data["bank"] == {"balance": 2000}
     assert data["waifus"] == [{"waifu_id": 1}]
+    assert data["stable"] == {
+        "coin_box": 0,
+        "box_hours": 8,
+        "ascensions": 2,
+        "unicorns": [],
+        "collection": {"discovered": ["cotton", "yule"], "shiny_found": []},
+    }
     assert data["transactions"] == [{"amount": 100}]
     db.economy.get_currency_transactions.assert_awaited_once_with(42, limit=None)
 

@@ -8,8 +8,9 @@ Cloudflare. They share the login code but keep separate sessions and cookies.
   word lists, including its action log and the dry-run switch. Its Unicornia pages show, read-only, any member's
   economy and XP, the house economy, the cog's configuration and the stock market. Its Modmail pages show every
   thread the modmail bot has kept since October 2020, read-only.
-- **Member site**, `my.unicornia.net` on `127.0.0.1:8012`. Every member can see their Unicornia profile, stocks, club
-  and waifu standing, buy and equip rank-card backgrounds, see the XP leaderboard and their own warnings, and turn
+- **Member site**, `my.unicornia.net` on `127.0.0.1:8012`. Every member can see their Unicornia profile, stocks, club,
+  waifu standing and unicorn stable, buy and equip rank-card backgrounds, see the XP leaderboard and their own
+  warnings, and turn
   their roleplay settings (Selective, Public, Servant and Untracked) on or off and see their roleplay stats and the busiest
   pairs, and turn the bot's daddy replies and the UnicornAI opt-out on or off. Supporters also manage their custom commands, custom emojis and, if they
   were given one with `[p]assignrole`, their custom role.
@@ -65,7 +66,8 @@ Unicornia isn't loaded, the top bar's Profile link goes here instead of `/me`.
 
 ## Unicornia pages
 
-On the member site, where every `/me` page has a tab bar (Profile · Backgrounds · Stocks · Club · Waifu · Warnings):
+On the member site, where every `/me` page has a tab bar (Profile · Backgrounds · Stocks · Club · Waifu · Stable ·
+Warnings):
 
 - `/me`: wallet, bank, level and progress, rank, club, the equipped background (animated) and the last 20
   transactions. Only the member's own.
@@ -78,6 +80,12 @@ On the member site, where every `/me` page has a tab bar (Profile · Backgrounds
   invitations. Icons and banners are loaded only from `https://cdn.discordapp.com` or `https://unicornia.net`, the
   hosts the Content-Security-Policy already allows; any other URL is a `noreferrer` link, and non-web URLs are dropped.
 - `/me/waifu`: what `waifu info` shows (price, owner, affinity, affinity from, waifus, gifts), without its list limits.
+- `/me/stable`: the member's own stable — the same card image `[p]stable` posts (served by `/me/stable/card.webp`,
+  rendered by the cog and cached 30 s per member), the earnings and coin box numbers, the ascension count, the
+  collection grouped by rarity with seasonal breeds after, and the perks active in the stable, plus a Collect button
+  that follows the card's Collect rules and returns with the amount collected. Undiscovered breeds show as ??? and
+  their art (`/me/stable/art/{breed}.webp`) is only served for breeds the member has discovered, so URL guessing
+  can't spoil one. Hatching, upgrades, releases and ascension stay in Discord.
 - `/leaderboard?page=N`: the guild's current members by XP, 25 a page, each with their background as a still that
   animates while the row is hovered or focused. The member's own row is highlighted, and their rank is always shown.
   Like `level leaderboard`, only the top 300 are ranked, and the ranking is rebuilt at most once a minute.

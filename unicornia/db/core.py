@@ -549,7 +549,8 @@ class CoreDB:
                 UserId INTEGER PRIMARY KEY,
                 Box REAL NOT NULL DEFAULT 0,
                 LastSettle REAL NOT NULL,
-                BoxSize INTEGER NOT NULL DEFAULT 0
+                BoxSize INTEGER NOT NULL DEFAULT 0,
+                Ascensions INTEGER NOT NULL DEFAULT 0
             )
             """)
             await db.execute("""
@@ -559,10 +560,20 @@ class CoreDB:
                 Breed TEXT NOT NULL,
                 Level INTEGER NOT NULL DEFAULT 1,
                 Name TEXT,
-                DateAdded TEXT DEFAULT CURRENT_TIMESTAMP
+                DateAdded TEXT DEFAULT CURRENT_TIMESTAMP,
+                Shiny INTEGER NOT NULL DEFAULT 0
             )
             """)
             await db.execute("CREATE INDEX IF NOT EXISTS idx_stable_unicorn_user ON StableUnicorn(UserId)")
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS StableDiscovery (
+                UserId INTEGER NOT NULL,
+                Breed TEXT NOT NULL,
+                Shiny INTEGER NOT NULL DEFAULT 0,
+                FirstAt TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (UserId, Breed, Shiny)
+            )
+            """)
 
             # Create Indices for Performance
             await db.execute("CREATE INDEX IF NOT EXISTS idx_xp_guild_xp ON UserXpStats(GuildId, Xp DESC)")
@@ -732,6 +743,29 @@ class CoreDB:
             transaction_columns = {row[1] for row in await cursor.fetchall()}
             if "Kind" not in transaction_columns:
                 await db.execute("ALTER TABLE StockTransactions ADD COLUMN Kind TEXT NOT NULL DEFAULT 'trade'")
+
+            # Unicorn stable expansion: shinies on unicorns, ascension counts on
+            # stables, and the discovery log the collection is built from
+            cursor = await db.execute("PRAGMA table_info(StableUnicorn)")
+            if "Shiny" not in {row[1] for row in await cursor.fetchall()}:
+                await db.execute("ALTER TABLE StableUnicorn ADD COLUMN Shiny INTEGER NOT NULL DEFAULT 0")
+            cursor = await db.execute("PRAGMA table_info(Stable)")
+            if "Ascensions" not in {row[1] for row in await cursor.fetchall()}:
+                await db.execute("ALTER TABLE Stable ADD COLUMN Ascensions INTEGER NOT NULL DEFAULT 0")
+            await db.execute("""
+            CREATE TABLE IF NOT EXISTS StableDiscovery (
+                UserId INTEGER NOT NULL,
+                Breed TEXT NOT NULL,
+                Shiny INTEGER NOT NULL DEFAULT 0,
+                FirstAt TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (UserId, Breed, Shiny)
+            )
+            """)
+            # Members who already own unicorns have hatched them: start discovered, not shiny
+            await db.execute("""
+            INSERT OR IGNORE INTO StableDiscovery (UserId, Breed, Shiny, FirstAt)
+            SELECT DISTINCT UserId, Breed, 0, CURRENT_TIMESTAMP FROM StableUnicorn
+            """)
             await db.commit()
 
             # Create UserInventory table if it doesn't exist (for existing DBs that missed init)
@@ -953,6 +987,7 @@ class CoreDB:
                 "SpectatorBets",
                 "Stable",
                 "StableUnicorn",
+                "StableDiscovery",
             ):
                 with suppress(aiosqlite.OperationalError):
                     await db.execute(f"DELETE FROM {table} WHERE UserId = ?", (user_id,))

@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 import unicodedata
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 import discord
@@ -16,7 +18,20 @@ from redbot.core.utils.views import ConfirmView
 
 from ..mixins import UnicorniaMixinBase
 from ..systems import stable_card
-from ..systems.stable_system import DEFAULT_SETTINGS, MAX_NAME, StableState, Unicorn
+from ..systems.stable_system import (
+    BREEDS,
+    DEFAULT_SETTINGS,
+    MAX_NAME,
+    PERKS,
+    RARITIES,
+    REGULAR_BREEDS,
+    SEASONS,
+    StableState,
+    Unicorn,
+    active_season,
+    ascend_problem,
+    collection_bonus,
+)
 
 if TYPE_CHECKING:
     from ..systems.stable_system import StableSystem
@@ -34,9 +49,14 @@ def clean_name(raw: str) -> str | None:
     return name
 
 
+def menu_label(slot: int, unicorn: Unicorn) -> str:
+    """A unicorn as it appears in the card's menus, shinies marked."""
+    return f"#{slot} {'✨ ' if unicorn.shiny else ''}{unicorn.label}"[:100]
+
+
 async def card_file(system: StableSystem, member: discord.abc.User, state: StableState | None = None) -> discord.File:
     state = state or await system.state(member.id)
-    image = await asyncio.to_thread(stable_card.render, state, member.display_name)
+    image = await asyncio.to_thread(stable_card.render, state, member.display_name, active_season(time.time()))
     return discord.File(image, filename="stable.webp")
 
 
@@ -58,10 +78,11 @@ class StableView(discord.ui.View):
         self.box.label = "Biggest box" if box is None else f"{box[0]}h box · {box[1]:,}"
         self.box.disabled = box is None
         self.collect.disabled = int(state.box) < 1
+        self.ascend.disabled = ascend_problem(state) is not None
 
         options = [
             discord.SelectOption(
-                label=f"#{slot} {unicorn.label}"[:100],
+                label=menu_label(slot, unicorn),
                 description=f"Level {unicorn.level} → {unicorn.level + 1} for {price:,}",
                 value=str(unicorn.id),
             )
@@ -74,7 +95,7 @@ class StableView(discord.ui.View):
 
         self.release.options = [
             discord.SelectOption(
-                label=f"#{slot} {unicorn.label}"[:100], description=f"Level {unicorn.level}", value=str(unicorn.id)
+                label=menu_label(slot, unicorn), description=f"Level {unicorn.level}", value=str(unicorn.id)
             )
             for slot, unicorn in enumerate(state.unicorns, start=1)
         ] or [discord.SelectOption(label="No unicorns", value="0")]
@@ -126,6 +147,24 @@ class StableView(discord.ui.View):
         _ok, message = await self.system.upgrade_box(self.owner.id)
         await self._redraw(message, interaction)
 
+    @discord.ui.button(label="Ascend", emoji="✨", style=discord.ButtonStyle.secondary)
+    async def ascend(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        state = await self.system.state(self.owner.id)
+        question = (
+            f"Ascend? Your {len(state.unicorns)} unicorns trot off and you keep the **{int(state.box):,}** coins "
+            f"in your box, your coin box size and your collection, and reach ascension "
+            f"{state.ascensions + 1}: **+10% earnings**, but prices rise **20%**."
+        )
+        if any(u.shiny for u in state.unicorns):
+            question += "\n✨ Your stable includes a **shiny** — it will be lost!"
+        await interaction.response.send_message(
+            question, view=ConfirmChoice(self, "Ascend", self._ascend_now), ephemeral=True
+        )
+
+    async def _ascend_now(self) -> str:
+        _ok, message = await self.system.ascend(self.owner.id)
+        return message
+
     @discord.ui.select(placeholder="Upgrade a unicorn…", row=1)
     async def upgrade(self, interaction: discord.Interaction, select: discord.ui.Select) -> None:
         await interaction.response.defer()
@@ -142,29 +181,38 @@ class StableView(discord.ui.View):
             await interaction.response.send_message("That unicorn isn't in your stable any more.", ephemeral=True)
             return
         slot, unicorn = found
-        await interaction.response.send_message(
+        question = (
             f"Release **#{slot} {unicorn.safe_label}** (level {unicorn.level})? You get nothing back for it, "
-            "but what it already earned stays in your coin box.",
-            view=ReleaseConfirm(self, unicorn),
-            ephemeral=True,
+            "but what it already earned stays in your coin box."
+        )
+        if unicorn.shiny:
+            question += "\n✨ This one is **shiny** — it will be lost!"
+        await interaction.response.send_message(
+            question, view=ConfirmChoice(self, "Release", self._release_now(unicorn)), ephemeral=True
         )
 
+    def _release_now(self, unicorn: Unicorn) -> Callable[[], Awaitable[str]]:
+        async def run() -> str:
+            if await self.system.release(self.owner.id, unicorn.id):
+                return f"👋 **{unicorn.safe_label}** trotted off into the sunset."
+            return "That unicorn isn't in your stable any more."
 
-class ReleaseConfirm(discord.ui.View):
-    """The owner's private yes/no before a unicorn from their card goes."""
+        return run
 
-    def __init__(self, stable: StableView, unicorn: Unicorn):
+
+class ConfirmChoice(discord.ui.View):
+    """The owner's private yes/no before something from their card goes ahead."""
+
+    def __init__(self, stable: StableView, confirm_label: str, action: Callable[[], Awaitable[str]]):
         super().__init__(timeout=60)
         self.stable = stable
-        self.unicorn = unicorn
+        self.action = action
+        self.confirm.label = confirm_label
 
     @discord.ui.button(label="Release", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
-        if await self.stable.system.release(self.stable.owner.id, self.unicorn.id):
-            status = f"👋 **{self.unicorn.safe_label}** trotted off into the sunset."
-        else:
-            status = "That unicorn isn't in your stable any more."
+        status = await self.action()
         await interaction.response.edit_message(content=status, view=None, allowed_mentions=NO_MENTIONS)
         await self.stable._redraw(status)
 
@@ -188,7 +236,8 @@ class StableCommands(UnicorniaMixinBase):
         Your unicorn stable: unicorns earn coins while you're away.
 
         Hatch eggs for unicorns, upgrade them to earn more, and collect the coin box before it fills up.
-        Anyone can look at someone else's stable; only the owner gets the buttons.
+        Discover breeds, find shinies and, once every stall holds a level-10 unicorn, ascend for a
+        permanent earnings boost. Anyone can look at someone else's stable; only the owner gets the buttons.
 
         **Syntax**
         `[p]stable [member]`
@@ -226,8 +275,8 @@ class StableCommands(UnicorniaMixinBase):
         """
         Let one of your unicorns go, to make room for a new egg.
 
-        You get nothing back for it, but what it already earned stays in your coin box.
-
+        You get nothing back for it, but what it already earned stays in your coin box. The breed
+        stays in your collection.
         **Syntax**
         `[p]stable release <number>`
         """
@@ -236,12 +285,11 @@ class StableCommands(UnicorniaMixinBase):
             await ctx.send(f"You don't have a unicorn #{slot}.")
             return
         unicorn = state.unicorns[slot - 1]
+        question = f"Release **#{slot} {unicorn.safe_label}** (level {unicorn.level})? You get nothing back for it."
+        if unicorn.shiny:
+            question += "\n✨ This one is **shiny** — it will be lost!"
         view = ConfirmView(ctx.author, disable_buttons=True)
-        view.message = await ctx.send(
-            f"Release **#{slot} {unicorn.safe_label}** (level {unicorn.level})? You get nothing back for it.",
-            view=view,
-            allowed_mentions=NO_MENTIONS,
-        )
+        view.message = await ctx.send(question, view=view, allowed_mentions=NO_MENTIONS)
         await view.wait()
         if not view.result:
             await ctx.send("Kept it.")
@@ -250,6 +298,86 @@ class StableCommands(UnicorniaMixinBase):
             await ctx.send(f"👋 **{unicorn.safe_label}** trotted off into the sunset.", allowed_mentions=NO_MENTIONS)
         else:
             await ctx.send("That unicorn isn't in your stable any more.")
+
+    @stable_group.command(name="collection")
+    async def stable_collection(self, ctx: commands.Context) -> None:
+        """
+        Every unicorn breed you have ever hatched, and what each one's perk does.
+
+        Breeds you haven't hatched yet stay secret. Discovering both breeds of a rarity, and then all
+        ten, permanently earns you more.
+        **Syntax**
+        `[p]stable collection`
+        """
+        state = await self.stable_system.state(ctx.author.id)
+        shinies = ", ".join(sorted(BREEDS[breed].name for breed in state.shiny_found))
+        embed = discord.Embed(
+            title=f"📖 {ctx.author.display_name}'s collection",
+            description=(
+                f"{state.found}/{len(REGULAR_BREEDS)} breeds found  ·  collection bonus "
+                f"+{collection_bonus(state.discovered):.0%}\n"
+                + (f"✨ Shiny found: {shinies}" if shinies else "✨ No shinies hatched yet")
+            ),
+            color=discord.Color.pink(),
+        )
+        for rarity in ("common", "uncommon", "rare", "epic", "legendary"):
+            lines = []
+            for key, breed in BREEDS.items():
+                if breed.rarity != rarity:
+                    continue
+                if key in state.discovered:
+                    shiny = " ✨" if key in state.shiny_found else ""
+                    lines.append(f"✅ **{breed.name}**{shiny} — {PERKS[key].description}")
+                else:
+                    lines.append("❔ ???")
+            embed.add_field(name=RARITIES[rarity].name, value="\n".join(lines), inline=True)
+        seasonal = [key for key in SEASONS if key in state.discovered]
+        if seasonal:
+            lines = [
+                f"✅ **{BREEDS[key].name}**{' ✨' if key in state.shiny_found else ''} — 25 a day per level"
+                for key in seasonal
+            ]
+            embed.add_field(name="Seasonal", value="\n".join(lines), inline=True)
+        present = {u.breed for u in state.unicorns}
+        active = [(BREEDS[key].name, PERKS[key].description) for key in sorted(present) if key in PERKS]
+        if active:
+            embed.add_field(
+                name="Active in your stable",
+                value="\n".join(f"**{name}** — {description}" for name, description in active),
+                inline=False,
+            )
+        await ctx.send(embed=embed)
+
+    @stable_group.command(name="ascend")
+    async def stable_ascend(self, ctx: commands.Context) -> None:
+        """
+        Ascend: empty your stable of ten level-10 unicorns for a permanent boost.
+
+        The coin box pays out, your unicorns trot off, and you keep your coins, your coin box size
+        and your collection. Each ascension earns you 10% more and raises prices 20%.
+        **Syntax**
+        `[p]stable ascend`
+        """
+        state = await self.stable_system.state(ctx.author.id)
+        problem = ascend_problem(state)
+        if problem is not None:
+            await ctx.send(problem)
+            return
+        question = (
+            f"Ascend? Your {len(state.unicorns)} unicorns trot off and you keep the **{int(state.box):,}** coins "
+            f"in your box, your coin box size and your collection, and reach ascension "
+            f"{state.ascensions + 1}: **+10% earnings**, but prices rise **20%**."
+        )
+        if any(u.shiny for u in state.unicorns):
+            question += "\n✨ Your stable includes a **shiny** — it will be lost!"
+        view = ConfirmView(ctx.author, disable_buttons=True)
+        view.message = await ctx.send(question, view=view, allowed_mentions=NO_MENTIONS)
+        await view.wait()
+        if not view.result:
+            await ctx.send("Not yet, then.")
+            return
+        _ok, message = await self.stable_system.ascend(ctx.author.id)
+        await ctx.send(message, allowed_mentions=NO_MENTIONS)
 
     @stable_group.command(name="top")
     async def stable_top(self, ctx: commands.Context) -> None:
@@ -265,10 +393,11 @@ class StableCommands(UnicorniaMixinBase):
             await ctx.send("Nobody has a unicorn yet. Hatch one with `stable`.")
             return
         lines = []
-        for place, (user_id, per_day) in enumerate(ranked, start=1):
+        for place, (user_id, per_day, ascensions) in enumerate(ranked, start=1):
             member = ctx.guild.get_member(user_id)
             name = discord.utils.escape_markdown(member.display_name) if member else str(user_id)
-            lines.append(f"**{place}.** {name}: {humanize_number(round(per_day))} a day")
+            stars = f"  ·  ★ {ascensions}" if ascensions else ""
+            lines.append(f"**{place}.** {name}: {humanize_number(round(per_day))} a day{stars}")
         embed = discord.Embed(title="🦄 Top stables", description="\n".join(lines), color=discord.Color.pink())
         await ctx.send(embed=embed)
 

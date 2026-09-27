@@ -1,16 +1,22 @@
-"""The member site's read helpers: portfolio, club and waifu status, over a real temp database."""
+"""The member site's read helpers: portfolio, club, waifu status and the stable page, over a real temp database."""
 
+import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
 
 from unicornia.database import DatabaseManager
 from unicornia.market_views import portfolio_totals
+from unicornia.systems.stable_system import StableSystem
 from unicornia.unicornia import Unicornia
 
 ME, ALICE, BOB = 1, 2, 3
+DAY = 86_400
 
 
 @pytest_asyncio.fixture
@@ -27,6 +33,22 @@ def cog(db: DatabaseManager) -> Unicornia:
     cog = Unicornia.__new__(Unicornia)
     cog.db = db
     return cog
+
+
+@pytest.fixture
+def stable_cog(db: DatabaseManager) -> Unicornia:
+    cog = Unicornia.__new__(Unicornia)
+    cog.db = db
+    cog._stable_cards = {}
+    config = MagicMock()
+    config.stable_settings = AsyncMock(return_value={})
+    cog.stable_system = StableSystem(db, config)
+    return cog
+
+
+def member(user_id: int = ME) -> Any:
+    """A stand-in with the id and display name the stable API reads."""
+    return SimpleNamespace(id=user_id, display_name=f"member{user_id}")
 
 
 async def _run(db: DatabaseManager, *statements: tuple[str, tuple]) -> None:
@@ -182,3 +204,68 @@ async def test_never_claimed_member_gets_the_defaults(cog: Unicornia) -> None:
         "waifus": [],
         "gifts": [],
     }
+
+
+# --- the stable page ----------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_stable_page_keeps_undiscovered_breeds_secret(stable_cog: Unicornia, db: DatabaseManager) -> None:
+    await _run(
+        db,
+        ("INSERT INTO StableUnicorn (UserId, Breed, Shiny) VALUES (?, 'cotton', 1)", (ME,)),
+        (
+            "INSERT INTO StableDiscovery (UserId, Breed, Shiny) VALUES (?, 'cotton', 0), (?, 'cotton', 1), "
+            "(?, 'yule', 0)",
+            (ME, ME, ME),
+        ),
+    )
+
+    page = await stable_cog.stable_for(member())
+
+    assert page["found"] == 1 and page["total_breeds"] == 10
+    common = page["collection"][0]
+    assert common["rarity"] == "Common" and not common["seasonal"]
+    cotton, hazel = common["breeds"]
+    assert cotton["key"] == "cotton" and cotton["name"] == "Cotton" and cotton["shiny"] is True
+    assert cotton["perk"] == "The coin box holds 1 hour more."
+    assert hazel == {"key": None, "name": None, "shiny": False, "perk": None}
+    seasonal = page["collection"][-1]
+    assert seasonal["seasonal"] and [breed["name"] for breed in seasonal["breeds"]] == ["Yule"]
+    assert page["perks"] == [{"name": "Cotton", "perk": "The coin box holds 1 hour more."}]
+    assert page["box_hours"] == 9  # the bought 8 plus Cotton's perk
+
+    cotton_art = await stable_cog.stable_art_path(ME, "cotton")
+    assert cotton_art is not None and cotton_art.name == "cotton.webp"
+    assert await stable_cog.stable_art_path(ME, "prism") is None  # undiscovered stays secret
+    assert await stable_cog.stable_art_path(ME, "not-a-breed") is None
+
+
+@pytest.mark.asyncio
+async def test_collecting_from_the_site_pays_the_box(stable_cog: Unicornia, db: DatabaseManager) -> None:
+    await db.economy.add_currency(ME, 1_000, "award")
+    await stable_cog.stable_system.hatch(ME, now=time.time())
+    async with db._get_connection() as connection:
+        await connection.execute("UPDATE StableUnicorn SET Breed = 'cotton', Shiny = 0")  # a plain known earner
+        await connection.commit()
+
+    assert await stable_cog.stable_collect(ME) == 0  # nothing has accrued since the hatch
+    async with db._get_connection() as connection:
+        await connection.execute("UPDATE Stable SET LastSettle = LastSettle - ?", (DAY,))
+        await connection.commit()
+    assert await stable_cog.stable_collect(ME) == 3  # a day caps at the 9-hour box (10 a day, Cotton's perk)
+    assert await stable_cog.stable_collect(ME) == 0  # and the box is empty again
+    assert await db.economy.get_user_currency(ME) == 3
+
+
+@pytest.mark.asyncio
+async def test_the_card_bytes_are_cached_until_the_stable_changes(stable_cog: Unicornia, db: DatabaseManager) -> None:
+    me = member()
+    first = await stable_cog.stable_card(me)
+    assert first[:4] == b"RIFF"  # webp the page can serve
+    assert await stable_cog.stable_card(me) is first  # the cached bytes, not a re-render
+
+    await db.economy.add_currency(ME, 1_000, "award")
+    await stable_cog.stable_system.hatch(ME, now=time.time())
+    second = await stable_cog.stable_card(me)
+    assert second is not first and second[:4] == b"RIFF"  # a change re-renders

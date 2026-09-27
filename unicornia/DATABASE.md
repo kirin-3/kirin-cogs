@@ -259,15 +259,26 @@ Each player's coin box.
 *   `Box` (Real): Coins waiting to be collected, as of `LastSettle`.
 *   `LastSettle` (Real): Unix time the box was last brought up to date.
 *   `BoxSize` (Integer): Index into the box sizes (8, 12, 16 or 24 hours).
+*   `Ascensions` (Integer): Times this stable has ascended; each adds 10% earnings and 20% to prices.
 
 #### `StableUnicorn`
 Each player's unicorns.
 *   `Id` (Integer, PK)
 *   `UserId` (Integer)
-*   `Breed` (Text): One of the ten breeds; the breed sets the rarity.
+*   `Breed` (Text): One of the ten regular or four seasonal breeds; the breed sets the rarity.
 *   `Level` (Integer): 1 to 10.
 *   `Name` (Text): The name the owner gave it, if any.
 *   `DateAdded` (Text)
+*   `Shiny` (Integer): 1 for a shiny unicorn, which earns 10% more.
+
+#### `StableDiscovery`
+Every breed (and separately every shiny breed) a player has ever hatched. The collection survives releases and
+ascensions; only deleting the member's data removes it.
+*   `UserId` (Integer)
+*   `Breed` (Text)
+*   `Shiny` (Integer): 0 for the plain discovery of the breed, 1 for the shiny one.
+*   `FirstAt` (Text)
+*   `PRIMARY KEY (UserId, Breed, Shiny)`
 
 ### Gambling Statistics
 

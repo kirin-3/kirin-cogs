@@ -102,6 +102,10 @@ class MemberSite:
         app.router.add_get("/me/stocks", self.stocks)
         app.router.add_get("/me/club", self.club)
         app.router.add_get("/me/waifu", self.waifu)
+        app.router.add_get("/me/stable", self.stable)
+        app.router.add_get("/me/stable/card.webp", self.stable_card)
+        app.router.add_get(r"/me/stable/art/{breed}.webp", self.stable_art)
+        app.router.add_post("/me/stable/collect", self.stable_collect)
         app.router.add_get("/me/warnings", self.warnings)
         app.router.add_get("/leaderboard", self.leaderboard)
 
@@ -320,6 +324,39 @@ class MemberSite:
             waifus=[{**w, "name": self._name(w["user_id"])} for w in status["waifus"]],
             currency=await uni.config.currency_symbol(),
         )
+
+    async def stable(self, request: web.Request) -> web.StreamResponse:
+        member, uni = self._unicornia(request)
+        try:
+            collected = int(request.query.get("collected", ""))
+        except ValueError:
+            collected = None  # anything unparsable shows no message at all
+        return self._render(
+            request,
+            "stable.html",
+            stable=await uni.stable_for(member),
+            collected=collected,
+            currency=await uni.config.currency_name(),
+        )
+
+    async def stable_card(self, request: web.Request) -> web.Response:
+        member, uni = self._unicornia(request)
+        return web.Response(
+            body=await uni.stable_card(member),
+            content_type="image/webp",
+            headers={"Cache-Control": "private, max-age=30"},
+        )
+
+    async def stable_art(self, request: web.Request) -> web.StreamResponse:
+        member, uni = self._unicornia(request)
+        path = await uni.stable_art_path(member.id, request.match_info["breed"])
+        if path is None:
+            self._refuse(request, 404, "No art", "That unicorn's art isn't available.")
+        return web.FileResponse(path, headers={"Cache-Control": "private, max-age=300"})
+
+    async def stable_collect(self, request: web.Request) -> web.StreamResponse:
+        member, uni = self._unicornia(request)
+        raise web.HTTPFound(f"/me/stable?collected={await uni.stable_collect(member.id)}")
 
     # --- warnings: the member's own, never the moderator ------------------------------------------
 

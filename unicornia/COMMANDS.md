@@ -152,10 +152,12 @@ An idle game: unicorns earn coins into a coin box while you're away. See [STABLE
 
 | Command | Description | Permission |
 | :--- | :--- | :--- |
-| `[p]stable [member]` | Show a stable card. Your own has Collect, Hatch egg, Bigger box, Upgrade and Release controls. Slash: `/stable view`. | |
+| `[p]stable [member]` | Show a stable card. Your own has Collect, Hatch egg, Bigger box, Ascend, Upgrade and Release controls. Slash: `/stable view`. | |
 | `[p]stable name <number> [name]` | Name a unicorn (up to 20 letters, numbers, spaces and punctuation), or leave the name out to reset it. | |
 | `[p]stable release <number>` | Let a unicorn go to make room (also on the card). Asks first; you get nothing back. | |
-| `[p]stable top` | The stables in this server that earn the most a day. | |
+| `[p]stable collection` | Every breed you've ever hatched, its perk, and your shinies and bonus. Undiscovered breeds stay ???. | |
+| `[p]stable ascend` | Ascend a full stable of level-10 unicorns: the box pays out, the stable empties, earnings +10%, prices +20%. Asks first. | |
+| `[p]stable top` | The stables in this server that earn the most a day, with their ascension count. | |
 | `[p]stableset [key value]` | Show or tune the prices and earnings. | Bot Owner |
 
 ## Shop

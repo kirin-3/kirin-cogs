@@ -6,6 +6,7 @@ import socket
 import time
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -116,6 +117,51 @@ class _UserConfig:
             return SimpleNamespace(set=set_)
 
         return SimpleNamespace(all=all_, get_attr=get_attr)
+
+
+class _FakeUnicornia:
+    """The stable API the member site uses; records collects so tests can check whose stable they hit."""
+
+    def __init__(self) -> None:
+        self.pages: dict[int, dict] = {}
+        self.cards: dict[int, bytes] = {}
+        self.art: dict[int, set[str]] = {}
+        self.art_files: dict[str, Path] = {}
+        self.collects: list[int] = []
+        self.collect_returns: dict[int, int] = {}
+        self.config = SimpleNamespace(currency_name=AsyncMock(return_value="coins"))
+
+    @staticmethod
+    def _empty_page() -> dict:
+        return {
+            "unicorns": [],
+            "per_day": 0,
+            "box": 0,
+            "capacity": 0,
+            "box_hours": 8,
+            "ascensions": 0,
+            "found": 0,
+            "total_breeds": 10,
+            "bonus": 0.0,
+            "season": None,
+            "collection": [],
+            "perks": [],
+        }
+
+    async def stable_for(self, member: Any) -> dict:
+        return self.pages.get(member.id, self._empty_page())
+
+    async def stable_card(self, member: Any) -> bytes:
+        return self.cards.get(member.id, b"RIFF-fake-card")
+
+    async def stable_art_path(self, member_id: int, breed: str) -> Path | None:
+        if breed in self.art.get(member_id, set()) and breed in self.art_files:
+            return self.art_files[breed]
+        return None
+
+    async def stable_collect(self, user_id: int) -> int:
+        self.collects.append(user_id)
+        return self.collect_returns.get(user_id, 0)
 
 
 def _role(role_id: int, position: int = 10) -> MagicMock:
@@ -846,6 +892,123 @@ async def test_settings_unloaded_cog_hides_only_its_own_section(ms: SimpleNamesp
 
     assert status == 200 and page.count("These settings are unavailable") == 1 and "Daddy replies" in page
     assert ai.status == 503 and daddy.status == 302 and responder.values == {REGULAR: False}
+
+
+# --- the stable page --------------------------------------------------------------------------------
+
+
+def _unicornia(ms: SimpleNamespace) -> _FakeUnicornia:
+    uni = _FakeUnicornia()
+    ms.cogs["Unicornia"] = uni
+    return uni
+
+
+@pytest.mark.asyncio
+async def test_the_stable_page_renders_without_undiscovered_names(ms: SimpleNamespace, tmp_path: Path) -> None:
+    uni = _unicornia(ms)
+    art = tmp_path / "cotton.webp"
+    art.write_bytes(b"RIFF")
+    uni.art[REGULAR] = {"cotton"}
+    uni.art_files["cotton"] = art
+    uni.pages[REGULAR] = {
+        **_FakeUnicornia._empty_page(),
+        "unicorns": [{"breed": "cotton", "name": "Cotton", "level": 3, "shiny": False}],
+        "per_day": 240,
+        "box": 100,
+        "capacity": 200,
+        "box_hours": 9,
+        "ascensions": 1,
+        "found": 1,
+        "season": "Pride",
+        "collection": [
+            {
+                "rarity": "Common",
+                "seasonal": False,
+                "breeds": [
+                    {"key": "cotton", "name": "Cotton", "shiny": True, "perk": "The coin box holds 1 hour more."},
+                    {"key": None, "name": None, "shiny": False, "perk": None},
+                ],
+            }
+        ],
+        "perks": [{"name": "Cotton", "perk": "The coin box holds 1 hour more."}],
+    }
+
+    _, home = await _get(ms, REGULAR, "/")
+    status, page = await _get(ms, REGULAR, "/me/stable")
+
+    assert status == 200
+    assert 'href="/me/stable"' in home  # in the navigation and on the home page
+    assert 'src="/me/stable/card.webp"' in page  # the card comes from the member site itself
+    assert "240" in page and "9 hours" in page and "Pride season" in page
+    assert "Cotton" in page and "shiny found" in page
+    assert page.count("???") == 1  # Hazel's slot, without its name…
+    assert "Hazel" not in page and "Level-ups cost" not in page  # …or its perk
+    assert page.count('src="/me/stable/art/') == 1  # and only the discovered breed's art is requested
+
+
+@pytest.mark.asyncio
+async def test_breed_art_serves_only_what_the_member_has_discovered(ms: SimpleNamespace, tmp_path: Path) -> None:
+    uni = _unicornia(ms)
+    art = tmp_path / "cotton.webp"
+    art.write_bytes(b"webp-bytes")
+    uni.art[REGULAR] = {"cotton"}
+    uni.art_files["cotton"] = art
+    headers = _log_in(ms, REGULAR)
+
+    served = await ms.client.get("/me/stable/art/cotton.webp", headers=headers)
+    undiscovered = await ms.client.get("/me/stable/art/prism.webp", headers=headers)
+    unknown = await ms.client.get("/me/stable/art/nosuchbreed.webp", headers=headers)
+
+    assert served.status == 200 and await served.read() == b"webp-bytes"
+    assert undiscovered.status == 404  # URL guessing can't spoil a breed they haven't hatched
+    assert unknown.status == 404
+
+
+@pytest.mark.asyncio
+async def test_collecting_from_the_site_redirects_with_the_amount(ms: SimpleNamespace) -> None:
+    uni = _unicornia(ms)
+    uni.collect_returns[REGULAR] = 340
+
+    response = await _post(ms, REGULAR, "/me/stable/collect")
+    _, page = await _get(ms, REGULAR, "/me/stable?collected=340")
+
+    assert response.status == 302 and response.headers["Location"] == "/me/stable?collected=340"
+    assert uni.collects == [REGULAR]
+    assert "Collected 340 coins" in page
+    _, empty = await _get(ms, REGULAR, "/me/stable?collected=0")
+    assert "The coin box was empty." in empty
+    _, nothing = await _get(ms, REGULAR, "/me/stable?collected=nonsense")
+    assert "Collected" not in nothing and "coin box was empty" not in nothing  # unparsable shows no message
+
+
+@pytest.mark.asyncio
+async def test_crafted_member_ids_only_ever_act_on_the_session_member(ms: SimpleNamespace) -> None:
+    uni = _unicornia(ms)
+    uni.collect_returns[REGULAR] = 5
+    uni.cards[REGULAR] = b"RIFF-mine"
+    uni.cards[ACTIVE] = b"RIFF-theirs"
+
+    response = await _post(ms, REGULAR, "/me/stable/collect", {"user": str(ACTIVE), "member_id": str(ACTIVE)})
+    card = await ms.client.get(f"/me/stable/card.webp?member={ACTIVE}", headers=_log_in(ms, REGULAR))
+
+    assert response.headers["Location"] == "/me/stable?collected=5" and uni.collects == [REGULAR]
+    assert await card.read() == b"RIFF-mine"
+    assert card.headers["Content-Type"] == "image/webp"
+
+
+@pytest.mark.asyncio
+async def test_the_stable_pages_need_the_unicornia_cog(ms: SimpleNamespace) -> None:
+    _unicornia(ms)
+    _, with_cog = await _get(ms, REGULAR, "/")
+    del ms.cogs["Unicornia"]
+
+    _, home = await _get(ms, REGULAR, "/")
+    status, _page = await _get(ms, REGULAR, "/me/stable")
+    card = await ms.client.get("/me/stable/card.webp", headers=_log_in(ms, REGULAR))
+
+    assert 'href="/me/stable"' in with_cog
+    assert 'href="/me/stable"' not in home
+    assert status == 503 and card.status == 503
 
 
 # --- warnings ------------------------------------------------------------------------------------
