@@ -6,9 +6,6 @@ The bot's [Privacy Policy](PRIVACY.md) covers the whole instance; [DATA_GOVERNAN
 
 ## Available Cogs
 
-### AdvancedUptime
-Replaces `[p]uptime` with an embed of bot and system uptime, stats, latency and command usage. Fork of Kreusada's advanceduptime. See [advanceduptime/README.md](advanceduptime/README.md).
-
 ### AntiNuke
 Server protection against rogue administrators: monitors destructive actions (mass deletions, bans, prunes, permission grants, vanity/bot changes) and automatically quarantines offenders, with a trust system and role restoration.
 
@@ -115,6 +112,7 @@ Transcribes voice notes into a log channel with ffmpeg and Google's speech endpo
 
 These cogs live in [archived/](archived/). They are retired, no longer developed, and cannot be installed through `[p]cog install`.
 
+- **AdvancedUptime**: Replaced `[p]uptime` with an embed of bot and system uptime, stats, latency and command usage. Fork of Kreusada's advanceduptime.
 - **UnicornDocs**: AI-powered documentation question and answer system for the moderation team using keyword retrieval and OpenRouter.
 - **UnicornImage**: Text-to-image generation supporting both Stable Horde (free) and Modal (premium) backends.
 - **YAGPDBImport**: Imports YAGPDB warnings into Red's Warnings cog.
