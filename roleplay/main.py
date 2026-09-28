@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 import discord
-from redbot.core import Config, commands
+from redbot.core import Config, app_commands, commands
 from redbot.core.bot import Red
 from redbot.core.data_manager import cog_data_path
 from redbot.core.utils.chat_formatting import humanize_list, inline
@@ -227,6 +227,15 @@ class Roleplay(commands.Cog):
     async def settings_help(self, ctx: commands.Context):
         self.logger.debug("Default help for `roleplay settings` command intercepted.")
         return await self.helper.settings(ctx)
+
+    # A prefix command can't answer ephemerally, so [p]roleplay settings shows a button.
+    # This slash command shows the settings straight away, visible only to the member.
+    roleplay_slash = app_commands.Group(name="roleplay", description="Roleplay commands.")
+
+    @roleplay_slash.command(name="settings", description="Show your roleplay settings (only you can see them).")
+    async def settings_slash(self, interaction: discord.Interaction):
+        embed = await self.user_settings.settings_embed(interaction.user)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     def create_action_commands(self):
         """Factory to create command methods roleplay action"""

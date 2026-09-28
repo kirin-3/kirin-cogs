@@ -77,6 +77,7 @@ order:
 | `[p]ask <action> [pairing] [member]` | everyone (server-only) | Ask a member to perform the action on you |
 | `[p]roleplay help` | everyone | Custom help embed listing settings and actions |
 | `[p]roleplay settings [member]` | self; others need admin | Show a member's consent settings (button, ephemeral) |
+| `/roleplay settings` | self | Show your consent settings right away, only to you. Needs `[p]slash enable roleplay` and `[p]slash sync` once |
 | `[p]roleplay settings help` | everyone | Help for the settings commands |
 | `[p]roleplay settings owners add/remove <user>` | everyone | Manage your owner list (one owner; adding asks them first). Alias `owner` |
 | `[p]roleplay settings allowed add/remove <user>` | everyone | Manage your allowed list. Aliases `allow`, `approved`, `approve` |

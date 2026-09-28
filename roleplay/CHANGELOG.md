@@ -5,6 +5,12 @@
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
  - UI interface for editing settings. This may require creating an app command ('/settings') in order to utilize discords interaction objects and ephemeral messaging
 
+## [2.8.1] - 2026-09-28
+
+### Added
+
+- `/roleplay settings` shows your settings straight away, visible only to you. `[p]roleplay settings` still shows a button, because a prefix command can't reply ephemerally. The owner enables it once with `[p]slash enable roleplay` and `[p]slash sync`
+
 ## [2.8.0] - 2026-09-28
 
 ### Added

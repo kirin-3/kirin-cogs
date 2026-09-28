@@ -385,6 +385,27 @@ async def test_settings_button_shows_the_settings_embed(red_env: simcord.Env) ->
 
 
 @pytest.mark.asyncio
+async def test_settings_slash_command_answers_ephemerally_without_a_button(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild = red_env.create_guild()
+    admin = guild.add_member(red_env.create_user("admin"))
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    cast(set[int], bot.owner_ids).add(admin.id)  # what Red's --owner flag does
+    await admin.send(channel, "!slash enable roleplay")
+    await admin.send(channel, "!slash sync")
+
+    shown = await member.slash(channel, "roleplay settings")
+
+    assert shown.response is not None
+    assert shown.response.ephemeral
+    assert shown.response.embeds[0].title == "Roleplay Settings (member):"
+    assert not any("Click the button" in (m.content or "") for m in _bot_messages(channel, bot))
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
 async def test_settings_cannot_be_read_for_others_without_admin(red_env: simcord.Env) -> None:
     bot = cast(Red, red_env.bot)
     guild = red_env.create_guild()
