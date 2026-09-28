@@ -24,16 +24,20 @@ from .views import request_consent
 WEB_TOGGLES = ("selective", "public", "servant", "untracked")
 
 
-def pairing_word(argument: str) -> str:
+class PairingConverter(commands.Converter[str]):
     """Converter for a pairing word (mlw, wlm, wlw or mlm) in any case. Used as an
-    optional argument, anything else is left for the next argument."""
-    pairing = argument.lower()
-    if pairing not in PAIRINGS:
-        raise commands.BadArgument(f"{argument} is not a pairing.")
-    return pairing
+    optional argument, anything else is left for the next argument. A class rather
+    than a function so hybrid commands can use it for the slash option too."""
+
+    async def convert(self, ctx: commands.Context, argument: str) -> str:  # pyright: ignore[reportIncompatibleMethodOverride]
+        pairing = argument.lower()
+        if pairing not in PAIRINGS:
+            raise commands.BadArgument(f"{argument} is not a pairing.")
+        return pairing
 
 
-Pairing = Annotated[str, pairing_word]
+Pairing = Annotated[str, PairingConverter]
+PAIRING_CHOICES = [app_commands.Choice(name=pairing, value=pairing) for pairing in PAIRINGS]
 
 
 class Roleplay(commands.Cog):
@@ -295,7 +299,12 @@ class Roleplay(commands.Cog):
         # include capitalized version of command and aliases
         all_aliases = [*aliases, *(a.capitalize() for a in aliases), action_name.capitalize()]
 
-        command = commands.command(name=action_name, aliases=all_aliases)(command_method)
+        app_commands.describe(pairing="Only use gifs with this pairing", target_member="Who to do it to")(
+            command_method
+        )
+        app_commands.rename(target_member="member")(command_method)
+        app_commands.choices(pairing=PAIRING_CHOICES)(command_method)
+        command = commands.hybrid_command(name=action_name, aliases=all_aliases)(command_method)
         command = commands.cooldown(const.COOLDOWN_RATE, const.COOLDOWN_TIME, commands.BucketType.channel)(command)
         command = commands.bot_has_permissions(embed_links=True, attach_files=True)(command)
         command = commands.guild_only()(command)
@@ -318,9 +327,16 @@ class Roleplay(commands.Cog):
         # Add the command to the roleplay group
         self.roleplay.add_command(command)
 
-    @commands.command(aliases=["askfor", "get", "giveme", "gimme", "request"])  # pyright: ignore[reportArgumentType]
+    @commands.hybrid_command(aliases=["askfor", "get", "giveme", "gimme", "request"])  # pyright: ignore[reportArgumentType]
     @commands.guild_only()
     @commands.bot_has_permissions(embed_links=True, attach_files=True)
+    @app_commands.describe(
+        action_name="The action to ask for",
+        pairing="Only use gifs with this pairing",
+        target_member="Who to ask",
+    )
+    @app_commands.rename(action_name="action", target_member="member")
+    @app_commands.choices(pairing=PAIRING_CHOICES)
     async def ask(
         self,
         ctx: commands.GuildContext,
@@ -366,6 +382,13 @@ class Roleplay(commands.Cog):
     # in the default help text display
     ask.__doc__ = "Ask another member to perform an action on you"
 
+    @ask.autocomplete("action_name")
+    async def ask_action_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        names = [name for name in self.action_manager.list() if current.lower() in name]
+        return [app_commands.Choice(name=name, value=name) for name in names[:25]]
+
     async def interaction(
         self,
         ctx: commands.GuildContext,
@@ -396,6 +419,9 @@ class Roleplay(commands.Cog):
             bool: Return True if conditions were right for roleplay action to happen.
             False otherwise.
         """
+        # A slash command has 3 seconds to answer; the consent question or a big gif can take longer
+        await ctx.defer()
+
         action = self.action_manager.get(action_name)
         if not action:
             self.logger.error(f'{self.__class__.__name__}.interaction() called with invalid action "{action_name}"!')

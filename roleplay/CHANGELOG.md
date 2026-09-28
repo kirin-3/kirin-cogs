@@ -5,6 +5,12 @@
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
  - UI interface for editing settings. This may require creating an app command ('/settings') in order to utilize discords interaction objects and ephemeral messaging
 
+## [2.9.0] - 2026-09-28
+
+### Added
+
+- Every action and `ask` are also slash commands: `/hug pairing:wlw member:@user`, `/ask action:fuck pairing:mlm member:@user`. `/ask` suggests the actions as you type. Aliases stay prefix-only. The owner enables them with `[p]slash enablecog roleplay` and `[p]slash sync`
+
 ## [2.8.1] - 2026-09-28
 
 ### Added

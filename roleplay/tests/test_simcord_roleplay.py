@@ -13,6 +13,7 @@ import discord
 import pytest
 import simcord
 from redbot.core.bot import Red
+from redbot.core.tree import RedTree
 
 from roleplay import const
 from roleplay.main import Roleplay
@@ -475,4 +476,76 @@ async def test_listed_users_the_bot_cannot_see_can_still_be_removed(red_env: sim
 
     assert await config.owners() == []
     assert await config.allowed() == []
+    simcord.assert_no_errors(red_env)
+
+
+async def _enable_slash(env: simcord.Env, guild: simcord.GuildHandle, channel: simcord.ChannelHandle) -> None:
+    """Enable and sync the cog's slash commands, as the owner does once with [p]slash."""
+    owner = guild.add_member(env.create_user("owner"))
+    await env.settle()
+    cast(set[int], cast(Red, env.bot).owner_ids).add(owner.id)  # what Red's --owner flag does
+    await owner.send(channel, "!slash enablecog roleplay")
+    await owner.send(channel, "!slash sync")
+
+
+@pytest.mark.asyncio
+async def test_slash_action_with_a_pairing_asks_then_posts_the_tagged_gif(red_env: simcord.Env, images: Path) -> None:
+    guild = red_env.create_guild()
+    hugger = guild.add_member(red_env.create_user("hugger"))
+    target = guild.add_member(red_env.create_user("target"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    await _enable_slash(red_env, guild, channel)
+
+    result = await hugger.slash(channel, "hug", pairing="wlw", member=target)
+
+    assert result.deferred
+    question = next(m for m in result.followups if "Do you consent?" in (m.content or ""))
+    await target.click(question.message, label="Yes")
+
+    action = next(m for m in result.followups if m.embeds)
+    assert _member(hugger).mention in (action.embeds[0].description or "")
+    assert [a.filename for a in action.attachments] == ["hug_wlw_2.gif"]
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_slash_ask_passes_the_action_and_pairing(red_env: simcord.Env, images: Path) -> None:
+    guild = red_env.create_guild()
+    requester = guild.add_member(red_env.create_user("requester"))
+    target = guild.add_member(red_env.create_user("target"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    await _enable_slash(red_env, guild, channel)
+
+    choices = await requester.autocomplete(channel, "ask", "action", "HU")
+    assert {"hug", "sadhug", "happyhug"} <= {choice["value"] for choice in choices}
+
+    result = await requester.slash(channel, "ask", action="hug", pairing="wlw", member=target)
+    question = next(m for m in result.followups if "Do you consent?" in (m.content or ""))
+    assert "**requester** wants you to hug them" in (question.content or "")
+    await target.click(question.message, label="Yes")
+
+    action = next(m for m in result.followups if m.embeds)
+    assert [a.filename for a in action.attachments] == ["hug_wlw_2.gif"]
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_slash_actions_survive_a_cog_reload(red_env: simcord.Env, images: Path) -> None:
+    bot = cast(Red, red_env.bot)
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    await _enable_slash(red_env, guild, channel)
+
+    await bot.remove_cog("Roleplay")
+    await bot.add_cog(Roleplay(bot))
+    await cast(RedTree, bot.tree).red_check_enabled()  # what Red's load_extension does after setup
+
+    # No member: the bot hugs the invoker, no consent question needed.
+    result = await member.slash(channel, "hug")
+    action = next(m for m in result.followups if m.embeds)
+    assert [a.filename for a in action.attachments] == ["hug_1.gif"]
     simcord.assert_no_errors(red_env)

@@ -58,7 +58,7 @@ def _consent(monkeypatch: pytest.MonkeyPatch, *answers: tuple[bool | None, int |
 
 
 async def _interact(cog: Roleplay, author: _Member, invoker: _Member, target: _Member, passive: bool = False) -> Any:
-    ctx: Any = SimpleNamespace(author=author, send=AsyncMock())
+    ctx: Any = SimpleNamespace(author=author, send=AsyncMock(), defer=AsyncMock())
     interaction_type = const.InteractionType.PASSIVE if passive else const.InteractionType.ACTIVE
     result = await cog.interaction(ctx, "hug", cast(Any, invoker), cast(Any, target), interaction_type)
     return result, ctx

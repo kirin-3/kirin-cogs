@@ -72,12 +72,12 @@ order:
 
 | Command | Who | What it does |
 | --- | --- | --- |
-| `[p]<action> [pairing] [member]` | everyone (server-only) | Perform the action |
+| `[p]<action> [pairing] [member]` | everyone (server-only) | Perform the action. Also `/<action>`, e.g. `/hug pairing:wlw member:@user` |
 | `[p]roleplay <action> [pairing] [member]` | everyone | Same thing under the group |
-| `[p]ask <action> [pairing] [member]` | everyone (server-only) | Ask a member to perform the action on you |
+| `[p]ask <action> [pairing] [member]` | everyone (server-only) | Ask a member to perform the action on you. Also `/ask`, which suggests the actions as you type |
 | `[p]roleplay help` | everyone | Custom help embed listing settings and actions |
 | `[p]roleplay settings [member]` | self; others need admin | Show a member's consent settings (button, ephemeral) |
-| `/roleplay settings` | self | Show your consent settings right away, only to you. Needs `[p]slash enable roleplay` and `[p]slash sync` once |
+| `/roleplay settings` | self | Show your consent settings right away, only to you |
 | `[p]roleplay settings help` | everyone | Help for the settings commands |
 | `[p]roleplay settings owners add/remove <user>` | everyone | Manage your owner list (one owner; adding asks them first). Alias `owner` |
 | `[p]roleplay settings allowed add/remove <user>` | everyone | Manage your allowed list. Aliases `allow`, `approved`, `approve` |
@@ -98,7 +98,9 @@ shows, so a member whose owner left can remove them and add a new one.
 
 - Settings are **user-scoped**: your lists and flags are the same in every server that shares this bot.
 - Guild admins can view or toggle any member's settings; only the first owner in a member's owner list is used.
-- `[p]roleplay` itself is prefix-only; `[p]rpstats` is the only slash command.
+- Slash commands: every action, `/ask`, `/rpstats` and `/roleplay settings`. Aliases (`/hugsad`, ...) and the rest of
+  `[p]roleplay` stay prefix-only. The owner enables them once with `[p]slash enablecog roleplay` and `[p]slash sync`.
+  That is 33 of Discord's 100 global slash commands.
 
 ## Stats
 
