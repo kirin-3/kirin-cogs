@@ -4,6 +4,12 @@
 
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
 
+## [2.9.3] - 2026-09-28
+
+### Changed
+
+- Consent questions (the Yes/No buttons) are deleted once they're answered or time out, instead of staying in the channel with disabled buttons
+
 ## [2.9.2] - 2026-09-28
 
 ### Added

@@ -170,7 +170,7 @@ async def test_target_is_asked_after_the_invokers_owner(monkeypatch: pytest.Monk
 
 
 def _press(member_id: int) -> Any:
-    response = SimpleNamespace(send_message=AsyncMock(), edit_message=AsyncMock())
+    response = SimpleNamespace(send_message=AsyncMock(), defer=AsyncMock())
     return SimpleNamespace(user=SimpleNamespace(id=member_id), response=response)
 
 
@@ -209,7 +209,7 @@ async def test_a_no_is_not_overwritten_by_a_yes_already_queued() -> None:
 
     assert view.result is False
     assert view.declined_by == 20
-    late_yes.response.edit_message.assert_not_awaited()
+    late_yes.response.defer.assert_not_awaited()
 
 
 @pytest.mark.asyncio

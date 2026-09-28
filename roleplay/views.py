@@ -12,6 +12,7 @@ class ConsentView(discord.ui.View):
 
     ``result`` becomes ``False`` on the first No (``declined_by`` is who pressed it),
     and ``True`` once every member has pressed Yes. It stays ``None`` on timeout.
+    ``request_consent`` deletes the question either way.
     """
 
     def __init__(self, responders: Iterable[discord.abc.User], timeout: float = const.TIMEOUT) -> None:
@@ -20,7 +21,6 @@ class ConsentView(discord.ui.View):
         self.accepted: set[int] = set()
         self.result: bool | None = None
         self.declined_by: int | None = None
-        self.message: discord.Message | None = None
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id in self.responder_ids:
@@ -62,24 +62,15 @@ class ConsentView(discord.ui.View):
 
     async def finish(self, interaction: discord.Interaction) -> None:
         self.stop()
-        self.disable_buttons()
-        await interaction.response.edit_message(view=self)
-
-    async def on_timeout(self) -> None:
-        self.disable_buttons()
-        if self.message is not None:
-            with contextlib.suppress(discord.HTTPException):
-                await self.message.edit(view=self)
-
-    def disable_buttons(self) -> None:
-        for item in self.children:
-            if isinstance(item, discord.ui.Button):
-                item.disabled = True
+        await interaction.response.defer()
 
 
 async def request_consent(ctx: commands.Context, content: str, responders: Iterable[discord.abc.User]) -> ConsentView:
     """Ask ``responders`` a yes/no question with buttons and wait for their answer."""
     view = ConsentView(responders)
-    view.message = await ctx.send(content, view=view)
+    message = await ctx.send(content, view=view)
     await view.wait()
+    # answered or timed out, the question is only clutter now
+    with contextlib.suppress(discord.HTTPException):
+        await message.delete()
     return view

@@ -78,12 +78,8 @@ def _find_message(channel: simcord.ChannelHandle, bot: Red, text: str) -> discor
     return next(m for m in _bot_messages(channel, bot) if text in (m.content or ""))
 
 
-def _assert_buttons_disabled(channel: simcord.ChannelHandle, bot: Red, text: str) -> None:
-    """Re-read the message from the backend, then check every button is disabled."""
-    message = _find_message(channel, bot, text)
-    items = [item for row in message.components for item in getattr(row, "children", [])]
-    assert items, "expected the question's buttons to still be there"
-    assert all(getattr(item, "disabled", False) for item in items)
+def _assert_question_deleted(channel: simcord.ChannelHandle, bot: Red, text: str) -> None:
+    assert not any(text in (m.content or "") for m in _bot_messages(channel, bot))
 
 
 @pytest.mark.asyncio
@@ -230,7 +226,7 @@ async def test_action_proceeds_after_the_target_accepts(red_env: simcord.Env) ->
     description = action.embeds[0].description or ""
     assert _member(hugger).mention in description
     assert _member(target).mention in description
-    _assert_buttons_disabled(channel, bot, "Do you consent?")
+    _assert_question_deleted(channel, bot, "Do you consent?")
     simcord.assert_no_errors(red_env)
 
 
@@ -250,7 +246,7 @@ async def test_action_is_refused_when_the_target_declines(red_env: simcord.Env) 
     refusal = _bot_messages(channel, bot)[-1]
     assert "**target** does not wish to do that." in refusal.content
     assert not any(m.embeds for m in _bot_messages(channel, bot))
-    _assert_buttons_disabled(channel, bot, "Do you consent?")
+    _assert_question_deleted(channel, bot, "Do you consent?")
     simcord.assert_no_errors(red_env)
 
 
@@ -292,7 +288,7 @@ async def test_unanswered_consent_times_out(red_env: simcord.Env) -> None:
     timed_out = _bot_messages(channel, bot)[-1]
     assert "**target** took too long to respond." in timed_out.content
     assert not any(m.embeds for m in _bot_messages(channel, bot))
-    _assert_buttons_disabled(channel, bot, "Do you consent?")
+    _assert_question_deleted(channel, bot, "Do you consent?")
     simcord.assert_no_errors(red_env)
 
 
@@ -506,6 +502,7 @@ async def test_slash_action_with_a_pairing_asks_then_posts_the_tagged_gif(red_en
     action = next(m for m in result.followups if m.embeds)
     assert _member(hugger).mention in (action.embeds[0].description or "")
     assert [a.filename for a in action.attachments] == ["hug_wlw_2.gif"]
+    _assert_question_deleted(channel, cast(Red, red_env.bot), "Do you consent?")
     simcord.assert_no_errors(red_env)
 
 
@@ -623,6 +620,7 @@ async def test_dashboard_asks_the_new_owner_in_the_channel(red_env: simcord.Env)
     await red_env.settle()
 
     assert await cog.user_settings.config.user(_member(member)).owners() == [owner.id]
+    _assert_question_deleted(channel, bot, "would like you to be their Owner")
     simcord.assert_no_errors(red_env)
 
 
