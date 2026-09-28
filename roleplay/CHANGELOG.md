@@ -4,7 +4,7 @@
 
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
 
-## [2.10.0] - 2026-09-28
+## [2.9.1] - 2026-09-28
 
 ### Added
 
