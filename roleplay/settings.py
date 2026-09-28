@@ -65,7 +65,8 @@ class Settings:
         )
         default_user = {key: value.get("default", None) for key, value in USER_SETTINGS.items()}
         self.logger.debug(f"default_user:\n{default_user}")
-        self.config.register_user(**default_user)
+        # Not in USER_SETTINGS, whose lists hold user IDs; this one holds action names
+        self.config.register_user(**default_user, consented_actions=[])
 
         self.users_manager = Manager(self.bot, self.config)
 
@@ -251,6 +252,11 @@ class Settings:
 
         return toggle
 
+    async def consented_actions(self, member: discord.abc.User) -> list[str]:
+        """The actions a member always allows, by name."""
+        names = await self.config.user(member).consented_actions()
+        return [name for name in names if isinstance(name, str)] if isinstance(names, list) else []
+
     async def show_settings(self, ctx: commands.Context, member: discord.abc.User) -> None:
         """Displays roleplay settings for a specified member.
 
@@ -283,6 +289,9 @@ class Settings:
             description = values.get("description")
             line = f"* {emoji} **{label}** - {description}"
             desc_lines.append(line)
+        desc_lines.append(
+            "* ✨ **Always Allowed Actions** - Consent to these actions from anyone (except those in your blocked list.)"
+        )
         final_description = "\n".join(desc_lines)
 
         embed = discord.Embed(
@@ -309,4 +318,6 @@ class Settings:
             else:
                 self.logger.error(f'Unsupported data type ({data_type}) for "{property}"!')
 
+        names = await self.consented_actions(member)
+        embed.add_field(name="✨ Always Allowed Actions", value=", ".join(names) or "None", inline=False)
         return embed

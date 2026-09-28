@@ -57,6 +57,7 @@ class SettingsDashboard(discord.ui.View):
         data = await self.settings.config.user(self.member).all()
         for key in TOGGLES:
             self.add_item(ToggleButton(key, bool(data.get(key))))
+        self.add_item(OpenActionsButton())
         remove_options: list[discord.SelectOption] = []
         for key in LISTS:
             self.add_item(AddUserSelect(key))
@@ -114,6 +115,73 @@ class ToggleButton(discord.ui.Button[SettingsDashboard]):
         await dashboard.settings.config.user(dashboard.member).get_attr(self.key).set(value)
         await dashboard.settings.parent.setting_changed(dashboard.member.id, self.key, value)
         await dashboard.refresh(interaction)
+
+
+class OpenActionsButton(discord.ui.Button[SettingsDashboard]):
+    def __init__(self) -> None:
+        super().__init__(
+            label="Always Allowed Actions",
+            emoji="✨",
+            style=discord.ButtonStyle.primary,
+            custom_id="roleplay:actions",
+            row=0,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        dashboard = cast(SettingsDashboard, self.view)
+        picker = ActionsPicker(dashboard)
+        await picker.populate()
+        await interaction.response.send_message(ActionsPicker.CONTENT, view=picker, ephemeral=True)
+
+
+class ActionsPicker(discord.ui.View):
+    """Pick the actions a member consents to from anyone. Only actions that ask for
+    consent are listed, split over as many dropdowns as it takes (25 options each)."""
+
+    CONTENT = (
+        "Pick the actions you consent to from anyone, except your blocked members. You'll still be asked for the rest."
+    )
+
+    def __init__(self, dashboard: SettingsDashboard) -> None:
+        super().__init__(timeout=const.LONG_DELETE_TIME)
+        self.dashboard = dashboard
+
+    async def populate(self) -> None:
+        self.clear_items()
+        chosen = set(await self.dashboard.settings.consented_actions(self.dashboard.member))
+        names = sorted(a.name for a in self.dashboard.settings.parent.action_manager.actions if a.consent.required)
+        for row, start in enumerate(range(0, len(names), 25)):
+            self.add_item(ActionsSelect(names[start : start + 25], chosen, row))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await self.dashboard.interaction_check(interaction)
+
+
+class ActionsSelect(discord.ui.Select[ActionsPicker]):
+    def __init__(self, names: list[str], chosen: set[str], row: int) -> None:
+        super().__init__(
+            placeholder=f"✨ {names[0]} to {names[-1]}",
+            options=[discord.SelectOption(label=name, default=name in chosen) for name in names],
+            min_values=0,
+            max_values=len(names),
+            custom_id=f"roleplay:actions:{row}",
+            row=row,
+        )
+        self.names = set(names)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        picker = cast(ActionsPicker, self.view)
+        dashboard = picker.dashboard
+        await interaction.response.defer()
+        # This dropdown decides for its own actions; the other dropdowns' picks are kept
+        current = set(await dashboard.settings.consented_actions(dashboard.member))
+        names = sorted((current - self.names) | set(self.values))
+        await dashboard.settings.config.user(dashboard.member).consented_actions.set(names)
+        await picker.populate()
+        await interaction.edit_original_response(view=picker)
+        if dashboard.interaction is not None:
+            with contextlib.suppress(discord.HTTPException):
+                await dashboard.refresh(dashboard.interaction)
 
 
 class AddUserSelect(discord.ui.UserSelect[SettingsDashboard]):

@@ -6,7 +6,7 @@
     ],
     "short": "Redbot cog that allows members to perform roleplay actions",
     "description": "Perform a command on another user. Ask another user to perform a command on you. Modify settings that determine consent.",
-    "end_user_data_statement": "This cog stores each member's roleplay settings: their public, servant, selective and untracked flags, and the Discord user IDs in their owner, allowed and blocked lists. It also counts, for each pair of members by Discord user ID, how many times one performed each roleplay action on the other, unless either member is untracked. Deletion removes the member's settings and counts and their ID from every other member's lists and counts.",
+    "end_user_data_statement": "This cog stores each member's roleplay settings: their public, servant, selective and untracked flags, the actions they always allow, and the Discord user IDs in their owner, allowed and blocked lists. It also counts, for each pair of members by Discord user ID, how many times one performed each roleplay action on the other, unless either member is untracked. Deletion removes the member's settings and counts and their ID from every other member's lists and counts.",
     "min_bot_version": "3.5.22",
     "min_python_version": [
         3,

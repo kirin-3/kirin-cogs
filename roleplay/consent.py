@@ -20,6 +20,8 @@ class Party:
         selective (bool): Refuses members not in their allowed list.
         allowed (frozenset[int]): IDs of members they always consent to.
         blocked (frozenset[int]): IDs of members they never take part in actions with.
+        consented_actions (frozenset[str]): Actions they consent to from anyone, as if
+            they were public use for just those actions.
     """
 
     id: int
@@ -30,6 +32,7 @@ class Party:
     selective: bool = False
     allowed: frozenset[int] = field(default_factory=frozenset)
     blocked: frozenset[int] = field(default_factory=frozenset)
+    consented_actions: frozenset[str] = field(default_factory=frozenset)
 
 
 class Outcome(Enum):
@@ -60,6 +63,7 @@ def decide(
     requester_id: int,
     passive: bool,
     consent_required: bool = True,
+    action_name: str = "",
 ) -> Decision:
     """Decide whether ``invoker`` can do an action to ``target``.
 
@@ -70,6 +74,7 @@ def decide(
         passive (bool): The requester asked ``target`` to do the action to them (``ask``)
             instead of doing it themselves.
         consent_required (bool): The action asks for consent when done directly.
+        action_name (str): The action, to check the target's always allowed actions.
     """
     # make sure neither member is blocked by the other
     if invoker.id in target.blocked or target.id in invoker.blocked:
@@ -84,9 +89,12 @@ def decide(
     # used without another member), or when they're a bot, since bots can't answer
     target_can_consent = target.id != requester_id and not target.bot
 
+    # public use, for every action or just this one. Only for actions done to the target
+    target_public = target.public or action_name in target.consented_actions
+
     # a selective target refuses everyone else, unless the interaction is active and
     # they are public use, or passive and they are a servant
-    if target_can_consent and target.selective and not (target.servant if passive else target.public):
+    if target_can_consent and target.selective and not (target.servant if passive else target_public):
         return Decision(Outcome.REFUSED)
 
     # The target has to consent if they can and:
@@ -95,7 +103,7 @@ def decide(
     if passive:
         target_consent_needed = target_can_consent and not target.servant
     else:
-        target_consent_needed = target_can_consent and consent_required and not target.public
+        target_consent_needed = target_can_consent and consent_required and not target_public
 
     # Owners are asked for the members they own. The invoker's owner isn't asked when
     # they're the target, who decides for themselves as the target

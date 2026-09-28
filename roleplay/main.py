@@ -233,6 +233,45 @@ class Roleplay(commands.Cog):
         self.logger.debug("Default help for `roleplay settings` command intercepted.")
         return await self.helper.settings(ctx)
 
+    @settings.group(name="actions", aliases=["always"], invoke_without_command=True)
+    async def consented_actions(self, ctx: commands.Context):
+        """Actions you consent to from anyone (except blocked members), without being asked."""
+        if ctx.invoked_subcommand is None:
+            names = await self.user_settings.consented_actions(ctx.author)
+            if not names:
+                await ctx.send(f"{ctx.author.display_name} has no always allowed actions.")
+            else:
+                await ctx.send(
+                    f"Always allowed actions for {ctx.author.display_name}: {humanize_list([inline(n) for n in names])}."
+                )
+
+    @consented_actions.command(name="add")
+    async def consented_actions_add(self, ctx: commands.Context, *action_names: str):
+        """Always allow these actions, e.g. `hug pet`."""
+        await self.change_consented_actions(ctx, action_names, add=True)
+
+    @consented_actions.command(name="remove")
+    async def consented_actions_remove(self, ctx: commands.Context, *action_names: str):
+        """Ask again before these actions."""
+        await self.change_consented_actions(ctx, action_names, add=False)
+
+    async def change_consented_actions(self, ctx: commands.Context, action_names: tuple[str, ...], add: bool) -> None:
+        actions = [self.action_manager.get(name.lower()) for name in action_names]
+        unknown = [name for name, action in zip(action_names, actions, strict=True) if action is None]
+        if not action_names or unknown:
+            names = humanize_list([inline(name) for name in self.action_manager.list()])
+            await ctx.send(f"Name one or more roleplay actions: {names}.")
+            return
+        changed = {action.name for action in actions if action is not None}
+        current = set(await self.user_settings.consented_actions(ctx.author))
+        names = sorted(current | changed if add else current - changed)
+        await self.user_settings.config.user(ctx.author).consented_actions.set(names)
+        await ctx.send(
+            f"Always allowed actions for {ctx.author.display_name}: {humanize_list([inline(n) for n in names])}."
+            if names
+            else f"{ctx.author.display_name} has no always allowed actions."
+        )
+
     # A prefix command can't answer ephemerally, so [p]roleplay settings shows a button.
     # This slash command opens the settings dashboard straight away, visible only to the member.
     roleplay_slash = app_commands.Group(name="roleplay", description="Roleplay commands.")
@@ -439,6 +478,7 @@ class Roleplay(commands.Cog):
             requester_id=ctx.author.id,
             passive=interaction_type == const.InteractionType.PASSIVE,
             consent_required=action.consent.required,
+            action_name=action.name,
         )
         self.logger.debug(
             f"""Interaction:
@@ -504,11 +544,11 @@ class Roleplay(commands.Cog):
         """A member's roleplay settings, and their owner on this server if they have one."""
         settings = await self.user_settings.config.user(member).all()
 
-        def user_ids(key: str) -> list[int]:
+        def list_setting(key: str) -> list:
             value = settings.get(key)
             return value if isinstance(value, list) else []
 
-        owner = await self.user_settings.users_manager.get_owner(ctx, member, user_ids("owners"))
+        owner = await self.user_settings.users_manager.get_owner(ctx, member, list_setting("owners"))
         party = consent.Party(
             id=member.id,
             bot=member.bot,
@@ -516,8 +556,9 @@ class Roleplay(commands.Cog):
             public=bool(settings.get("public")),
             servant=bool(settings.get("servant")),
             selective=bool(settings.get("selective")),
-            allowed=frozenset(user_ids("allowed")),
-            blocked=frozenset(user_ids("blocked")),
+            allowed=frozenset(list_setting("allowed")),
+            blocked=frozenset(list_setting("blocked")),
+            consented_actions=frozenset(name for name in list_setting("consented_actions") if isinstance(name, str)),
         )
         return party, owner
 

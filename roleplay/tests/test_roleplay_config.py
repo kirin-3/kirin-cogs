@@ -26,7 +26,14 @@ def test_config_storage_key_matches_existing_data(monkeypatch: pytest.MonkeyPatc
 
     assert calls == [{"identifier": 842364413, "force_registration": True, "cog_name": "Settings"}]
     config.register_user.assert_called_once_with(
-        owners=[], allowed=[], blocked=[], selective=False, public=False, servant=False, untracked=False
+        owners=[],
+        allowed=[],
+        blocked=[],
+        selective=False,
+        public=False,
+        servant=False,
+        untracked=False,
+        consented_actions=[],
     )
 
 

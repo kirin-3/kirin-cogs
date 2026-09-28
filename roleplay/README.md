@@ -86,6 +86,7 @@ order:
 | `[p]roleplay settings public [member] [true/false]` | self; others need admin | Consent to any action from a member |
 | `[p]roleplay settings servant [member] [true/false]` | self; others need admin | Consent to any request on you |
 | `[p]roleplay settings untracked [member] [true/false]` | self; others need admin | Stop counting your actions and delete your counts |
+| `[p]roleplay settings actions [add/remove <action> ...]` | everyone | Show or change the actions you always allow, e.g. `actions add hug pet`. Alias `always` |
 | `[p]rpstats [member] [other]` | everyone (server-only) | Action counts: yours, a member's, or between two members. Also `/rpstats` once enabled |
 | `[p]roleplay admin logger_settings [level]` | bot admin | Show or set the cog's log level |
 
@@ -101,8 +102,13 @@ can use it:
 - A user dropdown each for setting your owner and adding to your allowed and blocked lists. Setting an owner still
   asks them first, in the channel.
 - A dropdown to remove anyone from your lists (the first 25; use the `remove` commands for more).
+- An **Always Allowed Actions** button that opens a picker for the actions you consent to from anyone.
 
 An admin who opens someone else's dashboard with `[p]roleplay settings @member` changes that member's settings.
+
+**Always allowed actions** work like Public Use Slut for just those actions: anyone except your blocked members can
+do them to you without asking, even when you're Selective. Everything else still asks. Your owner is still asked, and
+being asked to do an action yourself (`[p]ask`) still asks you.
 
 ## Notes
 

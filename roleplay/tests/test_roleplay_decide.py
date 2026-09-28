@@ -195,3 +195,38 @@ def test_decide(invoker: Party, target: Party, passive: bool, consent_required: 
     assert (
         decide(invoker, target, requester_id=REQUESTER, passive=passive, consent_required=consent_required) == expected
     )
+
+
+HUGS_OK = frozenset({"hug"})
+
+# (case, target, passive, action, expected): the invoker is always the requester
+CONSENTED_ACTION_CASES = [
+    ("an always allowed action goes ahead", Party(OTHER, consented_actions=HUGS_OK), False, "hug", ALLOW),
+    ("other actions still ask", Party(OTHER, consented_actions=HUGS_OK), False, "pet", ASK_TARGET),
+    (
+        "blocks still win",
+        Party(OTHER, consented_actions=HUGS_OK, blocked=frozenset({REQUESTER})),
+        False,
+        "hug",
+        BLOCKED,
+    ),
+    ("selective lets it through", Party(OTHER, consented_actions=HUGS_OK, selective=True), False, "hug", ALLOW),
+    ("selective refuses the rest", Party(OTHER, consented_actions=HUGS_OK, selective=True), False, "pet", REFUSED),
+    ("asking them to do it still asks", Party(OTHER, consented_actions=HUGS_OK), True, "hug", ASK_TARGET),
+    (
+        "their owner is still asked",
+        Party(OTHER, consented_actions=HUGS_OK, owner_id=TARGET_OWNER),
+        False,
+        "hug",
+        ask_owners(TARGET_OWNER),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("target", "passive", "action", "expected"),
+    [case[1:] for case in CONSENTED_ACTION_CASES],
+    ids=[case[0] for case in CONSENTED_ACTION_CASES],
+)
+def test_always_allowed_actions(target: Party, passive: bool, action: str, expected: Decision) -> None:
+    assert decide(Party(REQUESTER), target, requester_id=REQUESTER, passive=passive, action_name=action) == expected

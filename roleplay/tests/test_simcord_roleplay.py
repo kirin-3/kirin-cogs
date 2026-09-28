@@ -648,3 +648,54 @@ async def test_settings_button_only_opens_for_whoever_asked(red_env: simcord.Env
     await member.click(shown.response.message, custom_id="roleplay:toggle:servant")
     assert await cog.user_settings.config.user(_member(member)).servant() is True
     simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_always_allowed_actions_skip_the_question(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    cog = _cog(red_env)
+    guild = red_env.create_guild()
+    hugger = guild.add_member(red_env.create_user("hugger"))
+    target = guild.add_member(red_env.create_user("target"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+
+    await target.send(channel, "!roleplay settings actions add Hug pets")
+    assert "`hug` and `pet`" in (_bot_messages(channel, bot)[-1].content or "")
+    assert await cog.user_settings.config.user(_member(target)).consented_actions() == ["hug", "pet"]
+
+    await hugger.send(channel, f"!hug {_member(target).mention}")
+    assert _bot_messages(channel, bot)[-1].embeds
+    assert not any("Do you consent?" in (m.content or "") for m in _bot_messages(channel, bot))
+
+    await hugger.send(channel, f"!kiss {_member(target).mention}")
+    assert "Do you consent?" in (_bot_messages(channel, bot)[-1].content or "")
+
+    await target.send(channel, "!roleplay settings actions remove pet")
+    assert await cog.user_settings.config.user(_member(target)).consented_actions() == ["hug"]
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_picks_always_allowed_actions(red_env: simcord.Env) -> None:
+    cog = _cog(red_env)
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    await _enable_slash(red_env, guild, channel)
+    config = cog.user_settings.config.user(_member(member))
+
+    shown = await member.slash(channel, "roleplay settings")
+    assert shown.response is not None
+    picker = await member.click(shown.response.message, custom_id="roleplay:actions")
+    assert picker.response is not None and picker.response.ephemeral
+
+    # hug and walk sit in different dropdowns; picking in one keeps the other's picks
+    await member.select(picker.response.message, ["hug"], custom_id="roleplay:actions:0")
+    await member.select(picker.response.message, ["walk"], custom_id="roleplay:actions:1")
+    assert await config.consented_actions() == ["hug", "walk"]
+
+    await member.select(picker.response.message, [], custom_id="roleplay:actions:1")
+    assert await config.consented_actions() == ["hug"]
+    simcord.assert_no_errors(red_env)

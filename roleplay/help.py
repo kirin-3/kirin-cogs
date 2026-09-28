@@ -99,4 +99,10 @@ class Help:
                     inline=False,
                 )
 
+        embed.add_field(
+            name="✨ Always Allowed Actions",
+            value=f"- **{prefix}roleplay settings actions** [`add`|`remove`] **action** ...\nConsent to these actions from anyone (except those in your blocked list), e.g. `{prefix}roleplay settings actions add hug pet`.\n",
+            inline=False,
+        )
+
         await ctx.send(embed=embed, delete_after=const.LONG_DELETE_TIME)

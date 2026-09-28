@@ -4,6 +4,12 @@
 
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
 
+## [2.9.2] - 2026-09-28
+
+### Added
+
+- Always allowed actions: consent to chosen actions (e.g. `hug` and `pet`) from anyone except your blocked members, while other actions still ask. Set them with `[p]roleplay settings actions add hug pet` or the dashboard's Always Allowed Actions button
+
 ## [2.9.1] - 2026-09-28
 
 ### Added
