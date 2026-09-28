@@ -25,7 +25,8 @@ from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import humanize_list
 
-from . import const, views
+from . import const
+from .dashboard import OpenDashboardView
 from .unicornia.strings import get_indefinite_article
 from .user_settings import USER_SETTINGS
 from .users import Manager
@@ -108,8 +109,6 @@ class Settings:
 
         This command provides a detailed view of the roleplay settings for a specified
         member, including their public use status, owners, allowed, and blocked users.
-
-        TODO:create interactive UI to manage settings.
 
         Args:
             ctx (commands.Context): The context of the command invocation.
@@ -261,8 +260,7 @@ class Settings:
         """
         self.logger.debug(f"show_settings - member : {member}")
 
-        embed = await self.settings_embed(member)
-        view = views.EmbedView(embed, label="Show Settings")
+        view = OpenDashboardView(self, member, ctx.author.id)
         await ctx.send(
             "Click the button to view your Roleplay settings.",
             view=view,

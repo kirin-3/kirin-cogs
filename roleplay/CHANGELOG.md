@@ -3,7 +3,16 @@
 ## Upcoming Features
 
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
- - UI interface for editing settings. This may require creating an app command ('/settings') in order to utilize discords interaction objects and ephemeral messaging
+
+## [2.10.0] - 2026-09-28
+
+### Added
+
+- The settings view is now a dashboard: buttons turn the on/off settings on and off, and dropdowns set your owner, add to your allowed and blocked lists, and remove people from them. Open it with `/roleplay settings`, or `[p]roleplay settings` and its button
+
+### Fixed
+
+- Only the member who ran `[p]roleplay settings` can press its Show Settings button. Anyone could before, and saw that member's settings
 
 ## [2.9.0] - 2026-09-28
 

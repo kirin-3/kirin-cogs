@@ -13,6 +13,7 @@ from redbot.core.utils.chat_formatting import humanize_list, inline
 
 from . import __version__, consent, const
 from .actions import PAIRINGS, Action, ActionManager, pick_image
+from .dashboard import SettingsDashboard
 from .help import Help
 from .settings import Settings
 from .tally import Tally, member_stats, summary, top_pairs
@@ -233,13 +234,14 @@ class Roleplay(commands.Cog):
         return await self.helper.settings(ctx)
 
     # A prefix command can't answer ephemerally, so [p]roleplay settings shows a button.
-    # This slash command shows the settings straight away, visible only to the member.
+    # This slash command opens the settings dashboard straight away, visible only to the member.
     roleplay_slash = app_commands.Group(name="roleplay", description="Roleplay commands.")
 
     @roleplay_slash.command(name="settings", description="Show your roleplay settings (only you can see them).")
     async def settings_slash(self, interaction: discord.Interaction):
-        embed = await self.user_settings.settings_embed(interaction.user)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        embed, dashboard = await SettingsDashboard.open(self.user_settings, interaction.user, interaction.user.id)
+        dashboard.interaction = interaction
+        await interaction.response.send_message(embed=embed, view=dashboard, ephemeral=True)
 
     def create_action_commands(self):
         """Factory to create command methods roleplay action"""

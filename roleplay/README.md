@@ -76,8 +76,8 @@ order:
 | `[p]roleplay <action> [pairing] [member]` | everyone | Same thing under the group |
 | `[p]ask <action> [pairing] [member]` | everyone (server-only) | Ask a member to perform the action on you. Also `/ask`, which suggests the actions as you type |
 | `[p]roleplay help` | everyone | Custom help embed listing settings and actions |
-| `[p]roleplay settings [member]` | self; others need admin | Show a member's consent settings (button, ephemeral) |
-| `/roleplay settings` | self | Show your consent settings right away, only to you |
+| `[p]roleplay settings [member]` | self; others need admin | Open the settings dashboard (behind a button, since only a button can answer ephemerally) |
+| `/roleplay settings` | self | Open your settings dashboard right away, only to you |
 | `[p]roleplay settings help` | everyone | Help for the settings commands |
 | `[p]roleplay settings owners add/remove <user>` | everyone | Manage your owner list (one owner; adding asks them first). Alias `owner` |
 | `[p]roleplay settings allowed add/remove <user>` | everyone | Manage your allowed list. Aliases `allow`, `approved`, `approve` |
@@ -93,6 +93,16 @@ order:
 themselves up after a few minutes. List settings resolve users by ID, mention, username or display name.
 `remove` also works for listed users who have left every server the bot is in, by ID or by the name the list
 shows, so a member whose owner left can remove them and add a new one.
+
+The settings dashboard shows your settings with controls to change them. It's only visible to you, and only you
+can use it:
+
+- A button for each on/off setting (green is on).
+- A user dropdown each for setting your owner and adding to your allowed and blocked lists. Setting an owner still
+  asks them first, in the channel.
+- A dropdown to remove anyone from your lists (the first 25; use the `remove` commands for more).
+
+An admin who opens someone else's dashboard with `[p]roleplay settings @member` changes that member's settings.
 
 ## Notes
 

@@ -549,3 +549,102 @@ async def test_slash_actions_survive_a_cog_reload(red_env: simcord.Env, images: 
     action = next(m for m in result.followups if m.embeds)
     assert [a.filename for a in action.attachments] == ["hug_1.gif"]
     simcord.assert_no_errors(red_env)
+
+
+def _field_names(result: simcord.InteractionResult) -> list[str]:
+    assert result.response is not None
+    return [field.name or "" for field in result.response.embeds[0].fields]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_button_toggles_a_setting(red_env: simcord.Env) -> None:
+    cog = _cog(red_env)
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    await _enable_slash(red_env, guild, channel)
+
+    shown = await member.slash(channel, "roleplay settings")
+    assert shown.response is not None and shown.response.ephemeral
+
+    clicked = await member.click(shown.response.message, custom_id="roleplay:toggle:public")
+
+    assert await cog.user_settings.config.user(_member(member)).public() is True
+    assert f"Public Use Slut {const.TRUE_EMOJI}" in _field_names(clicked)
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_dropdowns_add_and_remove_listed_users(red_env: simcord.Env) -> None:
+    cog = _cog(red_env)
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    friend = guild.add_member(red_env.create_user("friend"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    await _enable_slash(red_env, guild, channel)
+    config = cog.user_settings.config.user(_member(member))
+
+    shown = await member.slash(channel, "roleplay settings")
+    assert shown.response is not None
+    added = await member.select(shown.response.message, [friend], custom_id="roleplay:add:allowed")
+
+    assert await config.allowed() == [friend.id]
+    assert added.response is not None
+    removed = await member.select(added.response.message, [f"allowed:{friend.id}"], custom_id="roleplay:remove")
+
+    assert await config.allowed() == []
+    assert removed.response is not None
+    assert not any(
+        c.get("custom_id") == "roleplay:remove" for row in removed.response.components for c in row["components"]
+    )
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_asks_the_new_owner_in_the_channel(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    cog = _cog(red_env)
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    owner = guild.add_member(red_env.create_user("owner2"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    await _enable_slash(red_env, guild, channel)
+
+    shown = await member.slash(channel, "roleplay settings")
+    assert shown.response is not None
+    await member.select(shown.response.message, [owner], custom_id="roleplay:add:owners")
+
+    # The question waits in the channel, where the owner can see it
+    question = _find_message(channel, bot, "would like you to be their Owner")
+    await owner.click(question, label="Yes")
+    await red_env.settle()
+
+    assert await cog.user_settings.config.user(_member(member)).owners() == [owner.id]
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_settings_button_only_opens_for_whoever_asked(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    cog = _cog(red_env)
+    guild = red_env.create_guild()
+    member = guild.add_member(red_env.create_user("member"))
+    other = guild.add_member(red_env.create_user("other"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+
+    await member.send(channel, "!roleplay settings")
+    prompt = _find_message(channel, bot, "Click the button to view your Roleplay settings.")
+
+    turned_away = await other.click(prompt, label="Show Settings")
+    assert turned_away.response is not None
+    assert turned_away.response.content == "These aren't your settings."
+
+    shown = await member.click(prompt, label="Show Settings")
+    assert shown.response is not None
+    await member.click(shown.response.message, custom_id="roleplay:toggle:servant")
+    assert await cog.user_settings.config.user(_member(member)).servant() is True
+    simcord.assert_no_errors(red_env)
