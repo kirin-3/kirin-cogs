@@ -7,9 +7,11 @@ from pathlib import Path
 import discord
 from redbot.core import Config, commands
 from redbot.core.bot import Red
+from redbot.core.utils.chat_formatting import humanize_list
 
 from . import __version__, const
 from .responders.base_text_responder import BaseTextResponder
+from .responders.rate import RateResponder
 
 # Per-member on/off settings, all on by default. The member site's Settings page lists them.
 USER_SETTINGS = {
@@ -77,6 +79,27 @@ class ResponderCog(commands.Cog):
                 f"You won't get daddy replies anymore. Run `{ctx.clean_prefix}daddyoptout` again to turn them back on."
             )
         await ctx.send(f"{text} You can also change this at <https://my.unicornia.net/settings>.", ephemeral=True)
+
+    @commands.hybrid_command(name="rates")  # pyright: ignore[reportArgumentType]
+    @commands.bot_has_permissions(embed_links=True)
+    async def rates(self, ctx: commands.Context) -> None:
+        """List the topics for `<topic> rate` messages."""
+        rate = next(r for r in self.responders if isinstance(r, RateResponder))
+        lines = [
+            "Send `<topic> rate`, or `<topic> rate @member` to rate someone else.",
+            "",
+            " · ".join(f"`{topic}`" for topic in sorted(rate.rate_classes) if topic != "default"),
+            "",
+            "**dom**/**sub** go by your roles, **horny** by your roleplay stats and **rich** by your balance."
+            " Random ones reroll at midnight UTC.",
+            "Supporters can rate any other topic too.",
+        ]
+        channels = const.SERVER_PERMISSIONS.get(ctx.guild.id, {}).get("allowed_channels", {}) if ctx.guild else {}
+        if channels:
+            lines.append(f"Works in {humanize_list([f'<#{channel_id}>' for channel_id in channels])}.")
+        await ctx.send(
+            embed=discord.Embed(title="❯ Rates", description="\n".join(lines), color=const.UNICORNIA_BOT_COLOR)
+        )
 
     def _init_responders(self):
         """Collect all responder classes from the responders directory and instantiates them."""

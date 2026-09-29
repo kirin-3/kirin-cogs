@@ -11,18 +11,22 @@ class StinkyRate(BaseRateResponder):
     title = "❯ Stinky Rate"
     description = "{target} is {rating}% stinky"
     thumbnail = r"https://cdn.discordapp.com/emojis/1318168707423408138.webp?size=96&quality=lossless"
+    color = 0x7CB342
+    bar_full = ("🟫",)
 
     user_overrides = {
         const.KIRIN_ID: {
             "title": "❯ The Stinkiest",
-            "description": "❯ Ice is the stinkiest.",
+            "description": "Ice is the stinkiest.",
             "thumbnail": "https://cdn.discordapp.com/emojis/1318168707423408138.webp?size=96&quality=lossless",
+            "rating": 100,
         },
         # deft9nes_  (Maid Ry<3)
         843188175596945429: {
             "title": "❯ Super Stinky",
-            "description": "❯ Ryan is super duper stinky.",
+            "description": "Ryan is super duper stinky.",
             "thumbnail": "https://cdn.discordapp.com/emojis/1318168707423408138.webp?size=96&quality=lossless",
+            "rating": 100,
         },
     }
 

@@ -10,11 +10,14 @@ from .base_rate_responder import BaseRateResponder
 class BottomRate(BaseRateResponder):
     title = "❯ Bottom Rate"
     description = "{target} is {rating}% bottom"
+    color = 0xFFB07C
+    bar_full = ("🍑",)
 
     bottom = {
         "title": "❯ Bottom!!",
-        "description": "❯ {target} is very bottom",
+        "description": "{target} is very bottom",
         "thumbnail": r"https://cdn.discordapp.com/emojis/1093690664119717939.webp?size=512&quality=lossless",
+        "rating": 100,
     }
 
     user_overrides = {

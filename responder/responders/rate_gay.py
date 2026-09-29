@@ -12,24 +12,29 @@ class GayRate(BaseRateResponder):
     title = "❯ Not Gay"
     description = "{target} is {rating}% Gay"
     thumbnail = r"https://cdn.discordapp.com/emojis/1088555199146242248.webp?size=128&quality=lossless"
+    color = 0xB57EDC
+    bar_full = ("🟥", "🟧", "🟨", "🟩", "🟦", "🟪")
 
     user_overrides: dict = {
         const.KIRIN_ID: {
             "title": "❯ The Gay",
-            "description": "❯ {target} is the gay.",
+            "description": "{target} is the gay.",
             "thumbnail": r"https://cdn.discordapp.com/emojis/817150384111616011.webp?size=128&quality=lossless",
+            "rating": 100,
         },
         # Emma#6688
         240942922285973506: {
             "title": "❯ Super Gay",
-            "description": "❯ {target} is Super Duper Gay.",
+            "description": "{target} is Super Duper Gay.",
             "thumbnail": r"https://cdn.discordapp.com/emojis/817150384111616011.webp?size=128&quality=lossless",
+            "rating": 100,
         },
         # radon  (Radon)
         144523162044858368: {
             "title": "❯ Super Gay",
-            "description": "❯ {target} is 99.999% Gay.",
+            "description": "{target} is {rating}% Gay.",
             "thumbnail": r"https://cdn.discordapp.com/emojis/1088555199146242248.webp?size=128&quality=lossless",
+            "rating": 99.999,
         },
     }
 

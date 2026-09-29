@@ -1,6 +1,6 @@
-"""Dimbo Rate Responder
+"""Fish Rate Responder
 
-Reponds with a random % rating for how 'dimbo' a user is.
+Reponds with a random % rating for how 'fish' a user is.
 """
 
 from .base_rate_responder import BaseRateResponder
@@ -9,10 +9,13 @@ from .base_rate_responder import BaseRateResponder
 class FishRate(BaseRateResponder):
     title = "❯ Fish Rate"
     description = "{target} is {rating}% Fish"
+    color = 0x1E90FF
+    bar_full = ("🐟",)
 
     fish = {
         "title": "❯ Fish!!",
         "thumbnail": "https://cdn.discordapp.com/emojis/1087018867055919164.webp?size=1024&quality=lossless",
+        "rating": 100,
     }
 
     user_overrides = {

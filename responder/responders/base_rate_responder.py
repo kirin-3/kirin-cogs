@@ -2,26 +2,26 @@
 
 Rate responders are used to generate a rating for a given target member.
 The most basic form of these is a very simple call/response that will
-create an embed with a title, description, and thumbnail.
+create an embed with a title, description, thumbnail and a rating bar.
 
-The title, description, and thumbnail can be customized by overwriting
-the class properties, or they can be customized on a per-user basis by
-overwriting the `user_overrides` dictionary.
-
-Embed properties:
+Embed properties (class attributes):
     title: str = "[RATE]"
-    description: str = "❯ {target} is {rating}%"
-    thumbnail: str = "https://example.com/default_thumbnail.png"
-    footer: str = None
+    description: str = "{target} is {rating}%"
+    thumbnail: str = None (the target's avatar)
+    footer: str = DAILY_FOOTER
+    color: int = the bot's embed colour
+    bar_full: tuple[str, ...] = ("🟪",)  (cycled, so several emojis make a pattern)
+    bar_empty: str = "⬛"
 
-The rating can be a random number between 0 and 100, or it can be
-customized by overwriting the .get_rating() method. Note that the rating
-is used to determine which rating-specific overrides to use. See Below.
+The rating is a daily roll between 0 and 100, the same for a member and
+topic until midnight UTC. Override `respond` and call `send_rating` with
+another number to compute it some other way, or with None to hide the bar.
 
 User-specific overrides can be defined in the `user_overrides` dictionary.
 This dictionary should be defined as a [user.id] = {[embed properties:values]}.
 If a value is a list, a random choice will be made. This is handy for things like
-multiple descriptions or images.
+multiple descriptions or images. A "rating" key replaces the rating itself
+(None hides the bar), for jokes like "is the gay".
 
 Rating-specific overrides can be defined in the `rating_overrides` dictionary.
 This dictionary should be defined as a [rating] = {[embed properties:values]}.
@@ -30,28 +30,45 @@ to the rating will be used.
 Like the user-specific overrides, if a value is a list, a random choice
 will be made.
 Note: user-specific overrides take precedence over rating-specific overrides.
-
-Finally, the 'respond' method can be overwritten to extend the behavior
-defined by the base class, or to completely replace with custom behavior.
-In all cases, this method is required for the responder to function.
 """
 
 import random
 import re
+from datetime import UTC, date, datetime
+from typing import Any
 
 import discord
 
+from .. import const
 from ..unicornia import strings
 from .base_text_responder import BaseTextResponder
+
+DAILY_FOOTER = "Rerolls at midnight UTC."
+EMBED_PROPERTIES = ("title", "description", "thumbnail", "footer", "color", "bar_full", "bar_empty")
+
+
+def daily_roll(member_id: int, topic: str, day: date | None = None) -> int:
+    """0 to 100, the same for a member and topic all day (UTC). String seeds hash the same in every process."""
+    return random.Random(f"{topic}:{member_id}:{day or datetime.now(UTC).date()}").randint(0, 100)
+
+
+def rating_bar(rating: float, full: tuple[str, ...], empty: str, size: int = 10) -> str:
+    """A bar of `size` emojis, clamped so ratings over 100% are a full bar."""
+    filled = max(0, min(size, round(rating / 100 * size)))
+    return "".join(full[i % len(full)] for i in range(filled)) + empty * (size - filled)
 
 
 class BaseRateResponder(BaseTextResponder):
     enabled: bool = False
 
     title: str = "[RATE]"
-    description: str = "❯ {target} is {rating}%"
-    thumbnail: str | None = None  # "https://example.com/default_thumbnail.png"
-    footer: str | None = None
+    description: str = "{target} is {rating}%"
+    thumbnail: str | None = None
+    footer: str | None = DAILY_FOOTER
+    color: int = const.UNICORNIA_BOT_COLOR
+    bar_full: tuple[str, ...] = ("🟪",)
+    bar_empty: str = "⬛"
+    delay: bool = False  # "typing..." before the answer
 
     # this enables hard-coding overrides for specific user ids
     # dictionary should be defined as a [user.id] = {[embed properties:values]}
@@ -65,15 +82,6 @@ class BaseRateResponder(BaseTextResponder):
     # set by RateResponder before each respond()
     topic: str = ""
 
-    @staticmethod
-    def get_rating():
-        """Overwrite this method if you don't want a random number between 0 and 100
-
-        Returns:
-            int: Rating as an int
-        """
-        return random.randint(0, 100)
-
     def get_property(self, property: str, member: discord.Member, rating: float):
         """Retrieve a property value for a given target member and rating.
 
@@ -83,15 +91,6 @@ class BaseRateResponder(BaseTextResponder):
         in descending order of rating. If a rating-specific override is found, it returns
         that value.
         3. If no overrides are found, it returns the default property value.
-
-        Args:
-            property (str): The name of the property to retrieve.
-            member (discord.Member): The target member for whom the property is being retrieved.
-            rating (int): The rating value to check for rating-specific overrides.
-
-        Returns:
-            Any: The value of the requested property, either from user-specific overrides,
-             rating-specific overrides, or the default property value.
         """
 
         if member.id in self.user_overrides:
@@ -105,21 +104,38 @@ class BaseRateResponder(BaseTextResponder):
 
         return getattr(self, property)
 
-    def get_title(self, member: discord.Member, rating: float):
-        return self.get_property("title", member, rating)
+    def display_rating(self, rating: float) -> float | None:
+        """The number shown and drawn as a bar; None hides the bar."""
+        return rating
 
-    def get_description(self, member: discord.Member, rating: float):
-        return self.get_property("description", member, rating)
+    async def send_rating(
+        self,
+        message: discord.Message,
+        target: discord.Member,
+        rating: float | None,
+        *,
+        footer: str | None = None,
+        **overrides: Any,
+    ) -> None:
+        """Reply with the rating embed. `overrides` replace embed properties outright."""
+        rating = self.user_overrides.get(target.id, {}).get("rating", rating)
+        props = {name: self.get_property(name, target, rating or 0) for name in EMBED_PROPERTIES} | overrides
+        shown = None if rating is None else self.display_rating(rating)
 
-    def get_footer(self, member: discord.Member, rating: float):
-        return self.get_property("footer", member, rating)
+        description = strings.format_string(props["description"], target=target.display_name, rating=shown)
+        if shown is not None:
+            description += f"\n\n{rating_bar(shown, props['bar_full'], props['bar_empty'])}  **{shown}%**"
 
-    def get_thumbnail(self, member: discord.Member, rating: float):
-        thumbnail = self.get_property("thumbnail", member, rating)
-        if not thumbnail:
-            thumbnail = member.display_avatar.url
-
-        return thumbnail
+        await self.send_embed(
+            message,
+            title=props["title"],
+            description=description,
+            thumbnail=props["thumbnail"] or target.display_avatar.url,
+            footer=footer or props["footer"],
+            color=props["color"],
+            as_reply=True,
+            delay=self.delay,
+        )
 
     async def respond(
         self,
@@ -127,18 +143,4 @@ class BaseRateResponder(BaseTextResponder):
         target: discord.Member,
         match: re.Match,
     ):
-        rating = self.get_rating()
-        title = self.get_title(target, rating)
-        description = self.get_description(target, rating)
-        footer = self.get_footer(target, rating)
-        thumbnail = self.get_thumbnail(target, rating)
-
-        description = strings.format_string(description, target=target.display_name, rating=rating)
-
-        await self.send_embed(
-            message,
-            title=title,
-            description=description,
-            thumbnail=thumbnail,
-            footer=footer,
-        )
+        await self.send_rating(message, target, daily_roll(target.id, self.topic.lower()))

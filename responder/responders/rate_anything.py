@@ -1,7 +1,7 @@
 """Rate Anything
 
 This is the default, all-purpose rate responder. It will respond with a
-simple rating % and randomly selected gif from Tenor.
+daily rating % and randomly selected gif from Tenor.
 """
 
 import logging
@@ -11,7 +11,7 @@ import re
 import discord
 
 from ..unicornia import web
-from .base_rate_responder import BaseRateResponder
+from .base_rate_responder import DAILY_FOOTER, BaseRateResponder, daily_roll
 
 log = logging.getLogger("red.kirin_cogs.responder.rate_anything")
 
@@ -48,23 +48,17 @@ class RateAnything(BaseRateResponder):
             return
 
         # Read once: the dispatcher sets `topic` per message, and another message can change it while Tenor answers.
-        topic = self.topic
-        rating = self.get_rating()
-
+        topic = " ".join(self.topic.split())
+        rating = daily_roll(target.id, topic.lower())
         title = " ".join(word.capitalize() for word in topic.split())
-        title = f"❯ {title} Rate"
-
         thumbnail = await self.get_random_gif(topic) or target.display_avatar.url
 
-        description = f"{target.display_name} is {rating}% {topic}"
-
-        footer = r"The rate anything command is only available to supporters."
-
-        await self.send_embed(
+        await self.send_rating(
             message,
-            title=title,
-            description=description,
+            target,
+            rating,
+            title=f"❯ {title} Rate",
+            description=f"{target.display_name} is {rating}% {topic}",
             thumbnail=thumbnail,
-            footer=footer,
-            delay=False,
+            footer=f"Rating any topic is a supporter perk. {DAILY_FOOTER}",
         )

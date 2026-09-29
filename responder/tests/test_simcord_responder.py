@@ -1,14 +1,21 @@
 import importlib
+from collections import Counter
 from collections.abc import Iterator
+from datetime import date, timedelta
 from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import discord
 import pytest
 import simcord
+from redbot.core import commands
 from redbot.core.bot import Red
 
 from responder.main import ResponderCog
+from responder.responders.base_rate_responder import daily_roll, rating_bar
+from responder.responders.rate_dimbo import DimboRate
+from responder.responders.rate_dom import DomRate
+from responder.responders.rate_stinky import StinkyRate
 
 GIF = "https://media.tenor.com/abc/potato.gif"
 
@@ -203,5 +210,153 @@ async def test_rate_anything_keeps_its_topic_while_tenor_answers(red_env: simcor
     await admin.send(allowed, "potato rate")
     [reply] = _bot_messages(red_env, allowed)
     assert reply.embeds[0].title == "❯ Potato Rate"
-    assert reply.embeds[0].description is not None and reply.embeds[0].description.endswith("% potato")
+    assert reply.embeds[0].description is not None
+    assert reply.embeds[0].description.splitlines()[0].endswith("% potato")
+    simcord.assert_no_errors(red_env)
+
+
+def test_daily_roll_is_stable_for_a_day_and_changes_across_days() -> None:
+    today = date(2026, 9, 29)
+    assert daily_roll(1, "gay", today) == daily_roll(1, "gay", today)
+    rolls = [daily_roll(1, "gay", today + timedelta(days=n)) for n in range(30)]
+    assert len(set(rolls)) > 5 and all(0 <= roll <= 100 for roll in rolls)
+
+
+def test_rating_bar_clamps_and_cycles_its_emojis() -> None:
+    assert rating_bar(0, ("🟫",), "⬛") == "⬛" * 10
+    assert rating_bar(100, ("🟫",), "⬛") == "🟫" * 10
+    assert rating_bar(690, ("🟫",), "⬛") == "🟫" * 10
+    assert rating_bar(-20, ("🟫",), "⬛") == "⬛" * 10
+    assert rating_bar(74, ("🟥", "🟧", "🟨"), "⬛") == "🟥🟧🟨🟥🟧🟨🟥⬛⬛⬛"
+
+
+def _last_embed(red_env: simcord.Env, channel: simcord.ChannelHandle) -> discord.Embed:
+    return _bot_messages(red_env, channel)[-1].embeds[0]
+
+
+@pytest.mark.asyncio
+async def test_a_rate_replies_with_a_topic_bar_and_stays_the_same_all_day(red_env: simcord.Env) -> None:
+    guild, allowed, _ = _world(red_env)
+    member = guild.add_member(red_env.create_user("member"))
+    await red_env.settle()
+
+    asked = await member.send(allowed, "stinky rate")
+    await member.send(allowed, "Stinky rate")
+
+    first, second = _bot_messages(red_env, allowed)
+    rating = daily_roll(member.id, "stinky")
+    expected = f"member is {rating}% stinky\n\n{rating_bar(rating, ('🟫',), '⬛')}  **{rating}%**"
+    assert first.embeds[0].description == second.embeds[0].description == expected
+    assert first.embeds[0].color == discord.Color(StinkyRate.color)
+    assert first.embeds[0].footer.text == "Rerolls at midnight UTC."
+    assert first.reference is not None and first.reference.message_id == asked.id
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_member_overrides_set_the_rating_and_colour(red_env: simcord.Env) -> None:
+    guild, allowed, _ = _world(red_env)
+    member = guild.add_member(red_env.create_user("member"))
+    await red_env.settle()
+
+    stinkiest = {"description": "{target} is the stinkiest.", "rating": 100}
+    with patch.dict(StinkyRate.user_overrides, {member.id: stinkiest}):
+        await member.send(allowed, "stinky rate")
+    assert _last_embed(red_env, allowed).description == f"member is the stinkiest.\n\n{'🟫' * 10}  **100%**"
+
+    with patch.dict(DimboRate.user_overrides, {member.id: DimboRate.dimbo_defaults}):
+        await member.send(allowed, "dimbo rate")
+    embed = _last_embed(red_env, allowed)
+    assert embed.title == "ERROR_CODE_4"
+    assert embed.description == "User is too DIMBO to calculate."
+    assert embed.color == discord.Color(0xFF0000)
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_dom_rate_shows_submissive_ratings_positive_and_no_bar_when_mysterious(red_env: simcord.Env) -> None:
+    guild, allowed, _ = _world(red_env)
+    member = guild.add_member(red_env.create_user("member"))
+    await red_env.settle()
+
+    with patch.object(DomRate, "get_role_rating", return_value=-0.5):
+        await member.send(allowed, "sub rate")
+    embed = _last_embed(red_env, allowed)
+    assert embed.title == "❯ Submissive"
+    assert embed.description == f"member is 50% Submissive.\n\n{'🩷' * 5}{'⬛' * 5}  **50%**"
+    assert embed.color == discord.Color(0xFF8FC8)
+
+    with patch.object(DomRate, "get_role_rating", return_value=0.0):
+        await member.send(allowed, "dom rate")
+    assert _last_embed(red_env, allowed).description == "member is 1000% mysterious..."
+    simcord.assert_no_errors(red_env)
+
+
+class Roleplay(commands.Cog):
+    """Stands in for the roleplay cog's counts."""
+
+    def __init__(self, counts: Counter[str] | None) -> None:
+        super().__init__()
+        self.counts = counts
+
+    async def action_counts(self, user_id: int) -> Counter[str] | None:
+        return self.counts
+
+
+class Unicornia(commands.Cog):
+    """Stands in for the Unicornia cog's balance API."""
+
+    async def get_balance(self, user_id: int) -> tuple[int, int]:
+        return 999, 1
+
+
+@pytest.mark.asyncio
+async def test_horny_rate_goes_by_roleplay_counts_and_falls_back_to_the_daily_roll(red_env: simcord.Env) -> None:
+    guild, allowed, _ = _world(red_env)
+    member = guild.add_member(red_env.create_user("member"))
+    await red_env.settle()
+    roleplay = Roleplay(Counter(fuck=3, hug=1))
+    await cast(Red, red_env.bot).add_cog(roleplay)
+
+    await member.send(allowed, "horny rate")
+    embed = _last_embed(red_env, allowed)
+    assert embed.title == "❯ Down Bad"
+    assert embed.description is not None and "75% horny" in embed.description
+    assert "🔥" * 8 + "⬛" * 2 in embed.description
+    assert embed.footer.text == "Calculated from roleplay stats."
+
+    roleplay.counts = None  # untracked
+    await member.send(allowed, "horny rate")
+    embed = _last_embed(red_env, allowed)
+    assert embed.description is not None and f"{daily_roll(member.id, 'horny')}% horny" in embed.description
+    assert embed.footer.text == "Rerolls at midnight UTC."
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_rich_rate_goes_by_the_unicornia_balance(red_env: simcord.Env) -> None:
+    guild, allowed, _ = _world(red_env)
+    member = guild.add_member(red_env.create_user("member"))
+    await red_env.settle()
+    await cast(Red, red_env.bot).add_cog(Unicornia())
+
+    await member.send(allowed, "rich rate")
+    embed = _last_embed(red_env, allowed)
+    assert embed.title == "❯ Comfortable"
+    assert embed.description is not None and embed.description.startswith("member is 50% rich.")
+    assert embed.footer.text == "Going by wallet + bank."
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_rates_command_lists_the_topics_and_channels(red_env: simcord.Env) -> None:
+    guild, allowed, _ = _world(red_env)
+    member = guild.add_member(red_env.create_user("member"))
+    await red_env.settle()
+
+    await member.send(allowed, "!rates")
+    description = _last_embed(red_env, allowed).description or ""
+    assert all(f"`{topic}`" in description for topic in ("stinky", "horny", "rich", "sub", "gremlin"))
+    assert "`default`" not in description
+    assert f"<#{allowed.id}>" in description
     simcord.assert_no_errors(red_env)

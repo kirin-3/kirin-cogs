@@ -59,7 +59,7 @@ Supporter roles and currency rewards from the Patreon API and Buy Me a Coffee we
 Create and manage user profiles with interactive modals and sticky messages, and score how well two members match with `[p]compat`.
 
 ### Responder
-Fun auto-responses in Unicornia's bot channels: `<topic> rate` embeds, "I'm ..." daddy jokes, long cat, The Game and table unflipping. Ported from the Unicornia repo (originally by Ruffiana). See [responder/README.md](responder/README.md).
+Fun auto-responses in Unicornia's bot channels: `<topic> rate` embeds with topic colours and bars (listed by `[p]rates`), "I'm ..." daddy jokes, long cat, The Game and table unflipping. Ported from the Unicornia repo (originally by Ruffiana). See [responder/README.md](responder/README.md).
 
 ### RoleLimit
 Keeps members to one role out of a set: the newest colour role, or the highest ranked role. Fork of jenjam's colourlimit and rolelimit. See [rolelimit/README.md](rolelimit/README.md).

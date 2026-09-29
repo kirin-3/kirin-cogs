@@ -18,13 +18,22 @@ from . import (
     rate_anything,
     rate_berry,
     rate_bottom,
+    rate_brat,
+    rate_clown,
     rate_cute,
     rate_dimbo,
     rate_dom,
     rate_emma,
     rate_fish,
     rate_gay,
+    rate_gremlin,
+    rate_horny,
+    rate_pet,
+    rate_rich,
+    rate_simp,
+    rate_sleepy,
     rate_stinky,
+    rate_sus,
 )
 from .base_text_responder import BaseTextResponder
 
@@ -51,13 +60,22 @@ class RateResponder(BaseTextResponder):
         self.rate_classes = {
             "bottom": rate_bottom.BottomRate(parent, bot),
             "berry": rate_berry.BerryRate(parent, bot),
+            "brat": rate_brat.BratRate(parent, bot),
+            "clown": rate_clown.ClownRate(parent, bot),
             "cute": rate_cute.CuteRate(parent, bot),
             "dimbo": rate_dimbo.DimboRate(parent, bot),
             "dom": rate_dom.DomRate(parent, bot),
             "emma": rate_emma.EmmaRate(parent, bot),
             "fish": rate_fish.FishRate(parent, bot),
             "gay": rate_gay.GayRate(parent, bot),
+            "gremlin": rate_gremlin.GremlinRate(parent, bot),
+            "horny": rate_horny.HornyRate(parent, bot),
+            "pet": rate_pet.PetRate(parent, bot),
+            "rich": rate_rich.RichRate(parent, bot),
+            "simp": rate_simp.SimpRate(parent, bot),
+            "sleepy": rate_sleepy.SleepyRate(parent, bot),
             "stinky": rate_stinky.StinkyRate(parent, bot),
+            "sus": rate_sus.SusRate(parent, bot),
         }
 
         # Default rate responder class

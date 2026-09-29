@@ -156,6 +156,7 @@ class BaseTextResponder(ABC):
         footer: str | None = None,
         as_reply: bool = False,
         delay: bool = False,
+        color: int | None = None,
         **kwargs,
     ):
         """Sends an embedded message to the specified Discord channel.
@@ -169,6 +170,7 @@ class BaseTextResponder(ABC):
             footer (bool, optional): Whether to include a footer in the embed. Defaults to False.
             as_reply (bool, optional): Whether to send the message as a reply. Defaults to False.
             delay (bool, optional): Whether to introduce a delay before sending the message. Defaults to False.
+            color (int, optional): The embed colour. Defaults to the bot's colour.
 
         Returns:
             None
@@ -176,7 +178,7 @@ class BaseTextResponder(ABC):
         embed = discord.Embed(
             title=title,
             description=description,
-            color=const.UNICORNIA_BOT_COLOR,
+            color=const.UNICORNIA_BOT_COLOR if color is None else color,
         )
         if footer:
             embed.set_footer(
@@ -196,7 +198,7 @@ class BaseTextResponder(ABC):
 
         if as_reply:
             try:
-                await message.reply(embed=embed, **kwargs)
+                await message.reply(embed=embed, mention_author=False, **kwargs)
             except discord.HTTPException as e:
                 self.parent.logger.error(f"Failed to send embed reply: {e}")
         else:

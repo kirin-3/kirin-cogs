@@ -10,21 +10,26 @@ from .base_rate_responder import BaseRateResponder
 class DimboRate(BaseRateResponder):
     title = "❯ Dimbo Rate"
     description = "{target} is {rating}% Dimbo"
+    color = 0xFF69B4
+    bar_full = ("🩷",)
+    bar_empty = "🤍"
 
     # dictionary of properties for the embed so we don't have to copy/paste
     # it a bunch of times
     dimbo_defaults = {
         "title": "ERROR_CODE_4",
-        "color": 16711680,
+        "color": 0xFF0000,
         "description": "User is too DIMBO to calculate.",
+        "rating": None,
     }
 
     user_overrides = {
         const.RUFFIANA_ID: dimbo_defaults,
         # Emma#8765
         532750893326663681: {
-            "description": "❯ {target} is the Dimbo! \nAlso not in charge.",
+            "description": "{target} is the Dimbo! \nAlso not in charge.",
             "thumbnail": r"https://cdn.discordapp.com/attachments/686096388018405408/765924143279112252/dimbo.png?size=1024&quality=lossless",
+            "rating": 100,
         },
         # girldicks (kira)
         614500671147999233: dimbo_defaults,

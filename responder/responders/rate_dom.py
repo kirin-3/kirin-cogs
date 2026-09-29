@@ -15,7 +15,6 @@ import re
 import discord
 
 from .. import const
-from ..unicornia import strings
 from .base_rate_responder import BaseRateResponder
 
 
@@ -25,36 +24,39 @@ class DomRate(BaseRateResponder):
     description = "{target} is 1000% mysterious..."
     thumbnail = r"https://cdn.discordapp.com/emojis/828672418318778398.gif"
     footer = "Results scientifically calculated based on member roles."
+    color = 0x607D8B
+    delay = True
+
+    dominant_properties = {
+        "title": "❯ Dominant",
+        "description": "{target} is {rating}% Dominant.",
+        "thumbnail": r"https://cdn.discordapp.com/emojis/695147901407592499.webp?size=128&quality=lossless",
+        "color": 0xB00020,
+        "bar_full": ("🟥",),
+    }
+    submissive_properties = {
+        "title": "❯ Submissive",
+        "description": "{target} is {rating}% Submissive.",
+        "thumbnail": r"https://cdn.discordapp.com/emojis/729249758715183144.webp?size=128&quality=lossless",
+        "color": 0xFF8FC8,
+        "bar_full": ("🩷",),
+    }
 
     user_overrides = {
-        const.KIRIN_ID: {
-            "title": "❯ Submissive",
-            "description": "❯ {target} is 690% Submissive.",
-            "thumbnail": r"https://cdn.discordapp.com/emojis/729249758715183144.webp?size=128&quality=lossless",
-        },
+        const.KIRIN_ID: {**submissive_properties, "rating": 690},
         const.RUFFIANA_ID: {
+            **submissive_properties,
             "title": "❯ Submissive Fuck Toy",
-            "description": "❯ {target} is 100% fuck toy.",
+            "description": "{target} is {rating}% fuck toy.",
             "thumbnail": r"https://cdn.discordapp.com/emojis/816087120526442506.webp?size=128&quality=lossless&animated=true",
+            "rating": 100,
         },
         # junny
-        89582933735665664: {
-            "title": "❯ Dominant",
-            "description": "❯ {target} is 666% Dominant.",
-            "thumbnail": r"https://cdn.discordapp.com/emojis/695147901407592499.webp?size=128&quality=lossless",
-        },
+        89582933735665664: {**dominant_properties, "rating": 666},
         # Maid ice:3
-        819276102325239840: {
-            "title": "❯ Submissive",
-            "description": "❯ {target} is 869% Submissive.",
-            "thumbnail": r"https://cdn.discordapp.com/emojis/729249758715183144.webp?size=128&quality=lossless",
-        },
+        819276102325239840: {**submissive_properties, "rating": 869},
         # berry
-        1058458210060751039: {
-            "title": "❯ Submissive",
-            "description": "❯ {target} is 666% Submissive.",
-            "thumbnail": r"https://cdn.discordapp.com/emojis/729249758715183144.webp?size=128&quality=lossless",
-        },
+        1058458210060751039: {**submissive_properties, "rating": 666},
     }
 
     SUB_ROLES = {
@@ -92,38 +94,17 @@ class DomRate(BaseRateResponder):
         811471307106942996: 0.50,
     }
 
-    dominant_properties = {
-        "title": "❯ Dominant",
-        "description": "{target} is {rating}% Dominant.",
-        "thumbnail": r"https://cdn.discordapp.com/emojis/695147901407592499.webp?size=128&quality=lossless",
-    }
-    submissive_properties = {
-        "title": "❯ Submissive",
-        "description": "{target} is {rating}% Submissive.",
-        "thumbnail": r"https://cdn.discordapp.com/emojis/729249758715183144.webp?size=128&quality=lossless",
-    }
-
     def get_role_rating(self, member: discord.Member) -> float:
-        # dom_total = sum(DOM_ROLES.values())
-        # sub_total = sum(SUB_ROLES.values())
-
-        dom_rating = sum(value for role, value in self.DOM_ROLES.items() if role in [r.id for r in member.roles])
-        sub_rating = sum(value for role, value in self.SUB_ROLES.items() if role in [r.id for r in member.roles])
-        rating = dom_rating - sub_rating
-
-        return rating
+        role_ids = {r.id for r in member.roles}
+        dom_rating = sum(value for role, value in self.DOM_ROLES.items() if role in role_ids)
+        sub_rating = sum(value for role, value in self.SUB_ROLES.items() if role in role_ids)
+        return dom_rating - sub_rating
 
     def get_property(self, property: str, member: discord.Member, rating: float):
         """Extends base class to include dominant/submissive properties."""
 
         if member.id in self.user_overrides:
-            value = self.user_overrides[member.id].get(property, getattr(self, property))
-            return value
-
-        for key in sorted(self.rating_overrides.keys(), reverse=True):
-            if rating >= key:
-                value = self.rating_overrides[key].get(property, getattr(self, property))
-                return value
+            return self.user_overrides[member.id].get(property, getattr(self, property))
 
         # get the property from dominant or submissive if rating if it exists
         if rating > 0.0:
@@ -133,30 +114,15 @@ class DomRate(BaseRateResponder):
 
         return getattr(self, property)
 
+    def display_rating(self, rating: float) -> float | None:
+        """Submissive ratings are negative; show them positive, and no bar for the mysterious 0."""
+        return abs(rating) or None
+
     async def respond(
         self,
         message: discord.Message,
         target: discord.Member,
         match: re.Match,
     ):
-        """Extends the base class method to handle dominant/submissive ratings."""
-        rating = self.get_role_rating(target)
-        title = self.get_title(target, rating)
-        description = self.get_description(target, rating)
-        footer = self.get_footer(target, rating)
-        thumbnail = self.get_thumbnail(target, rating)
-
-        # convert rating ratio to positive percentage for display#
-        rating = rating * 100 if rating > 0.0 else rating * -100
-        rating = round(rating)
-
-        description = strings.format_string(description, target=target.display_name, rating=rating)
-
-        await self.send_embed(
-            message,
-            title=title,
-            description=description,
-            thumbnail=thumbnail,
-            footer=footer,
-            delay=True,
-        )
+        """Rate from the member's roles instead of a daily roll."""
+        await self.send_rating(message, target, round(self.get_role_rating(target) * 100))
