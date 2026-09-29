@@ -142,3 +142,18 @@ async def test_member_site_gets_stats_and_top_pairs_as_ids(red_env: simcord.Env)
     await cog.set_toggle(1, "untracked", True)
     assert await cog.stats_for(1) == {"untracked": True}
     assert await cog.top_pairs() == []
+
+
+@pytest.mark.asyncio
+async def test_other_cogs_get_a_members_added_up_counts(red_env: simcord.Env) -> None:
+    cog = _cog(red_env)
+    await cog.tally.record(1, 2, "hug")
+    await cog.tally.record(2, 1, "hug")
+    await cog.tally.record(3, 1, "spank")
+    await cog.tally.record(2, 3, "kiss")
+
+    assert await cog.action_counts(1) == Counter(hug=2, spank=1)
+    assert await cog.action_counts(4) == Counter()
+
+    await cog.set_toggle(1, "untracked", True)
+    assert await cog.action_counts(1) is None

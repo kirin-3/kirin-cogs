@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections import Counter
 from pathlib import Path
 from typing import Annotated
 
@@ -125,6 +126,13 @@ class Roleplay(commands.Cog):
             "received_total": received.total(),
             "partners": partners.most_common(5),
         }
+
+    async def action_counts(self, user_id: int) -> Counter[str] | None:
+        """Every action the member gave or got, added up, for other cogs; None when they're untracked."""
+        if await self.is_untracked(user_id):
+            return None
+        given, received, _ = member_stats(await self.tally.pairs(), user_id)
+        return given + received
 
     async def top_pairs(self, limit: int = 10) -> list[dict]:
         """The busiest pairs on the server for the member site, as user IDs, with their top actions."""
