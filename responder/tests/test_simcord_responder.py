@@ -248,7 +248,7 @@ async def test_a_rate_replies_with_a_topic_bar_and_stays_the_same_all_day(red_en
     expected = f"member is {rating}% stinky\n\n{rating_bar(rating, ('🟫',), '⬛')}  **{rating}%**"
     assert first.embeds[0].description == second.embeds[0].description == expected
     assert first.embeds[0].color == discord.Color(StinkyRate.color)
-    assert first.embeds[0].footer.text == "Rerolls at midnight UTC."
+    assert first.embeds[0].footer.text is None
     assert first.reference is not None and first.reference.message_id == asked.id
     simcord.assert_no_errors(red_env)
 
@@ -329,7 +329,7 @@ async def test_horny_rate_goes_by_roleplay_counts_and_falls_back_to_the_daily_ro
     await member.send(allowed, "horny rate")
     embed = _last_embed(red_env, allowed)
     assert embed.description is not None and f"{daily_roll(member.id, 'horny')}% horny" in embed.description
-    assert embed.footer.text == "Rerolls at midnight UTC."
+    assert embed.footer.text is None
     simcord.assert_no_errors(red_env)
 
 

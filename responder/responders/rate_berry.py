@@ -15,7 +15,6 @@ from .base_rate_responder import BaseRateResponder
 
 class BerryRate(BaseRateResponder):
     title = "❯ Berry Rate"
-    footer = None  # a member's berry never changes
 
     berry_types = {
         "strawberry": {

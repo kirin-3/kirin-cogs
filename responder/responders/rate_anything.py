@@ -11,7 +11,7 @@ import re
 import discord
 
 from ..unicornia import web
-from .base_rate_responder import DAILY_FOOTER, BaseRateResponder, daily_roll
+from .base_rate_responder import BaseRateResponder, daily_roll
 
 log = logging.getLogger("red.kirin_cogs.responder.rate_anything")
 
@@ -60,5 +60,5 @@ class RateAnything(BaseRateResponder):
             title=f"❯ {title} Rate",
             description=f"{target.display_name} is {rating}% {topic}",
             thumbnail=thumbnail,
-            footer=f"Rating any topic is a supporter perk. {DAILY_FOOTER}",
+            footer="Rating any topic is a supporter perk.",
         )

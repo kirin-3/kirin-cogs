@@ -14,7 +14,6 @@ from .base_rate_responder import BaseRateResponder
 class CuteRate(BaseRateResponder):
     title = "❯ Cute Rate"
     description = "{target} is {rating}% cute"
-    footer = None
     color = 0xFF8FC8
     bar_full = ("💗",)
     bar_empty = "🤍"

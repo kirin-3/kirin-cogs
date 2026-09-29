@@ -8,7 +8,7 @@ Embed properties (class attributes):
     title: str = "[RATE]"
     description: str = "{target} is {rating}%"
     thumbnail: str = None (the target's avatar)
-    footer: str = DAILY_FOOTER
+    footer: str = None
     color: int = the bot's embed colour
     bar_full: tuple[str, ...] = ("🟪",)  (cycled, so several emojis make a pattern)
     bar_empty: str = "⬛"
@@ -43,7 +43,6 @@ from .. import const
 from ..unicornia import strings
 from .base_text_responder import BaseTextResponder
 
-DAILY_FOOTER = "Rerolls at midnight UTC."
 EMBED_PROPERTIES = ("title", "description", "thumbnail", "footer", "color", "bar_full", "bar_empty")
 
 
@@ -64,7 +63,7 @@ class BaseRateResponder(BaseTextResponder):
     title: str = "[RATE]"
     description: str = "{target} is {rating}%"
     thumbnail: str | None = None
-    footer: str | None = DAILY_FOOTER
+    footer: str | None = None
     color: int = const.UNICORNIA_BOT_COLOR
     bar_full: tuple[str, ...] = ("🟪",)
     bar_empty: str = "⬛"
