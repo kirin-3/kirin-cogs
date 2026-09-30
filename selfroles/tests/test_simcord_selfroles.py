@@ -29,8 +29,28 @@ def _role_ids(actor: simcord.MemberActor) -> set[int]:
     return {role.id for role in actor.member.roles}
 
 
+def _components(message: discord.Message) -> list[object]:
+    """Every component of the message, nested ones included."""
+    found: list[object] = []
+    stack: list[object] = list(message.components)
+    while stack:
+        component = stack.pop(0)
+        found.append(component)
+        stack.extend(getattr(component, "children", None) or [])
+    return found
+
+
 def _texts(message: discord.Message) -> str:
-    return "\n".join(str(component) for component in message.components)
+    return "\n".join(c.content for c in _components(message) if isinstance(c, discord.components.TextDisplay))
+
+
+def _options(message: discord.Message) -> list[discord.SelectOption]:
+    """The options of the menu's dropdown; [] when it has none."""
+    return next((c.options for c in _components(message) if isinstance(c, discord.SelectMenu)), [])
+
+
+def _latest(channel: simcord.ChannelHandle, message_id: int) -> discord.Message:
+    return next(m for m in channel.history() if m.id == message_id)
 
 
 @pytest.mark.asyncio
@@ -155,11 +175,15 @@ async def test_roles_with_moderator_permissions_are_refused_and_stop_being_hande
     [shown] = await cog.overview(bot_guild, owner.member)
     assert not {choice["id"] for choice in shown["choices"]} & {mod.id, single.id, guild.id}
     assert shown["channel"] == "#roles" and shown["url"].endswith(f"/{channel.id}/{menu.id}")
-    assert shown["roles"] == [{"id": single.id, "name": "Single", "emoji": "", "problem": None}]
+    assert shown["roles"] == [{"id": single.id, "name": "Single", "emoji": "", "note": "", "problem": None}]
 
     await cast(discord.Role, bot_guild.get_role(single.id)).edit(permissions=discord.Permissions(ban_members=True))
     await red_env.settle()
-    await member.select(menu, [str(single.id)], custom_id=f"selfroles:pick:{category_id}")
+    assert _options(_latest(channel, menu.id)) == []  # the posted menu dropped it at once
+    # and a pick that still names it (a menu Discord wouldn't let the bot update) doesn't hand it out
+    assert member.member is not None
+    category = (await cog.categories(bot_guild))[category_id]
+    assert await cog.apply(member.member, category, [single.id]) == "You have no Relation roles."
     assert single.id not in _role_ids(member)
     [shown] = await cog.overview(bot_guild, owner.member)
     assert shown["roles"][0]["problem"] == "Single has moderator permissions (ban members)."
@@ -188,4 +212,47 @@ async def test_staff_can_only_add_roles_below_their_own_top_role(red_env: simcor
     assert above.id not in {choice["id"] for choice in shown["choices"]}
     await helper.send(channel, "!selfroles create 1 Other")
     assert isinstance(red_env.errors.pop(), commands.CheckFailure)  # creating is for admins
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_notes_and_emojis_change_in_place_and_menus_follow_role_changes(red_env: simcord.Env) -> None:
+    owner_user = red_env.create_user("owner")
+    guild = red_env.create_guild(owner=owner_user)
+    owner = guild.add_member(owner_user)
+    daddy, sir = guild.create_role("Daddy"), guild.create_role("Sir")
+    channel, space = guild.create_text_channel("roles"), guild.create_text_channel("little-space")
+    await red_env.settle()
+    bot_guild = cast(discord.Guild, red_env.bot.get_guild(guild.id))
+    await owner.send(channel, "!selfroles create 9 Dominant Titles")
+    await owner.send(channel, f'!selfroles addrole "Dominant Titles" {daddy.id}')
+    await owner.send(channel, f'!selfroles addrole "Dominant Titles" {sir.id} 👔')
+    await owner.send(channel, '!selfroles post "Dominant Titles"')
+    menu = channel.last_message
+    assert menu is not None
+
+    await owner.send(channel, f'!selfroles note "Dominant Titles" {daddy.id} Opens <#{space.id}>')
+    await owner.send(channel, f'!selfroles emoji "Dominant Titles" {sir.id} 🎩')
+    now = _latest(channel, menu.id)
+    assert f"<@&{daddy.id}>\n-# Opens <#{space.id}>" in _texts(now)
+    assert [(o.label, o.description, str(o.emoji) if o.emoji else None) for o in _options(now)] == [
+        ("Daddy", "Opens #little-space", None),
+        ("Sir", None, "🎩"),
+    ]
+    await owner.send(channel, f'!selfroles note "Dominant Titles" {daddy.id} {"x" * 101}')
+    reply = channel.last_message
+    assert reply is not None and reply.content == "A note can be at most 100 characters."
+
+    await cast(discord.Role, bot_guild.get_role(sir.id)).edit(name="Sir Knight")
+    await red_env.settle()
+    assert [o.label for o in _options(_latest(channel, menu.id))] == ["Daddy", "Sir Knight"]
+
+    await cast(discord.Role, bot_guild.get_role(sir.id)).edit(permissions=discord.Permissions(kick_members=True))
+    await red_env.settle()
+    assert [o.label for o in _options(_latest(channel, menu.id))] == ["Daddy"]
+
+    await cast(discord.Role, bot_guild.get_role(daddy.id)).delete()
+    await red_env.settle()
+    now = _latest(channel, menu.id)
+    assert _options(now) == [] and "No roles yet." in _texts(now)
     simcord.assert_no_errors(red_env)

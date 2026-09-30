@@ -95,8 +95,9 @@ The pages answer 503 while the Roleplay cog isn't loaded.
 ## Self roles page
 
 `/selfroles` on the staff site lists the SelfRoles cog's categories: the pick limit, where the menu is posted (a link to
-the message), and each role with its emoji. Staff can add a role, with an optional emoji (`❤️`, or `:name:` for one of
-the server's emojis), and remove one. The cog updates the posted menu at once; members keep a role that is taken off.
+the message), and each role with its emoji and note. Staff can add a role, with an optional emoji (`❤️`, or `:name:`
+for one of the server's emojis) and note; change a role's emoji and note in place (Edit), keeping its spot on the menu;
+and remove one. The cog updates the posted menu at once; members keep a role that is taken off.
 The role list only offers roles the staff member may add: below their top role and the bot's, without moderator
 permissions. A role on a menu that no longer passes those checks, or was deleted, is marked "Not offered". The cog
 checks every change again, and a refused one comes back under its category with the reason and 400. Categories are

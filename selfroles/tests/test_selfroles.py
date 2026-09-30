@@ -6,7 +6,17 @@ from typing import Any, cast
 
 import pytest
 
-from selfroles.selfroles import MAX_OPTIONS, SelfRoles, banner_type, clean_category, is_unicode_emoji, limit_text
+from selfroles.selfroles import (
+    MAX_NOTE,
+    MAX_OPTIONS,
+    SelfRoles,
+    banner_type,
+    clean_category,
+    clean_note,
+    is_unicode_emoji,
+    limit_text,
+    plain_note,
+)
 
 
 @pytest.mark.parametrize("text", ["❤️", "🤍", "🏳️‍⚧️", "🇪🇺", "1️⃣", "*️⃣", "♀", "👩🏽", "🛋️"])
@@ -38,10 +48,31 @@ def test_malformed_config_is_cleaned_up() -> None:
         "message_id": None,
         "banner": None,
     }
-    raw = {"name": "Age", "max": MAX_OPTIONS + 1, "roles": [{"id": 5, "emoji": 3}, {"id": 5}, {"id": "6"}, "x"]}
+    raw = {
+        "name": "Age",
+        "max": MAX_OPTIONS + 1,
+        "roles": [{"id": 5, "emoji": 3, "note": None}, {"id": 5}, {"id": "6"}, "x", {"id": 7, "note": "n" * 150}],
+    }
     category = clean_category(raw)
-    assert category is not None
-    assert category["roles"] == [{"id": 5, "emoji": ""}] and category["max"] == 1
+    assert category is not None and category["max"] == 1
+    assert category["roles"] == [{"id": 5, "emoji": "", "note": ""}, {"id": 7, "emoji": "", "note": "n" * MAX_NOTE}]
+
+
+def test_notes_are_one_line_and_at_most_100_characters() -> None:
+    assert clean_note("  Opens\n the   Chastity channel ") == "Opens the Chastity channel"
+    assert clean_note("") == ""
+    assert clean_note("x" * MAX_NOTE) == "x" * MAX_NOTE
+    with pytest.raises(ValueError, match="at most 100"):
+        clean_note("x" * (MAX_NOTE + 1))
+
+
+def test_the_dropdown_shows_channel_mentions_as_names() -> None:
+    little = SimpleNamespace(name="little-space")
+    guild = cast(Any, SimpleNamespace(get_channel_or_thread=lambda i: little if i == 123456789012345678 else None))
+
+    assert plain_note(guild, "Opens <#123456789012345678>") == "Opens #little-space"
+    assert plain_note(guild, "Opens <#999999999999999999>") == "Opens #deleted-channel"
+    assert plain_note(guild, "Ping me for **events**") == "Ping me for **events**"
 
 
 def test_custom_emoji_by_name_or_code_must_be_one_the_bot_can_use() -> None:

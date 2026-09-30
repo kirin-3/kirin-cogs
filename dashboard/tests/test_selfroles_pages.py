@@ -20,6 +20,7 @@ class _FakeSelfRoles:
     def __init__(self) -> None:
         self.added: list[tuple[Any, ...]] = []
         self.removed: list[tuple[int, int]] = []
+        self.edited: list[tuple[Any, ...]] = []
         self.refuse: str | None = None
         self.categories = [
             {
@@ -27,8 +28,14 @@ class _FakeSelfRoles:
                 "name": "Orientation",
                 "limit": "Pick up to 3.",
                 "roles": [
-                    {"id": 11, "name": "Straight", "emoji": "❤️", "problem": None},
-                    {"id": 12, "name": "", "emoji": "<:bi:123456789012345678>", "problem": "This role was deleted."},
+                    {"id": 11, "name": "Straight", "emoji": "❤️", "note": '<b>"Hi"</b>', "problem": None},
+                    {
+                        "id": 12,
+                        "name": "",
+                        "emoji": "<:bi:123456789012345678>",
+                        "note": "",
+                        "problem": "This role was deleted.",
+                    },
                 ],
                 "full": False,
                 "channel": "#roles",
@@ -51,12 +58,19 @@ class _FakeSelfRoles:
         assert editor.id == STAFF
         return self.categories
 
-    async def add_role(self, guild: Any, editor: Any, category_id: int, role: Any, emoji: str) -> None:
+    async def add_role(self, guild: Any, editor: Any, category_id: int, role: Any, emoji: str, note: str) -> None:
         if category_id not in (1, 2):
             raise LookupError(category_id)
         if self.refuse:
             raise ValueError(self.refuse)
-        self.added.append((editor.id, category_id, role.id, emoji))
+        self.added.append((editor.id, category_id, role.id, emoji, note))
+
+    async def edit_role(self, guild: Any, category_id: int, role_id: int, *, emoji: str, note: str) -> None:
+        if category_id not in (1, 2):
+            raise LookupError(category_id)
+        if self.refuse:
+            raise ValueError(self.refuse)
+        self.edited.append((category_id, role_id, emoji, note))
 
     async def remove_role(self, guild: Any, category_id: int, role_id: int) -> None:
         if category_id not in (1, 2):
@@ -106,10 +120,35 @@ async def test_staff_see_each_category_with_its_roles_and_what_they_can_add(
 async def test_adding_a_role_hands_it_to_the_cog_and_returns_to_the_category(
     ms: SimpleNamespace, sr: _FakeSelfRoles
 ) -> None:
-    response = await _post(ms, "/selfroles/1/roles", {"role": str(ROLE_ID), "emoji": " :gay: "})
+    response = await _post(ms, "/selfroles/1/roles", {"role": str(ROLE_ID), "emoji": " :gay: ", "note": "Hi"})
+    no_note = await _post(ms, "/selfroles/2/roles", {"role": str(ROLE_ID)})
 
     assert (response.status, response.headers["Location"]) == (302, "/selfroles#category-1")
-    assert sr.added == [(STAFF, 1, ROLE_ID, " :gay: ")]
+    assert no_note.status == 302
+    assert sr.added == [(STAFF, 1, ROLE_ID, " :gay: ", "Hi"), (STAFF, 2, ROLE_ID, "", "")]
+
+
+@pytest.mark.asyncio
+async def test_each_role_has_an_edit_form_with_its_emoji_and_note(ms: SimpleNamespace, sr: _FakeSelfRoles) -> None:
+    page = await (await ms.staff.get("/selfroles", headers=_staff(ms))).text()
+
+    assert "<small>&lt;b&gt;&#34;Hi&#34;&lt;/b&gt;</small>" in page  # the note, escaped
+    assert 'action="/selfroles/1/roles/11" class="editor"' in page
+    assert 'name="emoji" value="❤️"' in page and 'name="note" value="&lt;b&gt;&#34;Hi&#34;&lt;/b&gt;"' in page
+
+
+@pytest.mark.asyncio
+async def test_editing_a_role_hands_the_emoji_and_note_to_the_cog(ms: SimpleNamespace, sr: _FakeSelfRoles) -> None:
+    saved = await _post(ms, "/selfroles/1/roles/11", {"emoji": "💖", "note": "Opens #little-space"})
+    cleared = await _post(ms, "/selfroles/1/roles/11")
+    missing = await _post(ms, "/selfroles/7/roles/11", {"emoji": "💖"})
+    sr.refuse = "A note can be at most 100 characters."
+    refused = await _post(ms, "/selfroles/1/roles/11", {"note": "x" * 101})
+
+    assert (saved.status, saved.headers["Location"]) == (302, "/selfroles#category-1")
+    assert cleared.status == 302 and missing.status == 404
+    assert refused.status == 400 and "A note can be at most 100 characters." in await refused.text()
+    assert sr.edited == [(1, 11, "💖", "Opens #little-space"), (1, 11, "", "")]
 
 
 @pytest.mark.asyncio

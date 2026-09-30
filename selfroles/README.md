@@ -1,8 +1,8 @@
 # SelfRoles
 
 Dropdown menus where members pick their own roles, replacing reaction roles. Each category is one message: its banner,
-then a card with the heading ("Pick one." or "Pick up to 3."), the roles with their emoji, a dropdown and a Clear
-button.
+then a card with the heading ("Pick one." or "Pick up to 3."), the roles with their emoji and note, a dropdown and a
+Clear button.
 
 - Picking sets the member's roles in that category to exactly what they chose; Clear removes them all. The bot answers
   with a message only they can see.
@@ -10,6 +10,10 @@ button.
 - The menus keep working after a restart, and always use the category as it is now.
 - Nobody is pinged: the role list shows role tags, but every post and edit goes out with mentions turned off.
 - Members keep their roles when a role is taken off a menu or a category is deleted.
+- A role can have a note of up to 100 characters, such as "Opens #little-chat". It shows in small text under the role in
+  the list and under the option in the dropdown. A channel mention is a link in the list and `#name` in the dropdown.
+- Posted menus keep up with the server: when a role on a menu is renamed or deleted, or gains or loses a moderator
+  permission or its place below the bot, the menu is updated. Moving roles around otherwise leaves the menus alone.
 
 ## Which roles can go on a menu
 
@@ -31,6 +35,8 @@ ID, not as an @mention: a mention in your command message pings everyone who has
 | `[p]selfroles list` | Every category, its roles and where it is posted |
 | `[p]selfroles create <max picks> <name>` | Create a category where members may pick up to that many roles |
 | `[p]selfroles addrole <name> <role> [emoji]` | Add a role, with an optional emoji |
+| `[p]selfroles note <name> <role> [note]` | Set a role's note, or clear it when none is given |
+| `[p]selfroles emoji <name> <role> [emoji]` | Change a role's emoji, or clear it when none is given |
 | `[p]selfroles removerole <name> <role>` | Take a role off |
 | `[p]selfroles limit <max picks> <name>` | Change the pick limit |
 | `[p]selfroles banner <name>` | Set the banner from the attached image (PNG, JPEG, GIF or WebP, up to 8 MB), or remove it when nothing is attached |

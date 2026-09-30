@@ -15,6 +15,12 @@ if TYPE_CHECKING:
     from .dashboard import Dashboard
 
 MAX_EMOJI = 64
+MAX_NOTE = 1000  # the cog refuses more than 100; this only bounds what is read
+
+
+def _field(form: Any, name: str, limit: int) -> str:
+    value = form.get(name, "")
+    return value[:limit] if isinstance(value, str) else ""
 
 
 class StaffSelfRoles:
@@ -25,6 +31,7 @@ class StaffSelfRoles:
         category, role = r"{category_id:\d{1,18}}", r"{role_id:\d{1,20}}"
         app.router.add_get("/selfroles", self.page)
         app.router.add_post(f"/selfroles/{category}/roles", self.add)
+        app.router.add_post(f"/selfroles/{category}/roles/{role}", self.edit)
         app.router.add_post(f"/selfroles/{category}/roles/{role}/delete", self.remove)
 
     def _selfroles(self, request: web.Request) -> tuple[discord.Guild, discord.Member, Any]:
@@ -70,10 +77,16 @@ class StaffSelfRoles:
         if role is None:
             error = "Choose a role to add."
             return await self.page(request, error=error, error_for=int(request.match_info["category_id"]), status=400)
-        emoji = str(form.get("emoji", ""))[:MAX_EMOJI]
-        return await self._done(
-            request, selfroles.add_role(guild, editor, int(request.match_info["category_id"]), role, emoji)
-        )
+        category_id = int(request.match_info["category_id"])
+        emoji, note = _field(form, "emoji", MAX_EMOJI), _field(form, "note", MAX_NOTE)
+        return await self._done(request, selfroles.add_role(guild, editor, category_id, role, emoji, note))
+
+    async def edit(self, request: web.Request) -> web.StreamResponse:
+        guild, _editor, selfroles = self._selfroles(request)
+        form = await request.post()
+        category_id, role_id = int(request.match_info["category_id"]), int(request.match_info["role_id"])
+        emoji, note = _field(form, "emoji", MAX_EMOJI), _field(form, "note", MAX_NOTE)
+        return await self._done(request, selfroles.edit_role(guild, category_id, role_id, emoji=emoji, note=note))
 
     async def remove(self, request: web.Request) -> web.StreamResponse:
         guild, _editor, selfroles = self._selfroles(request)

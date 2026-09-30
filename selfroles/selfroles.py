@@ -31,11 +31,13 @@ log = logging.getLogger("red.kirin_cogs.selfroles")
 
 MAX_OPTIONS = 25  # Discord's limit for one dropdown
 MAX_NAME = 80
+MAX_NOTE = 100  # Discord's limit for the text under a dropdown option
 BANNER_MAX_BYTES = 8 * 1024 * 1024
 ACCENT = discord.Colour(0x9D4EDD)
 NO_PINGS = discord.AllowedMentions.none()
 CUSTOM_EMOJI = re.compile(r"<a?:\w{2,32}:(\d{15,21})>")
 EMOJI_NAME = re.compile(r":(\w{2,32}):")
+CHANNEL_MENTION = re.compile(r"<#(\d{15,21})>")
 # A self-assigned role must not carry any of these.
 BLOCKED_PERMISSIONS = discord.Permissions.elevated() | discord.Permissions(
     mention_everyone=True,
@@ -66,7 +68,14 @@ def clean_category(raw: object) -> dict[str, Any] | None:
     entries = raw.get("roles")
     for entry in entries if isinstance(entries, list) else []:
         if isinstance(entry, dict) and _is_id(entry.get("id")) and entry["id"] not in {r["id"] for r in roles}:
-            roles.append({"id": entry["id"], "emoji": entry["emoji"] if isinstance(entry.get("emoji"), str) else ""})
+            emoji, note = entry.get("emoji"), entry.get("note")
+            roles.append(
+                {
+                    "id": entry["id"],
+                    "emoji": emoji if isinstance(emoji, str) else "",
+                    "note": note[:MAX_NOTE] if isinstance(note, str) else "",
+                }
+            )
     max_picks = raw.get("max")
     return {
         "name": raw["name"],
@@ -124,6 +133,24 @@ def editor_problem(editor: discord.Member, role: discord.Role) -> str | None:
 
 def limit_text(max_picks: int) -> str:
     return "Pick one." if max_picks == 1 else f"Pick up to {max_picks}."
+
+
+def clean_note(text: str) -> str:
+    """A note as stored: one line, at most MAX_NOTE characters."""
+    note = " ".join(text.split())
+    if len(note) > MAX_NOTE:
+        raise ValueError(f"A note can be at most {MAX_NOTE} characters.")
+    return note
+
+
+def plain_note(guild: discord.Guild, note: str) -> str:
+    """The note for the dropdown, which shows text as it is: channel mentions become #name."""
+
+    def channel(match: re.Match[str]) -> str:
+        found = guild.get_channel_or_thread(int(match[1]))
+        return f"#{found.name}" if found else "#deleted-channel"
+
+    return CHANNEL_MENTION.sub(channel, note)[:MAX_NOTE]
 
 
 class PickSelect(ui.DynamicItem[ui.Select], template=r"selfroles:pick:(?P<id>\d+)"):
@@ -231,9 +258,7 @@ class SelfRoles(commands.Cog):
             for entry in category["roles"]:
                 role = guild.get_role(entry["id"])
                 problem = role_problem(guild, role) if role else "This role was deleted."
-                roles.append(
-                    {"id": entry["id"], "name": role.name if role else "", "emoji": entry["emoji"], "problem": problem}
-                )
+                roles.append({**entry, "name": role.name if role else "", "problem": problem})
             channel = guild.get_channel_or_thread(category["channel_id"] or 0)
             posted = channel is not None and category["message_id"] is not None
             shown.append(
@@ -279,19 +304,27 @@ class SelfRoles(commands.Cog):
                 files.append(discord.File(BytesIO(data), filename=name))
                 view.add_item(ui.MediaGallery(discord.MediaGalleryItem(f"attachment://{name}")))
 
-        roles = [(guild.get_role(entry["id"]), entry["emoji"]) for entry in category["roles"]]
-        usable = [(role, emoji) for role, emoji in roles if role is not None and role_problem(guild, role) is None]
+        usable = []
+        for entry in category["roles"]:
+            role = guild.get_role(entry["id"])
+            if role is not None and role_problem(guild, role) is None:
+                usable.append((role, entry))
         card = ui.Container(accent_colour=ACCENT)
         card.add_item(ui.TextDisplay(f"## {category['name']}\n{limit_text(category['max'])}"))
         if usable:
-            card.add_item(
-                ui.TextDisplay(
-                    "\n\n".join(f"{emoji} : {role.mention}" if emoji else role.mention for role, emoji in usable)
-                )
-            )
+            lines = []
+            for role, entry in usable:
+                line = f"{entry['emoji']} : {role.mention}" if entry["emoji"] else role.mention
+                lines.append(f"{line}\n-# {entry['note']}" if entry["note"] else line)
+            card.add_item(ui.TextDisplay("\n\n".join(lines)))
             options = [
-                discord.SelectOption(label=role.name[:100], value=str(role.id), emoji=emoji or None)
-                for role, emoji in usable
+                discord.SelectOption(
+                    label=role.name[:100],
+                    value=str(role.id),
+                    emoji=entry["emoji"] or None,
+                    description=plain_note(guild, entry["note"]) or None,
+                )
+                for role, entry in usable
             ]
             card.add_item(ui.ActionRow().add_item(PickSelect(category_id, options, min(category["max"], len(options)))))
             card.add_item(ui.ActionRow().add_item(ClearButton(category_id)))
@@ -371,11 +404,17 @@ class SelfRoles(commands.Cog):
             await asyncio.to_thread(self.banner_path(guild, category_id, category["banner"]).unlink, True)
 
     async def add_role(
-        self, guild: discord.Guild, editor: discord.Member, category_id: int, role: discord.Role, emoji: str
+        self,
+        guild: discord.Guild,
+        editor: discord.Member,
+        category_id: int,
+        role: discord.Role,
+        emoji: str,
+        note: str = "",
     ) -> None:
         if problem := role_problem(guild, role) or editor_problem(editor, role):
             raise ValueError(problem)
-        emoji = self.clean_emoji(guild, emoji)
+        emoji, note = self.clean_emoji(guild, emoji), clean_note(note)
         # One menu per role: Clear on one menu would otherwise take away a role picked on another.
         for other in (await self.categories(guild)).values():
             if any(entry["id"] == role.id for entry in other["roles"]):
@@ -384,7 +423,25 @@ class SelfRoles(commands.Cog):
         def change(category: dict[str, Any]) -> None:
             if len(category["roles"]) >= MAX_OPTIONS:
                 raise ValueError(f"A menu holds at most {MAX_OPTIONS} roles.")
-            category["roles"].append({"id": role.id, "emoji": emoji})
+            category["roles"].append({"id": role.id, "emoji": emoji, "note": note})
+
+        await self._change(guild, category_id, change)
+
+    async def edit_role(
+        self, guild: discord.Guild, category_id: int, role_id: int, *, emoji: str | None = None, note: str | None = None
+    ) -> None:
+        """Change a role's emoji or note in place, keeping its spot on the menu. None leaves it as it is; "" clears it."""
+        changes = {}
+        if emoji is not None:
+            changes["emoji"] = self.clean_emoji(guild, emoji)
+        if note is not None:
+            changes["note"] = clean_note(note)
+
+        def change(category: dict[str, Any]) -> None:
+            entry = next((entry for entry in category["roles"] if entry["id"] == role_id), None)
+            if entry is None:
+                raise ValueError(f"That role isn't in {category['name']}.")
+            entry.update(changes)
 
         await self._change(guild, category_id, change)
 
@@ -465,6 +522,32 @@ class SelfRoles(commands.Cog):
             return text
         raise ValueError("That isn't an emoji. Use one emoji, like ❤️ or one from this server.")
 
+    # --- keeping posted menus current -----------------------------------------------------------
+
+    @commands.Cog.listener()
+    async def on_guild_role_update(self, before: discord.Role, after: discord.Role) -> None:
+        """A menu shows role names and leaves out roles it may not hand out, so it follows renames and changes that
+        make a role (un)fit to hand out. A reorder that changes neither leaves the menus alone."""
+        guild = after.guild
+        if before.name == after.name and (role_problem(guild, before) is None) == (role_problem(guild, after) is None):
+            return
+        await self._refresh_menus_with(after)
+
+    @commands.Cog.listener()
+    async def on_guild_role_delete(self, role: discord.Role) -> None:
+        await self._refresh_menus_with(role)
+
+    async def _refresh_menus_with(self, role: discord.Role) -> None:
+        guild = role.guild
+        if await self.bot.cog_disabled_in_guild(self, guild):
+            return
+        for category_id, category in (await self.categories(guild)).items():
+            if category["message_id"] and any(entry["id"] == role.id for entry in category["roles"]):
+                try:
+                    await self._change(guild, category_id, lambda _: None)
+                except (LookupError, ValueError):
+                    log.warning("Could not update self-role menu %s in %s", category_id, guild.id, exc_info=True)
+
     # --- picking --------------------------------------------------------------------------------
 
     async def apply(self, member: discord.Member, category: dict[str, Any], chosen: list[int]) -> str:
@@ -533,9 +616,12 @@ class SelfRoles(commands.Cog):
             channel = ctx.guild.get_channel_or_thread(category["channel_id"] or 0)
             where = f"posted in #{channel.name}" if channel and category["message_id"] else "not posted"
             names = [
-                f"{entry['emoji']} {role.name}".strip()
-                if (role := ctx.guild.get_role(entry["id"]))
-                else "(deleted role)"
+                (
+                    f"{entry['emoji']} {role.name}".strip()
+                    if (role := ctx.guild.get_role(entry["id"]))
+                    else "(deleted role)"
+                )
+                + (f" ({entry['note']})" if entry["note"] else "")
                 for entry in category["roles"]
             ]
             lines.append(
@@ -613,6 +699,23 @@ class SelfRoles(commands.Cog):
             await self._run(
                 ctx, f"Added {role.name} to {name}.", self.add_role(ctx.guild, ctx.author, category_id, role, emoji)
             )
+
+    @selfroles.command(name="note")
+    async def selfroles_note(self, ctx: commands.Context, name: str, role: discord.Role, *, note: str = "") -> None:
+        """Set the note shown under a role on a menu, or clear it with no note (put the name in quotes if it has
+        spaces). Up to 100 characters; a #channel mention shows as a link in the list."""
+        assert ctx.guild is not None
+        if (category_id := await self._find_or_say(ctx, name)) is not None:
+            done = f"Set the note for {role.name}." if note.strip() else f"Cleared the note for {role.name}."
+            await self._run(ctx, done, self.edit_role(ctx.guild, category_id, role.id, note=note))
+
+    @selfroles.command(name="emoji")
+    async def selfroles_emoji(self, ctx: commands.Context, name: str, role: discord.Role, emoji: str = "") -> None:
+        """Change a role's emoji on a menu, or clear it with no emoji (put the name in quotes if it has spaces)."""
+        assert ctx.guild is not None
+        if (category_id := await self._find_or_say(ctx, name)) is not None:
+            done = f"Set the emoji for {role.name}." if emoji.strip() else f"Cleared the emoji for {role.name}."
+            await self._run(ctx, done, self.edit_role(ctx.guild, category_id, role.id, emoji=emoji))
 
     @selfroles.command(name="removerole")
     async def selfroles_removerole(self, ctx: commands.Context, name: str, role: discord.Role) -> None:
