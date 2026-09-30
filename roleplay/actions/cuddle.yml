@@ -1,6 +1,7 @@
 aliases:
     - cuddles
     - cuddlewith
+    - snuggle
 help: "Cuddle a user."
 description: "{invoker_member} is cuddling with {target_member}."
 consent:
