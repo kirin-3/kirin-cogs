@@ -66,7 +66,9 @@ action's **Default** pool (untagged, `mlw` and `wlm` gifs, the ones the bot pick
 and `/gifs/{action}/wlw` and `/gifs/{action}/mlm` the other two, 5 gifs a page by file name (`?page=N`, clamped to the
 last page). The pages read the images folder each time, so a file change shows on the next load. Gifs are served by
 `/gifs/{action}/file/{name}`, which only serves a name found in that action's folder (the cog looks it up in the
-folder's listing; the name is never joined onto a path), and a browser may keep them for a day, privately.
+folder's listing; the name is never joined onto a path), and a browser may keep them for a day, privately. Members
+aren't shown file names (only staff are, on the Gif votes page), and a gif with `eros` in its file name gets a small AI
+badge; the Roleplay cog decides which, so the image address and the vote form still carry the name.
 
 - **Voting.** Each gif has a thumbs up and a thumbs down. Each is a plain form (`POST /gifs/vote`) that saves the vote
   and returns to the same page and gif; pressing the thumb you chose takes the vote back. With scripts, `site.js`

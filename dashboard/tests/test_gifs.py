@@ -50,6 +50,7 @@ class _FakeRoleplay:
         self.uploaders = {ACTIVE, INACTIVE}
         self.gifs: dict[tuple[str, str], list[str]] = {}
         self.mine: dict[str, int] = {}
+        self.ai: set[str] = set()
         self.pages = 3
         self.page_requests: list[tuple[str, str, int, int]] = []
         self.votes: list[tuple[int, str, str, int]] = []
@@ -71,7 +72,8 @@ class _FakeRoleplay:
             raise LookupError(action)
         self.page_requests.append((action, pool, user_id, page))
         names = self.gifs.get((action, pool), [])
-        return {"gifs": [{"name": n, "mine": self.mine.get(n, 0)} for n in names], "page": page, "pages": self.pages}
+        gifs = [{"name": n, "mine": self.mine.get(n, 0), "ai": n in self.ai} for n in names]
+        return {"gifs": gifs, "page": page, "pages": self.pages}
 
     async def gif_path(self, action: str, name: str) -> Path | None:
         path = self.folder / action / name
@@ -240,12 +242,51 @@ async def test_each_pool_has_its_own_page_with_tabs_and_the_gifs_the_cog_returne
     assert mlm_status == 200 and "No gifs here yet." in mlm
     for page in (default, wlw, mlm):
         assert 'href="/gifs/bite"' in page and 'href="/gifs/bite/wlw"' in page and 'href="/gifs/bite/mlm"' in page
-    assert 'src="/gifs/bite/file/bite_a.gif" alt="bite_a.gif" loading="lazy"' in default
+    assert 'src="/gifs/bite/file/bite_a.gif" alt="Bite gif 1" loading="lazy"' in default
     assert rp.page_requests[:3] == [
         ("bite", "default", REGULAR, 1),
         ("bite", "wlw", REGULAR, 1),
         ("bite", "mlm", REGULAR, 1),
     ]
+
+
+def _visible_text(page: str) -> str:
+    """The page as a reader sees it: no tags, so no attributes such as the image address or alt text."""
+    return re.sub(r"<[^>]+>", " ", page)
+
+
+@pytest.mark.asyncio
+async def test_members_are_not_shown_file_names(ms: SimpleNamespace, rp: _FakeRoleplay) -> None:
+    rp.ai = {"bite_mlw_b.gif"}
+
+    _, page = await _get(ms, REGULAR, "/gifs/bite")
+
+    assert "bite_a.gif" not in _visible_text(page) and "bite_mlw_b.gif" not in _visible_text(page)
+    assert 'alt="bite_a.gif"' not in page and 'alt="bite_mlw_b.gif' not in page
+    assert 'alt="Bite gif 1"' in page and 'alt="Bite gif 2, made with AI"' in page
+    assert 'src="/gifs/bite/file/bite_a.gif"' in page  # the image itself, and the vote form, still name the file
+
+
+@pytest.mark.asyncio
+async def test_only_ai_made_gifs_get_the_badge(ms: SimpleNamespace, rp: _FakeRoleplay) -> None:
+    rp.ai = {"bite_mlw_b.gif"}
+
+    _, page = await _get(ms, REGULAR, "/gifs/bite")
+    _, plain = await _get(ms, REGULAR, "/gifs/bite/wlw")
+
+    first, second = page.split('<article class="gif"')[1:]
+    assert "badge ai" not in first
+    assert '<span class="badge ai" title="Made with AI">AI</span>' in second
+    assert "badge ai" not in plain
+
+
+@pytest.mark.asyncio
+async def test_staff_still_see_the_file_names(ms: SimpleNamespace, rp: _FakeRoleplay) -> None:
+    rp.totals = [{"action": "bite", "name": "bite_eros_9.gif", "up": 1, "down": 0}]
+
+    response = await ms.staff.get("/gifs", headers=_staff_headers(ms))
+
+    assert "bite_eros_9.gif" in _visible_text(await response.text())
 
 
 @pytest.mark.asyncio

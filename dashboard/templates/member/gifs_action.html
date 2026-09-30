@@ -17,8 +17,8 @@
 <div class="gif-grid">
   {% for gif in gifs %}
   <article class="gif" id="g{{ loop.index }}">
-    <img src="/gifs/{{ action|urlencode }}/file/{{ gif.name|urlencode }}" alt="{{ gif.name }}" loading="lazy">
-    <p class="mono">{{ gif.name }}</p>
+    <img src="/gifs/{{ action|urlencode }}/file/{{ gif.name|urlencode }}" alt="{{ action|capitalize }} gif {{ loop.index }}{% if gif.ai %}, made with AI{% endif %}" loading="lazy">
+    {% if gif.ai %}<span class="badge ai" title="Made with AI">AI</span>{% endif %}
     <form class="vote" method="post" action="/gifs/vote">
       <input type="hidden" name="csrf" value="{{ session.csrf }}">
       <input type="hidden" name="action" value="{{ action }}">
