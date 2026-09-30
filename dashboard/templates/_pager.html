@@ -1,0 +1,18 @@
+{# The pager of the gif pages: previous, the first and last page and the ones around the current one, next. Previous
+   and Next keep their place on the first and last page, so they don't move while paging. Narrow screens get
+   "Page 2 of 7" in place of the numbers (style.css). One page has no pager. #}
+{% macro pager(base, page, pages) %}
+{% if pages > 1 %}
+<nav class="pager" aria-label="Pages">
+  {% if page > 1 %}<a class="step" href="{{ base }}?page={{ page - 1 }}" rel="prev">← Previous</a>{% else %}<span class="step off">← Previous</span>{% endif %}
+  {% for n in range(1, pages + 1) %}
+  {% if n == page %}<span class="n on" aria-current="page">{{ n }}</span>
+  {% elif n == 1 or n == pages or (n - page)|abs <= 1 %}<a class="n" href="{{ base }}?page={{ n }}">{{ n }}</a>
+  {% elif (n - page)|abs == 2 %}<span class="n gap">…</span>
+  {% endif %}
+  {% endfor %}
+  <span class="count">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="step next" href="{{ base }}?page={{ page + 1 }}" rel="next">Next →</a>{% else %}<span class="step off">Next →</span>{% endif %}
+</nav>
+{% endif %}
+{% endmacro %}

@@ -1,19 +1,23 @@
 {% extends "member/base.html" %}
+{% from "_pager.html" import pager %}
 {% block title %}{{ action|capitalize }} gifs{% endblock %}
 {% block content %}
 {% set base = "/gifs/" ~ (action|urlencode) ~ ("" if pool == "default" else "/" ~ pool) %}
-<p class="sub"><a href="/gifs">← All gifs</a></p>
-<h1>{{ action|capitalize }}</h1>
-{% if sent %}<p class="note">Thanks! Your gif was sent to the staff to look at.</p>{% endif %}
+<p class="back"><a href="/gifs">← All gifs</a></p>
+<div class="bar">
+  <h1>{{ action|capitalize }}</h1>
+  {% if can_upload %}<a class="button" href="/gifs/upload?action={{ action|urlencode }}">Send in a gif</a>{% endif %}
+</div>
 <nav class="tabs" aria-label="Pairings">
   {% for tab, label in (("default", "Default"), ("wlw", "wlw"), ("mlm", "mlm")) %}
-  <a href="/gifs/{{ action|urlencode }}{% if tab != "default" %}/{{ tab }}{% endif %}"{% if tab == pool %} class="on" aria-current="page"{% endif %}>{{ label }}</a>
+  <a href="/gifs/{{ action|urlencode }}{% if tab != "default" %}/{{ tab }}{% endif %}"{% if tab == pool %} class="on" aria-current="page"{% endif %}>{{ label }}{% if counts %} <span class="count">{{ counts[tab] }}</span>{% endif %}</a>
   {% endfor %}
 </nav>
 {% if pool == "default" %}
 <p class="empty">Gifs with no pairing, and the mlw and wlm ones: what the bot picks from when nobody asks for a pairing.</p>
 {% endif %}
 {% if gifs %}
+{{ pager(base, page, pages) }}
 <div class="gif-grid">
   {% for gif in gifs %}
   <article class="gif" id="g{{ loop.index }}">
@@ -32,13 +36,8 @@
   </article>
   {% endfor %}
 </div>
-<nav class="pages" aria-label="Pages">
-  {% if page > 1 %}<a href="{{ base }}?page={{ page - 1 }}">← Previous</a>{% endif %}
-  <span>Page {{ page }} of {{ pages }}</span>
-  {% if page < pages %}<a href="{{ base }}?page={{ page + 1 }}">Next →</a>{% endif %}
-</nav>
+{{ pager(base, page, pages) }}
 {% else %}
 <p class="empty">No gifs here yet.</p>
 {% endif %}
-{% if can_upload %}{% include "member/_gif_upload.html" %}{% endif %}
 {% endblock %}

@@ -38,7 +38,7 @@ at the time of each request:
 | Profile, Backgrounds, Stocks, Club, Waifu, Leaderboard | Everyone, while the Unicornia cog is loaded |
 | Warnings | Everyone, while the Moderation cog is loaded |
 | Roleplay, Settings | Everyone |
-| Gifs | Everyone, while the Roleplay cog is loaded. The form to send in a gif: the active supporter role (`700121551483437128`), the inactive one (`1458440559713718466`) or the Level 90+ role (`721360680770469958`) |
+| Gifs | Everyone, while the Roleplay cog is loaded. The page to send in a gif: the active supporter role (`700121551483437128`), the inactive one (`1458440559713718466`) or the Level 90+ role (`721360680770469958`) |
 | Custom commands | The active supporter role (`700121551483437128`), or the inactive one (`1458440559713718466`) while the member still has commands |
 | Custom emojis | A supporter role who can create emojis (the `[p]ce setrole` role), or who still has emojis |
 | Custom role | Either supporter role, plus a role assigned with `[p]assignrole` |
@@ -64,7 +64,9 @@ names the section, key and new state; anything unknown gets 400.
 `/gifs` on the member site lists the Roleplay cog's actions with the number of gifs each has. `/gifs/{action}` shows one
 action's **Default** pool (untagged, `mlw` and `wlm` gifs, the ones the bot picks from when no pairing is asked for),
 and `/gifs/{action}/wlw` and `/gifs/{action}/mlm` the other two, 5 gifs a page by file name (`?page=N`, clamped to the
-last page). The pages read the images folder each time, so a file change shows on the next load. Gifs are served by
+last page). Each pool's tab shows how many gifs it has. A pool with more than one page has a pager above and below the
+gifs: Previous and Next, and the numbers of the first, last and neighbouring pages (narrow screens show "Page 2 of 7"
+in their place). The pages read the images folder each time, so a file change shows on the next load. Gifs are served by
 `/gifs/{action}/file/{name}`, which only serves a name found in that action's folder (the cog looks it up in the
 folder's listing; the name is never joined onto a path), and a browser may keep them for a day, privately. Members
 aren't shown file names (only staff are, on the Gif votes page), and a gif with `eros` in its file name gets a small AI
@@ -75,14 +77,16 @@ badge; the Roleplay cog decides which, so the image address and the vote form st
   sends the same form with `fetch` and flips the buttons, so the gifs keep playing. Members only ever see their own
   vote, never totals. The return address is rebuilt from a pool name, a page number and a slot number that are checked
   first, never taken from the request.
-- **Sending in a gif.** Members who may (see the table above) get a form with an action and a file
-  (`POST /gifs/upload`). The Roleplay cog checks the rest: the file is a GIF by content, fits the review server's
-  upload limit, and the member hasn't sent one in the last minute. It posts the gif in its review channel and keeps
-  nothing; the site adds no size limit below the request limit under Protections. A refusal shows its message on the
-  page and answers 400.
+- **Sending in a gif.** Members who may (see the table above) get a "Send in a gif" button on the Gifs pages. It opens
+  `/gifs/upload`, a page of its own with a form for an action and a file; opened from an action's page
+  (`/gifs/upload?action=bite`), it starts on that action. Anyone else gets 403 there. The Roleplay cog checks the
+  upload (`POST /gifs/upload`): the file is a GIF by content, fits the review server's upload limit, and the member
+  hasn't sent one in the last minute. It posts the gif in its review channel and keeps nothing; the site adds no size
+  limit below the request limit under Protections. A sent gif returns to the upload page with a thank-you note; a
+  refusal shows its message there and answers 400.
 - **Staff.** `/gifs` on the staff site lists every gif with at least one vote and a file that still exists, lowest score
-  first, 10 a page (`?page=N`), with its thumbs-up and thumbs-down totals. GET-only. `/gifs/{action}/file/{name}` shows
-  the gif to staff and is never cached.
+  first, 10 a page (`?page=N`, with the same pager), with its thumbs-up and thumbs-down totals. GET-only.
+  `/gifs/{action}/file/{name}` shows the gif to staff and is never cached.
 
 The pages answer 503 while the Roleplay cog isn't loaded.
 

@@ -1,0 +1,23 @@
+{% extends "member/base.html" %}
+{% block title %}Send in a gif{% endblock %}
+{% block content %}
+<p class="back"><a href="/gifs">← All gifs</a></p>
+<h1>Send in a gif</h1>
+<p class="sub">Staff look at every gif before it's added, so it can take a while to show up.</p>
+{% if sent %}<p class="note">Thanks! Your gif was sent to the staff to look at.</p>{% endif %}
+<section class="panel">
+  <form class="editor" method="post" action="/gifs/upload" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <label>Action
+      <select name="action" required>
+        {% for entry in actions %}<option value="{{ entry.name }}"{% if entry.name == chosen %} selected{% endif %}>{{ entry.name|capitalize }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Gif
+      <input type="file" name="file" accept="image/gif" required>
+      <small>A GIF, no bigger than Discord lets the bot send. One a minute.</small>
+    </label>
+    <p class="actions"><button class="primary" type="submit">Send</button></p>
+  </form>
+</section>
+{% endblock %}

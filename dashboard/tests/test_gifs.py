@@ -73,7 +73,8 @@ class _FakeRoleplay:
         self.page_requests.append((action, pool, user_id, page))
         names = self.gifs.get((action, pool), [])
         gifs = [{"name": n, "mine": self.mine.get(n, 0), "ai": n in self.ai} for n in names]
-        return {"gifs": gifs, "page": page, "pages": self.pages}
+        counts = {each: len(self.gifs.get((action, each), [])) for each in POOLS}
+        return {"gifs": gifs, "page": page, "pages": self.pages, "counts": counts}
 
     async def gif_path(self, action: str, name: str) -> Path | None:
         path = self.folder / action / name
@@ -223,8 +224,9 @@ async def test_the_list_shows_every_action_with_its_count(ms: SimpleNamespace, r
     status, page = await _get(ms, REGULAR, "/gifs")
 
     assert status == 200
-    assert re.search(r'<a href="/gifs/bite">Bite</a>\s*<span class="badge">22</span>', page)
-    assert re.search(r'<a href="/gifs/bow">Bow</a>\s*<span class="badge">20</span>', page)
+    # the whole tile is the link, count included
+    assert '<a href="/gifs/bite">Bite <span class="badge">22</span></a>' in page
+    assert '<a href="/gifs/bow">Bow <span class="badge">20</span></a>' in page
     assert 'href="/gifs"' in page  # the top bar
     assert "/gifs/upload" not in page
 
@@ -243,6 +245,9 @@ async def test_each_pool_has_its_own_page_with_tabs_and_the_gifs_the_cog_returne
     for page in (default, wlw, mlm):
         assert 'href="/gifs/bite"' in page and 'href="/gifs/bite/wlw"' in page and 'href="/gifs/bite/mlm"' in page
     assert 'src="/gifs/bite/file/bite_a.gif" alt="Bite gif 1" loading="lazy"' in default
+    # each tab says how many gifs its pool has
+    assert 'class="on" aria-current="page">Default <span class="count">2</span></a>' in default
+    assert '>wlw <span class="count">1</span></a>' in default and '>mlm <span class="count">0</span></a>' in default
     assert rp.page_requests[:3] == [
         ("bite", "default", REGULAR, 1),
         ("bite", "wlw", REGULAR, 1),
@@ -290,15 +295,46 @@ async def test_staff_still_see_the_file_names(ms: SimpleNamespace, rp: _FakeRole
 
 
 @pytest.mark.asyncio
-async def test_page_links_go_to_the_previous_and_next_page_of_the_same_pool(
+async def test_the_pager_is_above_and_below_the_gifs_and_stays_in_the_pool(
     ms: SimpleNamespace, rp: _FakeRoleplay
 ) -> None:
     _, middle = await _get(ms, REGULAR, "/gifs/bite/wlw?page=2")
     _, first = await _get(ms, REGULAR, "/gifs/bite?page=1")
 
-    assert 'href="/gifs/bite/wlw?page=1"' in middle and 'href="/gifs/bite/wlw?page=3"' in middle
-    assert "Page 2 of 3" in middle
-    assert "Previous" not in first and 'href="/gifs/bite?page=2"' in first
+    assert middle.count('<nav class="pager"') == 2
+    assert middle.index('<nav class="pager"') < middle.index('class="gif-grid"') < middle.rindex('<nav class="pager"')
+    assert '<a class="step" href="/gifs/bite/wlw?page=1" rel="prev">← Previous</a>' in middle
+    assert '<a class="step next" href="/gifs/bite/wlw?page=3" rel="next">Next →</a>' in middle
+    assert '<span class="n on" aria-current="page">2</span>' in middle
+    assert "Page 2 of 3" in middle  # what narrow screens show in place of the numbers
+    # on the first page Previous keeps its place but goes nowhere
+    assert '<span class="step off">← Previous</span>' in first and 'rel="prev"' not in first
+    assert '<a class="step next" href="/gifs/bite?page=2" rel="next">Next →</a>' in first
+
+
+@pytest.mark.asyncio
+async def test_the_pager_numbers_the_first_and_last_page_and_the_ones_around_the_current(
+    ms: SimpleNamespace, rp: _FakeRoleplay
+) -> None:
+    rp.pages = 9
+
+    _, page = await _get(ms, REGULAR, "/gifs/bite?page=5")
+    _, last = await _get(ms, REGULAR, "/gifs/bite?page=9")
+
+    pager = page[page.index('<nav class="pager"') : page.index("</nav>", page.index('<nav class="pager"'))]
+    assert re.findall(r'class="n[^"]*"[^>]*>([^<]+)<', pager) == ["1", "…", "4", "5", "6", "…", "9"]
+    linked = [n for n in range(1, 10) if f'href="/gifs/bite?page={n}"' in pager]
+    assert linked == [1, 4, 6, 9]
+    assert '<span class="step off">Next →</span>' in last and 'rel="next"' not in last
+
+
+@pytest.mark.asyncio
+async def test_a_single_page_has_no_pager(ms: SimpleNamespace, rp: _FakeRoleplay) -> None:
+    rp.pages = 1
+
+    _, page = await _get(ms, REGULAR, "/gifs/bite")
+
+    assert "bite_a.gif" in page and 'class="pager"' not in page
 
 
 @pytest.mark.asyncio
@@ -324,14 +360,11 @@ async def test_a_bad_page_number_is_the_first_page_and_a_huge_one_the_last(
 
 
 @pytest.mark.asyncio
-async def test_only_members_who_can_send_in_a_gif_cause_the_folders_to_be_read_for_the_form(
-    ms: SimpleNamespace, rp: _FakeRoleplay
-) -> None:
+async def test_an_actions_page_does_not_read_every_folder(ms: SimpleNamespace, rp: _FakeRoleplay) -> None:
     await _get(ms, REGULAR, "/gifs/bite")
-    assert rp.actions_reads == 0
-
     await _get(ms, ACTIVE, "/gifs/bite")
-    assert rp.actions_reads == 1
+
+    assert rp.actions_reads == 0
 
 
 @pytest.mark.asyncio
@@ -345,11 +378,13 @@ async def test_unknown_things_are_404(ms: SimpleNamespace, rp: _FakeRoleplay, pa
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("path", ["/gifs", "/gifs/bite", "/gifs/bite/wlw", "/gifs/bite/file/bite_a.gif"])
+@pytest.mark.parametrize(
+    "path", ["/gifs", "/gifs/bite", "/gifs/bite/wlw", "/gifs/bite/file/bite_a.gif", "/gifs/upload"]
+)
 async def test_every_gif_page_needs_the_roleplay_cog(ms: SimpleNamespace, rp: _FakeRoleplay, path: str) -> None:
     del ms.cogs["Roleplay"]
 
-    status, page = await _get(ms, REGULAR, path)
+    status, page = await _get(ms, ACTIVE, path)
 
     assert status == 503 and "not available right now" in page
 
@@ -494,74 +529,82 @@ async def test_a_vote_needs_the_cog_and_the_csrf_token(ms: SimpleNamespace, rp: 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("user_id", [ACTIVE, INACTIVE])
-async def test_members_who_may_upload_see_the_form_and_the_action_is_preselected(
+async def test_members_who_may_upload_get_a_link_to_the_upload_page_not_a_form_on_every_page(
     ms: SimpleNamespace, rp: _FakeRoleplay, user_id: int
 ) -> None:
     _, index = await _get(ms, user_id, "/gifs")
     _, action_page = await _get(ms, user_id, "/gifs/bite/wlw?page=2")
 
-    assert 'action="/gifs/upload"' in index and 'enctype="multipart/form-data"' in index
-    assert '<option value="bite" selected>' not in index
-    assert '<option value="bite" selected>' in action_page and '<option value="bow">' in action_page
-    assert '<input type="hidden" name="from" value="bite">' in action_page
-    assert '<input type="hidden" name="pool" value="wlw">' in action_page
-    assert '<input type="hidden" name="page" value="2">' in action_page
+    assert '<a class="button" href="/gifs/upload">Send in a gif</a>' in index
+    assert '<a class="button" href="/gifs/upload?action=bite">Send in a gif</a>' in action_page
+    for page in (index, action_page):
+        assert 'action="/gifs/upload"' not in page and 'type="file"' not in page
 
 
 @pytest.mark.asyncio
-async def test_other_members_see_no_form_and_cannot_post_one(ms: SimpleNamespace, rp: _FakeRoleplay) -> None:
-    _, index = await _get(ms, REGULAR, "/gifs")
-    _, action_page = await _get(ms, REGULAR, "/gifs/bite")
-    response = await _post(ms, REGULAR, "/gifs/upload", _upload("file", GIF, "cute.gif", action="bite"))
-
-    assert "/gifs/upload" not in index and "/gifs/upload" not in action_page
-    assert response.status == 403
-    assert rp.submitted == []
-
-
-@pytest.mark.asyncio
-async def test_an_upload_is_handed_to_the_cog_with_the_action_and_the_bytes(
-    ms: SimpleNamespace, rp: _FakeRoleplay
+@pytest.mark.parametrize("user_id", [ACTIVE, INACTIVE])
+async def test_the_upload_page_has_the_form_and_starts_on_the_action_it_was_opened_for(
+    ms: SimpleNamespace, rp: _FakeRoleplay, user_id: int
 ) -> None:
-    response = await _post(ms, ACTIVE, "/gifs/upload", _upload("file", GIF, "../../x.gif", action="bite"))
+    status, plain = await _get(ms, user_id, "/gifs/upload")
+    _, for_bow = await _get(ms, user_id, "/gifs/upload?action=bow")
+    _, unknown = await _get(ms, user_id, "/gifs/upload?action=%3Cb%3Enope")
 
-    assert response.status == 303 and response.headers["Location"] == "/gifs?sent=1"
-    assert rp.submitted == [(ACTIVE, "bite", GIF)]
-    assert rp.files[0].closed  # the upload's temporary file doesn't wait for the garbage collector
-    _, page = await _get(ms, ACTIVE, "/gifs?sent=1")
-    assert "sent to the staff" in page
-    _, plain = await _get(ms, ACTIVE, "/gifs")
+    assert status == 200
+    assert 'action="/gifs/upload" enctype="multipart/form-data"' in plain and 'type="file"' in plain
+    assert '<option value="bite">Bite</option>' in plain and "selected" not in plain
+    assert '<option value="bow" selected>Bow</option>' in for_bow and '<option value="bite">' in for_bow
+    assert "selected" not in unknown and "<b>nope" not in unknown
     assert "sent to the staff" not in plain
 
 
 @pytest.mark.asyncio
-async def test_an_upload_from_an_action_page_returns_to_that_page(ms: SimpleNamespace, rp: _FakeRoleplay) -> None:
-    form = _upload("file", GIF, "cute.gif", action="bow", **{"from": "bite"}, pool="wlw", page="2")
+async def test_other_members_get_no_link_no_page_and_cannot_post(ms: SimpleNamespace, rp: _FakeRoleplay) -> None:
+    _, index = await _get(ms, REGULAR, "/gifs")
+    _, action_page = await _get(ms, REGULAR, "/gifs/bite")
+    status, page = await _get(ms, REGULAR, "/gifs/upload")
+    response = await _post(ms, REGULAR, "/gifs/upload", _upload("file", GIF, "cute.gif", action="bite"))
 
-    response = await _post(ms, ACTIVE, "/gifs/upload", form)
-
-    assert response.status == 303 and response.headers["Location"] == "/gifs/bite/wlw?page=2&sent=1"
-    assert rp.submitted == [(ACTIVE, "bow", GIF)]
-    _, page = await _get(ms, ACTIVE, "/gifs/bite/wlw?page=2&sent=1")
-    assert "sent to the staff" in page
+    assert "/gifs/upload" not in index and "/gifs/upload" not in action_page
+    assert status == 403 and 'type="file"' not in page
+    assert response.status == 403
+    assert rp.submitted == [] and rp.actions_reads == 1  # only the list page read the folders
 
 
 @pytest.mark.asyncio
-async def test_a_refused_upload_shows_the_message_escaped_with_400(ms: SimpleNamespace, rp: _FakeRoleplay) -> None:
+async def test_an_upload_is_handed_to_the_cog_and_returns_to_the_upload_page_with_a_note(
+    ms: SimpleNamespace, rp: _FakeRoleplay
+) -> None:
+    response = await _post(ms, ACTIVE, "/gifs/upload", _upload("file", GIF, "../../x.gif", action="bow"))
+
+    assert response.status == 303 and response.headers["Location"] == "/gifs/upload?sent=1&action=bow"
+    assert rp.submitted == [(ACTIVE, "bow", GIF)]
+    assert rp.files[0].closed  # the upload's temporary file doesn't wait for the garbage collector
+    _, page = await _get(ms, ACTIVE, "/gifs/upload?sent=1&action=bow")
+    assert "sent to the staff" in page and '<option value="bow" selected>' in page  # ready for another one
+
+
+@pytest.mark.asyncio
+async def test_the_action_in_the_return_address_is_escaped(ms: SimpleNamespace, rp: _FakeRoleplay) -> None:
+    response = await _post(ms, ACTIVE, "/gifs/upload", _upload("file", GIF, "cute.gif", action="x&sent=0#//evil"))
+
+    # the redirect un-escapes the slashes, which mean nothing inside a query value
+    assert response.headers["Location"] == "/gifs/upload?sent=1&action=x%26sent%3D0%23//evil"
+
+
+@pytest.mark.asyncio
+async def test_a_refused_upload_shows_the_message_escaped_with_400_and_keeps_the_action(
+    ms: SimpleNamespace, rp: _FakeRoleplay
+) -> None:
     rp.refuse = "Only <b>GIF</b> files are accepted."
 
-    index = await _post(ms, ACTIVE, "/gifs/upload", _upload("file", GIF, "cute.gif", action="bite"))
-    on_page = await _post(
-        ms,
-        ACTIVE,
-        "/gifs/upload",
-        _upload("file", GIF, "cute.gif", action="bite", **{"from": "bite"}, pool="wlw", page="2"),
-    )
+    response = await _post(ms, ACTIVE, "/gifs/upload", _upload("file", GIF, "cute.gif", action="bow"))
 
-    for response in (index, on_page):
-        page = await response.text()
-        assert response.status == 400
-        assert "Only &lt;b&gt;GIF&lt;/b&gt; files are accepted." in page and "<b>GIF</b>" not in page
+    page = await response.text()
+    assert response.status == 400
+    assert "Only &lt;b&gt;GIF&lt;/b&gt; files are accepted." in page and "<b>GIF</b>" not in page
+    assert 'action="/gifs/upload"' in page and '<option value="bow" selected>' in page
+    assert "sent to the staff" not in page
     assert rp.submitted == []
 
 
@@ -571,14 +614,6 @@ async def test_no_file_chosen_is_a_400_with_a_message(ms: SimpleNamespace, rp: _
 
     assert response.status == 400 and "Choose a GIF" in await response.text()
     assert rp.submitted == []
-
-
-@pytest.mark.asyncio
-async def test_a_bad_return_page_falls_back_to_the_list(ms: SimpleNamespace, rp: _FakeRoleplay) -> None:
-    for extra in ({"pool": "https://evil.example", "page": "2"}, {"pool": "wlw", "page": "x"}, {}):
-        form = _upload("file", GIF, "cute.gif", action="bite", **{"from": "https://evil.example"}, **extra)
-        response = await _post(ms, ACTIVE, "/gifs/upload", form)
-        assert response.status == 303 and response.headers["Location"] == "/gifs?sent=1", extra
 
 
 # --- the staff site -------------------------------------------------------------------------------
@@ -621,8 +656,10 @@ async def test_staff_pages_hold_ten(ms: SimpleNamespace, rp: _FakeRoleplay) -> N
     huge = await (await ms.staff.get("/gifs?page=" + "9" * 5000, headers=headers)).text()
 
     assert "Page 3 of 3" in huge
-    assert first.count("<tr>") == 1 + 10 and "Page 1 of 3" in first and "Previous" not in first
-    assert last.count("<tr>") == 1 + 5 and "Page 3 of 3" in last and "Next" not in last
+    assert first.count("<tr>") == 1 + 10 and "Page 1 of 3" in first and 'rel="prev"' not in first
+    assert '<a class="step next" href="/gifs?page=2" rel="next">Next →</a>' in first
+    assert first.count('<nav class="pager"') == 2  # above and below the table
+    assert last.count("<tr>") == 1 + 5 and "Page 3 of 3" in last and 'rel="next"' not in last
     assert "bite_24.gif" in last and "bite_24.gif" not in first
     assert "Page 3 of 3" in past
     assert "Page 1 of 3" in junk

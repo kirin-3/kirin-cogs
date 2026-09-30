@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+{% from "_pager.html" import pager %}
 {% block title %}Gif votes{% endblock %}
 {% block content %}
 <h1>Gif votes</h1>
 <p class="sub">Every gif with at least one vote, lowest score first.</p>
 {% if gifs %}
+{{ pager("/gifs", page, pages) }}
 <div class="scroll">
   <table>
     <thead><tr><th>Gif</th><th>Action</th><th>File</th><th class="num">👍</th><th class="num">👎</th></tr></thead>
@@ -20,11 +22,7 @@
     </tbody>
   </table>
 </div>
-<nav class="pages" aria-label="Pages">
-  {% if page > 1 %}<a href="/gifs?page={{ page - 1 }}">← Previous</a>{% endif %}
-  <span>Page {{ page }} of {{ pages }}</span>
-  {% if page < pages %}<a href="/gifs?page={{ page + 1 }}">Next →</a>{% endif %}
-</nav>
+{{ pager("/gifs", page, pages) }}
 {% else %}
 <p class="empty">No votes yet.</p>
 {% endif %}

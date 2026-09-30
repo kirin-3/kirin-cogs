@@ -528,12 +528,28 @@ progress::-moz-progress-bar { background: linear-gradient(90deg, var(--pink), va
 
 /* --- gifs --- */
 .gif-actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin: 0 0 8px; padding: 0; list-style: none; }
-.gif-actions li { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 1rem; box-shadow: var(--shadow); font: 600 1.05rem var(--heading); }
-.gif-actions a { text-decoration: none; }
+.gif-actions a { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 1rem; box-shadow: var(--shadow); color: var(--text); text-decoration: none; font: 600 1.05rem var(--heading); transition: transform 0.2s, border-color 0.2s, color 0.2s; }
+.gif-actions a:hover { transform: translateY(-2px); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
 .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
 .tabs a { padding: 6px 18px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--muted); text-decoration: none; font: 600 0.95rem var(--heading); transition: background 0.2s, color 0.2s; }
 .tabs a:hover { color: var(--accent); background: var(--accent-soft); }
 .tabs a.on { border-color: transparent; background: var(--accent); color: var(--on-accent); box-shadow: var(--glow); }
+.tabs .count { margin-left: 4px; font-size: 0.8rem; opacity: 0.75; }
+/* The pager above and below the gifs (_pager.html): big enough to find, and Next stands out */
+.pager { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin: 16px 0; font: 600 1rem var(--heading); }
+.pager a, .pager span { min-width: 40px; padding: 8px 12px; border: 1.5px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--text); text-align: center; text-decoration: none; transition: background 0.2s, color 0.2s, border-color 0.2s; }
+.pager a:hover { color: var(--accent); background: var(--raised); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.pager .step { padding: 8px 18px; }
+.pager .next { border-color: var(--accent); background: var(--accent); color: var(--on-accent); box-shadow: var(--glow); }
+.pager .next:hover { border-color: var(--accent-hover); background: var(--accent-hover); color: var(--on-accent); }
+.pager .on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.pager .off { color: var(--muted); opacity: 0.45; }
+.pager .gap, .pager .count { min-width: 0; padding: 8px 4px; border-color: transparent; background: none; color: var(--muted); }
+.pager .count { display: none; }
+@media (max-width: 560px) {
+  .pager .n { display: none; }
+  .pager .count { display: inline; flex: 1; }
+}
 .gif-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 16px; }
 .gif { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 12px; scroll-margin-top: 90px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .gif:target { border-color: var(--accent); box-shadow: var(--glow); }

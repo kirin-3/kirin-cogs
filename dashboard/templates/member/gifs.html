@@ -1,13 +1,14 @@
 {% extends "member/base.html" %}
 {% block title %}Gifs{% endblock %}
 {% block content %}
-<h1>Gifs</h1>
+<div class="bar">
+  <h1>Gifs</h1>
+  {% if can_upload %}<a class="button" href="/gifs/upload">Send in a gif</a>{% endif %}
+</div>
 <p class="sub">Every gif the bot can post, by action. Give a gif a thumbs up or a thumbs down; only you can see your votes.</p>
-{% if sent %}<p class="note">Thanks! Your gif was sent to the staff to look at.</p>{% endif %}
 <ul class="gif-actions">
   {% for entry in actions %}
-  <li><a href="/gifs/{{ entry.name|urlencode }}">{{ entry.name|capitalize }}</a> <span class="badge">{{ entry.count }}</span></li>
+  <li><a href="/gifs/{{ entry.name|urlencode }}">{{ entry.name|capitalize }} <span class="badge">{{ entry.count }}</span></a></li>
   {% endfor %}
 </ul>
-{% if can_upload %}{% include "member/_gif_upload.html" %}{% endif %}
 {% endblock %}

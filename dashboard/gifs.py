@@ -91,11 +91,13 @@ class MemberGifs(_Gifs):
 
     def add_routes(self, app: web.Application) -> None:
         app.router.add_get("/gifs", self.index)
+        # before /gifs/{action}, which would otherwise take these two for actions
+        app.router.add_get(GIF_UPLOAD_PATH, self.upload_form)
+        app.router.add_post(GIF_UPLOAD_PATH, self.upload)
+        app.router.add_post("/gifs/vote", self.vote)
         app.router.add_get("/gifs/{action}", self.pool)
         app.router.add_get("/gifs/{action}/{pool}", self.pool)  # the cog answers an unknown pool with LookupError
         app.router.add_get("/gifs/{action}/file/{name}", self.file)
-        app.router.add_post("/gifs/vote", self.vote)
-        app.router.add_post(GIF_UPLOAD_PATH, self.upload)
 
     def may_upload(self, member: Any) -> bool:
         """Whether the member may send in a gif; the session middleware asks before it reads a large upload."""
@@ -105,45 +107,30 @@ class MemberGifs(_Gifs):
     def _render(self, request: web.Request, template: str, *, status: int = 200, **context: Any) -> web.Response:
         return self.cog._render(request, f"member/{template}", status=status, **context)
 
-    async def index(self, request: web.Request, *, error: str = "", status: int = 200) -> web.StreamResponse:
+    async def index(self, request: web.Request) -> web.StreamResponse:
         roleplay = self._roleplay(request)
         return self._render(
             request,
             "gifs.html",
-            status=status,
             actions=await roleplay.gif_actions(),
             can_upload=roleplay.can_submit_gif(request["member"]),
-            sent=request.query.get("sent") == "1",
-            error=error,
-        )
-
-    async def _action_page(
-        self, request: web.Request, action: str, pool: str, page: int, *, error: str = "", status: int = 200
-    ) -> web.StreamResponse:
-        """One page of an action's pool. LookupError if the action or pool doesn't exist."""
-        roleplay = self._roleplay(request)
-        shown = await roleplay.gif_page(action, pool, request["member"].id, page)
-        can_upload = roleplay.can_submit_gif(request["member"])
-        return self._render(
-            request,
-            "gifs_action.html",
-            status=status,
-            action=action,
-            pool=pool,
-            # only the send-in form's dropdown needs the list, and it means reading every action's folder
-            actions=await roleplay.gif_actions() if can_upload else [],
-            can_upload=can_upload,
-            sent=request.query.get("sent") == "1",
-            error=error,
-            **shown,
         )
 
     async def pool(self, request: web.Request) -> web.StreamResponse:
+        roleplay = self._roleplay(request)
         action, pool = request.match_info["action"], request.match_info.get("pool", "default")
         try:
-            return await self._action_page(request, action, pool, _page(request.query.get("page")))
+            shown = await roleplay.gif_page(action, pool, request["member"].id, _page(request.query.get("page")))
         except LookupError:
             self._not_found(request)
+        return self._render(
+            request,
+            "gifs_action.html",
+            action=action,
+            pool=pool,
+            can_upload=roleplay.can_submit_gif(request["member"]),
+            **shown,
+        )
 
     async def vote(self, request: web.Request) -> web.StreamResponse:
         roleplay = self._roleplay(request)
@@ -161,10 +148,10 @@ class MemberGifs(_Gifs):
             return web.Response(status=204)
         raise web.HTTPSeeOther(f"{page_url(action, pool, page)}#g{slot}")
 
-    async def upload(self, request: web.Request) -> web.StreamResponse:
+    def _uploader(self, request: web.Request) -> Any:
+        """The Roleplay cog, for a member who may send in a gif; anyone else is refused."""
         roleplay = self._roleplay(request)
-        member = request["member"]
-        if not roleplay.can_submit_gif(member):
+        if not roleplay.can_submit_gif(request["member"]):
             self._stop(
                 request,
                 web.HTTPForbidden,
@@ -172,34 +159,37 @@ class MemberGifs(_Gifs):
                 "Not allowed",
                 "Only supporters and Level 90+ members can send in gifs.",
             )
+        return roleplay
+
+    async def upload_form(
+        self, request: web.Request, *, chosen: str | None = None, error: str = "", status: int = 200
+    ) -> web.StreamResponse:
+        """The page to send in a gif from. `?action=` picks the action to start on, as the link on an action's page does."""
+        roleplay = self._uploader(request)
+        return self._render(
+            request,
+            "gif_upload.html",
+            status=status,
+            actions=await roleplay.gif_actions(),
+            chosen=request.query.get("action", "") if chosen is None else chosen,
+            sent=request.query.get("sent") == "1",
+            error=error,
+        )
+
+    async def upload(self, request: web.Request) -> web.StreamResponse:
+        roleplay = self._uploader(request)
         form = await request.post()
-        field = form.get("file")
+        field, action = form.get("file"), _text(form, "action")
         try:
             if not isinstance(field, web.FileField) or not field.filename:
                 raise ValueError("Choose a GIF to send in.")
             try:
-                await roleplay.submit_gif(member, _text(form, "action"), field.file)
+                await roleplay.submit_gif(request["member"], action, field.file)
             finally:
                 field.file.close()  # the request was cloned for its larger limit, so aiohttp won't close the temp file
         except ValueError as e:
-            return await self._back(request, form, error=str(e), status=400)
-        return await self._back(request, form)
-
-    async def _back(self, request: web.Request, form: Any, *, error: str = "", status: int = 200) -> web.StreamResponse:
-        """To the page the upload form was on, an action's page (`from`, `pool`, `page`) or the list of actions.
-
-        With no error, that is a redirect with a note that the gif was sent; otherwise the page is shown again.
-        """
-        action, pool, page = _text(form, "from"), _text(form, "pool"), _number(form.get("page"), 1, MAX_PAGE)
-        on_action_page = bool(action) and pool in POOLS and page is not None
-        if not error:
-            raise web.HTTPSeeOther(f"{page_url(action, pool, page or 1)}&sent=1" if on_action_page else "/gifs?sent=1")
-        if on_action_page:
-            try:
-                return await self._action_page(request, action, pool, page or 1, error=error, status=status)
-            except LookupError:
-                pass
-        return await self.index(request, error=error, status=status)
+            return await self.upload_form(request, chosen=action, error=str(e), status=400)
+        raise web.HTTPSeeOther(f"{GIF_UPLOAD_PATH}?sent=1&action={quote(action, safe='')}")
 
 
 class StaffGifs(_Gifs):
