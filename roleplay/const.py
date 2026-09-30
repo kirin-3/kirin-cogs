@@ -46,8 +46,18 @@ EMBED_FOOTER = f"Roleplay Cog ({__version__})"
 # added to the message when the requested pairing has no images for the action
 PAIRING_MISSING_NOTE = "No {pairing} gifs for {action} yet, so here's another one."
 
-# Members who may send in a gif on the member site: active supporter, inactive supporter, Level 90+
-GIF_UPLOAD_ROLES = frozenset({700121551483437128, 1458440559713718466, 721360680770469958})
+# Members who may send in a gif on the member site: supporters, and the level roles from Level 30 up
+GIF_UPLOAD_ROLES = frozenset(
+    {
+        700121551483437128,  # active supporter
+        1458440559713718466,  # inactive supporter
+        714508825071190086,  # Platinum (Level 30)
+        714508827822915694,  # Diamond
+        714508831081758723,  # Legend
+        714508834433007698,  # Champion
+        721360680770469958,  # Divine (Level 90)
+    }
+)
 # Where the bot posts those gifs for staff to review
 GIF_REVIEW_CHANNEL = 1554813851302887494
 # seconds a member has to wait between two gifs

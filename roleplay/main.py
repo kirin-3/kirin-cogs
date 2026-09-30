@@ -215,7 +215,7 @@ class Roleplay(commands.Cog):
         Raises ValueError with a message for the member if the gif is refused.
         """
         if not self.can_submit_gif(member):
-            raise ValueError("Only supporters and Level 90+ members can send in gifs.")
+            raise ValueError("Only supporters and Level 30+ members can send in gifs.")
         now = monotonic()
         wait = self._gif_sent.get(member.id, now - const.GIF_SUBMIT_COOLDOWN) + const.GIF_SUBMIT_COOLDOWN - now
         if wait > 0:

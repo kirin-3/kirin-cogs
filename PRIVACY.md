@@ -69,7 +69,7 @@ The bot reads your Discord status and current activity for exactly two features:
 
 Staff can review ban records and the automod rules and action log on a private web site, `staff.unicornia.net`, after logging in with Discord. The login reads only the staff member's Discord user ID and whether their account has two-factor authentication. Members who are not staff cannot log in.
 
-Members can log in with Discord to a second site, `my.unicornia.net`, to view and change their own roleplay settings and auto-reply settings, see roleplay action counts, browse the roleplay gifs and vote on them, and, for supporters, their custom commands, custom emojis and custom role. Supporters and Level 90+ members can also send in a gif. This login reads only the member's Discord user ID. What you change there is stored exactly as if you had used the bot's commands (see [section 3.6](#36-content-you-submit-deliberately)); files you upload go to Discord or, for custom commands, to the bot's storage.
+Members can log in with Discord to a second site, `my.unicornia.net`, to view and change their own roleplay settings and auto-reply settings, see roleplay action counts, browse the roleplay gifs and vote on them, and, for supporters, their custom commands, custom emojis and custom role. Supporters and Level 30+ members can also send in a gif. This login reads only the member's Discord user ID. What you change there is stored exactly as if you had used the bot's commands (see [section 3.6](#36-content-you-submit-deliberately)); files you upload go to Discord or, for custom commands, to the bot's storage.
 
 On both sites the login session is held in memory, never written to disk, and ends after 12 hours, on logout, or when the bot restarts.
 

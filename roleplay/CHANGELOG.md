@@ -4,6 +4,12 @@
 
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
 
+## [2.10.3] - 2026-09-30
+
+### Changed
+
+- Members from Level 30 up (Platinum, Diamond, Legend, Champion and Divine) can send in a gif on the member site. Before, of the level roles only Divine could
+
 ## [2.10.2] - 2026-09-30
 
 ### Changed

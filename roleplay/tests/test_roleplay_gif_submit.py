@@ -50,7 +50,7 @@ class World:
 @pytest_asyncio.fixture
 async def world(red_env: simcord.Env, monkeypatch: pytest.MonkeyPatch) -> World:
     guild = red_env.create_guild()
-    role = guild.create_role("Level 90+")
+    role = guild.create_role("Platinum")
     uploader = guild.add_member(red_env.create_user("uploader"), roles=[role])
     plain = guild.add_member(red_env.create_user("plain"))
     review = guild.create_text_channel("review")
@@ -69,9 +69,20 @@ async def test_each_upload_role_may_send_a_gif_and_others_may_not(red_env: simco
     def member(*role_ids: int) -> discord.Member:
         return cast(discord.Member, SimpleNamespace(roles=[SimpleNamespace(id=role_id) for role_id in role_ids]))
 
-    assert {700121551483437128, 1458440559713718466, 721360680770469958} == const.GIF_UPLOAD_ROLES
-    for role_id in (700121551483437128, 1458440559713718466, 721360680770469958):
+    # the two supporter roles, then Platinum (Level 30), Diamond, Legend, Champion and Divine
+    allowed = {
+        700121551483437128,
+        1458440559713718466,
+        714508825071190086,
+        714508827822915694,
+        714508831081758723,
+        714508834433007698,
+        721360680770469958,
+    }
+    assert allowed == const.GIF_UPLOAD_ROLES
+    for role_id in allowed:
         assert cog.can_submit_gif(member(1, role_id))
+    assert not cog.can_submit_gif(member(715522934084468786))  # Gold, the level role below Platinum
     assert not cog.can_submit_gif(member(1, 2))
     assert not cog.can_submit_gif(member())
 

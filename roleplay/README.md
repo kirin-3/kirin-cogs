@@ -70,11 +70,13 @@ Members aren't shown file names. A gif with `eros` in its file name (any case, e
 - **Renaming a gif drops its votes.** A vote belongs to the action and the file name, so adding `_wlw_` to a name
   starts that gif over. Votes for a file that's gone stay stored, unseen, and come back if the name does.
 - **Sending in a gif.** Members with the active supporter role (`700121551483437128`), the inactive one
-  (`1458440559713718466`) or the Level 90+ role (`721360680770469958`) get a "Send in a gif" button on the Gifs pages,
-  which opens a page to send in a GIF for an action. The bot posts it in the review channel (`1554813851302887494`) as one message naming the action and the
-  member, without pinging them. That is all it does: staff review the gif, name it with its pairing and add it to the
-  images folder by hand, and the bot keeps no copy. The file has to be a GIF (judged by its content, not its name) and
-  no bigger than Discord lets the bot upload in that server. Each member can send one gif a minute.
+  (`1458440559713718466`) or a level role from Level 30 up (Platinum `714508825071190086`, Diamond
+  `714508827822915694`, Legend `714508831081758723`, Champion `714508834433007698` or Divine `721360680770469958`)
+  get a "Send in a gif" button on the Gifs pages, which opens a page to send in a GIF for an action. The bot posts it
+  in the review channel (`1554813851302887494`) as one message naming the action and the member, without pinging them.
+  That is all it does: staff review the gif, name it with its pairing and add it to the images folder by hand, and the
+  bot keeps no copy. The file has to be a GIF (judged by its content, not its name) and no bigger than Discord lets
+  the bot upload in that server. Each member can send one gif a minute.
 - The bot needs **View Channel**, **Send Messages** and **Attach Files** in the review channel, or uploads answer that
   they're unavailable.
 
