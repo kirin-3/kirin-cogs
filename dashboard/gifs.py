@@ -157,7 +157,7 @@ class MemberGifs(_Gifs):
                 web.HTTPForbidden,
                 403,
                 "Not allowed",
-                "Only supporters and Level 90+ members can send in gifs.",
+                "Only supporters and Level 30+ members can send in gifs.",
             )
         return roleplay
 

@@ -15,7 +15,7 @@ Cloudflare. They share the login code but keep separate sessions and cookies.
   their roleplay settings (Selective, Public, Servant and Untracked) on or off and see their roleplay stats and the busiest
   pairs, and turn the bot's daddy replies and the UnicornAI opt-out on or off. They can also browse the roleplay
   gifs and give each a thumbs up or down. Supporters also manage their custom commands, custom emojis and, if they
-  were given one with `[p]assignrole`, their custom role. Supporters and Level 90+ members can send in a gif.
+  were given one with `[p]assignrole`, their custom role. Supporters and Level 30+ members can send in a gif.
 
 ## Who can log in
 
@@ -38,7 +38,7 @@ at the time of each request:
 | Profile, Backgrounds, Stocks, Club, Waifu, Leaderboard | Everyone, while the Unicornia cog is loaded |
 | Warnings | Everyone, while the Moderation cog is loaded |
 | Roleplay, Settings | Everyone |
-| Gifs | Everyone, while the Roleplay cog is loaded. The page to send in a gif: the active supporter role (`700121551483437128`), the inactive one (`1458440559713718466`) or the Level 90+ role (`721360680770469958`) |
+| Gifs | Everyone, while the Roleplay cog is loaded. The page to send in a gif: the active supporter role (`700121551483437128`), the inactive one (`1458440559713718466`) or a level role from Level 30 up (Platinum, Diamond, Legend, Champion or Divine) |
 | Custom commands | The active supporter role (`700121551483437128`), or the inactive one (`1458440559713718466`) while the member still has commands |
 | Custom emojis | A supporter role who can create emojis (the `[p]ce setrole` role), or who still has emojis |
 | Custom role | Either supporter role, plus a role assigned with `[p]assignrole` |
@@ -208,7 +208,9 @@ Guild `684360255798509578`, supporter roles `700121551483437128` (active) and `1
 session length of 12 hours apply to both.
 
 Member site request limits: 9 MB, and 100 MB for a gif upload from a member who may send in gifs. Who may send in a gif
-(the two supporter roles and Level 90+ `721360680770469958`), the review channel `1554813851302887494` and the 60 second
+(the two supporter roles and the level roles from Level 30 up: Platinum `714508825071190086`, Diamond
+`714508827822915694`, Legend `714508831081758723`, Champion `714508834433007698` and Divine `721360680770469958`),
+the review channel `1554813851302887494` and the 60 second
 wait between gifs live in the Roleplay cog, `roleplay/const.py`.
 
 ## Deployment checklist
@@ -249,7 +251,7 @@ wait between gifs live in the Roleplay cog, `roleplay/const.py`.
    - an active supporter can create a command and an emoji;
    - a supporter with an assigned role can recolor it;
    - `/gifs` lists 30 actions, and a thumbs up on a gif is still there after a reload;
-   - a gif sent in by a Level 90+ account arrives in the review channel without pinging them;
+   - a gif sent in by a Level 30+ account arrives in the review channel without pinging them;
    - the staff site's Gif votes page lists the gif that was voted on.
 
 To roll back, run `[p]unload dashboard` and remove the Caddy blocks.
