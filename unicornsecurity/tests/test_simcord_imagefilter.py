@@ -17,7 +17,7 @@ def red_cogs() -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_admin_sets_channel_and_only_non_tenor_images_are_removed(red_env: simcord.Env) -> None:
+async def test_admin_sets_channel_and_only_unspoilered_non_tenor_images_are_removed(red_env: simcord.Env) -> None:
     bot = cast(Red, red_env.bot)
     cog = bot.get_cog("ImageFilter")
     assert isinstance(cog, ImageFilter)
@@ -36,7 +36,10 @@ async def test_admin_sets_channel_and_only_non_tenor_images_are_removed(red_env:
 
     await member.send(channel, "https://example.com/cat.png")
     assert not any(message.content == "https://example.com/cat.png" for message in channel.history())
-    simcord.assert_sent(channel, contains="only Tenor GIFs are allowed")
+    simcord.assert_sent(channel, contains="must be spoilered")
+
+    await member.send(channel, "||https://example.com/cat.png||")
+    assert any(message.content == "||https://example.com/cat.png||" for message in channel.history())
 
     await member.send(channel, "https://tenor.com/view/cat")
     assert any(message.content == "https://tenor.com/view/cat" for message in channel.history())

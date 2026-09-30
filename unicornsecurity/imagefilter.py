@@ -11,6 +11,7 @@ from redbot.core import Config, commands
 log = logging.getLogger("red.kirin_cogs.unicornsecurity.imagefilter")
 
 URL_PATTERN = re.compile(r"https?://\S+")
+SPOILER_PATTERN = re.compile(r"\|\|.+?\|\|", re.DOTALL)
 REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 MAX_REDIRECTS = 3
 
@@ -51,7 +52,7 @@ class _PublicResolver(aiohttp.ThreadedResolver):
 
 class ImageFilter(commands.Cog):
     """
-    Delete non-tenor image links in a specific channel.
+    Delete unspoilered non-tenor images in a specific channel.
     """
 
     def __init__(self, bot):
@@ -108,7 +109,7 @@ class ImageFilter(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        """Listen for messages with image links that are not from tenor.com"""
+        """Listen for messages with unspoilered images that are not from tenor.com"""
         await self._check_message(message)
 
     @commands.Cog.listener()
@@ -133,12 +134,11 @@ class ImageFilter(commands.Cog):
         if message.channel.id != target_channel_id:
             return
 
-        # Get all URLs from the message
-        content = message.content
-        urls = URL_PATTERN.findall(content)
+        # Get the URLs outside ||spoiler|| tags; spoilered images are allowed
+        urls = URL_PATTERN.findall(SPOILER_PATTERN.sub(" ", message.content))
 
-        # Also check message attachments
-        attachment_urls = [attachment.url for attachment in message.attachments]
+        # Also check message attachments that aren't marked as spoilers
+        attachment_urls = [attachment.url for attachment in message.attachments if not attachment.is_spoiler()]
         all_urls = urls + attachment_urls
 
         # If no URLs or attachments, nothing to check
@@ -164,12 +164,13 @@ class ImageFilter(commands.Cog):
             if not is_image and "." in url.split("/")[-1]:
                 is_image = await self.is_image_url(url)
 
-            # If it's an image and not from tenor.com, delete the message
+            # If it's an unspoilered image and not from tenor.com, delete the message
             if is_image:
                 try:
                     await message.delete()
                     await message.channel.send(
-                        f"{message.author.mention}, only Tenor GIFs are allowed in this channel. "
+                        f"{message.author.mention}, images in this channel must be spoilered: wrap links in "
+                        "`||link||` or mark uploads as spoiler. Tenor GIFs are fine as they are. "
                         "Your message has been removed.",
                         delete_after=10,
                     )
@@ -198,12 +199,14 @@ class ImageFilter(commands.Cog):
 
         embed = discord.Embed(
             title="Image Filter Status",
-            description="Current settings for the Tenor-only image filter",
+            description="Current settings for the spoilered-images filter",
             color=discord.Color.blue(),
         )
         embed.add_field(name="Target Channel", value=f"ID: {target_channel_id}\nName: {channel_name}", inline=False)
         embed.add_field(
-            name="Filter Action", value="Delete non-tenor image links and send a warning message", inline=False
+            name="Filter Action",
+            value="Delete unspoilered non-tenor images and send a warning message",
+            inline=False,
         )
 
         await ctx.send(embed=embed)
@@ -211,7 +214,7 @@ class ImageFilter(commands.Cog):
     @imagefilter.command(name="setchannel")
     @commands.admin_or_permissions(administrator=True)
     async def set_filter_channel(self, ctx, channel: discord.TextChannel | None = None):
-        """Set the channel for the Tenor-only filter.
+        """Set the channel for the spoilered-images filter.
 
         If no channel is specified, the current channel will be used.
         """

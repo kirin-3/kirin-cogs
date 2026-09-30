@@ -1,4 +1,4 @@
-"""Unicorn Security Cog for cleaning non-tenor image links"""
+"""Unicorn Security Cog for cleaning unspoilered non-tenor images"""
 
 __version__ = "1.0.0"
 __author__ = "Unicornia Team"

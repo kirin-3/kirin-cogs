@@ -97,7 +97,7 @@ owner-only aggregate economy dashboard at `[p]unicornia yieldstats`. Users can r
 `[p]stock dividends`.
 
 ### UnicornSecurity
-Channel filter that only allows tenor GIF links in a specific channel, deleting other image links.
+Channel filter that only allows tenor GIF links and spoilered images in a specific channel, deleting other images.
 
 ### UniMod
 AI-powered auto-moderation using sentiment analysis and AI detection to alert moderators of potential violations.

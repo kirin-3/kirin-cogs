@@ -125,6 +125,39 @@ async def test_non_tenor_image_with_tenor_in_the_query_is_deleted(cog: ImageFilt
 
 
 @pytest.mark.parametrize(
+    ("content", "spoiler_flags", "deleted"),
+    [
+        ("||https://example.com/cat.png||", [], False),
+        ("look ||https://example.com/cat.png|| and ||https://i.imgur.com/abc||", [], False),
+        ("||https://example.com/cat.png", [], True),
+        ("||a|| https://example.com/cat.png ||b||", [], True),
+        ("||https://example.com/cat.png|| https://example.com/dog.png", [], True),
+        ("", [True], False),
+        ("", [True, False], True),
+    ],
+)
+@pytest.mark.asyncio
+async def test_only_unspoilered_images_are_deleted(
+    cog: ImageFilter, content: str, spoiler_flags: list[bool], deleted: bool
+) -> None:
+    cast(MagicMock, cog.config).guild.return_value.target_channel_id = AsyncMock(return_value=1319688029530492948)
+    message = MagicMock()
+    message.author.bot = False
+    message.channel.id = 1319688029530492948
+    message.channel.send = AsyncMock()
+    message.content = content
+    message.attachments = [
+        MagicMock(url="https://cdn.discordapp.com/attachments/1/2/cat.png", is_spoiler=MagicMock(return_value=flag))
+        for flag in spoiler_flags
+    ]
+    message.delete = AsyncMock()
+
+    await cog.on_message(message)
+
+    assert message.delete.await_count == int(deleted)
+
+
+@pytest.mark.parametrize(
     "url",
     [
         "http://127.0.0.1/admin",
