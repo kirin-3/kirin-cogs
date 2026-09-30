@@ -32,4 +32,4 @@ class TableUnflipResponder(BaseTextResponder):
         if message.author.id in self.never_respond:
             return
 
-        await self.send_message(message, "┬─┬ノ( º _ ºノ)", as_reply=True, delay=True)
+        await self.send_message(message, "┬─┬ノ( º _ ºノ)", as_reply=True)

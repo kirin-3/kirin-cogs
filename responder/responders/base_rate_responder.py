@@ -67,7 +67,6 @@ class BaseRateResponder(BaseTextResponder):
     color: int = const.UNICORNIA_BOT_COLOR
     bar_full: tuple[str, ...] = ("🟪",)
     bar_empty: str = "⬛"
-    delay: bool = False  # "typing..." before the answer
 
     # this enables hard-coding overrides for specific user ids
     # dictionary should be defined as a [user.id] = {[embed properties:values]}
@@ -133,7 +132,6 @@ class BaseRateResponder(BaseTextResponder):
             footer=footer or props["footer"],
             color=props["color"],
             as_reply=True,
-            delay=self.delay,
         )
 
     async def respond(

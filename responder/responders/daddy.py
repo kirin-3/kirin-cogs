@@ -44,4 +44,4 @@ class ImDaddyResponder(BaseTextResponder):
             if message.author.id in self.UWU and uwu_cog is not None:
                 daddy_response = uwu_cog.translate(daddy_response)  # pyright: ignore[reportAttributeAccessIssue]
 
-            await self.send_message(message, daddy_response, as_reply=True, delay=True)
+            await self.send_message(message, daddy_response, as_reply=True)

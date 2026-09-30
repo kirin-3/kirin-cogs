@@ -6,7 +6,7 @@ The `BaseTextResponder` class provides the following functionalities:
 - Define patterns to match in message content.
 - Generate regex flags based on object attributes.
 - Abstract method `respond` to be implemented by subclasses for defining responses to matched messages.
-- Methods for sending delayed responses, embedded messages, and plain text messages to Discord channels.
+- Methods for sending embedded messages and plain text messages to Discord channels.
 
 Attributes:
     parent: The parent object/main cog that instantiates the responder.
@@ -128,24 +128,6 @@ class BaseTextResponder(ABC):
         """
         raise NotImplementedError("Subclasses must implement this method")
 
-    async def delay_response(self, message: discord.Message, text: str):
-        """Sends a delayed response to a Discord message.
-
-        This function simulates typing by waiting for a calculated delay before sending a response.
-
-        Args:
-            message (discord.Message): The message object from the Discord API.
-            text (str): The text content to be sent as a response.
-
-        Returns:
-            None
-        """
-        # Calculate the typing delay based on the length of the text with a max of 3 sec
-        typing_delay = min(3, len(text) * 0.025)
-        self.parent.logger.debug(f"Typing delay: {typing_delay}")
-        async with message.channel.typing():
-            await asyncio.sleep(typing_delay)
-
     async def send_embed(
         self,
         message: discord.Message,
@@ -155,7 +137,6 @@ class BaseTextResponder(ABC):
         fields: dict | None = None,
         footer: str | None = None,
         as_reply: bool = False,
-        delay: bool = False,
         color: int | None = None,
         **kwargs,
     ):
@@ -169,7 +150,6 @@ class BaseTextResponder(ABC):
             fields (dict, optional): A dictionary of fields to be added to the embed, where keys are field names and values are field values. Defaults to None.
             footer (bool, optional): Whether to include a footer in the embed. Defaults to False.
             as_reply (bool, optional): Whether to send the message as a reply. Defaults to False.
-            delay (bool, optional): Whether to introduce a delay before sending the message. Defaults to False.
             color (int, optional): The embed colour. Defaults to the bot's colour.
 
         Returns:
@@ -193,9 +173,6 @@ class BaseTextResponder(ABC):
             for name, value in fields.items():
                 embed.add_field(name=name, value=value, inline=False)
 
-        if delay:
-            await self.delay_response(message, description)
-
         if as_reply:
             try:
                 await message.reply(embed=embed, mention_author=False, **kwargs)
@@ -212,26 +189,18 @@ class BaseTextResponder(ABC):
         message: discord.Message,
         text: str,
         as_reply: bool = False,
-        delay: bool = False,
         **kwargs,
     ):
         """Sends a message to the specified Discord channel.
-
-        This function first calls `delay_response` to introduce a delay before sending the message.
-        Then, it sends the provided text to the channel where the original message was received.
 
         Args:
             message (discord.Message): The original message object from the Discord channel.
             text (str): The text content to be sent as a message.
             as_reply (bool, optional): Whether to send the message as a reply. Defaults to False.
-            delay (bool, optional): Whether to introduce a delay before sending the message. Defaults to False.
 
         Returns:
             None
         """
-        if delay:
-            await self.delay_response(message, text)
-
         if as_reply:
             try:
                 await message.reply(text, **kwargs)

@@ -65,14 +65,14 @@ class LongCatResponder(BaseTextResponder):
             middle_cat = f"{self.EMOJI_CAT_MIDDLE}{self.EMOJI_KNIFE}{self.EMOJI_CAT_MIDDLE}"
             long_cat = f"{self.EMOJI_CAT_FRONT}{middle_cat}{self.EMOJI_CAT_END}"
 
-            await self.send_message(message, long_cat, as_reply=False, delay=False)
-            await self.send_message(message, "OH NO! LONG CAT WAS TOO LONG!", as_reply=True, delay=False)
+            await self.send_message(message, long_cat, as_reply=False)
+            await self.send_message(message, "OH NO! LONG CAT WAS TOO LONG!", as_reply=True)
             self.sections = self.DEFAULT_SECTIONS
         elif self.sections < 0:
             long_cat = f"{self.EMOJI_CAT_END}{self.EMOJI_CAT_FRONT}"
 
-            await self.send_message(message, long_cat, as_reply=False, delay=False)
-            await self.send_message(message, "OH NO! SHORT CAT WAS TOO SHORT!", as_reply=True, delay=False)
+            await self.send_message(message, long_cat, as_reply=False)
+            await self.send_message(message, "OH NO! SHORT CAT WAS TOO SHORT!", as_reply=True)
             self.sections = self.DEFAULT_SECTIONS
         else:
-            await self.send_message(message, long_cat, as_reply=False, delay=False)
+            await self.send_message(message, long_cat, as_reply=False)

@@ -27,4 +27,4 @@ class TheGameResponder(BaseTextResponder):
         if message.author.id in self.never_respond:
             return
 
-        await self.send_message(message, "I just lost The Game.", as_reply=True, delay=True)
+        await self.send_message(message, "I just lost The Game.", as_reply=True)

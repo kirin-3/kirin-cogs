@@ -25,7 +25,6 @@ class DomRate(BaseRateResponder):
     thumbnail = r"https://cdn.discordapp.com/emojis/828672418318778398.gif"
     footer = "Results scientifically calculated based on member roles."
     color = 0x607D8B
-    delay = True
 
     dominant_properties = {
         "title": "❯ Dominant",
