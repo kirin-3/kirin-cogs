@@ -164,6 +164,44 @@ for (const image of document.querySelectorAll("img.bg")) {
   else image.addEventListener("error", () => broken(image));
 }
 
+// Gif votes save in place, so the gifs keep playing. The form works without this: any failure submits it the ordinary
+// way. The site's CSP lets this script call the site itself and no one else.
+for (const form of document.querySelectorAll("form.vote")) {
+  form.addEventListener("submit", async (event) => {
+    const button = event.submitter;
+    if (form.dataset.plain || !button) return;
+    event.preventDefault();
+    if (form.classList.contains("busy")) return;
+    form.classList.add("busy");
+    let saved = false;
+    try {
+      // getAttribute: the form has a field named "action", which hides form.action
+      const response = await fetch(form.getAttribute("action"), {
+        method: "POST",
+        body: new URLSearchParams(new FormData(form, button)),
+        headers: { "X-Requested-With": "fetch" },
+      });
+      saved = response.status === 204;
+    } catch {
+      // the ordinary submit below shows what went wrong
+    }
+    form.classList.remove("busy");
+    if (!saved) {
+      form.dataset.plain = "1";
+      form.requestSubmit(button);
+      delete form.dataset.plain;
+      return;
+    }
+    // Show the new vote: the pressed thumb takes it back when pressed again, the other one votes for itself.
+    const chosen = button.value === "none" ? "" : button.value;
+    const thumbs = form.querySelectorAll("button[name=value]"); // thumbs up, then thumbs down
+    ["up", "down"].forEach((kind, n) => {
+      thumbs[n].setAttribute("aria-pressed", String(chosen === kind));
+      thumbs[n].value = chosen === kind ? "none" : kind;
+    });
+  });
+}
+
 addEventListener("beforeunload", (event) => {
   if (dirty.size) {
     event.preventDefault();

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Gif votes{% endblock %}
+{% block content %}
+<h1>Gif votes</h1>
+<p class="sub">Every gif with at least one vote, lowest score first.</p>
+{% if gifs %}
+<div class="scroll">
+  <table>
+    <thead><tr><th>Gif</th><th>Action</th><th>File</th><th class="num">👍</th><th class="num">👎</th></tr></thead>
+    <tbody>
+    {% for gif in gifs %}
+    <tr>
+      <td><img class="gif-thumb" src="/gifs/{{ gif.action|urlencode }}/file/{{ gif.name|urlencode }}" alt="" loading="lazy"></td>
+      <td>{{ gif.action|capitalize }}</td>
+      <td class="mono reason">{{ gif.name }}</td>
+      <td class="num up">{{ gif.up }}</td>
+      <td class="num down">{{ gif.down }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<nav class="pages" aria-label="Pages">
+  {% if page > 1 %}<a href="/gifs?page={{ page - 1 }}">← Previous</a>{% endif %}
+  <span>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a href="/gifs?page={{ page + 1 }}">Next →</a>{% endif %}
+</nav>
+{% else %}
+<p class="empty">No votes yet.</p>
+{% endif %}
+{% endblock %}

@@ -7,13 +7,15 @@ Cloudflare. They share the login code but keep separate sessions and cookies.
   messages each banned member posted in the week before their ban, and manages the AutoMod cog's rulesets, rules and
   word lists, including its action log and the dry-run switch. Its Unicornia pages show, read-only, any member's
   economy and XP, the house economy, the cog's configuration and the stock market. Its Modmail pages show every
-  thread the modmail bot has kept since October 2020, read-only.
+  thread the modmail bot has kept since October 2020, read-only. Its Gif votes page lists the thumbs-up and thumbs-down
+  totals of every roleplay gif that has a vote.
 - **Member site**, `my.unicornia.net` on `127.0.0.1:8012`. Every member can see their Unicornia profile, stocks, club,
   waifu standing and unicorn stable, buy and equip rank-card backgrounds, see the XP leaderboard and their own
   warnings, and turn
   their roleplay settings (Selective, Public, Servant and Untracked) on or off and see their roleplay stats and the busiest
-  pairs, and turn the bot's daddy replies and the UnicornAI opt-out on or off. Supporters also manage their custom commands, custom emojis and, if they
-  were given one with `[p]assignrole`, their custom role.
+  pairs, and turn the bot's daddy replies and the UnicornAI opt-out on or off. They can also browse the roleplay
+  gifs and give each a thumbs up or down. Supporters also manage their custom commands, custom emojis and, if they
+  were given one with `[p]assignrole`, their custom role. Supporters and Level 90+ members can send in a gif.
 
 ## Who can log in
 
@@ -36,6 +38,7 @@ at the time of each request:
 | Profile, Backgrounds, Stocks, Club, Waifu, Leaderboard | Everyone, while the Unicornia cog is loaded |
 | Warnings | Everyone, while the Moderation cog is loaded |
 | Roleplay, Settings | Everyone |
+| Gifs | Everyone, while the Roleplay cog is loaded. The form to send in a gif: the active supporter role (`700121551483437128`), the inactive one (`1458440559713718466`) or the Level 90+ role (`721360680770469958`) |
 | Custom commands | The active supporter role (`700121551483437128`), or the inactive one (`1458440559713718466`) while the member still has commands |
 | Custom emojis | A supporter role who can create emojis (the `[p]ce setrole` role), or who still has emojis |
 | Custom role | Either supporter role, plus a role assigned with `[p]assignrole` |
@@ -55,6 +58,31 @@ only upload new emojis, not copy existing ones, and it can't add people to or re
 
 A section whose cog isn't loaded shows a notice, and changes to it get 503; the other section keeps working. A POST
 names the section, key and new state; anything unknown gets 400.
+
+## Gifs pages
+
+`/gifs` on the member site lists the Roleplay cog's actions with the number of gifs each has. `/gifs/{action}` shows one
+action's **Default** pool (untagged, `mlw` and `wlm` gifs, the ones the bot picks from when no pairing is asked for),
+and `/gifs/{action}/wlw` and `/gifs/{action}/mlm` the other two, 5 gifs a page by file name (`?page=N`, clamped to the
+last page). The pages read the images folder each time, so a file change shows on the next load. Gifs are served by
+`/gifs/{action}/file/{name}`, which only serves a name found in that action's folder (the cog looks it up in the
+folder's listing; the name is never joined onto a path), and a browser may keep them for a day, privately.
+
+- **Voting.** Each gif has a thumbs up and a thumbs down. Each is a plain form (`POST /gifs/vote`) that saves the vote
+  and returns to the same page and gif; pressing the thumb you chose takes the vote back. With scripts, `site.js`
+  sends the same form with `fetch` and flips the buttons, so the gifs keep playing. Members only ever see their own
+  vote, never totals. The return address is rebuilt from a pool name, a page number and a slot number that are checked
+  first, never taken from the request.
+- **Sending in a gif.** Members who may (see the table above) get a form with an action and a file
+  (`POST /gifs/upload`). The Roleplay cog checks the rest: the file is a GIF by content, fits the review server's
+  upload limit, and the member hasn't sent one in the last minute. It posts the gif in its review channel and keeps
+  nothing; the site adds no size limit below the request limit under Protections. A refusal shows its message on the
+  page and answers 400.
+- **Staff.** `/gifs` on the staff site lists every gif with at least one vote and a file that still exists, lowest score
+  first, 10 a page (`?page=N`), with its thumbs-up and thumbs-down totals. GET-only. `/gifs/{action}/file/{name}` shows
+  the gif to staff and is never cached.
+
+The pages answer 503 while the Roleplay cog isn't loaded.
 
 ## Warnings page
 
@@ -137,18 +165,25 @@ so losing the staff role, or leaving the server, ends access on the next click. 
   member cookies (`__Host-staff`, `__Host-member`) and session stores are separate, so a session from one site is
   never accepted by the other.
 - Every POST must carry the session's CSRF token. The member site accepts bodies up to 9 MB, for custom command files,
-  and reads them only after the session check.
+  and reads them only after the session check. The one exception is a gif upload (`POST /gifs/upload`) from a member
+  who may send in gifs, which accepts up to 100 MB, Cloudflare's own limit; the real ceiling is what Discord lets the
+  bot upload. Everyone else, and every other route, keeps 9 MB.
 - Uploads are checked by their content, not their file name: emojis must be PNG, JPEG or GIF, role icons PNG or JPEG.
 - Pages carry a strict Content-Security-Policy, `nosniff`, `no-referrer`, `DENY` framing, `noindex`, and `no-store`.
   Both sites may show images from `cdn.discordapp.com`: modmail attachments on the staff site; emojis, role icons and
   avatars on the member site. The member site may also show images from `unicornia.net`, for rank-card backgrounds. All user text is
   HTML-escaped by Jinja2.
 - Fonts (Fredoka, Nunito and Caveat, the main site's, under the OFL in `static/fonts/OFL.txt`) load only from the
-  site itself, and are the only responses a browser may cache.
-- The only script is `static/site.js`. The policy allows the site's own files and nothing else: no inline scripts, no
-  other hosts, and no requests from scripts. It adds conveniences only, such as adding editor rows in place, a live
-  preview of the custom role, animating leaderboard backgrounds, local times, filter boxes, delete confirmations, and blocking a second submit while a form is sending. Every page works without it, and
-  every change is still checked by the server. It writes text into the page, never HTML.
+  site itself. They are the only public cache entries. Only the member site's images from the bot's own storage may be
+  kept, and only by the member's own browser (`private`): the roleplay gifs (a day), the stable art (5 minutes) and the
+  stable card (30 seconds). Everything else, pages and scripts included, is `no-store`.
+- The only script is `static/site.js`. The policy allows the site's own files and nothing else: no inline scripts and no
+  other hosts. On the member site the script may send requests to the site itself (`connect-src 'self'`), which is how
+  a gif vote saves in place; on the staff site scripts can't make requests at all. It adds conveniences only, such as
+  adding editor rows in place, a live preview of the custom role, animating leaderboard backgrounds, local times,
+  filter boxes, delete confirmations, in-place gif votes, and blocking a second submit while a form is sending. Every
+  page works without it, and every change is still checked by the server. It writes text and attributes into the page,
+  never HTML.
 - The login callbacks share one limit, because both sites log in through the bot's IP. Discord gets at most 5 code
   exchanges per minute per client IP and 30 per minute in total, and none at all while it is answering 429. Member
   logins stop at 20 a minute, so staff can always use the last 10.
@@ -165,6 +200,10 @@ so losing the staff role, or leaving the server, ends access on the next click. 
 
 Guild `684360255798509578`, supporter roles `700121551483437128` (active) and `1458440559713718466` (inactive), and a
 session length of 12 hours apply to both.
+
+Member site request limits: 9 MB, and 100 MB for a gif upload from a member who may send in gifs. Who may send in a gif
+(the two supporter roles and Level 90+ `721360680770469958`), the review channel `1554813851302887494` and the 60 second
+wait between gifs live in the Roleplay cog, `roleplay/const.py`.
 
 ## Deployment checklist
 
@@ -195,11 +234,16 @@ session length of 12 hours apply to both.
 
 4. Load the cogs: `[p]load banlog automod dashboard`, and have `customcommand`, `customemoji`, `customrolecolor`,
    `responder`, `roleplay` and `unicornia` loaded. Pages whose cog is not loaded show a notice instead.
+   Give the bot View Channel, Send Messages and Attach Files in the gif review channel `1554813851302887494`, or gif
+   uploads answer that they are unavailable.
 5. Check that:
    - a staff account with 2FA can log in to the staff site, and a non-staff account gets "Staff only";
    - a member without 2FA can log in to the member site and sees only Roleplay and Settings;
    - an inactive supporter can list and delete their items but has no create forms;
    - an active supporter can create a command and an emoji;
-   - a supporter with an assigned role can recolor it.
+   - a supporter with an assigned role can recolor it;
+   - `/gifs` lists 30 actions, and a thumbs up on a gif is still there after a reload;
+   - a gif sent in by a Level 90+ account arrives in the review channel without pinging them;
+   - the staff site's Gif votes page lists the gif that was voted on.
 
 To roll back, run `[p]unload dashboard` and remove the Caddy blocks.

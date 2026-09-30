@@ -23,6 +23,7 @@
     <a href="/me/warnings"{% if path.startswith("/me/") %} class="on"{% endif %}>Profile</a>
     {% endif %}
     <a href="/roleplay"{% if path == "/roleplay" %} class="on"{% endif %}>Roleplay</a>
+    <a href="/gifs"{% if path.startswith("/gifs") %} class="on"{% endif %}>Gifs</a>
     <a href="/settings"{% if path == "/settings" %} class="on"{% endif %}>Settings</a>
     {% if nav and nav.commands %}
     <a href="/commands"{% if path.startswith("/commands") %} class="on"{% endif %}>Commands</a>

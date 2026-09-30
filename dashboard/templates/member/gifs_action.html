@@ -1,0 +1,44 @@
+{% extends "member/base.html" %}
+{% block title %}{{ action|capitalize }} gifs{% endblock %}
+{% block content %}
+{% set base = "/gifs/" ~ (action|urlencode) ~ ("" if pool == "default" else "/" ~ pool) %}
+<p class="sub"><a href="/gifs">← All gifs</a></p>
+<h1>{{ action|capitalize }}</h1>
+{% if sent %}<p class="note">Thanks! Your gif was sent to the staff to look at.</p>{% endif %}
+<nav class="tabs" aria-label="Pairings">
+  {% for tab, label in (("default", "Default"), ("wlw", "wlw"), ("mlm", "mlm")) %}
+  <a href="/gifs/{{ action|urlencode }}{% if tab != "default" %}/{{ tab }}{% endif %}"{% if tab == pool %} class="on" aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+{% if pool == "default" %}
+<p class="empty">Gifs with no pairing, and the mlw and wlm ones: what the bot picks from when nobody asks for a pairing.</p>
+{% endif %}
+{% if gifs %}
+<div class="gif-grid">
+  {% for gif in gifs %}
+  <article class="gif" id="g{{ loop.index }}">
+    <img src="/gifs/{{ action|urlencode }}/file/{{ gif.name|urlencode }}" alt="{{ gif.name }}" loading="lazy">
+    <p class="mono">{{ gif.name }}</p>
+    <form class="vote" method="post" action="/gifs/vote">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <input type="hidden" name="action" value="{{ action }}">
+      <input type="hidden" name="name" value="{{ gif.name }}">
+      <input type="hidden" name="pool" value="{{ pool }}">
+      <input type="hidden" name="page" value="{{ page }}">
+      <input type="hidden" name="slot" value="{{ loop.index }}">
+      <button type="submit" name="value" value="{{ "none" if gif.mine == 1 else "up" }}" aria-pressed="{{ "true" if gif.mine == 1 else "false" }}" aria-label="Thumbs up" title="Thumbs up">👍</button>
+      <button type="submit" name="value" value="{{ "none" if gif.mine == -1 else "down" }}" aria-pressed="{{ "true" if gif.mine == -1 else "false" }}" aria-label="Thumbs down" title="Thumbs down">👎</button>
+    </form>
+  </article>
+  {% endfor %}
+</div>
+<nav class="pages" aria-label="Pages">
+  {% if page > 1 %}<a href="{{ base }}?page={{ page - 1 }}">← Previous</a>{% endif %}
+  <span>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a href="{{ base }}?page={{ page + 1 }}">Next →</a>{% endif %}
+</nav>
+{% else %}
+<p class="empty">No gifs here yet.</p>
+{% endif %}
+{% if can_upload %}{% include "member/_gif_upload.html" %}{% endif %}
+{% endblock %}

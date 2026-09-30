@@ -525,3 +525,21 @@ progress::-moz-progress-bar { background: linear-gradient(90deg, var(--pink), va
 .stable-breed.undiscovered { border-style: dashed; box-shadow: none; }
 .stable-breed .secret { display: grid; place-items: center; width: 140px; height: 140px; font: 600 3rem var(--heading); color: var(--muted); background: var(--raised); border-radius: 1rem; }
 .stable-breed .sub { font-size: 0.85rem; }
+
+/* --- gifs --- */
+.gif-actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin: 0 0 8px; padding: 0; list-style: none; }
+.gif-actions li { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 1rem; box-shadow: var(--shadow); font: 600 1.05rem var(--heading); }
+.gif-actions a { text-decoration: none; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.tabs a { padding: 6px 18px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--muted); text-decoration: none; font: 600 0.95rem var(--heading); transition: background 0.2s, color 0.2s; }
+.tabs a:hover { color: var(--accent); background: var(--accent-soft); }
+.tabs a.on { border-color: transparent; background: var(--accent); color: var(--on-accent); box-shadow: var(--glow); }
+.gif-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 16px; }
+.gif { display: flex; flex-direction: column; gap: 8px; padding: 12px; scroll-margin-top: 90px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.gif:target { border-color: var(--accent); box-shadow: var(--glow); }
+.gif img { width: 100%; height: 220px; object-fit: contain; border-radius: 0.75rem; background: var(--bg); }
+.gif p { margin: 0; color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
+.vote { display: flex; gap: 8px; }
+.vote button { flex: 1; font-size: 1.2rem; }
+.vote button[aria-pressed="true"], .vote button[aria-pressed="true"]:hover { border-color: transparent; background: var(--accent); }
+.gif-thumb { width: 120px; height: 80px; object-fit: contain; border-radius: 0.5rem; background: var(--bg); }

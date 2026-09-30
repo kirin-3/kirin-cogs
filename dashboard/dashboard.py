@@ -30,6 +30,7 @@ from redbot.core.errors import CogLoadError
 from yarl import URL
 
 from .automod_forms import SECTIONS, Names, apply_action, editor_view, parse_rows, row_templates, row_view
+from .gifs import GIF_UPLOAD_PATH, MemberGifs, StaffGifs
 from .member import MemberSite
 from .modmail import StaffModmail
 from .unicornia_views import StaffUnicornia
@@ -53,6 +54,8 @@ EXCHANGES_PER_IP = 5  # per minute, across both sites
 EXCHANGES_TOTAL = 30  # per minute, from all clients on both sites
 MEMBER_EXCHANGES = 20  # member logins stop here, so the last 10 of the minute stay free for staff
 MEMBER_MAX_BODY = 9 * 1024 * 1024  # an 8 MB custom command attachment plus the rest of the form
+# A gif sent in by a member who may: Cloudflare's own request limit. The real ceiling is what Discord lets the bot post.
+GIF_UPLOAD_MAX_BODY = 100 * 1024 * 1024
 PUBLIC_PATHS = frozenset({"/login", "/callback", "/logged-out"})
 # POSTs to these routes also need a bot owner; staff can only view automod.
 OWNER_ONLY = frozenset(
@@ -89,10 +92,12 @@ SECURITY_HEADERS = {
     "X-Robots-Tag": "noindex, nofollow",
     "Cache-Control": "no-store",
 }
-# Emojis, role icons and avatars are shown from Discord's CDN, rank-card backgrounds from the main site.
+# Emojis, role icons and avatars are shown from Discord's CDN, rank-card backgrounds from the main site. The site's own
+# script may call the site itself, so a gif vote saves without reloading the page.
 MEMBER_SECURITY_HEADERS = {
     **SECURITY_HEADERS,
-    "Content-Security-Policy": CSP.format("'self' https://cdn.discordapp.com https://unicornia.net"),
+    "Content-Security-Policy": CSP.format("'self' https://cdn.discordapp.com https://unicornia.net")
+    + "; connect-src 'self'",
 }
 
 log = logging.getLogger("red.kirin_cogs.dashboard")
@@ -203,10 +208,14 @@ def _editing(handler: _Route) -> _Route:
 
 
 async def _add_security_headers(request: web.Request, response: web.StreamResponse) -> None:
+    chosen = response.headers.get("Cache-Control")
     response.headers.update(request.app[SITE].headers)
-    # Font files are public and never change. Everything else, the site's CSS and JS included, stays no-store.
+    # Font files are public and never change. A handler may ask for a private lifetime for the images it serves (the
+    # stable's art and card, the roleplay gifs). Everything else, the site's CSS and JS included, stays no-store.
     if request.path.startswith("/static/fonts/"):
         response.headers["Cache-Control"] = "public, max-age=604800, immutable"
+    elif chosen:
+        response.headers["Cache-Control"] = chosen
 
 
 class Dashboard(commands.Cog):
@@ -230,6 +239,8 @@ class Dashboard(commands.Cog):
             user_name=self._user_name, user_avatar=self._user_avatar, channel_name=self._channel_name
         )
         self.member_site = MemberSite(self)
+        self.member_gifs = MemberGifs(self)
+        self.staff_gifs = StaffGifs(self)
         self.staff_unicornia = StaffUnicornia(self)
         self.staff_modmail = StaffModmail(self)
 
@@ -270,6 +281,7 @@ class Dashboard(commands.Cog):
     def make_member_app(self) -> web.Application:
         app = self._app(MEMBER, client_max_size=MEMBER_MAX_BODY)
         self.member_site.add_routes(app)
+        self.member_gifs.add_routes(app)
         return app
 
     def make_app(self) -> web.Application:
@@ -293,6 +305,7 @@ class Dashboard(commands.Cog):
         app.router.add_post(f"/automod/lists/{word_list}/delete", self.automod_list_delete)
         self.staff_unicornia.add_routes(app)
         self.staff_modmail.add_routes(app)
+        self.staff_gifs.add_routes(app)
         return app
 
     # --- access control --------------------------------------------------------------------------
@@ -310,6 +323,8 @@ class Dashboard(commands.Cog):
             raise web.HTTPUnauthorized()
         if request.method == "POST":
             # Read only now that the session is known, so anonymous clients can't make the bot buffer uploads.
+            if resource.canonical == GIF_UPLOAD_PATH and self._may_upload_gif(request, session):
+                request = request.clone(client_max_size=GIF_UPLOAD_MAX_BODY)  # keeps the route and app; must come first
             form = await request.post()
             if not _same(str(form.get("csrf", "")), session.csrf):
                 raise web.HTTPForbidden()
@@ -322,6 +337,11 @@ class Dashboard(commands.Cog):
             request["member"] = member
             request["nav"] = await self.member_site.sections(member)
         return await handler(request)
+
+    def _may_upload_gif(self, request: web.Request, session: Session) -> bool:
+        """Only a member who may send in gifs gets the larger request limit, so nobody else can make the bot store 100 MB."""
+        member = self.member(session.user_id)
+        return request.app[SITE] is MEMBER and member is not None and self.member_gifs.may_upload(member)
 
     def _sessions(self, site: Site) -> dict[str, Session]:
         return self.sessions if site is STAFF else self.member_sessions

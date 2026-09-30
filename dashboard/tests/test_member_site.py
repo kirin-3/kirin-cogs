@@ -241,6 +241,7 @@ async def ms() -> AsyncIterator[SimpleNamespace]:
     rp.setting_changed = AsyncMock()
     rp.stats_for = AsyncMock(return_value={"untracked": True})
     rp.top_pairs = AsyncMock(return_value=[])
+    rp.can_submit_gif = lambda member: False
 
     cc = _FakeCustomCommand()
     cogs: dict[str, Any] = {"CustomCommand": cc, "CustomEmoji": ce, "CustomRoleColor": crc, "Roleplay": rp}
