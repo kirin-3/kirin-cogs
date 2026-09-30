@@ -162,19 +162,20 @@ class Roleplay(commands.Cog):
         return [{"name": name, "count": len(await self._gifs(name))} for name in self.action_manager.list()]
 
     async def gif_page(self, action: str, pool: str, user_id: int, page: int) -> dict:
-        """One page of an action's pool, by filename: ``{"gifs": [{"name", "mine", "ai"}], "page", "pages"}``.
+        """One page of an action's pool, by filename: ``{"gifs": [{"name", "mine", "ai"}], "page", "pages", "counts"}``.
 
         ``mine`` is the member's own vote on the gif (1, -1 or 0) and ``ai`` whether its file name marks it as AI-made.
-        Raises LookupError for an unknown action or pool.
+        ``counts`` is how many gifs each pool of the action has. Raises LookupError for an unknown action or pool.
         """
         if pool not in POOLS:
             raise LookupError(pool)
         gifs = await self._gifs(action)
-        names = [name for name, path in gifs.items() if pool_of(path) == pool]
-        shown, page, pages = page_of(names, page, PAGE_SIZE)
+        pools = {name: pool_of(path) for name, path in gifs.items()}
+        shown, page, pages = page_of([name for name, its in pools.items() if its == pool], page, PAGE_SIZE)
         mine = await self.gif_votes.mine(user_id, action, shown)
         cards = [{"name": name, "mine": mine.get(name, 0), "ai": is_ai_made(name)} for name in shown]
-        return {"gifs": cards, "page": page, "pages": pages}
+        counts = Counter(pools.values())
+        return {"gifs": cards, "page": page, "pages": pages, "counts": {each: counts[each] for each in POOLS}}
 
     async def gif_path(self, action: str, name: str) -> Path | None:
         """The file of a gif, or None if the action or the name isn't in the folder."""

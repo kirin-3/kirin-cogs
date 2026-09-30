@@ -75,6 +75,8 @@ async def test_pools_split_the_way_the_bot_picks(red_env: simcord.Env, images: P
     assert _names(wlw) == ["bite_wlw_d.gif"]
     assert _names(mlm) == ["bite_mlm_e.gif"]
     assert (default["page"], default["pages"]) == (1, 1)
+    # every pool's page says how many gifs each pool has, for the tabs
+    assert default["counts"] == wlw["counts"] == mlm["counts"] == {"default": 3, "wlw": 1, "mlm": 1}
 
 
 @pytest.mark.asyncio
@@ -105,7 +107,7 @@ async def test_actions_list_every_action_with_its_gif_count(red_env: simcord.Env
 async def test_empty_pool_is_one_empty_page(red_env: simcord.Env, images: Path) -> None:
     page = await _cog(red_env).gif_page("suck", "wlw", 1, 1)
 
-    assert page == {"gifs": [], "page": 1, "pages": 1}
+    assert page == {"gifs": [], "page": 1, "pages": 1, "counts": {"default": 0, "wlw": 0, "mlm": 0}}
 
 
 @pytest.mark.asyncio

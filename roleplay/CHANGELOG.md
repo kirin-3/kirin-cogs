@@ -4,6 +4,13 @@
 
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
 
+## [2.10.2] - 2026-09-30
+
+### Changed
+
+- The member site's gif pages show how many gifs each pool (Default, wlw, mlm) has on its tab
+- Sending in a gif has its own page, opened with a button, instead of a form under every gif page
+
 ## [2.10.1] - 2026-09-30
 
 ### Changed
