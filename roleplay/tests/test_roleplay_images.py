@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from roleplay.actions import image_files, pairing_of, pick_image, pool_of
+from roleplay.actions import image_files, is_ai_made, pairing_of, pick_image, pool_of
 
 
 def _folder(tmp_path: Path, *names: str) -> Path:
@@ -80,6 +80,20 @@ def test_missing_folder_has_no_image(tmp_path: Path) -> None:
 )
 def test_pool_is_the_one_the_bot_picks_from(name: str, pool: str) -> None:
     assert pool_of(Path(name)) == pool
+
+
+@pytest.mark.parametrize(
+    ("name", "ai"),
+    [
+        ("hug_eros_1351828556_143913.gif", True),
+        ("hug_MLM_eros8_1_2.gif", True),
+        ("EROS_hug.GIF", True),
+        ("hug_417e74cf32ab.gif", False),
+        ("SPOILER_cunnilingus_wlw_30c43b4328d8.gif", False),
+    ],
+)
+def test_eros_in_the_name_marks_a_gif_as_ai_made(name: str, ai: bool) -> None:
+    assert is_ai_made(name) is ai
 
 
 def test_image_files_are_sorted_and_skip_other_files(tmp_path: Path) -> None:

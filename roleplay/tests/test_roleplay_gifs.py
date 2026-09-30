@@ -78,6 +78,20 @@ async def test_pools_split_the_way_the_bot_picks(red_env: simcord.Env, images: P
 
 
 @pytest.mark.asyncio
+async def test_gifs_with_eros_in_the_name_are_flagged_as_ai(red_env: simcord.Env, images: Path) -> None:
+    _files(images, "bow", "bow_eros_3.gif", "bow_MLM_eros8_4.gif")
+
+    page = await _cog(red_env).gif_page("bow", "default", 1, 1)
+
+    assert {gif["name"]: gif["ai"] for gif in page["gifs"]} == {
+        "bow_1.gif": False,
+        "bow_2.gif": False,
+        "bow_eros_3.gif": True,
+    }
+    assert [gif["ai"] for gif in (await _cog(red_env).gif_page("bow", "mlm", 1, 1))["gifs"]] == [True]
+
+
+@pytest.mark.asyncio
 async def test_actions_list_every_action_with_its_gif_count(red_env: simcord.Env, images: Path) -> None:
     actions = await _cog(red_env).gif_actions()
 

@@ -4,6 +4,12 @@
 
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
 
+## [2.10.1] - 2026-09-30
+
+### Changed
+
+- The member site no longer shows gif file names. A gif with `eros` in its file name gets a small AI badge instead
+
 ## [2.10.0] - 2026-09-30
 
 ### Added

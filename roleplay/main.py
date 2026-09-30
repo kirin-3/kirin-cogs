@@ -16,7 +16,7 @@ from redbot.core.data_manager import cog_data_path
 from redbot.core.utils.chat_formatting import humanize_list, inline
 
 from . import __version__, consent, const
-from .actions import PAIRINGS, POOLS, Action, ActionManager, pick_image, pool_of
+from .actions import PAIRINGS, POOLS, Action, ActionManager, is_ai_made, pick_image, pool_of
 from .dashboard import SettingsDashboard
 from .gifs import PAGE_SIZE, GifVotes, gif_info, gifs_of, page_of
 from .help import Help
@@ -162,9 +162,10 @@ class Roleplay(commands.Cog):
         return [{"name": name, "count": len(await self._gifs(name))} for name in self.action_manager.list()]
 
     async def gif_page(self, action: str, pool: str, user_id: int, page: int) -> dict:
-        """One page of an action's pool, by filename: ``{"gifs": [{"name", "mine"}], "page", "pages"}``.
+        """One page of an action's pool, by filename: ``{"gifs": [{"name", "mine", "ai"}], "page", "pages"}``.
 
-        ``mine`` is the member's own vote on the gif (1, -1 or 0). Raises LookupError for an unknown action or pool.
+        ``mine`` is the member's own vote on the gif (1, -1 or 0) and ``ai`` whether its file name marks it as AI-made.
+        Raises LookupError for an unknown action or pool.
         """
         if pool not in POOLS:
             raise LookupError(pool)
@@ -172,7 +173,8 @@ class Roleplay(commands.Cog):
         names = [name for name, path in gifs.items() if pool_of(path) == pool]
         shown, page, pages = page_of(names, page, PAGE_SIZE)
         mine = await self.gif_votes.mine(user_id, action, shown)
-        return {"gifs": [{"name": name, "mine": mine.get(name, 0)} for name in shown], "page": page, "pages": pages}
+        cards = [{"name": name, "mine": mine.get(name, 0), "ai": is_ai_made(name)} for name in shown]
+        return {"gifs": cards, "page": page, "pages": pages}
 
     async def gif_path(self, action: str, name: str) -> Path | None:
         """The file of a gif, or None if the action or the name isn't in the folder."""

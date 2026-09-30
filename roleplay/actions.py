@@ -32,6 +32,11 @@ def pool_of(path: Path) -> str:
     return pairing if pairing and pairing not in DEFAULT_PAIRINGS else "default"
 
 
+def is_ai_made(name: str) -> bool:
+    """Whether an image's file name marks it as AI-made: it has ``eros`` in it, in any case (``hug_eros_1234.gif``)."""
+    return "eros" in name.lower()
+
+
 def image_files(folder: Path) -> list[Path]:
     """The images in an action's folder (subfolders included), by filename. A missing folder has none."""
     files = (f for f in folder.rglob("*") if f.is_file() and f.suffix.lower() in IMAGE_SUFFIXES)

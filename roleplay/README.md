@@ -60,6 +60,8 @@ The member site's **Gifs** page (`my.unicornia.net/gifs`) lists every action wit
 three pages, one per pool: **Default** (untagged, `mlw` and `wlm` gifs: the pool the bot picks from when no pairing is
 asked for), **wlw** and **mlm**. A page shows 5 gifs, playing, ordered by filename. It reads the images folder as it is
 when the page is opened, so file changes show up on the next load. Spoilered actions are shown like any other.
+Members aren't shown file names. A gif with `eros` in its file name (any case, e.g. `hug_eros_1234.gif`) gets a small
+**AI** badge, so name AI-made gifs that way.
 
 - **Votes.** Every member can give a gif a thumbs up or a thumbs down, change it, or press the thumb again to take it
   back. A member sees only their own vote. The staff site's **Gif votes** page lists every gif that has a vote, with
