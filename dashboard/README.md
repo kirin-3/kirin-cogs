@@ -8,7 +8,8 @@ Cloudflare. They share the login code but keep separate sessions and cookies.
   word lists, including its action log and the dry-run switch. Its Unicornia pages show, read-only, any member's
   economy and XP, the house economy, the cog's configuration and the stock market. Its Modmail pages show every
   thread the modmail bot has kept since October 2020, read-only. Its Gif votes page lists the thumbs-up and thumbs-down
-  totals of every roleplay gif that has a vote.
+  totals of every roleplay gif that has a vote. Its Self roles page adds roles to and removes them from the SelfRoles
+  cog's menus.
 - **Member site**, `my.unicornia.net` on `127.0.0.1:8012`. Every member can see their Unicornia profile, stocks, club,
   waifu standing and unicorn stable, buy and equip rank-card backgrounds, see the XP leaderboard and their own
   warnings, and turn
@@ -28,7 +29,8 @@ The **staff site** creates a session only when all of these hold:
 - the member holds the staff role (`696020813299580940`) or the Ban Members permission, the same gate as `[p]ban`.
 
 Editing AutoMod (every POST that changes rulesets, rules, lists, or the dry-run switch) also requires a **bot owner**.
-Staff accounts can view the automod pages but not change them.
+Staff accounts can view the automod pages but not change them. The Self roles page is open to all staff, under the
+cog's own rules (see below).
 
 The **member site** admits any member of Unicornia, with or without 2FA. What it shows depends on the member's roles
 at the time of each request:
@@ -89,6 +91,16 @@ badge; the Roleplay cog decides which, so the image address and the vote form st
   `/gifs/{action}/file/{name}` shows the gif to staff and is never cached.
 
 The pages answer 503 while the Roleplay cog isn't loaded.
+
+## Self roles page
+
+`/selfroles` on the staff site lists the SelfRoles cog's categories: the pick limit, where the menu is posted (a link to
+the message), and each role with its emoji. Staff can add a role, with an optional emoji (`❤️`, or `:name:` for one of
+the server's emojis), and remove one. The cog updates the posted menu at once; members keep a role that is taken off.
+The role list only offers roles the staff member may add: below their top role and the bot's, without moderator
+permissions. A role on a menu that no longer passes those checks, or was deleted, is marked "Not offered". The cog
+checks every change again, and a refused one comes back under its category with the reason and 400. Categories are
+created, posted and deleted with `[p]selfroles` in Discord. The page answers 503 while the SelfRoles cog isn't loaded.
 
 ## Warnings page
 
@@ -241,7 +253,7 @@ wait between gifs live in the Roleplay cog, `roleplay/const.py`.
    ```
 
 4. Load the cogs: `[p]load banlog automod dashboard`, and have `customcommand`, `customemoji`, `customrolecolor`,
-   `responder`, `roleplay` and `unicornia` loaded. Pages whose cog is not loaded show a notice instead.
+   `responder`, `roleplay`, `selfroles` and `unicornia` loaded. Pages whose cog is not loaded show a notice instead.
    Give the bot View Channel, Send Messages and Attach Files in the gif review channel `1554813851302887494`, or gif
    uploads answer that they are unavailable.
 5. Check that:

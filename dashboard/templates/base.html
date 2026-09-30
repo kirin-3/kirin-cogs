@@ -21,6 +21,7 @@
     <a href="/modmail"{% if path.startswith("/modmail") %} class="on"{% endif %}>Modmail</a>
     <a href="/unicornia/members"{% if path.startswith("/unicornia/") %} class="on"{% endif %}>Unicornia</a>
     <a href="/gifs"{% if path.startswith("/gifs") %} class="on"{% endif %}>Gif votes</a>
+    <a href="/selfroles"{% if path.startswith("/selfroles") %} class="on"{% endif %}>Self roles</a>
   </nav>
   <form class="logout" method="post" action="/logout">
     <span>{{ user_name(session.user_id) }}</span>

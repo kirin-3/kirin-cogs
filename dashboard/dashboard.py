@@ -33,6 +33,7 @@ from .automod_forms import SECTIONS, Names, apply_action, editor_view, parse_row
 from .gifs import GIF_UPLOAD_PATH, MemberGifs, StaffGifs
 from .member import MemberSite
 from .modmail import StaffModmail
+from .selfroles import StaffSelfRoles
 from .unicornia_views import StaffUnicornia
 
 GUILD_ID = 684360255798509578
@@ -243,6 +244,7 @@ class Dashboard(commands.Cog):
         self.staff_gifs = StaffGifs(self)
         self.staff_unicornia = StaffUnicornia(self)
         self.staff_modmail = StaffModmail(self)
+        self.staff_selfroles = StaffSelfRoles(self)
 
     async def cog_load(self) -> None:
         # Not bot.http: that session carries the bot token.
@@ -306,6 +308,7 @@ class Dashboard(commands.Cog):
         self.staff_unicornia.add_routes(app)
         self.staff_modmail.add_routes(app)
         self.staff_gifs.add_routes(app)
+        self.staff_selfroles.add_routes(app)
         return app
 
     # --- access control --------------------------------------------------------------------------

@@ -70,6 +70,9 @@ Roleplay action commands (`[p]hug`, `[p]ask`, ...) with consent prompts and per-
 ### RulesAccept
 Lets users accept rules via a button and modal, where they also pick their primary role. Both roles are assigned upon acceptance.
 
+### SelfRoles
+Dropdown menus where members pick their own roles, one message per category with a banner and a Clear button. Admins create and post categories with commands; staff add and remove roles with commands or on the staff dashboard. See [selfroles/README.md](selfroles/README.md).
+
 ### SelfTimeout
 `[p]break <duration>` lets members time themselves out for up to 28 days after a confirmation, then deletes the command and confirmation. See [selftimeout/README.md](selftimeout/README.md).
 

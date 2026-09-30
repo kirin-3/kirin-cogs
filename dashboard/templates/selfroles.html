@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Self roles{% endblock %}
+{% block content %}
+<h1>Self roles</h1>
+<p class="empty">Members pick these roles from the menus in Discord. Add and remove roles here; the posted menu updates right away, and members keep a role that is taken off a menu. Create, post and delete categories with <code>[p]selfroles</code>.</p>
+{% if error and error_for is none %}<p class="notice">{{ error }}</p>{% endif %}
+{% for category in categories %}
+<section class="panel" id="category-{{ category.id }}">
+  <h2>{{ category.name }}</h2>
+  <p class="empty">{{ category.limit }}
+  {% if category.url %}<a href="{{ category.url }}">Posted in {{ category.channel }}</a>.{% else %}Not posted yet.{% endif %}</p>
+  {% if error and error_for == category.id %}<p class="notice">{{ error }}</p>{% endif %}
+  {% if category.roles %}
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Emoji</th><th>Role</th><th></th></tr></thead>
+    <tbody>
+    {% for role in category.roles %}
+    <tr>
+      <td>{{ role.emoji|emojis }}</td>
+      <td>{{ role.name or "Deleted role" }}{% if role.problem %} <span class="badge warn">Not offered: {{ role.problem }}</span>{% endif %}</td>
+      <td>
+        <form method="post" action="/selfroles/{{ category.id }}/roles/{{ role.id }}/delete" class="danger" data-confirm="Take {{ role.name or 'this role' }} off {{ category.name }}? Members who have it keep it.">
+          <input type="hidden" name="csrf" value="{{ session.csrf }}">
+          <button type="submit">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No roles yet.</p>
+  {% endif %}
+  {% if category.full %}
+  <p class="empty">This menu is full: a dropdown holds 25 roles.</p>
+  {% elif category.choices %}
+  <form class="inline" method="post" action="/selfroles/{{ category.id }}/roles">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <select name="role" aria-label="Role to add" required>
+      <option value="">Choose a role</option>
+      {% for choice in category.choices %}<option value="{{ choice.id }}">{{ choice.name }}</option>{% endfor %}
+    </select>
+    <input type="text" name="emoji" maxlength="64" placeholder="Emoji: ❤️ or :name:" aria-label="Emoji (optional)">
+    <button type="submit">Add role</button>
+  </form>
+  {% else %}
+  <p class="empty">There are no roles you can add: a role must be below yours and the bot's, without moderator permissions.</p>
+  {% endif %}
+</section>
+{% else %}
+<p class="empty">No categories yet. Create one with <code>[p]selfroles create</code>.</p>
+{% endfor %}
+{% endblock %}

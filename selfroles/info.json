@@ -1,0 +1,30 @@
+{
+    "name": "selfroles",
+    "author": [
+        "kirin"
+    ],
+    "short": "Dropdown menus where members pick their own roles.",
+    "description": "One message per category with a banner, the role list, a dropdown and a Clear button. Admins create and post categories with commands; staff add and remove roles with commands or on the staff dashboard. Roles with moderator permissions can't be put on a menu.",
+    "install_msg": "Create a category with `[p]selfroles create <max picks> <name>`, add roles with `[p]selfroles addrole`, then `[p]selfroles post` it.",
+    "end_user_data_statement": "This cog stores no user data. It keeps its menus' settings: category names, role and emoji lists, and where each menu is posted.",
+    "min_bot_version": "3.5.22",
+    "min_python_version": [
+        3,
+        11,
+        0
+    ],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "requirements": [],
+    "permissions": [
+        "manage_roles",
+        "send_messages",
+        "attach_files"
+    ],
+    "tags": [
+        "roles",
+        "selfroles",
+        "dropdown"
+    ]
+}
