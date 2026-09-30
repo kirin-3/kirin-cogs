@@ -46,6 +46,13 @@ EMBED_FOOTER = f"Roleplay Cog ({__version__})"
 # added to the message when the requested pairing has no images for the action
 PAIRING_MISSING_NOTE = "No {pairing} gifs for {action} yet, so here's another one."
 
+# Members who may send in a gif on the member site: active supporter, inactive supporter, Level 90+
+GIF_UPLOAD_ROLES = frozenset({700121551483437128, 1458440559713718466, 721360680770469958})
+# Where the bot posts those gifs for staff to review
+GIF_REVIEW_CHANNEL = 1554813851302887494
+# seconds a member has to wait between two gifs
+GIF_SUBMIT_COOLDOWN = 60
+
 
 class InteractionType(Enum):
     ACTIVE = "active"

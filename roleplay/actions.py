@@ -17,11 +17,25 @@ PAIRINGS = ("mlw", "wlm", "wlw", "mlm")
 # Without a requested pairing, wlw and mlm images are left out
 DEFAULT_PAIRINGS = {None, "mlw", "wlm"}
 IMAGE_SUFFIXES = {".gif", ".png", ".jpg", ".jpeg", ".webp"}
+# The pools the member site's gallery shows: what the bot picks from without a pairing, and the two it leaves out.
+POOLS = ("default", "wlw", "mlm")
 
 
 def pairing_of(path: Path) -> str | None:
     """The pairing tag in an image's filename, or None if it's untagged."""
     return next((part for part in path.stem.lower().split("_") if part in PAIRINGS), None)
+
+
+def pool_of(path: Path) -> str:
+    """Which of POOLS an image is in, decided the same way pick_image does."""
+    pairing = pairing_of(path)
+    return pairing if pairing and pairing not in DEFAULT_PAIRINGS else "default"
+
+
+def image_files(folder: Path) -> list[Path]:
+    """The images in an action's folder (subfolders included), by filename. A missing folder has none."""
+    files = (f for f in folder.rglob("*") if f.is_file() and f.suffix.lower() in IMAGE_SUFFIXES)
+    return sorted(files, key=lambda f: (f.name, str(f)))
 
 
 def pick_image(folder: Path, pairing: str | None = None) -> tuple[Path | None, bool]:
@@ -34,7 +48,7 @@ def pick_image(folder: Path, pairing: str | None = None) -> tuple[Path | None, b
         The image (None if there's nothing to pick from), and whether the requested
         pairing had no images.
     """
-    files = [f for f in folder.rglob("*") if f.is_file() and f.suffix.lower() in IMAGE_SUFFIXES]
+    files = image_files(folder)
     if pairing:
         tagged = [f for f in files if pairing_of(f) == pairing]
         if tagged:

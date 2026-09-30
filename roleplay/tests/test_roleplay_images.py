@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from roleplay.actions import pairing_of, pick_image
+from roleplay.actions import image_files, pairing_of, pick_image, pool_of
 
 
 def _folder(tmp_path: Path, *names: str) -> Path:
@@ -65,3 +65,25 @@ def test_only_image_files_are_used_including_subfolders(tmp_path: Path) -> None:
 def test_missing_folder_has_no_image(tmp_path: Path) -> None:
     assert pick_image(tmp_path / "nope") == (None, False)
     assert pick_image(tmp_path / "nope", "mlm") == (None, True)
+
+
+@pytest.mark.parametrize(
+    ("name", "pool"),
+    [
+        ("bite_1.gif", "default"),
+        ("bite_mlw_2.gif", "default"),
+        ("bite_WLM_3.gif", "default"),
+        ("bite_wlw_4.gif", "wlw"),
+        ("bite_mlm_5.gif", "mlm"),
+        ("bitewlw_6.gif", "default"),
+    ],
+)
+def test_pool_is_the_one_the_bot_picks_from(name: str, pool: str) -> None:
+    assert pool_of(Path(name)) == pool
+
+
+def test_image_files_are_sorted_and_skip_other_files(tmp_path: Path) -> None:
+    folder = _folder(tmp_path, "b.gif", "Thumbs.db", "a.GIF", "notes.txt", "sub/c.png")
+
+    assert [f.name for f in image_files(folder)] == ["a.GIF", "b.gif", "c.png"]
+    assert image_files(tmp_path / "nope") == []

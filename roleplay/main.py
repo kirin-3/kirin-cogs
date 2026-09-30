@@ -3,7 +3,10 @@
 import asyncio
 import logging
 from collections import Counter
+from io import BufferedIOBase
+from math import ceil
 from pathlib import Path
+from time import monotonic
 from typing import Annotated
 
 import discord
@@ -13,8 +16,9 @@ from redbot.core.data_manager import cog_data_path
 from redbot.core.utils.chat_formatting import humanize_list, inline
 
 from . import __version__, consent, const
-from .actions import PAIRINGS, Action, ActionManager, pick_image
+from .actions import PAIRINGS, POOLS, Action, ActionManager, pick_image, pool_of
 from .dashboard import SettingsDashboard
+from .gifs import PAGE_SIZE, GifVotes, gif_info, gifs_of, page_of
 from .help import Help
 from .settings import Settings
 from .tally import Tally, member_stats, summary, top_pairs
@@ -55,6 +59,9 @@ class Roleplay(commands.Cog):
         # The Settings config above keeps member settings; this one keeps the action counts
         self.config = Config.get_conf(self, identifier=const.COG_IDENTIFIER, force_registration=True)
         self.tally = Tally(self.config, self.is_untracked)
+        self.gif_votes = GifVotes(self.config)
+        # When each member last had a gif forwarded, by monotonic time. Lost on reload, which is fine.
+        self._gif_sent: dict[int, float] = {}
 
         # action commands are added to the bot directly, see create_action_command()
         self.action_commands: list[commands.Command] = []
@@ -78,9 +85,10 @@ class Roleplay(commands.Cog):
                 self.bot.remove_command(command.name)
 
     async def red_delete_data_for_user(self, *, requester, user_id: int) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
-        """Remove the user's roleplay settings, their ID from every other member's lists, and their action counts."""
+        """Remove the user's roleplay settings, their ID from every other member's lists, their action counts and gif votes."""
         await self.user_settings.users_manager.delete_user_data(user_id)
         await self.tally.forget(user_id)
+        await self.gif_votes.forget(user_id)
 
     async def is_untracked(self, user_id: int) -> bool:
         return bool(await self.user_settings.config.user_from_id(user_id).untracked())
@@ -140,6 +148,112 @@ class Roleplay(commands.Cog):
             {"a": a, "b": b, "total": counts.total(), "actions": counts.most_common(3)}
             for a, b, counts in top_pairs(await self.tally.pairs(), limit)
         ]
+
+    # --- Gifs, for the member and staff sites ---
+
+    async def _gifs(self, action: str) -> dict[str, Path]:
+        """An action's images by filename, as the folder is right now. LookupError if it isn't an action."""
+        if action not in self.action_manager.list():
+            raise LookupError(action)
+        return await asyncio.to_thread(gifs_of, self.images_path / action)
+
+    async def gif_actions(self) -> list[dict]:
+        """Every action with the number of gifs it has, by name: ``[{"name", "count"}]``."""
+        return [{"name": name, "count": len(await self._gifs(name))} for name in self.action_manager.list()]
+
+    async def gif_page(self, action: str, pool: str, user_id: int, page: int) -> dict:
+        """One page of an action's pool, by filename: ``{"gifs": [{"name", "mine"}], "page", "pages"}``.
+
+        ``mine`` is the member's own vote on the gif (1, -1 or 0). Raises LookupError for an unknown action or pool.
+        """
+        if pool not in POOLS:
+            raise LookupError(pool)
+        gifs = await self._gifs(action)
+        names = [name for name, path in gifs.items() if pool_of(path) == pool]
+        shown, page, pages = page_of(names, page, PAGE_SIZE)
+        mine = await self.gif_votes.mine(user_id, action, shown)
+        return {"gifs": [{"name": name, "mine": mine.get(name, 0)} for name in shown], "page": page, "pages": pages}
+
+    async def gif_path(self, action: str, name: str) -> Path | None:
+        """The file of a gif, or None if the action or the name isn't in the folder."""
+        try:
+            return (await self._gifs(action)).get(name)
+        except LookupError:
+            return None
+
+    async def gif_vote(self, user_id: int, action: str, name: str, value: int) -> None:
+        """Set the member's vote on a gif: 1 (up), -1 (down) or 0 (none). LookupError unless the gif exists."""
+        if name not in await self._gifs(action):
+            raise LookupError(name)
+        await self.gif_votes.set(user_id, action, name, value)
+
+    async def gif_vote_totals(self) -> list[dict]:
+        """Every gif with a vote and a file, lowest score first: ``[{"action", "name", "up", "down"}]``."""
+        rows = []
+        present: dict[str, dict[str, Path]] = {}
+        for (action, name), (up, down) in (await self.gif_votes.totals()).items():
+            if action not in present:
+                try:
+                    present[action] = await self._gifs(action)
+                except LookupError:
+                    present[action] = {}
+            if name in present[action]:
+                rows.append({"action": action, "name": name, "up": up, "down": down})
+        rows.sort(key=lambda row: (row["up"] - row["down"], -(row["up"] + row["down"]), row["action"], row["name"]))
+        return rows
+
+    def can_submit_gif(self, member: discord.Member) -> bool:
+        """Whether the member may send in a gif right now, from the roles they hold."""
+        return any(role.id in const.GIF_UPLOAD_ROLES for role in member.roles)
+
+    async def submit_gif(self, member: discord.Member, action: str, fp: BufferedIOBase) -> None:
+        """Post a member's gif in the review channel for staff. The bot keeps no copy and writes nothing to the images.
+
+        Raises ValueError with a message for the member if the gif is refused.
+        """
+        if not self.can_submit_gif(member):
+            raise ValueError("Only supporters and Level 90+ members can send in gifs.")
+        now = monotonic()
+        wait = self._gif_sent.get(member.id, now - const.GIF_SUBMIT_COOLDOWN) + const.GIF_SUBMIT_COOLDOWN - now
+        if wait > 0:
+            raise ValueError(f"You sent a gif a moment ago. Wait {ceil(wait)} more seconds to send another.")
+        # Taken now so two uploads at once can't both get past the check; given back if this one is refused
+        self._gif_sent[member.id] = now
+        try:
+            await self._forward_gif(member, action, fp)
+        except Exception:
+            self._gif_sent.pop(member.id, None)
+            raise
+        self._gif_sent = {user_id: at for user_id, at in self._gif_sent.items() if now - at < const.GIF_SUBMIT_COOLDOWN}
+
+    async def _forward_gif(self, member: discord.Member, action_name: str, fp: BufferedIOBase) -> None:
+        action = self.action_manager.get(action_name)
+        if action is None:
+            raise ValueError("Choose one of the roleplay actions.")
+        is_gif, size = await asyncio.to_thread(gif_info, fp)
+        if not is_gif:
+            raise ValueError("Only GIF files are accepted.")
+        channel = self.bot.get_channel(const.GIF_REVIEW_CHANNEL)
+        limit = (channel.guild if isinstance(channel, discord.TextChannel) else member.guild).filesize_limit
+        if size > limit:
+            raise ValueError(f"That gif is too big. Discord allows files up to {limit // 1024 // 1024} MB.")
+        unavailable = ValueError("Gif uploads are unavailable right now. Try again later.")
+        if not isinstance(channel, discord.TextChannel):
+            self.logger.warning(f"The gif review channel {const.GIF_REVIEW_CHANNEL} can't be found.")
+            raise unavailable
+        permissions = channel.permissions_for(channel.guild.me)
+        if not (permissions.view_channel and permissions.send_messages and permissions.attach_files):
+            self.logger.warning(f"The bot can't send files in the gif review channel {channel.id}.")
+            raise unavailable
+        try:
+            await channel.send(
+                f"**{action.name}** gif from {member.mention} (`{member.id}`)",
+                file=discord.File(fp, filename=f"{action.name}.gif"),
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        except discord.HTTPException:
+            self.logger.exception(f"Sending a {action.name} gif to the review channel failed.")
+            raise unavailable from None
 
     @commands.hybrid_command()  # pyright: ignore[reportArgumentType]
     @commands.guild_only()

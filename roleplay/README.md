@@ -54,6 +54,27 @@ without one are untagged.
 - If the action has no gifs for that pairing, a default one is used and the message notes it ("No wlw gifs for suck
   yet").
 
+## Gifs on the member site
+
+The member site's **Gifs** page (`my.unicornia.net/gifs`) lists every action with its number of gifs. Each action has
+three pages, one per pool: **Default** (untagged, `mlw` and `wlm` gifs: the pool the bot picks from when no pairing is
+asked for), **wlw** and **mlm**. A page shows 5 gifs, playing, ordered by filename. It reads the images folder as it is
+when the page is opened, so file changes show up on the next load. Spoilered actions are shown like any other.
+
+- **Votes.** Every member can give a gif a thumbs up or a thumbs down, change it, or press the thumb again to take it
+  back. A member sees only their own vote. The staff site's **Gif votes** page lists every gif that has a vote, with
+  its thumbs-up and thumbs-down totals, lowest score first. Votes don't change which gif the bot picks.
+- **Renaming a gif drops its votes.** A vote belongs to the action and the file name, so adding `_wlw_` to a name
+  starts that gif over. Votes for a file that's gone stay stored, unseen, and come back if the name does.
+- **Sending in a gif.** Members with the active supporter role (`700121551483437128`), the inactive one
+  (`1458440559713718466`) or the Level 90+ role (`721360680770469958`) get a form on the Gifs pages to send in a GIF for
+  an action. The bot posts it in the review channel (`1554813851302887494`) as one message naming the action and the
+  member, without pinging them. That is all it does: staff review the gif, name it with its pairing and add it to the
+  images folder by hand, and the bot keeps no copy. The file has to be a GIF (judged by its content, not its name) and
+  no bigger than Discord lets the bot upload in that server. Each member can send one gif a minute.
+- The bot needs **View Channel**, **Send Messages** and **Attach Files** in the review channel, or uploads answer that
+  they're unavailable.
+
 ## Consent
 
 Whether an action needs a Yes/No consent prompt (60 seconds, only the asked member may answer) is decided in this
@@ -135,7 +156,8 @@ unanswered ones aren't counted. Counting started with version 2.7.0, so earlier 
 
 Per-user settings: the `selective`, `public`, `servant` and `untracked` flags, and the user IDs in each member's owner,
 allowed and blocked lists, stored in Red Config under the pinned `Settings` cog name. Action counts: for each pair
-of member user IDs, how many times one performed each action on the other, in the cog's own `Roleplay` Config.
-Red data-deletion requests clear a user's own settings and counts, and scrub their ID from every other member's
-lists and counts. Downloaded images live in the cog's
+of member user IDs, how many times one performed each action on the other, in the cog's own `Roleplay` Config. Gif
+votes: for each voted gif (action and file name), the user IDs that voted it up or down, in the same Config. A gif
+sent in on the member site is posted to the review channel and not stored. Red data-deletion requests clear a user's
+own settings, counts and gif votes, and scrub their ID from every other member's lists and counts. Downloaded images live in the cog's
 data folder and are not user data.

@@ -4,6 +4,14 @@
 
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
 
+## [2.10.0] - 2026-09-30
+
+### Added
+
+- Gifs on the member site: browse every action's gifs by pool (Default, wlw and mlm), 5 a page, and give each a thumbs up or a thumbs down. Only you see your votes; staff see the totals on the staff site's Gif votes page. Votes don't change which gif the bot picks
+- Active and inactive supporters and Level 90+ members can send in a gif for an action on the member site. The bot posts it in the staff review channel; adding it to the gifs stays a manual step
+- Your gif votes are deleted with the rest of your data
+
 ## [2.9.3] - 2026-09-28
 
 ### Changed
