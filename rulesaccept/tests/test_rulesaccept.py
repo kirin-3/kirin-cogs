@@ -10,7 +10,15 @@ import pytest
 import pytest_asyncio
 from redbot.core import Config
 
-from rulesaccept.rulesaccept import MUTED_ROLE_ID, RulesAccept, rulesacceptButton, rulesacceptModal, rulesacceptView
+from rulesaccept.rulesaccept import (
+    MUTED_ROLE_ID,
+    PRIMARY_ROLE_IDS,
+    RulesAccept,
+    _agrees,
+    rulesacceptButton,
+    rulesacceptModal,
+    rulesacceptView,
+)
 
 
 def _make_config_attr(value: object) -> AsyncMock:
@@ -131,6 +139,7 @@ async def test_button_callback_opens_modal(cog: RulesAccept) -> None:
     button = rulesacceptButton(cog)
 
     interaction = MagicMock(spec=discord.Interaction)
+    interaction.guild = None
     interaction.response.send_modal = AsyncMock()
 
     await button.callback(interaction)
@@ -156,13 +165,45 @@ async def test_modal_submit_invalid_response(cog: RulesAccept, bot_mock: MagicMo
 
     await modal.on_submit(interaction)
 
-    interaction.response.send_message.assert_awaited_once_with(
-        "You must type exactly: I agree to the rules.", ephemeral=True
-    )
+    interaction.response.send_message.assert_awaited_once_with("Please type: I agree to the rules", ephemeral=True)
+
+
+@pytest.mark.parametrize(
+    ("text", "agrees"),
+    [
+        ("I agree to the rules.", True),
+        ("i agree to the rules", True),
+        ('  "I  Agree To The Rules"  ', True),
+        ("**`I agree to the rules`**!", True),
+        ("“I agree to the rules.”", True),
+        ("I agree", False),
+        ("I do not agree to the rules", False),
+        ("", False),
+    ],
+)
+def test_agrees_ignores_case_spacing_quotes_and_closing_punctuation(text: str, agrees: bool) -> None:
+    assert _agrees(text) is agrees
 
 
 @pytest.mark.asyncio
-async def test_modal_submit_valid_assigns_role_and_sends_followup(cog: RulesAccept, config_mock: MagicMock) -> None:
+async def test_primary_role_ignores_a_value_that_is_not_a_primary_role(cog: RulesAccept) -> None:
+    """The select value is sent by the client, so it must never reach roles outside the list."""
+    guild = MagicMock(spec=discord.Guild)
+    modal = rulesacceptModal(cog)
+    modal.role_select = MagicMock(values=["686117594121764865"])
+
+    assert modal._primary_role(guild) is None
+    guild.get_role.assert_not_called()
+
+    modal.role_select = MagicMock(values=[str(PRIMARY_ROLE_IDS[0])])
+    assert modal._primary_role(guild) is guild.get_role.return_value
+    guild.get_role.assert_called_once_with(PRIMARY_ROLE_IDS[0])
+
+
+@pytest.mark.asyncio
+async def test_modal_submit_valid_without_primary_role_points_at_the_roles_channel(
+    cog: RulesAccept, config_mock: MagicMock
+) -> None:
     modal = rulesacceptModal(cog)
     modal.answer._value = "I agree to the rules."
 
@@ -191,10 +232,7 @@ async def test_modal_submit_valid_assigns_role_and_sends_followup(cog: RulesAcce
     log_channel.send.assert_awaited_once()
     member.add_roles.assert_awaited_once_with(role, reason="Accepted the rules.")
     interaction.response.send_message.assert_awaited_once_with(
-        "Thank you! You have accepted the rules and have been given access.", ephemeral=True
-    )
-    interaction.followup.send.assert_awaited_once_with(
-        "You will need a role from <#708066544688562196> channel as well for full access.",
+        "Thank you! You have accepted the rules. Pick a role in <#708066544688562196> for full access.",
         ephemeral=True,
     )
 

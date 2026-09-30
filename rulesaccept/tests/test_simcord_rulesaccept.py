@@ -7,6 +7,7 @@ import simcord
 from redbot.core import commands
 from redbot.core.bot import Red
 
+from rulesaccept import rulesaccept
 from rulesaccept.rulesaccept import RulesAccept
 
 
@@ -16,7 +17,9 @@ def red_cogs() -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_member_accepts_rules_after_confirming_exact_text(red_env: simcord.Env) -> None:
+async def test_member_accepts_rules_and_picks_a_primary_role(
+    red_env: simcord.Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
     bot = cast(Red, red_env.bot)
     cog = bot.get_cog("RulesAccept")
     assert isinstance(cog, RulesAccept)
@@ -25,6 +28,9 @@ async def test_member_accepts_rules_after_confirming_exact_text(red_env: simcord
     owner = guild.add_member(owner_user)
     member = guild.add_member(red_env.create_user("member"))
     role = guild.create_role("Member")
+    femboy = guild.create_role("Femboy")
+    male = guild.create_role("Male")
+    monkeypatch.setattr(rulesaccept, "PRIMARY_ROLE_IDS", (femboy.id, male.id, 404))  # 404: a role that is gone
     channel = guild.create_text_channel("rules")
     await red_env.settle()
 
@@ -37,15 +43,22 @@ async def test_member_accepts_rules_after_confirming_exact_text(red_env: simcord
 
     shown = await member.click(panel, label="I have read and accept the rules.")
     assert shown.modal is not None
-    fields = [item["custom_id"] for row in shown.modal["components"] for item in row["components"]]
-    wrong = await member.submit_modal(shown, {fields[0]: "I agree"})
+    phrase, select = (label["component"] for label in shown.modal["components"])
+    assert [option["label"] for option in select["options"]] == ["Femboy", "Male"]
+    wrong = await member.submit_modal(shown, {phrase["custom_id"]: "I agree", select["custom_id"]: [str(male.id)]})
     assert wrong.response is not None and wrong.response.ephemeral
-    assert "must type exactly" in wrong.response.content
-    assert member.member is not None and member.member.get_role(role.id) is None
+    assert "Please type" in wrong.response.content
+    assert member.member is not None and len(member.member.roles) == 1  # @everyone only
 
     shown = await member.click(panel, label="I have read and accept the rules.")
-    accepted = await member.submit_modal(shown, {fields[0]: "I agree to the rules."})
+    assert shown.modal is not None
+    phrase, select = (label["component"] for label in shown.modal["components"])
+    accepted = await member.submit_modal(
+        shown, {phrase["custom_id"]: '"i agree to the rules"', select["custom_id"]: [str(male.id)]}
+    )
     assert accepted.response is not None and accepted.response.ephemeral
-    assert "given access" in accepted.response.content
-    assert member.member is not None and member.member.get_role(role.id) is not None
+    assert "now have access" in accepted.response.content
+    assert not accepted.followups
+    assert member.member is not None
+    assert {r.id for r in member.member.roles} == {guild.id, role.id, male.id}
     simcord.assert_no_errors(red_env)

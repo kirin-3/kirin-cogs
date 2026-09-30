@@ -68,7 +68,7 @@ Keeps members to one role out of a set: the newest colour role, or the highest r
 Roleplay action commands (`[p]hug`, `[p]ask`, ...) with consent prompts and per-member settings: owners, allowed and blocked lists, and selective, public and servant flags. `[p]rpstats` counts who did what to whom, with an opt-out. Ported from the Unicornia repo; its existing member settings carry over unchanged. See [roleplay/README.md](roleplay/README.md).
 
 ### RulesAccept
-Lets users accept rules via a button and modal, automatically assigning a role upon acceptance.
+Lets users accept rules via a button and modal, where they also pick their primary role. Both roles are assigned upon acceptance.
 
 ### SelfTimeout
 `[p]break <duration>` lets members time themselves out for up to 28 days after a confirmation, then deletes the command and confirmation. See [selftimeout/README.md](selftimeout/README.md).

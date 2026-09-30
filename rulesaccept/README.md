@@ -6,8 +6,8 @@ A cog that manages rule acceptance for server members using an interactive butto
 
 This cog allows server administrators to create a rule acceptance system where members must:
 1. Click a button to indicate they've read the rules
-2. Type a confirmation phrase in a modal dialog
-3. Receive a role automatically upon successful acceptance
+2. Type a confirmation phrase and pick their primary role in a modal dialog
+3. Receive the member role and their primary role automatically upon successful acceptance
 
 The system logs all rule acceptances to a designated channel for administrative tracking.
 
@@ -44,11 +44,10 @@ bot's top role.
 ## How Members Use It
 
 1. When the rules button is posted, members click **"I have read and accept the rules."**
-2. A modal dialog appears asking them to type exactly: `I agree to the rules.`
+2. A modal dialog appears asking them to type `I agree to the rules` and to pick a primary role from a dropdown
 3. Upon successful submission:
-   - The member receives the configured role
-   - They receive a confirmation message
-   - They're informed about additional role requirements from the roles channel
+   - The member receives the configured role and the primary role they picked
+   - They receive a confirmation message that points at the roles channel for changing or adding roles
 
 ## Setup for Administrators
 
@@ -62,7 +61,10 @@ bot's top role.
 
 ## Notes
 
-- The acceptance phrase is case-sensitive and must match exactly: `I agree to the rules.` or `I Agree To The Rules.`
-- All rule acceptances are logged with the member's ID and what they typed
-- Members are informed they need additional roles from the roles channel for full server access
+- The acceptance phrase is `I agree to the rules`. Case, extra spaces, surrounding quotes and a closing period or
+  exclamation mark are ignored.
+- The primary roles offered are the hardcoded `PRIMARY_ROLE_IDS` in `rulesaccept.py`, shown in that order with their
+  current names. Roles that no longer exist are left out. On a server with none of them the modal asks for the phrase
+  only, and the confirmation tells the member to pick a role in the roles channel.
+- All rule acceptances are logged with the member's ID and what they typed. The role they picked is not logged.
 - Members with the Muted role (`686252873583165520`) are refused, so accepting the rules again can't undo a mute

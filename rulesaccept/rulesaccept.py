@@ -7,6 +7,25 @@ from redbot.core import Config, commands
 log = logging.getLogger("red.kirin_cogs.rulesaccept")
 
 MUTED_ROLE_ID = 686252873583165520  # same role the moderation cog mutes with
+ROLES_CHANNEL_ID = 708066544688562196  # primary-roles
+PRIMARY_ROLE_IDS = (  # offered in the modal, in this order
+    686097165046513720,  # Trans Femme
+    885983046371786784,  # Trans Masc
+    686097206188703769,  # Femboy
+    686096929754710037,  # Sissy
+    764536286533910539,  # Bi-Gender
+    764536297980297226,  # Gender Fluid
+    885994327132749845,  # Genderqueer
+    764536300824821760,  # Non-Binary
+    764536294985826305,  # Female
+    764536291944562729,  # Male
+    764537583274557450,  # Other
+)
+
+
+def _agrees(text: str) -> bool:
+    """Whether the text is the acceptance phrase, ignoring case, spacing, quotes and closing punctuation."""
+    return " ".join(text.casefold().split()).strip("\"'`*\u201c\u201d\u2018\u2019.! ") == "i agree to the rules"
 
 
 class RulesAccept(commands.Cog):
@@ -77,18 +96,38 @@ class rulesacceptButton(discord.ui.Button):
         self.cog = cog
 
     async def callback(self, interaction: discord.Interaction):
-        modal = rulesacceptModal(self.cog)
+        modal = rulesacceptModal(self.cog, interaction.guild)
         await interaction.response.send_modal(modal)
 
 
 class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
-    def __init__(self, cog):
+    def __init__(self, cog, guild: discord.Guild | None = None):
         super().__init__()
         self.cog = cog
+        self.answer = discord.ui.TextInput(placeholder="I agree to the rules", required=True, max_length=30)
+        self.add_item(discord.ui.Label(text="Type: I agree to the rules", component=self.answer))
+        # Without a guild, or where none of the roles exist, the modal is the phrase alone
+        roles = [role for role_id in PRIMARY_ROLE_IDS if guild and (role := guild.get_role(role_id))]
+        self.role_select: discord.ui.Select | None = None
+        if roles:
+            self.role_select = discord.ui.Select(
+                placeholder="Choose a role",
+                options=[discord.SelectOption(label=role.name, value=str(role.id)) for role in roles],
+            )
+            self.add_item(
+                discord.ui.Label(
+                    text="Pick your primary role",
+                    description="You can change it or add more roles later.",
+                    component=self.role_select,
+                )
+            )
 
-    answer = discord.ui.TextInput(
-        label="Type exactly: I agree to the rules.", placeholder="I agree to the rules.", required=True, max_length=30
-    )
+    def _primary_role(self, guild: discord.Guild) -> discord.Role | None:
+        """The primary role picked in the modal. The value comes from the client, so only listed roles count."""
+        if self.role_select is None or not self.role_select.values:
+            return None
+        picked = self.role_select.values[0]
+        return guild.get_role(int(picked)) if picked in {str(role_id) for role_id in PRIMARY_ROLE_IDS} else None
 
     async def _log_acceptance(self, interaction: discord.Interaction):
         log_channel_id = 1422656113077256322  # Your specified logging channel ID
@@ -120,8 +159,7 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
             await self._log_acceptance(interaction)
 
     async def _respond(self, interaction: discord.Interaction):
-        valid_responses = ["I agree to the rules.", "I Agree To The Rules."]
-        if self.answer.value.strip() in valid_responses:
+        if _agrees(self.answer.value):
             guild = interaction.guild
             member = interaction.user
             if guild is None or not isinstance(member, discord.Member):
@@ -137,20 +175,25 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
             role_id = await self.cog.config.guild(guild).member_role_id()
             role = guild.get_role(role_id)
             if role:
-                error_msg = self.cog._preflight_role_edit(guild, role)
+                primary = self._primary_role(guild)
+                roles = [role, primary] if primary else [role]
+                error_msg = next(filter(None, (self.cog._preflight_role_edit(guild, r) for r in roles)), None)
                 if error_msg:
                     await interaction.response.send_message(error_msg, ephemeral=True)
                     return
                 try:
-                    await member.add_roles(role, reason="Accepted the rules.")
-                    await interaction.response.send_message(
-                        "Thank you! You have accepted the rules and have been given access.", ephemeral=True
-                    )
-                    # Send the additional info as a followup ephemeral message
-                    await interaction.followup.send(
-                        "You will need a role from <#708066544688562196> channel as well for full access.",
-                        ephemeral=True,
-                    )
+                    await member.add_roles(*roles, reason="Accepted the rules.")
+                    if primary:
+                        message = (
+                            "Thank you! You have accepted the rules and now have access to the server. "
+                            f"You can change your role or add more in <#{ROLES_CHANNEL_ID}>."
+                        )
+                    else:
+                        message = (
+                            "Thank you! You have accepted the rules. "
+                            f"Pick a role in <#{ROLES_CHANNEL_ID}> for full access."
+                        )
+                    await interaction.response.send_message(message, ephemeral=True)
                 except discord.Forbidden:
                     await interaction.response.send_message(
                         "I do not have permission to assign this role.", ephemeral=True
@@ -169,7 +212,7 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
             else:
                 await interaction.response.send_message("Role not found. Please contact an admin.", ephemeral=True)
         else:
-            await interaction.response.send_message("You must type exactly: I agree to the rules.", ephemeral=True)
+            await interaction.response.send_message("Please type: I agree to the rules", ephemeral=True)
 
 
 async def setup(bot):
