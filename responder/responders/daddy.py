@@ -14,8 +14,8 @@ from .base_text_responder import BaseTextResponder
 
 class ImDaddyResponder(BaseTextResponder):
     enabled = True
-    # Match "i'm | i am" at the beginning of the message
-    patterns = [r"\A(?:i'?\s?a?m\s+)"]
+    # Match "i'm | i am" at the beginning of the message, also with the curly apostrophe iPhones type
+    patterns = [r"\A(?:i['’]?\s?a?m\s+)"]
     ignore_case = True
 
     # respond to these users in UwU

@@ -138,13 +138,14 @@ async def test_daddy_opt_out_command_stops_and_restores_replies(red_env: simcord
 
     with patch("responder.responders.daddy.random.randint", return_value=0):
         await member.send(allowed, "I'm tired")
+        await member.send(allowed, "I’m sleepy")
         await member.send(allowed, "!daddyoptout")
         await member.send(allowed, "I'm still tired")
 
     replies = [m.content for m in _bot_messages(red_env, allowed)]
-    assert replies[0] == "Hi, tired! I'm your daddy..."
-    assert replies[1].startswith("You won't get daddy replies anymore.")
-    assert len(replies) == 2
+    assert replies[:2] == ["Hi, tired! I'm your daddy...", "Hi, sleepy! I'm your daddy..."]
+    assert replies[2].startswith("You won't get daddy replies anymore.")
+    assert len(replies) == 3
     assert await cog.config.user_from_id(member.id).daddy() is False
 
     await member.send(allowed, "!daddyoptout")
