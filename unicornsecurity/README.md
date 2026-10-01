@@ -6,8 +6,9 @@ A single-purpose channel filter: monitors one configurable channel per guild and
 
 - `tenor.com` links are always allowed.
 - Links inside `||spoiler||` tags and attachments marked as spoiler are always allowed.
-- Other URLs are matched against regex patterns for common image hosts (file extensions like png/jpg/gif/webp, imgur, giphy, redd.it, gfycat, Discord CDN/media links).
-- If no pattern matches and the URL's last path segment contains a `.`, the bot performs a HEAD request to check whether the URL serves `image/*` content.
+- Uploads count as images by their content type (or, without one, their filename). Other files, such as text and video, are left alone.
+- Other URLs are matched against regex patterns for common image hosts (file extensions like png/jpg/gif/webp, imgur, giphy, redd.it, gfycat).
+- If no pattern matches, the bot performs a HEAD request to check whether the URL serves `image/*` content, so image links without a file extension are caught too.
 
 ## Commands
 

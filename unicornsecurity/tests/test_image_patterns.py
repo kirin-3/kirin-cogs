@@ -147,7 +147,7 @@ async def test_only_unspoilered_images_are_deleted(
     message.channel.send = AsyncMock()
     message.content = content
     message.attachments = [
-        MagicMock(url="https://cdn.discordapp.com/attachments/1/2/cat.png", is_spoiler=MagicMock(return_value=flag))
+        MagicMock(content_type="image/png", filename="cat.png", is_spoiler=MagicMock(return_value=flag))
         for flag in spoiler_flags
     ]
     message.delete = AsyncMock()
@@ -155,6 +155,48 @@ async def test_only_unspoilered_images_are_deleted(
     await cog.on_message(message)
 
     assert message.delete.await_count == int(deleted)
+
+
+def _target_message(cog: ImageFilter, content: str = "", attachments: list | None = None) -> MagicMock:
+    cast(MagicMock, cog.config).guild.return_value.target_channel_id = AsyncMock(return_value=1319688029530492948)
+    message = MagicMock(content=content, attachments=attachments or [])
+    message.author.bot = False
+    message.channel.id = 1319688029530492948
+    message.channel.send = AsyncMock()
+    message.delete = AsyncMock()
+    return message
+
+
+@pytest.mark.parametrize(
+    ("content_type", "filename", "deleted"),
+    [
+        ("image/png", "cat.png", True),
+        (None, "cat.jpg", True),
+        ("text/plain", "notes.txt", False),
+        ("video/mp4", "clip.mp4", False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_only_image_uploads_need_a_spoiler(
+    cog: ImageFilter, content_type: str | None, filename: str, deleted: bool
+) -> None:
+    upload = MagicMock(content_type=content_type, filename=filename, is_spoiler=MagicMock(return_value=False))
+    message = _target_message(cog, attachments=[upload])
+
+    await cog.on_message(message)
+
+    assert message.delete.await_count == int(deleted)
+
+
+@pytest.mark.asyncio
+async def test_image_link_without_an_extension_is_checked(cog: ImageFilter) -> None:
+    message = _target_message(cog, "look https://example.com/image")
+
+    with patch.object(cog, "_probe_content_type", AsyncMock(return_value="image/jpeg")) as probe:
+        await cog.on_message(message)
+
+    probe.assert_awaited_once_with("https://example.com/image")
+    message.delete.assert_awaited_once()
 
 
 @pytest.mark.parametrize(

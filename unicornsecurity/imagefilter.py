@@ -1,5 +1,6 @@
 import ipaddress
 import logging
+import mimetypes
 import re
 import socket
 from urllib.parse import urljoin, urlsplit
@@ -23,6 +24,12 @@ def is_tenor_url(url: str) -> bool:
     except ValueError:
         return False
     return host is not None and (host == "tenor.com" or host.endswith(".tenor.com"))
+
+
+def is_image_attachment(attachment: discord.Attachment) -> bool:
+    """Discord sets the content type from the file; the filename covers an upload without one."""
+    kind = attachment.content_type or mimetypes.guess_type(attachment.filename)[0] or ""
+    return kind.startswith("image/")
 
 
 def is_allowed_destination(url: str) -> bool:
@@ -72,9 +79,6 @@ class ImageFilter(commands.Cog):
             r"https?://\S*?giphy\.com/\S+",  # Giphy
             r"https?://(?:i\.)?redd\.it/\S+",  # Reddit
             r"https?://\S+\.gfycat\.com/\S+",  # Gfycat
-            r"https?://\S+\.discordapp\.\S+/attachments/\S+",  # Discord attachments
-            r"https?://cdn\.discordapp\.\S+/attachments/\S+",  # Discord CDN
-            r"https?://media\.discordapp\.\S+/attachments/\S+",  # Discord media
         ]
 
         # Compile patterns for better performance
@@ -134,53 +138,29 @@ class ImageFilter(commands.Cog):
         if message.channel.id != target_channel_id:
             return
 
-        # Get the URLs outside ||spoiler|| tags; spoilered images are allowed
-        urls = URL_PATTERN.findall(SPOILER_PATTERN.sub(" ", message.content))
-
-        # Also check message attachments that aren't marked as spoilers
-        attachment_urls = [attachment.url for attachment in message.attachments if not attachment.is_spoiler()]
-        all_urls = urls + attachment_urls
-
-        # If no URLs or attachments, nothing to check
-        if not all_urls:
+        if not await self._has_unspoilered_image(message):
             return
+        try:
+            await message.delete()
+            await message.channel.send(
+                f"{message.author.mention}, images in this channel must be spoilered: wrap links in "
+                "`||link||` or mark uploads as spoiler. Tenor GIFs are fine as they are. "
+                "Your message has been removed.",
+                delete_after=10,
+            )
+        except discord.Forbidden:
+            pass  # Bot doesn't have permission to delete
+        except discord.HTTPException:
+            log.exception("Failed to delete a non-Tenor image message")
 
-        # Check each URL
-        for url in all_urls:
-            # Skip tenor links
-            if is_tenor_url(url):
-                continue
-
-            # Check if it's an image URL
-            is_image = False
-
-            # Check against patterns first for efficiency
-            for pattern in self.compiled_patterns:
-                if pattern.search(url):
-                    is_image = True
-                    break
-
-            # If not matched by pattern but could still be an image, check headers
-            if not is_image and "." in url.split("/")[-1]:
-                is_image = await self.is_image_url(url)
-
-            # If it's an unspoilered image and not from tenor.com, delete the message
-            if is_image:
-                try:
-                    await message.delete()
-                    await message.channel.send(
-                        f"{message.author.mention}, images in this channel must be spoilered: wrap links in "
-                        "`||link||` or mark uploads as spoiler. Tenor GIFs are fine as they are. "
-                        "Your message has been removed.",
-                        delete_after=10,
-                    )
-                except discord.Forbidden:
-                    pass  # Bot doesn't have permission to delete
-                except discord.HTTPException:
-                    log.exception("Failed to delete a non-Tenor image message")
-
-                # No need to check other URLs in this message since it's deleted
-                break
+    async def _has_unspoilered_image(self, message: discord.Message) -> bool:
+        if any(not a.is_spoiler() and is_image_attachment(a) for a in message.attachments):
+            return True
+        # Links outside ||spoiler|| tags; links without a file extension are checked by their headers
+        for url in URL_PATTERN.findall(SPOILER_PATTERN.sub(" ", message.content)):
+            if not is_tenor_url(url) and await self.is_image_url(url):
+                return True
+        return False
 
     @commands.group()  # type: ignore[arg-type]
     @commands.admin_or_permissions(administrator=True)
