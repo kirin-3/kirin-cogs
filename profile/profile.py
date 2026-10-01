@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections import defaultdict
 from datetime import UTC, datetime
 from io import BytesIO
 
@@ -52,6 +53,8 @@ class Profile(commands.Cog):
         self.config.register_user(**default_user)
 
         self.locked_channels = set()
+        # One profile post or removal at a time per member, so two open builders can't both post
+        self._member_locks: defaultdict[tuple[int, int], asyncio.Lock] = defaultdict(asyncio.Lock)
         self._channel_cvs: dict[discord.TextChannel, asyncio.Condition] = {}
         self._compat_cooldowns = [
             (commands.CooldownMapping.from_cooldown(1, COMPAT_COOLDOWN, bucket_type), bucket_type)
@@ -263,8 +266,9 @@ class Profile(commands.Cog):
 
         await view.wait()
         if view.submitted:
-            posted = await self._update_profile_embed(member, view.data, picture=view.picture)
-            await self.config.member(member).profile_data.set(view.data)  # kept either way, so a retry is prefilled
+            async with self._member_locks[(guild.id, member.id)]:
+                posted = await self._update_profile_embed(member, view.data, picture=view.picture)
+                await self.config.member(member).profile_data.set(view.data)  # kept either way, so a retry is prefilled
             if posted:
                 await interaction.followup.send("Profile updated successfully!", ephemeral=True)
             else:
@@ -314,23 +318,24 @@ class Profile(commands.Cog):
         The deletion cooldown is kept. Returns False, keeping the record so a later cleanup can retry,
         if the post may still exist: it could not be deleted, or the profile channel can't be found.
         """
-        member_group = self.config.member_from_ids(guild.id, user_id)
-        message_id = await member_group.message_id()
-        if message_id:
-            channel = await self.get_profile_channel(guild)
-            if channel is None:
-                log.warning(f"Profile channel not found; keeping the profile of user {user_id} for cleanup")
-                return False
-            try:
-                await channel.get_partial_message(message_id).delete()
-            except discord.NotFound:
-                pass
-            except discord.HTTPException as e:
-                log.error(f"Failed to delete profile message of user {user_id}: {e}")
-                return False
-        await member_group.profile_data.clear()
-        await member_group.message_id.clear()
-        return True
+        async with self._member_locks[(guild.id, user_id)]:
+            member_group = self.config.member_from_ids(guild.id, user_id)
+            message_id = await member_group.message_id()
+            if message_id:
+                channel = await self.get_profile_channel(guild)
+                if channel is None:
+                    log.warning(f"Profile channel not found; keeping the profile of user {user_id} for cleanup")
+                    return False
+                try:
+                    await channel.get_partial_message(message_id).delete()
+                except discord.NotFound:
+                    pass
+                except discord.HTTPException as e:
+                    log.error(f"Failed to delete profile message of user {user_id}: {e}")
+                    return False
+            await member_group.profile_data.clear()
+            await member_group.message_id.clear()
+            return True
 
     async def _existing_picture(
         self, channel: discord.TextChannel, message_id: int, filename: str
