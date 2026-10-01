@@ -69,3 +69,19 @@ async def test_owner_configures_moderation_and_message_alerts(red_env: simcord.E
     assert alert.embeds[0].title == "⚠️ Potential Rule Violation Detected"
     assert any(field.name == "Severity" and field.value == "Medium" for field in alert.embeds[0].fields)
     simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_api_key_message_is_deleted(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild = red_env.create_guild()
+    owner = guild.add_member(red_env.create_user("owner"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    bot.owner_ids = set(bot.owner_ids or ()) | {owner.id}
+
+    await owner.send(channel, "!unimod config apikey sk-secret")
+
+    assert (await bot.get_shared_api_tokens("openai")).get("api_key") == "sk-secret"
+    assert not any("sk-secret" in (message.content or "") for message in channel.history())
+    simcord.assert_no_errors(red_env)

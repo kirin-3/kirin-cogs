@@ -1014,6 +1014,9 @@ Analyze this conversation against the server rules, paying close attention to ch
     async def set_api_key(self, ctx: commands.Context, api_key: str):
         """Set the OpenAI API key (used for NanoGPT)."""
         await self.bot.set_shared_api_tokens("openai", api_key=api_key)
+        # Don't leave the key in the channel
+        with contextlib.suppress(discord.HTTPException):
+            await ctx.message.delete()
         await ctx.send("✅ OpenAI API key set. This will be used for NanoGPT.")
 
     @config_group.command(name="threshold")
