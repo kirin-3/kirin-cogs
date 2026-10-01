@@ -207,11 +207,16 @@ def _counted(row: dict, event: Event, history: deque[Entry], rule: Rule) -> bool
     if kind == "message_rate":
         return len(recent) >= count
     if kind == "duplicates":
-        if not event.text.strip():
-            return False
+        # As YAG counts them: case and outer spaces don't matter, other messages in between are skipped,
+        # and a message with a different number of attachments ends the run. Messages with no text match.
         pool = recent if row["any_channel"] else [e for e in recent if e.channel_id == event.channel_id]
-        last = pool[-count:]
-        return len(last) == count and all(e.text == event.text for e in last)
+        text, same = event.text.strip().casefold(), 0
+        for e in reversed(pool):  # newest first; the event itself is the last entry
+            if e.attachments != event.attachments:
+                break
+            if e.text.strip().casefold() == text:
+                same += 1
+        return same >= count
     if kind == "attachment_rate":
         return sum(e.attachments if row["per_attachment"] else min(e.attachments, 1) for e in recent) >= count
     if kind == "link_rate":

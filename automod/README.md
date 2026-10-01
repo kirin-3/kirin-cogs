@@ -14,7 +14,9 @@ Rule-based automod for Unicornia, replacing YAGPDB's. Staff read the rules and t
     distinct users and roles;
   - counted over a window of 1 to 3600 seconds: messages, identical messages, attachments, links, mentions. Messages
     in channels the rule's channel conditions exclude don't count, and a member's counts start again from zero after
-    one of these fires;
+    one of these fires. Identical messages are counted the way YAGPDB counts them: case and outer spaces don't
+    matter, other messages in between are skipped, messages with no text (images, stickers) match each other, and a
+    message with a different number of attachments ends the run;
   - names (checked on join and on every nickname, display name or username change): name regex, name word list.
 - **Conditions:** ignore bots, ignore roles, require roles (any or all), ignore channels, only in channels, new
   messages only, edits only. A thread counts as its parent channel too.

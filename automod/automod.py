@@ -180,7 +180,7 @@ class AutoMod(commands.Cog):
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
         if before.nick == after.nick or not self._member_ok(after):
             return
-        if self._renamed.get(after.id) == after.nick:
+        if after.id in self._renamed and self._renamed[after.id] == after.nick:
             del self._renamed[after.id]  # automod's own rename
             return
         if self.snapshot.rules:

@@ -114,6 +114,11 @@ def test_identical_messages_per_channel_unless_any_channel() -> None:
     assert _burst(per_channel, ["hi"] * 4, channels) == [False] * 4
     assert _burst(anywhere, ["hi"] * 4, channels)[-1] is True
     assert _burst(per_channel, ["hi", "hi", "yo", "hi"]) == [False] * 4
+    # Like YAG: case and spaces don't matter, and a different message in between is skipped.
+    assert _burst(per_channel, ["hi", "HI ", "yo", "hi", "Hi"]) == [False] * 4 + [True]
+    # Image-only posts match each other, but a different attachment count ends the run.
+    assert _burst(per_channel, [""] * 4, attachments=[1] * 4)[-1] is True
+    assert _burst(per_channel, [""] * 4, attachments=[1, 2, 1, 1])[-1] is False
 
 
 def test_attachment_counting_options() -> None:

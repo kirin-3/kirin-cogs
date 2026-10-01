@@ -201,6 +201,12 @@ async def test_setting_a_nickname_does_not_loop(cog: AutoMod) -> None:
     renamed.edit.assert_not_awaited()
     assert len(await cog.action_log()) == 1
 
+    # Clearing a nickname automod never set still runs the name rules.
+    cleared = _member(nick=None)
+    cleared.name = "kirin_fan"
+    await cog.on_member_update(renamed, cleared)
+    cleared.edit.assert_awaited_once()
+
 
 @pytest.mark.asyncio
 async def test_send_message_with_ping_and_auto_delete(cog: AutoMod) -> None:
