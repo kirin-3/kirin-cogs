@@ -292,6 +292,14 @@ class ShopCommands(UnicorniaMixinBase):
 
             entry_type = type_map[item_type.lower()]
 
+            # The same limits as shop edit
+            if price < 0:
+                await ctx.send("<a:zz_NoTick:729318761655435355> Price must be a positive integer.")
+                return
+            if len(name) > 100:
+                await ctx.send("<a:zz_NoTick:729318761655435355> Name is too long (max 100 chars).")
+                return
+
             # Get next index
             items = await self.shop_system.get_shop_items(ctx.guild.id)
             next_index = max([item["index"] for item in items], default=0) + 1

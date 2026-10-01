@@ -317,6 +317,45 @@ async def test_shop_only_sells_roles_staff_could_give_out(red_env: simcord.Env) 
 
 
 @pytest.mark.asyncio
+async def test_shop_add_checks_price_and_name_like_shop_edit(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild, owner = _guild_with_owner(red_env)
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+
+    await owner.send(channel, '!shop add item -500 "Free money"')
+    assert _last_text(channel, bot).endswith("Price must be a positive integer.")
+    await owner.send(channel, f'!shop add item 500 "{"x" * 101}"')
+    assert _last_text(channel, bot).endswith("Name is too long (max 100 chars).")
+    assert await _cog(red_env).shop_system.get_shop_items(guild.id) == []
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_server_only_commands_refuse_dms(red_env: simcord.Env) -> None:
+    guild, _owner = _guild_with_owner(red_env)
+    member = guild.add_member(red_env.create_user("member"))
+    await red_env.settle()
+
+    commands_used = ["!baltop", "!waifu info", "!waifu list", "!waifu leaderboard"]
+    for command in commands_used:
+        await member.send_dm(command)
+        await red_env.settle()
+
+    dm_contents = [
+        m.content
+        for c in red_env.backend.channels.values()
+        if member.id in c.recipient_ids
+        for m in red_env.backend.messages[c.id].values()
+        if m.author_id != member.id
+    ]
+    assert dm_contents == ["That command is not available in DMs."] * len(commands_used)
+    for _ in commands_used:
+        assert isinstance(red_env.errors.pop(), commands.CheckFailure)  # NoPrivateMessage
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
 async def test_waifu_claim_cannot_undercut_the_current_price(red_env: simcord.Env) -> None:
     bot = cast(Red, red_env.bot)
     guild, _owner = _guild_with_owner(red_env)

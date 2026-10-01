@@ -9,6 +9,7 @@ from ..views import LeaderboardView, TransferView
 class EconomyCommands(UnicorniaMixinBase):
     # Economy commands
     @commands.hybrid_command(name="baltop", aliases=["ballb"])  # type: ignore[arg-type]
+    @commands.guild_only()
     async def baltop_shortcut(self, ctx):
         """
         Show the currency leaderboard.

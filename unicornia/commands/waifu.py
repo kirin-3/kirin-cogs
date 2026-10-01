@@ -7,6 +7,7 @@ from ..mixins import UnicorniaMixinBase
 class WaifuCommands(UnicorniaMixinBase):
     # Waifu commands
     @commands.hybrid_group(name="waifu", aliases=["wf"])  # type: ignore[arg-type]
+    @commands.guild_only()
     async def waifu_group(self, ctx):
         """
         Claim and collect users as waifus.
