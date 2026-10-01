@@ -73,8 +73,8 @@ class EventHandlers:
         """Check if AntiNuke is enabled for the guild."""
         return await self.config.guild(guild).enabled()
 
-    async def is_trusted(self, guild: discord.Guild, user: discord.Member) -> bool:
-        """Check if a user is trusted (bypasses AntiNuke)."""
+    async def is_trusted(self, guild: discord.Guild, user: discord.Member | discord.Object) -> bool:
+        """Check if a user is trusted (bypasses AntiNuke). A user who isn't a cached member has no roles."""
         # Server owner is always trusted
         if guild.owner_id == user.id:
             return True
@@ -86,7 +86,7 @@ class EventHandlers:
 
         # Check trusted roles
         trusted_roles = await self.config.guild(guild).trusted_roles()
-        user_role_ids = [role.id for role in user.roles]
+        user_role_ids = [role.id for role in getattr(user, "roles", [])]
         return bool(any(role_id in trusted_roles for role_id in user_role_ids))
 
     @staticmethod
@@ -139,8 +139,9 @@ class EventHandlers:
         if entry.user_id == guild.me.id:
             return
 
-        culprit = guild.get_member(entry.user_id)
-        if culprit is None or await self.is_trusted(guild, culprit):
+        # Someone not in the member cache (they left, say) can't be quarantined, but still counts
+        culprit = guild.get_member(entry.user_id) or discord.Object(id=entry.user_id)
+        if await self.is_trusted(guild, culprit):
             return
 
         threshold = monitor_config.get("threshold", 2)
@@ -149,13 +150,14 @@ class EventHandlers:
         if count < threshold:
             return
 
-        if culprit.bot:
-            # A bot's permissions live on its managed role, which quarantine cannot strip, so remove it.
-            self._create_task(self.quarantine_actions.remove_bot(guild, culprit, action_type, self.action_cache))
-        else:
-            self._create_task(
-                self.quarantine_actions.execute_quarantine(guild, culprit, action_type, self.action_cache)
-            )
+        if isinstance(culprit, discord.Member):
+            if culprit.bot:
+                # A bot's permissions live on its managed role, which quarantine cannot strip, so remove it.
+                self._create_task(self.quarantine_actions.remove_bot(guild, culprit, action_type, self.action_cache))
+            else:
+                self._create_task(
+                    self.quarantine_actions.execute_quarantine(guild, culprit, action_type, self.action_cache)
+                )
 
         target_id = getattr(entry.target, "id", None)
         if action_type == "bot_add" and monitor_config.get("kick_bot", True) and isinstance(target_id, int):

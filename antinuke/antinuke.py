@@ -570,6 +570,9 @@ class AntiNuke(
             await ctx.send("❌ Cannot quarantine the server owner.")
             return
 
+        # The reason lands in the audit log (512 characters) and in embed fields (1024)
+        if len(reason) > 400:
+            reason = reason[:399] + "…"
         success = await self.quarantine_actions.execute_quarantine(guild, user, f"manual: {reason}", self.action_cache)
 
         if success:

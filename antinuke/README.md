@@ -39,7 +39,7 @@ All commands are prefix-only (no slash commands).
 - **Trust System**: Whitelist users and roles to bypass monitoring
 - **Logging Channel**: Dedicated channel for all AntiNuke alerts
 
-People who exceed a threshold are quarantined. Bots that exceed a threshold are kicked instead, because a bot's permissions live on its managed integration role, which quarantine cannot remove. Only this bot itself is exempt, so trust any other bot that legitimately bans, kicks, or manages channels and roles in bulk. Enabling bot kick also kicks newly added bots when the member who added them is acted on.
+People who exceed a threshold are quarantined. Bots that exceed a threshold are kicked instead, because a bot's permissions live on its managed integration role, which quarantine cannot remove. Only this bot itself is exempt, so trust any other bot that legitimately bans, kicks, or manages channels and roles in bulk. Enabling bot kick also kicks newly added bots when the member who added them is acted on, even if that member has already left.
 
 ## Installation
 

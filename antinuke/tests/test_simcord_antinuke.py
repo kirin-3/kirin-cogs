@@ -221,6 +221,23 @@ async def test_bot_add_quarantines_adder_and_kicks_added_bot(red_env: simcord.En
 
 
 @pytest.mark.asyncio
+async def test_bot_added_by_someone_who_left_is_still_kicked(red_env: simcord.Env) -> None:
+    setup = await _setup(red_env)
+    added_bot = setup.guild.add_member(red_env.create_user("addedbot", bot=True))
+    await red_env.settle()
+    gone = red_env.create_user("gone")  # never in the member cache
+
+    red_env.backend.record_audit_log(
+        setup.guild.id, discord.AuditLogAction.bot_add.value, user_id=gone.id, target_id=added_bot.id
+    )
+    await red_env.settle()
+
+    assert added_bot.id not in setup.guild.member_ids()
+    assert await _quarantined(setup) == {}
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
 async def test_monitor_commands_control_what_counts(red_env: simcord.Env) -> None:
     setup = await _setup(red_env)
     owner = setup.owner
@@ -326,6 +343,20 @@ async def test_quarantine_list_info_and_cleanup(red_env: simcord.Env) -> None:
     await setup.owner.send(setup.channel, "!an quarantine cleanup")
     assert any("✅ Cleaned up 1 quarantine record(s)" in m.content for m in _bot_replies(setup.channel, setup.bot))
     assert await _quarantined(setup) == {}
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_long_force_reason_is_cut_to_fit_the_info_embed(red_env: simcord.Env) -> None:
+    setup = await _setup(red_env)
+
+    await setup.owner.send(setup.channel, f"!an quarantine force {setup.culprit.mention} {'x' * 1500}")
+    record = (await _quarantined(setup))[str(setup.culprit.id)]
+    assert record["reason"] == f"AntiNuke triggered: manual: {'x' * 399}…"
+
+    await setup.owner.send(setup.channel, f"!an quarantine info {setup.culprit.mention}")
+    info = _bot_replies(setup.channel, setup.bot)[-1].embeds[0]
+    assert len(next(f.value or "" for f in info.fields if f.name == "Reason")) <= 1024
     simcord.assert_no_errors(red_env)
 
 
