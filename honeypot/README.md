@@ -10,7 +10,9 @@ deletes the message, and chooses an action from the member's server tenure:
   history is purged. A failed DM does not prevent the ban.
 - Members with at least 3 days of tenure, or an unknown join date, have every assignable role removed and receive a
   28-day timeout in one Discord request. Their removed role IDs are saved before the request so staff can restore them.
-  The compromised-account DM is attempted only after quarantine succeeds.
+  The compromised-account DM is attempted only after quarantine succeeds. Their messages from the day before the
+  honeypot post are then deleted from every channel and thread the bot can manage, since compromised accounts usually
+  spam several channels at once.
 
 Bots, webhook messages, non-member authors, members holding the staff role, and the guild owner are ignored. The guild
 owner who posts in the honeypot is never banned or quarantined; only a "Honeypot owner alert" is sent to the log
@@ -39,7 +41,7 @@ A quarantined member who still has no assignable roles only has the message dele
 | Staff role | `696020813299580940` |
 | New-member cutoff | 3 days |
 | Quarantine timeout | 28 days |
-| Ban message purge | 86,400 seconds (1 day) |
+| Message purge (ban and quarantine) | 86,400 seconds (1 day) |
 | Appeal form | `https://forms.gle/SdrjyV9ggi3hBQbh8` |
 
 There is no enable toggle. Loading the cog arms it immediately.
@@ -51,7 +53,7 @@ The bot needs these guild and channel permissions in Unicornia:
 - `Ban Members` (`ban_members`)
 - `Manage Roles` (`manage_roles`)
 - `Moderate Members` (`moderate_members`)
-- `Manage Messages` (`manage_messages`)
+- `Manage Messages` (`manage_messages`) and `Read Message History` (`read_message_history`) in the channels to clean up
 - Permission to view and send messages in the log channel
 
 The bot's highest role must be above every member and ordinary role it is expected to moderate. Managed roles and roles

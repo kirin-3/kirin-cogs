@@ -183,6 +183,27 @@ async def test_established_member_posting_is_quarantined(red_env: simcord.Env) -
 
 
 @pytest.mark.asyncio
+async def test_quarantine_purges_the_last_day_of_messages_everywhere(red_env: simcord.Env) -> None:
+    setup = await _setup(red_env)
+    general = setup.guild.create_text_channel("general")
+    await red_env.settle()
+    old = await setup.veteran.send(general, "an ordinary message from last week")
+    bystander = await setup.staff.send(general, "hello")
+    await red_env.advance_time(7 * 86400)
+
+    spam = [await setup.veteran.send(channel, "free nitro") for channel in (general, setup.room)]
+    await setup.veteran.send(setup.honeypot_channel, "free nitro")
+    await red_env.settle()
+
+    remaining = {m.id for channel in (general, setup.room) for m in channel.history()}
+    assert not remaining & {m.id for m in spam}
+    assert {old.id, bystander.id} <= remaining
+    fields = {f.name: f.value for f in _log_embeds(setup, title="Honeypot quarantine")[-1].fields}
+    assert fields["Messages purged"] == "2"
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
 async def test_new_account_posting_is_banned(red_env: simcord.Env) -> None:
     setup = await _setup(red_env)
     newbie = _add_member(red_env, setup.guild, red_env.create_user("newbie"), joined_at=RECENT_JOIN)

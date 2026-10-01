@@ -14,10 +14,10 @@ import pytest
 import honeypot.honeypot as honeypot_module
 from honeypot.honeypot import (
     BAN_NOTICE,
-    BAN_PURGE_SECONDS,
     GUILD_ID,
     HONEYPOT_CHANNEL_ID,
     LOG_CHANNEL_ID,
+    PURGE_SECONDS,
     QUARANTINE_NOTICE,
     STAFF_ROLE_ID,
     Honeypot,
@@ -318,7 +318,9 @@ async def test_quarantine_writes_pending_before_one_atomic_edit_and_completes() 
 
     member.edit.side_effect = assert_pending_before_edit
 
-    result = await cog._quarantine_member(guild, member, "Member (42)", "spam", ("file.png",), None)
+    result = await cog._quarantine_member(
+        guild, member, "Member (42)", "spam", ("file.png",), None, purge_after=datetime.now(UTC)
+    )
 
     assert result is True
     member.edit.assert_awaited_once()
@@ -337,7 +339,7 @@ async def test_quarantine_with_no_assignable_roles_still_applies_timeout() -> No
     retained = _role(11, assignable=False)
     member = _member(guild, roles=[retained])
 
-    result = await cog._quarantine_member(guild, member, "Member (42)", "spam", (), None)
+    result = await cog._quarantine_member(guild, member, "Member (42)", "spam", (), None, purge_after=datetime.now(UTC))
 
     assert result is True
     member.edit.assert_awaited_once()
@@ -361,7 +363,7 @@ async def test_quarantine_failure_retains_snapshot_and_marks_failed() -> None:
     member = _member(guild, roles=[_role(10, assignable=True)])
     member.edit.side_effect = _http_error()
 
-    result = await cog._quarantine_member(guild, member, "Member (42)", "spam", (), None)
+    result = await cog._quarantine_member(guild, member, "Member (42)", "spam", (), None, purge_after=datetime.now(UTC))
 
     assert result is False
     record = config.guild_records[guild.id][str(member.id)]
@@ -385,6 +387,7 @@ async def test_retry_reuses_failed_snapshot_instead_of_current_roles() -> None:
         "spam",
         (),
         config.guild_records[GUILD_ID]["42"],
+        purge_after=datetime.now(UTC),
     )
 
     assert config.guild_records[GUILD_ID]["42"]["roles"] == [10]
@@ -442,7 +445,7 @@ async def test_ban_dm_failure_does_not_prevent_ban_or_add_fallback() -> None:
     guild.ban.assert_awaited_once_with(
         member,
         reason="Posted in the Unicornia honeypot channel",
-        delete_message_seconds=BAN_PURGE_SECONDS,
+        delete_message_seconds=PURGE_SECONDS,
     )
     channel.send.assert_awaited_once()
 
@@ -470,7 +473,7 @@ async def test_quarantine_dm_failure_does_not_reverse_success() -> None:
     member = _member(guild, roles=[_role(10, assignable=True)])
     member.send.side_effect = _forbidden()
 
-    result = await cog._quarantine_member(guild, member, "Member (42)", "spam", (), None)
+    result = await cog._quarantine_member(guild, member, "Member (42)", "spam", (), None, purge_after=datetime.now(UTC))
 
     assert result is True
     member.edit.assert_awaited_once()

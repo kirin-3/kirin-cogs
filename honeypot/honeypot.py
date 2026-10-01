@@ -19,7 +19,8 @@ LOG_CHANNEL_ID = 1542663016452063366
 STAFF_ROLE_ID = 696020813299580940
 NEW_MEMBER_DAYS = 3
 TIMEOUT_DAYS = 28
-BAN_PURGE_SECONDS = 86400
+# How far back a member's messages are deleted, on both the ban and the quarantine path
+PURGE_SECONDS = 86400
 APPEAL_URL = "https://forms.gle/SdrjyV9ggi3hBQbh8"
 
 BAN_NOTICE = (
@@ -222,6 +223,7 @@ class Honeypot(commands.Cog):
                     captured_content,
                     attachment_names,
                     record if isinstance(record, dict) else None,
+                    purge_after=message.created_at - timedelta(seconds=PURGE_SECONDS),
                 )
             if succeeded:
                 self._enforced_users.add(key)
@@ -266,7 +268,7 @@ class Honeypot(commands.Cog):
         if guild.get_member(member.id) is None:
             target = discord.Object(id=member.id)
         try:
-            await guild.ban(target, reason=ENFORCEMENT_REASON, delete_message_seconds=BAN_PURGE_SECONDS)
+            await guild.ban(target, reason=ENFORCEMENT_REASON, delete_message_seconds=PURGE_SECONDS)
         except discord.Forbidden:
             bot_member = guild.me
             if bot_member is not None and not bot_member.guild_permissions.ban_members:
@@ -305,6 +307,8 @@ class Honeypot(commands.Cog):
         captured_content: str,
         attachment_names: tuple[str, ...],
         existing_record: dict[str, Any] | None,
+        *,
+        purge_after: datetime,
     ) -> bool:
         keep, current_snapshot = self._partition_roles(member)
         stored_roles = existing_record.get("roles") if existing_record is not None else None
@@ -369,10 +373,12 @@ class Honeypot(commands.Cog):
 
         await self._mark_completed(guild, member.id)
         dm_delivered = await self._send_dm(member, QUARANTINE_NOTICE)
+        purged = await self._purge_messages(guild, member, purge_after)
         embed = self._base_log_embed("Honeypot quarantine", discord.Color.orange(), member_identity)
         embed.add_field(name="Roles stripped", value=str(len(current_snapshot)), inline=True)
         embed.add_field(name="Timeout expires", value=discord.utils.format_dt(timeout_until), inline=True)
         embed.add_field(name="DM delivered", value=str(dm_delivered), inline=True)
+        embed.add_field(name="Messages purged", value=str(purged), inline=True)
         if not current_snapshot:
             embed.add_field(name="Role outcome", value="No assignable roles were present.", inline=False)
         if released_by_hand:
@@ -384,6 +390,28 @@ class Honeypot(commands.Cog):
         self._add_message_fields(embed, captured_content, attachment_names)
         await self._log_embed(guild, embed)
         return True
+
+    @staticmethod
+    async def _purge_messages(guild: discord.Guild, member: discord.Member, after: datetime) -> int:
+        """Delete the member's messages since `after` in every channel the bot can clean, as a ban would.
+
+        Compromised accounts usually spam several channels at once, not just the honeypot.
+        """
+        # ponytail: reads a day of history in every channel; fine for a rare trigger
+        deleted = 0
+        for channel in [*guild.text_channels, *guild.voice_channels, *guild.threads]:
+            permissions = channel.permissions_for(guild.me)
+            if not (permissions.read_message_history and permissions.manage_messages):
+                continue
+            try:
+                messages = await channel.purge(
+                    limit=None, after=after, check=lambda m: m.author.id == member.id, reason=ENFORCEMENT_REASON
+                )
+            except discord.HTTPException as exc:
+                log.warning("Could not purge honeypot member messages in channel %s: %s", channel.id, exc)
+                continue
+            deleted += len(messages)
+        return deleted
 
     @staticmethod
     def _partition_roles(member: discord.Member) -> tuple[list[discord.Role], list[int]]:
