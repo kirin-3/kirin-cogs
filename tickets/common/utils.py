@@ -121,7 +121,11 @@ async def close_ticket(
     embed.add_field(name="Opened on", value=f"<t:{opened}:F>", inline=True)
     embed.add_field(name="Closed on", value=f"<t:{closed}:F>", inline=True)
     embed.add_field(name="Closed by", value=closer_name, inline=True)
-    embed.add_field(name="Reason", value=str(reason), inline=False)
+    # Discord rejects a field over 1024 characters, which would lose the close log and the DM
+    reason_text = str(reason)
+    if len(reason_text) > 1024:
+        reason_text = reason_text[:1023] + "…"
+    embed.add_field(name="Reason", value=reason_text, inline=False)
     embed.set_thumbnail(url=pfp)
 
     # Using conf instead of panel since it's flattened

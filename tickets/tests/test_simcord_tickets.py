@@ -242,6 +242,21 @@ async def test_owner_closes_own_ticket_through_the_button(red_env: simcord.Env) 
 
 
 @pytest.mark.asyncio
+async def test_long_close_reason_still_logs_the_close(red_env: simcord.Env) -> None:
+    panel = await _setup_panel(red_env, logs=True)
+    channel = await _open_ticket(panel)
+    welcome = await _welcome_message(channel, panel.bot)
+
+    await _close_with_reason(panel.member, welcome, "x" * 1500)
+
+    assert channel.name not in panel.guild.channels
+    assert [e.title for e in _log_embeds(panel)] == ["Ticket Closed #1"]
+    fields = {f.name: f.value or "" for f in _log_embeds(panel)[0].fields}
+    assert fields["Reason"] == "x" * 1023 + "…"
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
 async def test_staff_close_requires_a_verification_status(red_env: simcord.Env) -> None:
     panel = await _setup_panel(red_env, support=True)
     assert panel.staff is not None
