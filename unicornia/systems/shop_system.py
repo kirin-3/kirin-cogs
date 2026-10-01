@@ -8,9 +8,41 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 import discord
+from redbot.core.utils.chat_formatting import humanize_list
 
 from ..database import DatabaseManager
 from ..types import ShopItem, UserInventoryItem
+
+# Anyone with enough currency can buy a shop role, so it must not carry any of these.
+# The same list as selfroles.BLOCKED_PERMISSIONS (cogs don't import each other).
+BLOCKED_PERMISSIONS = discord.Permissions.elevated() | discord.Permissions(
+    mention_everyone=True,
+    view_audit_log=True,
+    manage_nicknames=True,
+    manage_events=True,
+    move_members=True,
+    mute_members=True,
+    deafen_members=True,
+)
+
+
+def role_problem(role: discord.Role) -> str | None:
+    """Why the shop may not sell this role, or None. Checked again at every purchase."""
+    if role.is_default() or role.managed:
+        return f"{role.name} is managed by Discord or an integration."
+    if not role.is_assignable():
+        return f"{role.name} is not below my top role."
+    risky = [name for name, value in role.permissions if value and getattr(BLOCKED_PERMISSIONS, name)]
+    if risky:
+        return f"{role.name} has moderator permissions ({humanize_list([n.replace('_', ' ') for n in risky])})."
+    return None
+
+
+def editor_problem(editor: discord.Member, role: discord.Role) -> str | None:
+    """Staff may only sell roles they could give out themselves."""
+    if editor.id != editor.guild.owner_id and role >= editor.top_role:
+        return f"{role.name} is not below your top role."
+    return None
 
 
 @dataclass
@@ -175,6 +207,8 @@ class ShopSystem:
                 role = user.guild.get_role(item["role_id"])
                 if not role:
                     return False, "Role no longer exists", {}
+                if problem := role_problem(role):
+                    return False, f"This role can't be bought: {problem}", {}
 
                 role_ids = await self._current_role_ids(user)
                 if role_ids is None:

@@ -31,6 +31,11 @@ def _role() -> MagicMock:
     role = MagicMock(spec=discord.Role)
     role.id = ROLE_ID
     role.name = "Shiny"
+    # A plain role the shop may sell: unmanaged, below the bot, no moderator permissions
+    role.is_default.return_value = False
+    role.managed = False
+    role.is_assignable.return_value = True
+    role.permissions = discord.Permissions.none()
     return role
 
 

@@ -274,6 +274,49 @@ async def test_xpshop_buy_and_use_reply_as_before(red_env: simcord.Env) -> None:
 
 
 @pytest.mark.asyncio
+async def test_shop_only_sells_roles_staff_could_give_out(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild, _owner = _guild_with_owner(red_env)
+    # New roles go in just above @everyone, so the first one created ends up highest
+    boss = guild.create_role("Boss")
+    staff_role = guild.create_role("Staff", permissions=discord.Permissions(manage_roles=True))
+    mods = guild.create_role("Mods", permissions=discord.Permissions(ban_members=True))
+    shiny = guild.create_role("Shiny")
+    staff = guild.add_member(red_env.create_user("staff"), roles=[staff_role])
+    buyer = guild.add_member(red_env.create_user("buyer"))
+    later = guild.add_member(red_env.create_user("later"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    cog = _cog(red_env)
+
+    await staff.send(channel, f'!shop add role 0 "Boss role" {boss.mention}')
+    assert _last_text(channel, bot).endswith("Boss is not below your top role.")
+    await staff.send(channel, f'!shop add role 0 "Mod role" {mods.mention}')
+    assert _last_text(channel, bot).endswith("Mods has moderator permissions (ban members).")
+    await staff.send(channel, f'!shop add role 0 "Shiny role" {shiny.mention}')
+    assert [item["name"] for item in await cog.shop_system.get_shop_items(guild.id)] == ["Shiny role"]
+    await staff.send(channel, f"!shop edit 1 role {boss.mention}")
+    assert _last_text(channel, bot).endswith("Boss is not below your top role.")
+
+    await buyer.send(channel, "!shop buy 1")
+    assert shiny.id in {role.id for role in _member(buyer).roles}
+
+    # A role that gains moderator permissions after it was listed stops being sold
+    discord_guild = bot.get_guild(guild.id)
+    assert discord_guild is not None
+    shiny_role = discord_guild.get_role(shiny.id)
+    assert shiny_role is not None
+    await shiny_role.edit(permissions=discord.Permissions(ban_members=True))
+    await red_env.settle()
+    await later.send(channel, "!shop buy 1")
+    assert _last_text(channel, bot).endswith(
+        "This role can't be bought: Shiny has moderator permissions (ban members)."
+    )
+    assert shiny.id not in {role.id for role in _member(later).roles}
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
 async def test_waifu_claim_cannot_undercut_the_current_price(red_env: simcord.Env) -> None:
     bot = cast(Red, red_env.bot)
     guild, _owner = _guild_with_owner(red_env)

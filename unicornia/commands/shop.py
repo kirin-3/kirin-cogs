@@ -4,6 +4,7 @@ import discord
 from redbot.core import app_commands, commands
 
 from ..mixins import UnicorniaMixinBase
+from ..systems.shop_system import editor_problem, role_problem
 from ..views import ShopBrowserView
 
 
@@ -319,6 +320,9 @@ class ShopCommands(UnicorniaMixinBase):
                         "<a:zz_NoTick:729318761655435355> Role not found. Please mention the role or use the exact name."
                     )
                     return
+                if problem := role_problem(role) or editor_problem(ctx.author, role):
+                    await ctx.send(f"<a:zz_NoTick:729318761655435355> {problem}")
+                    return
 
                 role_id = role.id
                 role_name = role.name
@@ -421,6 +425,9 @@ class ShopCommands(UnicorniaMixinBase):
 
                 if not role:
                     await ctx.send("<a:zz_NoTick:729318761655435355> Role not found.")
+                    return
+                if problem := role_problem(role) or editor_problem(ctx.author, role):
+                    await ctx.send(f"<a:zz_NoTick:729318761655435355> {problem}")
                     return
 
                 updates["role_id"] = role.id
