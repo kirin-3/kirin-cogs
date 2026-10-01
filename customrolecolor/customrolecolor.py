@@ -21,9 +21,11 @@ def _parse_hex(value: str) -> discord.Color | None:
     if len(value) != 6:
         return None
     try:
-        return discord.Color(int(value, 16))
+        number = int(value, 16)
     except ValueError:
         return None
+    # Discord reads 0 as "no colour" and shows the default, so black becomes the closest real colour
+    return discord.Color(number or 0x010101)
 
 
 PALETTE_COLORS = [

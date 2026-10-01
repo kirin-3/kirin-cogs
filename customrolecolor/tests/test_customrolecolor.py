@@ -12,7 +12,7 @@ import pytest
 import pytest_asyncio
 from redbot.core import Config
 
-from customrolecolor.customrolecolor import PALETTE_COLORS, CustomRoleColor, generate_palette_image
+from customrolecolor.customrolecolor import PALETTE_COLORS, CustomRoleColor, _parse_hex, generate_palette_image
 
 # ---------------------------------------------------------------------------
 # Pure-function tests
@@ -33,6 +33,12 @@ def test_palette_colors_all_have_valid_hex() -> None:
         assert hex_code.startswith("#"), f"{name} missing # prefix"
         assert len(hex_code) == 7, f"{name} hex not 7 chars"
         int(hex_code[1:], 16)  # raises ValueError if invalid
+
+
+def test_black_is_a_real_colour() -> None:
+    # Discord shows colour 0 as the default colour, not black
+    assert _parse_hex("#000000") == discord.Color(0x010101)
+    assert _parse_hex("#ff0000") == discord.Color(0xFF0000)
 
 
 # ---------------------------------------------------------------------------
