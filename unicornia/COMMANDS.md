@@ -76,7 +76,7 @@ Manage your wallet, bank, and transactions.
 | `[p]economy give <amount> <user>` | Give currency to another user from your wallet. | |
 | `[p]economy timely` | Claim your daily currency reward. Alias: `daily`. | |
 | `[p]timely` | Global shortcut to claim daily reward. Alias: `daily`. | |
-| `[p]economy history [user]` | View recent transaction history. Aliases: `transactions`, `tx`. | |
+| `[p]economy history [user]` | View recent transaction history. Aliases: `transactions`, `tx`. | Admin/Manage Roles |
 | `[p]economy stats [user]` | View detailed gambling statistics. Alias: `gambling`. | |
 | `[p]economy rakeback` | Check and claim your gambling rakeback (5% of losses; blackjack losses excluded). Alias: `rb`. | |
 | `[p]economy leaderboard` | View the global currency leaderboard. Aliases: `lb`, `top`. | |

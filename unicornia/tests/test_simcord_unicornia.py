@@ -332,6 +332,28 @@ async def test_shop_add_checks_price_and_name_like_shop_edit(red_env: simcord.En
 
 
 @pytest.mark.asyncio
+async def test_only_staff_can_read_transaction_history(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    guild, _owner = _guild_with_owner(red_env)
+    staff_role = guild.create_role("Staff", permissions=discord.Permissions(manage_roles=True))
+    staff = guild.add_member(red_env.create_user("staff"), roles=[staff_role])
+    supporter = guild.add_member(red_env.create_user("supporter"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    await supporter.send(channel, "!timely")
+
+    await supporter.send(channel, f"!economy history {_member(supporter).mention}")
+    assert isinstance(red_env.errors.pop(), commands.CheckFailure)
+    await supporter.send(channel, "!economy history")
+    assert isinstance(red_env.errors.pop(), commands.CheckFailure)
+
+    await staff.send(channel, f"!economy history {_member(supporter).mention}")
+    reply = _bot_messages(channel, bot)[-1]
+    assert reply.embeds and reply.embeds[0].title == "💰 Transaction History - supporter"
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
 async def test_server_only_commands_refuse_dms(red_env: simcord.Env) -> None:
     guild, _owner = _guild_with_owner(red_env)
     member = guild.add_member(red_env.create_user("member"))

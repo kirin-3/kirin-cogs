@@ -235,11 +235,16 @@ class EconomyCommands(UnicorniaMixinBase):
             await ctx.reply(f"<a:zz_NoTick:729318761655435355> Error claiming daily reward: {e}", mention_author=False)
 
     @economy_group.command(name="history", aliases=["transactions", "tx"])
+    @commands.guild_only()
+    # Reasons such as "Supporter reward" show who pays, so only staff may look
+    @commands.admin_or_permissions(manage_roles=True)
     async def economy_history(self, ctx, member: discord.Member | None = None):
         """
         View recent transactions.
 
         Shows the last 10 transactions for you or another user.
+
+        **Admin/Mod only.**
 
         **Syntax**
         `[p]economy history [member]`
