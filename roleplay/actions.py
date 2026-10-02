@@ -148,9 +148,14 @@ class ActionManager:
     def load_all(self):
         yaml_files = (file for pattern in ("*.yaml", "*.yml") for file in self.DATA_PATH.glob(pattern))
 
-        for file_path in yaml_files:
-            action = self.load(file_path.stem, file_path)
-            if action:
+        loaded = [action for file_path in yaml_files if (action := self.load(file_path.stem, file_path))]
+        # Red's cog update copies files over the installed cog without deleting removed ones, so a retired
+        # action's file (pet.yml) can still be there after it became another action's alias (pat's)
+        aliases = {alias.lower() for action in loaded for alias in action.aliases}
+        for action in loaded:
+            if action.name.lower() in aliases:
+                self.logger.warning(f'Skipping action "{action.name}": it is another action\'s alias now.')
+            else:
                 self.actions.append(action)
 
     def _find(self, action_name: str) -> Action | None:

@@ -2,6 +2,7 @@
 plus the data-deletion logic."""
 
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -77,3 +78,23 @@ def test_actions_load_with_logger_left_broken_by_pre_port_cog(monkeypatch: pytes
     monkeypatch.setattr(logger, "setLevel", 20, raising=False)
 
     assert ActionManager().actions
+
+
+def test_a_leftover_action_file_that_is_now_an_alias_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Red's cog update leaves deleted files behind, so the installed cog can still have pet.yml
+    (tmp_path / "pat.yml").write_text(
+        (ActionManager.DATA_PATH / "pat.yml").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    (tmp_path / "pet.yml").write_text(
+        'help: "Pet a user."\ndescription: "{invoker_member} pets."\n'
+        "consent: {active: a, passive: p, owner_active: oa, owner_passive: op}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ActionManager, "DATA_PATH", tmp_path)
+
+    manager = ActionManager()
+
+    assert manager.list() == ["pat"]
+    assert manager.get("pet") is manager.get("pat")

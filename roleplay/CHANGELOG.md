@@ -4,6 +4,12 @@
 
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
 
+## [2.10.5] - 2026-10-02
+
+### Fixed
+
+- Reloading the cog no longer fails with "Alias pet is already an existing command" when a cog update has left the old `pet.yml` behind. An action file whose name is now another action's alias is skipped
+
 ## [2.10.4] - 2026-10-02
 
 ### Changed
