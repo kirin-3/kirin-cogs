@@ -251,6 +251,34 @@ async def test_action_is_refused_when_the_target_declines(red_env: simcord.Env) 
 
 
 @pytest.mark.asyncio
+async def test_an_owned_targets_owner_is_asked_instead(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    cog = _cog(red_env)
+    guild = red_env.create_guild()
+    hugger = guild.add_member(red_env.create_user("hugger"))
+    target = guild.add_member(red_env.create_user("target"))
+    owner = guild.add_member(red_env.create_user("owner"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    await cog.user_settings.config.user(_member(target)).owners.set([owner.id])
+
+    question = await _ask_action(channel, bot, hugger, "hug", target)
+
+    assert _member(owner).mention in question.content
+    assert _member(target).mention not in question.content
+    assert "**target**" in question.content
+    turned_away = await target.click(question, label="Yes")
+    assert turned_away.response is not None
+    assert turned_away.response.content == "This question isn't for you."
+
+    await owner.click(question, label="Yes")
+
+    assert any(m.embeds for m in _bot_messages(channel, bot))
+    _assert_question_deleted(channel, bot, "Do you consent?")
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
 async def test_only_the_asked_member_can_answer_the_question(red_env: simcord.Env) -> None:
     bot = cast(Red, red_env.bot)
     guild = red_env.create_guild()
