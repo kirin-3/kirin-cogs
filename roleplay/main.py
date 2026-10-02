@@ -58,7 +58,7 @@ class Roleplay(commands.Cog):
         self.user_settings = Settings(bot, self)
         # The Settings config above keeps member settings; this one keeps the action counts
         self.config = Config.get_conf(self, identifier=const.COG_IDENTIFIER, force_registration=True)
-        self.tally = Tally(self.config, self.is_untracked)
+        self.tally = Tally(self.config, self.is_untracked, self.action_manager.canonical)
         self.gif_votes = GifVotes(self.config)
         # When each member last had a gif forwarded, by monotonic time. Lost on reload, which is fine.
         self._gif_sent: dict[int, float] = {}
@@ -372,7 +372,7 @@ class Roleplay(commands.Cog):
 
     @consented_actions.command(name="add")
     async def consented_actions_add(self, ctx: commands.Context, *action_names: str):
-        """Always allow these actions, e.g. `hug pet`."""
+        """Always allow these actions, e.g. `hug pat`."""
         await self.change_consented_actions(ctx, action_names, add=True)
 
     @consented_actions.command(name="remove")
@@ -683,7 +683,11 @@ class Roleplay(commands.Cog):
             selective=bool(settings.get("selective")),
             allowed=frozenset(list_setting("allowed")),
             blocked=frozenset(list_setting("blocked")),
-            consented_actions=frozenset(name for name in list_setting("consented_actions") if isinstance(name, str)),
+            consented_actions=frozenset(
+                self.action_manager.canonical(name)
+                for name in list_setting("consented_actions")
+                if isinstance(name, str)
+            ),
         )
         return party, owner
 

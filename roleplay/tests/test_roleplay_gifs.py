@@ -98,7 +98,7 @@ async def test_actions_list_every_action_with_its_gif_count(red_env: simcord.Env
     actions = await _cog(red_env).gif_actions()
 
     names = [action["name"] for action in actions]
-    assert names == sorted(names) and len(names) == 30
+    assert names == sorted(names) and len(names) == 29
     counts = {action["name"]: action["count"] for action in actions}
     assert counts["bite"] == 5 and counts["bow"] == 2 and counts["suck"] == 0
 

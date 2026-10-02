@@ -4,6 +4,12 @@
 
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
 
+## [2.10.4] - 2026-10-02
+
+### Changed
+
+- `pet` (and `pets`) is now an alias of `pat` and uses the `pat` gifs. The separate `pet` action and its gif page are gone. Always allowed `pet` counts as `pat`, and `pet` counts in the stats are added to `pat`
+
 ## [2.10.3] - 2026-09-30
 
 ### Changed

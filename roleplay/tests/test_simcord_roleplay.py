@@ -659,8 +659,8 @@ async def test_always_allowed_actions_skip_the_question(red_env: simcord.Env) ->
     await red_env.settle()
 
     await target.send(channel, "!roleplay settings actions add Hug pets")
-    assert "`hug` and `pet`" in (_bot_messages(channel, bot)[-1].content or "")
-    assert await cog.user_settings.config.user(_member(target)).consented_actions() == ["hug", "pet"]
+    assert "`hug` and `pat`" in (_bot_messages(channel, bot)[-1].content or "")
+    assert await cog.user_settings.config.user(_member(target)).consented_actions() == ["hug", "pat"]
 
     await hugger.send(channel, f"!hug {_member(target).mention}")
     assert _bot_messages(channel, bot)[-1].embeds
@@ -671,6 +671,26 @@ async def test_always_allowed_actions_skip_the_question(red_env: simcord.Env) ->
 
     await target.send(channel, "!roleplay settings actions remove pet")
     assert await cog.user_settings.config.user(_member(target)).consented_actions() == ["hug"]
+    simcord.assert_no_errors(red_env)
+
+
+@pytest.mark.asyncio
+async def test_pet_is_pat_and_a_saved_pet_consent_counts_for_it(red_env: simcord.Env) -> None:
+    bot = cast(Red, red_env.bot)
+    cog = _cog(red_env)
+    guild = red_env.create_guild()
+    petter = guild.add_member(red_env.create_user("petter"))
+    target = guild.add_member(red_env.create_user("target"))
+    channel = guild.create_text_channel("general")
+    await red_env.settle()
+    # saved before pet became an alias of pat
+    await cog.user_settings.config.user(_member(target)).consented_actions.set(["pet"])
+
+    assert cog.action_manager.get("pet") is cog.action_manager.get("pat")
+    assert await cog.user_settings.consented_actions(_member(target)) == ["pat"]
+    await petter.send(channel, f"!pet {_member(target).mention}")
+    assert _bot_messages(channel, bot)[-1].embeds
+    assert not any("Do you consent?" in (m.content or "") for m in _bot_messages(channel, bot))
     simcord.assert_no_errors(red_env)
 
 

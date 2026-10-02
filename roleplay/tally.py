@@ -14,9 +14,16 @@ Pairs = dict[tuple[int, int], Counter[str]]
 
 
 class Tally:
-    def __init__(self, config: Config, untracked: Callable[[int], Awaitable[bool]]) -> None:
+    def __init__(
+        self,
+        config: Config,
+        untracked: Callable[[int], Awaitable[bool]],
+        canonical: Callable[[str], str] = lambda name: name,
+    ) -> None:
         self.config = config
         self.untracked = untracked
+        # Counts stored under a name that's now an alias (pet) are added to the action's (pat)
+        self.canonical = canonical
         config.init_custom("TALLY", 2)  # doer ID, receiver ID
         config.register_custom("TALLY", counts={})
         # ponytail: one lock for every pair; actions are rate-limited per channel, so contention is tiny
@@ -42,7 +49,10 @@ class Tally:
                 counts = record.get("counts") if isinstance(record, dict) else None
                 if not (isinstance(counts, dict) and str(doer).isdigit() and str(receiver).isdigit()):
                     continue
-                valid = Counter({str(a): n for a, n in counts.items() if isinstance(n, int) and n > 0})
+                valid: Counter[str] = Counter()
+                for a, n in counts.items():
+                    if isinstance(n, int) and n > 0:
+                        valid[self.canonical(str(a))] += n
                 if valid:
                     found[int(doer), int(receiver)] = valid
         return found

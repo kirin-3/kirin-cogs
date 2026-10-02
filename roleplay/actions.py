@@ -153,15 +153,26 @@ class ActionManager:
             if action:
                 self.actions.append(action)
 
-    def get(self, action_name: str) -> Action | None:
-        """Find an action by its name or one of its aliases, ignoring case."""
+    def _find(self, action_name: str) -> Action | None:
         key = action_name.lower()
         for action in self.actions:
             if key == action.name.lower() or key in (alias.lower() for alias in action.aliases):
                 return action
-
-        self.logger.warning(f'Unable to find action "{action_name}"!')
         return None
+
+    def get(self, action_name: str) -> Action | None:
+        """Find an action by its name or one of its aliases, ignoring case."""
+        action = self._find(action_name)
+        if action is None:
+            self.logger.warning(f'Unable to find action "{action_name}"!')
+        return action
+
+    def canonical(self, action_name: str) -> str:
+        """The action's name for a stored name that may have become an alias (``pet`` is now ``pat``).
+
+        Names that aren't an action any more are kept as they are."""
+        action = self._find(action_name)
+        return action.name if action else action_name
 
     def list(self) -> list[str]:
         return sorted(action.name for action in self.actions)

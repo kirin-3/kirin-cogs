@@ -157,3 +157,13 @@ async def test_other_cogs_get_a_members_added_up_counts(red_env: simcord.Env) ->
 
     await cog.set_toggle(1, "untracked", True)
     assert await cog.action_counts(1) is None
+
+
+@pytest.mark.asyncio
+async def test_counts_saved_under_pet_add_to_pat(red_env: simcord.Env) -> None:
+    cog = _cog(red_env)
+    await cog.tally.record(1, 2, "pat")
+    await cog.tally.record(1, 2, "pet")  # counted before pet became an alias of pat
+    await cog.tally.record(1, 2, "pet")
+
+    assert await cog.tally.pairs() == {(1, 2): Counter(pat=3)}

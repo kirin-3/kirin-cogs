@@ -20,7 +20,8 @@ The bot needs **Embed Links** and **Attach Files** to post the result.
 | `happyhug` | hughappy/happyhugs | |
 | `sadhug` | hugsad/sadhugs | |
 | `kiss` | kisses/smooch | |
-| `lick`, `pat`, `pet`, `poke`, `slap`, `spank`, `tickle` | | |
+| `pat` | pats/pet/pets | |
+| `lick`, `poke`, `slap`, `spank`, `tickle` | | |
 | `bow` | bows/bowto | no consent prompt |
 | `smug` | | no consent prompt |
 | `cunnilingus` | eatout/eatsout | spoilered |
@@ -112,7 +113,7 @@ order:
 | `[p]roleplay settings public [member] [true/false]` | self; others need admin | Consent to any action from a member |
 | `[p]roleplay settings servant [member] [true/false]` | self; others need admin | Consent to any request on you |
 | `[p]roleplay settings untracked [member] [true/false]` | self; others need admin | Stop counting your actions and delete your counts |
-| `[p]roleplay settings actions [add/remove <action> ...]` | everyone | Show or change the actions you always allow, e.g. `actions add hug pet`. Alias `always` |
+| `[p]roleplay settings actions [add/remove <action> ...]` | everyone | Show or change the actions you always allow, e.g. `actions add hug pat`. Alias `always` |
 | `[p]rpstats [member] [other]` | everyone (server-only) | Action counts: yours, a member's, or between two members. Also `/rpstats` once enabled |
 | `[p]roleplay admin logger_settings [level]` | bot admin | Show or set the cog's log level |
 

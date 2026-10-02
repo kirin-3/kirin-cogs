@@ -253,9 +253,12 @@ class Settings:
         return toggle
 
     async def consented_actions(self, member: discord.abc.User) -> list[str]:
-        """The actions a member always allows, by name."""
+        """The actions a member always allows, by name. Names saved before an action became an alias count as it."""
         names = await self.config.user(member).consented_actions()
-        return [name for name in names if isinstance(name, str)] if isinstance(names, list) else []
+        if not isinstance(names, list):
+            return []
+        canonical = self.parent.action_manager.canonical
+        return list(dict.fromkeys(canonical(name) for name in names if isinstance(name, str)))
 
     async def show_settings(self, ctx: commands.Context, member: discord.abc.User) -> None:
         """Displays roleplay settings for a specified member.

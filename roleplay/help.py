@@ -101,7 +101,7 @@ class Help:
 
         embed.add_field(
             name="✨ Always Allowed Actions",
-            value=f"- **{prefix}roleplay settings actions** [`add`|`remove`] **action** ...\nConsent to these actions from anyone (except those in your blocked list), e.g. `{prefix}roleplay settings actions add hug pet`.\n",
+            value=f"- **{prefix}roleplay settings actions** [`add`|`remove`] **action** ...\nConsent to these actions from anyone (except those in your blocked list), e.g. `{prefix}roleplay settings actions add hug pat`.\n",
             inline=False,
         )
 
