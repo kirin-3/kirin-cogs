@@ -93,12 +93,13 @@ async def test_an_empty_reply_is_an_error_and_the_model_gets_room_to_think(cog: 
 
     with (
         patch("unimod.unimod.aiohttp.ClientSession", return_value=session),
-        pytest.raises(ValueError, match="Empty AI reply"),
+        pytest.raises(RuntimeError, match="Empty AI reply"),
     ):
         await cog._analyze_with_ai("system", "user")
 
     assert session.payload["max_tokens"] == 10000
-    assert cog._last_ai_error == "Empty AI reply (finish_reason: length)"
+    assert cog._last_ai_error is not None
+    assert "Empty AI reply (finish_reason: length)" in cog._last_ai_error
 
 
 @pytest.mark.asyncio

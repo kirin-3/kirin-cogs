@@ -125,9 +125,15 @@ This conversation is taking place in the channel: #{channel_name}
 
 Analyze this conversation against the server rules, paying close attention to channel-specific rules. Respond with JSON only."""
 
-    # NVIDIA NIM API configuration (free developer tier, OpenAI-compatible)
-    API_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
-    API_MODEL = "z-ai/glm-5.3"
+    # OpenAI-compatible free tiers, tried in order until one answers: (name, endpoint, model, Red shared token).
+    # A provider whose key isn't set is skipped.
+    NIM_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
+    GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    AI_PROVIDERS = (
+        ("NVIDIA NIM", NIM_ENDPOINT, "z-ai/glm-5.3", "openai"),
+        ("NVIDIA NIM", NIM_ENDPOINT, "deepseek-ai/deepseek-v4.1-flash", "openai"),
+        ("Google AI Studio", GEMINI_ENDPOINT, "gemini-flash-latest", "gemini"),
+    )
 
     def __init__(self, bot: Red):
         self.bot = bot
@@ -388,88 +394,78 @@ Analyze this conversation against the server rules, paying close attention to ch
         return f"{exc_type}: {exc_repr}"
 
     async def _analyze_with_ai(self, system_prompt: str, user_prompt: str) -> AIAnalysisResult:
-        """Make async API call to NVIDIA NIM using aiohttp."""
-        # Get API key from Red's shared API tokens (same pattern as unicorn_ai)
-        api_tokens = await self.bot.get_shared_api_tokens("openai")
-        api_key = api_tokens.get("api_key")
+        """Ask each configured provider in turn, falling back to the next when one fails."""
+        total_len = len(system_prompt) + len(user_prompt)
+        log.info(f"Starting AI analysis. Prompt: {total_len} chars (~{total_len // 4} tokens)")
 
-        if not api_key:
-            raise ValueError("OpenAI API key not configured. Use `[p]set api openai api_key,<api_key>` to set it.")
+        failures: list[str] = []
+        for name, endpoint, model, token_service in self.AI_PROVIDERS:
+            api_key = (await self.bot.get_shared_api_tokens(token_service)).get("api_key")
+            if not api_key:
+                continue
+            request_start = time.monotonic()
+            try:
+                result = await self._request_ai(name, endpoint, model, api_key, system_prompt, user_prompt)
+            except Exception as e:
+                error_text = f"{model}: {self._safe_exception_text(e)}"
+                log.warning(f"AI request failed after {time.monotonic() - request_start:.1f}s, {error_text}")
+                failures.append(error_text)
+                continue
+            log.info(f"{model} answered in {time.monotonic() - request_start:.1f}s")
+            self._last_ai_error = None
+            return result
 
-        # Diagnostic logging: prompt sizes
-        system_len = len(system_prompt)
-        user_len = len(user_prompt)
-        total_len = system_len + user_len
-        estimated_tokens = total_len // 4  # Rough estimate: ~4 chars per token
-        log.info("Starting AI analysis request to NVIDIA NIM...")
-        log.info(
-            f"Prompt sizes - System: {system_len} chars, User: {user_len} chars, Total: {total_len} chars (~{estimated_tokens} tokens)"
-        )
+        if not failures:
+            raise ValueError("No AI API key configured. Use `[p]set api openai api_key,<nvidia nim key>` to set it.")
+        self._last_ai_error = "\n".join(failures)
+        raise RuntimeError("Every AI model failed. " + " | ".join(failures))
 
-        request_start = time.monotonic()
-        timeout_seconds = 360  # 6 minutes for thinking model
-
+    async def _request_ai(
+        self, name: str, endpoint: str, model: str, api_key: str, system_prompt: str, user_prompt: str
+    ) -> AIAnalysisResult:
+        """Send one chat completion request and parse its verdict."""
+        timeout_seconds = 360  # 6 minutes for thinking models
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    self.API_ENDPOINT,
+                    endpoint,
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json={
-                        "model": self.API_MODEL,
+                        "model": model,
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt},
                         ],
-                        # The thinking model spends tokens reasoning before it answers; too few leaves no answer.
+                        # Thinking models spend tokens reasoning before they answer; too few leaves no answer.
                         "max_tokens": 10000,
                         "temperature": 0.3,
                     },
                     timeout=aiohttp.ClientTimeout(total=timeout_seconds),
                 ) as response:
                     if response.status != 200:
-                        error_text = await response.text()
-                        self._last_ai_error = f"API Error {response.status}: {error_text}"
-                        log.error(self._last_ai_error)
+                        # Error bodies can be whole HTML pages.
+                        error_text = (await response.text())[:300]
                         raise aiohttp.ClientResponseError(
                             request_info=response.request_info,
                             history=response.history,
                             status=response.status,
-                            message=f"NVIDIA NIM API Error {response.status}: {error_text}",
+                            message=f"{name} API Error {response.status}: {error_text}",
                         )
                     result = await response.json()
-
-            choice = result["choices"][0]
-            raw_content = choice["message"].get("content") or ""
-            request_duration = time.monotonic() - request_start
-            if not raw_content.strip():
-                self._last_ai_error = f"Empty AI reply (finish_reason: {choice.get('finish_reason')})"
-                raise ValueError(self._last_ai_error)
-
-            # Save response for debugging
-            self._last_ai_response = raw_content
-            self._last_ai_error = None
-            self._save_last_response(raw_content)
-
-            log.info(f"AI response received in {request_duration:.1f}s. Length: {len(raw_content)} characters")
-            log.debug(f"AI raw response preview: {raw_content[:200]}...")
-            return self.parse_ai_response(raw_content)
-
         except TimeoutError:
-            request_duration = time.monotonic() - request_start
-            error_msg = f"AI request timed out after {request_duration:.1f}s (limit: {timeout_seconds}s)"
-            self._last_ai_error = error_msg
-            log.error(error_msg)
-            log.error(f"Prompt was ~{estimated_tokens} tokens, model: {self.API_MODEL}")
-            raise
-        except Exception as e:
-            request_duration = time.monotonic() - request_start
-            error_text = self._safe_exception_text(e)
-            if not self._last_ai_error:
-                self._last_ai_error = error_text
-            log.error(f"AI request failed after {request_duration:.1f}s: {error_text}")
-            raise
+            raise TimeoutError(f"timed out after {timeout_seconds}s") from None
 
-    def _save_last_response(self, content: str):
+        choice = result["choices"][0]
+        raw_content = choice["message"].get("content") or ""
+        if not raw_content.strip():
+            raise ValueError(f"Empty AI reply (finish_reason: {choice.get('finish_reason')})")
+
+        self._last_ai_response = raw_content
+        self._save_last_response(raw_content, model)
+        log.debug(f"AI raw response preview: {raw_content[:200]}...")
+        return self.parse_ai_response(raw_content)
+
+    def _save_last_response(self, content: str, model: str):
         """Save a redacted AI response while time-limited diagnostics are enabled."""
         if not self.diagnostic_mode:
             return
@@ -485,7 +481,7 @@ Analyze this conversation against the server rules, paying close attention to ch
             with open(log_path, "w", encoding="utf-8") as f:
                 f.write("=== UniMod Last AI Response ===\n")
                 f.write(f"Timestamp: {datetime.now(UTC).isoformat()}\n")
-                f.write(f"Model: {self.API_MODEL}\n")
+                f.write(f"Model: {model}\n")
                 f.write(f"Length: {len(redacted)} characters\n")
                 f.write(f"\n{'=' * 50}\n\n")
                 f.write(redacted)
@@ -1071,16 +1067,14 @@ Analyze this conversation against the server rules, paying close attention to ch
     @config_group.command(name="show")
     async def show_config(self, ctx: commands.Context):
         """Show current configuration."""
-        # Get API key from Red's shared tokens
-        api_tokens = await self.bot.get_shared_api_tokens("openai")
-        api_key = api_tokens.get("api_key", "")
-        api_key_display = f"{'*' * 8}...{api_key[-4:]}" if api_key else "Not set"
-
         embed = discord.Embed(title="⚙️ UniMod Configuration", color=0x0099FF)
 
-        embed.add_field(name="NVIDIA NIM API Key", value=api_key_display, inline=False)
-        embed.add_field(name="AI Model", value=self.API_MODEL, inline=True)
-        embed.add_field(name="API Endpoint", value=self.API_ENDPOINT, inline=False)
+        for service, label in (("openai", "NVIDIA NIM API Key"), ("gemini", "Google AI Studio API Key")):
+            api_key = (await self.bot.get_shared_api_tokens(service)).get("api_key", "")
+            api_key_display = f"{'*' * 8}...{api_key[-4:]}" if api_key else "Not set"
+            embed.add_field(name=f"{label} (`{service}`)", value=api_key_display, inline=False)
+        models = "\n".join(f"{i}. {model} ({name})" for i, (name, _, model, _) in enumerate(self.AI_PROVIDERS, 1))
+        embed.add_field(name="AI Models (tried in order)", value=models, inline=False)
         embed.add_field(name="Rules Source", value="rules.md file", inline=True)
 
         await ctx.send(embed=embed)

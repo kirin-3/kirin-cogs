@@ -1,9 +1,9 @@
 """Regression tests for UniMod AI error handling."""
 
 from types import SimpleNamespace
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import AsyncMock, patch
 
-import aiohttp
 import pytest
 
 from unimod.unimod import UniMod
@@ -48,20 +48,70 @@ class FakeSession:
 
 
 @pytest.mark.asyncio
-async def test_analyze_with_ai_non_200_preserves_original_http_error(cog: UniMod) -> None:
-    """Non-200 responses should preserve the original API failure details."""
-    error_text = "upstream bad request"
-    response = FakeErrorResponse(status=500, body=error_text)
+async def test_when_every_model_fails_the_error_names_each_one(cog: UniMod) -> None:
+    response = FakeErrorResponse(status=500, body="upstream bad request")
 
     with patch("unimod.unimod.aiohttp.ClientSession", return_value=FakeSession(response)):
-        with pytest.raises(aiohttp.ClientResponseError) as exc_info:
+        with pytest.raises(RuntimeError, match="Every AI model failed") as exc_info:
             await cog._analyze_with_ai("system prompt", "user prompt")
 
-    assert cog._last_ai_error == f"API Error 500: {error_text}"
-
     exc_text = str(exc_info.value)
-    assert "NVIDIA NIM API Error 500: upstream bad request" in exc_text
-    assert "integrate.api.nvidia.com/v1/chat/completions" in exc_text
+    assert "z-ai/glm-5.3: 500, message='NVIDIA NIM API Error 500: upstream bad request'" in exc_text
+    assert "gemini-flash-latest: 500, message='Google AI Studio API Error 500" in exc_text
+    assert cog._last_ai_error is not None
+    assert len(cog._last_ai_error.splitlines()) == len(UniMod.AI_PROVIDERS)
+
+
+class FakeOkResponse(FakeErrorResponse):
+    def __init__(self) -> None:
+        super().__init__(status=200, body="")
+
+    async def json(self) -> dict[str, object]:
+        return {"choices": [{"message": {"content": '{"is_violation": false, "confidence": 0.9}'}}]}
+
+
+class FallbackSession(FakeSession):
+    """Fails with a 504 for the first model and answers for every other one."""
+
+    def __init__(self) -> None:
+        self.models: list[str] = []
+
+    def post(self, *args: object, **kwargs: Any) -> FakeErrorResponse:
+        self.models.append(kwargs["json"]["model"])
+        return FakeErrorResponse(504, "") if len(self.models) == 1 else FakeOkResponse()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_model_falls_back_to_the_next_one(cog: UniMod) -> None:
+    session = FallbackSession()
+
+    with patch("unimod.unimod.aiohttp.ClientSession", return_value=session):
+        result = await cog._analyze_with_ai("system prompt", "user prompt")
+
+    assert result.is_violation is False
+    assert session.models == ["z-ai/glm-5.3", "deepseek-ai/deepseek-v4.1-flash"]
+    assert cog._last_ai_error is None
+
+
+@pytest.mark.asyncio
+async def test_a_provider_without_a_key_is_skipped(cog: UniMod) -> None:
+    response = FakeErrorResponse(status=504, body="")
+    tokens = {"openai": {"api_key": "nim-key"}, "gemini": {}}
+    cog.bot.get_shared_api_tokens = AsyncMock(side_effect=lambda service: tokens[service])  # type: ignore[method-assign]
+
+    with patch("unimod.unimod.aiohttp.ClientSession", return_value=FakeSession(response)):
+        with pytest.raises(RuntimeError) as exc_info:
+            await cog._analyze_with_ai("system prompt", "user prompt")
+
+    assert "gemini" not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_no_keys_at_all_says_how_to_set_one(cog: UniMod) -> None:
+    cog.bot.get_shared_api_tokens = AsyncMock(return_value={})  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="set api openai"):
+        await cog._analyze_with_ai("system prompt", "user prompt")
 
 
 def test_safe_exception_text_falls_back_when_str_raises(cog: UniMod) -> None:
