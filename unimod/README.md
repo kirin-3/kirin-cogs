@@ -1,6 +1,6 @@
 # UniMod - AI-Powered Auto Moderation Cog
 
-Intelligent auto-moderation system that combines **VADER sentiment analysis** for local pre-filtering with **GLM-5.3 via NanoGPT's OpenAI-compatible endpoint** (`https://nano-gpt.com/api/v1/chat/completions`, hardcoded) for accurate rule violation detection.
+Intelligent auto-moderation system that combines **VADER sentiment analysis** for local pre-filtering with **GLM-5.3 via NVIDIA NIM's OpenAI-compatible endpoint** (`https://integrate.api.nvidia.com/v1/chat/completions`, hardcoded; free developer tier) for accurate rule violation detection.
 
 ## Features
 
@@ -31,7 +31,7 @@ Intelligent auto-moderation system that combines **VADER sentiment analysis** fo
 
 ### Required Setup
 
-1. **Set API Key** (stored under Red's shared `openai` token as `api_key`, used for the NanoGPT endpoint):
+1. **Set API Key** (stored under Red's shared `openai` token as `api_key`, used for the NVIDIA NIM endpoint; get one at build.nvidia.com):
    ```
    [p]set api openai api_key YOUR_API_KEY
    ```
@@ -83,7 +83,7 @@ Intelligent auto-moderation system that combines **VADER sentiment analysis** fo
 | `[p]unimod whitelist [#channel...]` | Add channels to monitoring whitelist |
 | `[p]unimod unwhitelist [#channel...]` | Remove channels from whitelist |
 | `[p]unimod clearwhitelist` | Clear all whitelisted channels |
-| `[p]unimod config apikey <key>` | Set API key (for the NanoGPT endpoint) |
+| `[p]unimod config apikey <key>` | Set API key (for the NVIDIA NIM endpoint) |
 | `[p]unimod config threshold <value>` | Set VADER threshold (-1.0 to 0.0) |
 | `[p]unimod config buffersize <int>` | Set buffer size (10-50) |
 | `[p]unimod config severity <low\|medium\|high>` | Set minimum severity that sends an alert (default medium) |
@@ -121,7 +121,7 @@ Discord Message
       ↓
   Build Prompt with Rules
       ↓
-  Send to GLM-5.3 via the NanoGPT endpoint (max 10,000 tokens, room for its reasoning)
+  Send to GLM-5.3 via the NVIDIA NIM endpoint (max 10,000 tokens, room for its reasoning)
       ↓
   Parse JSON Response
       ↓

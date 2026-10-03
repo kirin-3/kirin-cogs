@@ -92,7 +92,7 @@ The bot is hosted on infrastructure we control. The following external services 
 | Service | What it receives | Which feature |
 | --- | --- | --- |
 | **Discord** | Everything, necessarily — Discord is the platform | All |
-| **NanoGPT** | Message excerpts from allowlisted channels, for abuse classification | Automated moderation |
+| **NVIDIA (NIM API)** | Message excerpts from allowlisted channels, for abuse classification | Automated moderation |
 | **AI Horde** | The image prompt you supply | Image generation (free tier) |
 | **Modal** | The image prompt you supply | Image generation (premium tier) |
 | **Google** | The audio of voice notes posted in the server | Voice note transcription |

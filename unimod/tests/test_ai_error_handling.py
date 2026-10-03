@@ -60,7 +60,7 @@ async def test_analyze_with_ai_non_200_preserves_original_http_error(cog: UniMod
     assert cog._last_ai_error == f"API Error 500: {error_text}"
 
     exc_text = str(exc_info.value)
-    assert "NanoGPT API Error 500: upstream bad request" in exc_text
+    assert "NVIDIA NIM API Error 500: upstream bad request" in exc_text
     assert "integrate.api.nvidia.com/v1/chat/completions" in exc_text
 
 

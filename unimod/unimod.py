@@ -1,7 +1,7 @@
 """
 UniMod - AI-Powered Auto Moderation Cog
 
-Combines VADER sentiment analysis for local pre-filtering with GLM5 via NanoGPT
+Combines VADER sentiment analysis for local pre-filtering with GLM-5.3 via NVIDIA NIM
 for accurate rule violation detection. Server rules are included directly in the
 system prompt, leveraging the model's large context window.
 """
@@ -125,9 +125,9 @@ This conversation is taking place in the channel: #{channel_name}
 
 Analyze this conversation against the server rules, paying close attention to channel-specific rules. Respond with JSON only."""
 
-    # NanoGPT API configuration (same as unicorn_ai)
-    NANOGPT_ENDPOINT = "https://nano-gpt.com/api/v1/chat/completions"
-    NANOGPT_MODEL = "z-ai/glm-5.3:thinking"
+    # NVIDIA NIM API configuration (free developer tier, OpenAI-compatible)
+    API_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
+    API_MODEL = "z-ai/glm-5.3"
 
     def __init__(self, bot: Red):
         self.bot = bot
@@ -388,7 +388,7 @@ Analyze this conversation against the server rules, paying close attention to ch
         return f"{exc_type}: {exc_repr}"
 
     async def _analyze_with_ai(self, system_prompt: str, user_prompt: str) -> AIAnalysisResult:
-        """Make async API call to NanoGPT using aiohttp."""
+        """Make async API call to NVIDIA NIM using aiohttp."""
         # Get API key from Red's shared API tokens (same pattern as unicorn_ai)
         api_tokens = await self.bot.get_shared_api_tokens("openai")
         api_key = api_tokens.get("api_key")
@@ -401,7 +401,7 @@ Analyze this conversation against the server rules, paying close attention to ch
         user_len = len(user_prompt)
         total_len = system_len + user_len
         estimated_tokens = total_len // 4  # Rough estimate: ~4 chars per token
-        log.info("Starting AI analysis request to NanoGPT...")
+        log.info("Starting AI analysis request to NVIDIA NIM...")
         log.info(
             f"Prompt sizes - System: {system_len} chars, User: {user_len} chars, Total: {total_len} chars (~{estimated_tokens} tokens)"
         )
@@ -412,10 +412,10 @@ Analyze this conversation against the server rules, paying close attention to ch
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    self.NANOGPT_ENDPOINT,
+                    self.API_ENDPOINT,
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json={
-                        "model": self.NANOGPT_MODEL,
+                        "model": self.API_MODEL,
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt},
@@ -434,7 +434,7 @@ Analyze this conversation against the server rules, paying close attention to ch
                             request_info=response.request_info,
                             history=response.history,
                             status=response.status,
-                            message=f"NanoGPT API Error {response.status}: {error_text}",
+                            message=f"NVIDIA NIM API Error {response.status}: {error_text}",
                         )
                     result = await response.json()
 
@@ -459,7 +459,7 @@ Analyze this conversation against the server rules, paying close attention to ch
             error_msg = f"AI request timed out after {request_duration:.1f}s (limit: {timeout_seconds}s)"
             self._last_ai_error = error_msg
             log.error(error_msg)
-            log.error(f"Prompt was ~{estimated_tokens} tokens, model: {self.NANOGPT_MODEL}")
+            log.error(f"Prompt was ~{estimated_tokens} tokens, model: {self.API_MODEL}")
             raise
         except Exception as e:
             request_duration = time.monotonic() - request_start
@@ -485,7 +485,7 @@ Analyze this conversation against the server rules, paying close attention to ch
             with open(log_path, "w", encoding="utf-8") as f:
                 f.write("=== UniMod Last AI Response ===\n")
                 f.write(f"Timestamp: {datetime.now(UTC).isoformat()}\n")
-                f.write(f"Model: {self.NANOGPT_MODEL}\n")
+                f.write(f"Model: {self.API_MODEL}\n")
                 f.write(f"Length: {len(redacted)} characters\n")
                 f.write(f"\n{'=' * 50}\n\n")
                 f.write(redacted)
@@ -1012,12 +1012,12 @@ Analyze this conversation against the server rules, paying close attention to ch
 
     @config_group.command(name="apikey")
     async def set_api_key(self, ctx: commands.Context, api_key: str):
-        """Set the OpenAI API key (used for NanoGPT)."""
+        """Set the OpenAI API key (used for NVIDIA NIM)."""
         await self.bot.set_shared_api_tokens("openai", api_key=api_key)
         # Don't leave the key in the channel
         with contextlib.suppress(discord.HTTPException):
             await ctx.message.delete()
-        await ctx.send("✅ OpenAI API key set. This will be used for NanoGPT.")
+        await ctx.send("✅ OpenAI API key set. This will be used for NVIDIA NIM.")
 
     @config_group.command(name="threshold")
     @commands.guild_only()
@@ -1078,9 +1078,9 @@ Analyze this conversation against the server rules, paying close attention to ch
 
         embed = discord.Embed(title="⚙️ UniMod Configuration", color=0x0099FF)
 
-        embed.add_field(name="NanoGPT API Key", value=api_key_display, inline=False)
-        embed.add_field(name="AI Model", value=self.NANOGPT_MODEL, inline=True)
-        embed.add_field(name="API Endpoint", value=self.NANOGPT_ENDPOINT, inline=False)
+        embed.add_field(name="NVIDIA NIM API Key", value=api_key_display, inline=False)
+        embed.add_field(name="AI Model", value=self.API_MODEL, inline=True)
+        embed.add_field(name="API Endpoint", value=self.API_ENDPOINT, inline=False)
         embed.add_field(name="Rules Source", value="rules.md file", inline=True)
 
         await ctx.send(embed=embed)
