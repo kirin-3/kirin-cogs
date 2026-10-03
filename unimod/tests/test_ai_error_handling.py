@@ -57,7 +57,7 @@ async def test_when_every_model_fails_the_error_names_each_one(cog: UniMod) -> N
 
     exc_text = str(exc_info.value)
     assert "z-ai/glm-5.3: 500, message='NVIDIA NIM API Error 500: upstream bad request'" in exc_text
-    assert "gemini-flash-latest: 500, message='Google AI Studio API Error 500" in exc_text
+    assert "gemini-3.8-flash: 500, message='Google AI Studio API Error 500" in exc_text
     assert cog._last_ai_error is not None
     assert len(cog._last_ai_error.splitlines()) == len(UniMod.AI_PROVIDERS)
 
@@ -125,3 +125,21 @@ def test_safe_exception_text_falls_back_when_str_raises(cog: UniMod) -> None:
 
     assert "BrokenStrError" in error_text
     assert "str() failed" in error_text
+
+
+@pytest.mark.asyncio
+async def test_gemini_is_asked_to_think_hard(cog: UniMod) -> None:
+    session = FallbackSession()
+    session.models.append("pretend the first call already failed")
+    payloads: list[dict[str, Any]] = []
+    post = session.post
+    session.post = lambda *a, **kw: payloads.append(kw["json"]) or post(*a, **kw)  # type: ignore[method-assign]
+    tokens = {"openai": {}, "gemini": {"api_key": "gemini-key"}}
+    cog.bot.get_shared_api_tokens = AsyncMock(side_effect=lambda service: tokens[service])  # type: ignore[method-assign]
+
+    with patch("unimod.unimod.aiohttp.ClientSession", return_value=session):
+        await cog._analyze_with_ai("system prompt", "user prompt")
+
+    assert payloads[0]["model"] == "gemini-3.8-flash"
+    assert payloads[0]["reasoning_effort"] == "high"
+    assert payloads[0]["temperature"] == 1.0

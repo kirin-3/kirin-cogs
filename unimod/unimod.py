@@ -125,14 +125,21 @@ This conversation is taking place in the channel: #{channel_name}
 
 Analyze this conversation against the server rules, paying close attention to channel-specific rules. Respond with JSON only."""
 
-    # OpenAI-compatible free tiers, tried in order until one answers: (name, endpoint, model, Red shared token).
-    # A provider whose key isn't set is skipped.
+    # OpenAI-compatible free tiers, tried in order until one answers:
+    # (name, endpoint, model, Red shared token, extra request fields). A provider whose key isn't set is skipped.
     NIM_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
     GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     AI_PROVIDERS = (
-        ("NVIDIA NIM", NIM_ENDPOINT, "z-ai/glm-5.3", "openai"),
-        ("NVIDIA NIM", NIM_ENDPOINT, "deepseek-ai/deepseek-v4.1-flash", "openai"),
-        ("Google AI Studio", GEMINI_ENDPOINT, "gemini-flash-latest", "gemini"),
+        ("NVIDIA NIM", NIM_ENDPOINT, "z-ai/glm-5.3", "openai", {}),
+        ("NVIDIA NIM", NIM_ENDPOINT, "deepseek-ai/deepseek-v4.1-flash", "openai", {}),
+        # reasoning_effort is Gemini's thinking_level; Google advises Gemini 3 models keep temperature at 1.0.
+        (
+            "Google AI Studio",
+            GEMINI_ENDPOINT,
+            "gemini-3.8-flash",
+            "gemini",
+            {"reasoning_effort": "high", "temperature": 1.0},
+        ),
     )
 
     def __init__(self, bot: Red):
@@ -399,13 +406,13 @@ Analyze this conversation against the server rules, paying close attention to ch
         log.info(f"Starting AI analysis. Prompt: {total_len} chars (~{total_len // 4} tokens)")
 
         failures: list[str] = []
-        for name, endpoint, model, token_service in self.AI_PROVIDERS:
+        for name, endpoint, model, token_service, extra in self.AI_PROVIDERS:
             api_key = (await self.bot.get_shared_api_tokens(token_service)).get("api_key")
             if not api_key:
                 continue
             request_start = time.monotonic()
             try:
-                result = await self._request_ai(name, endpoint, model, api_key, system_prompt, user_prompt)
+                result = await self._request_ai(name, endpoint, model, api_key, system_prompt, user_prompt, extra)
             except Exception as e:
                 error_text = f"{model}: {self._safe_exception_text(e)}"
                 log.warning(f"AI request failed after {time.monotonic() - request_start:.1f}s, {error_text}")
@@ -421,7 +428,14 @@ Analyze this conversation against the server rules, paying close attention to ch
         raise RuntimeError("Every AI model failed. " + " | ".join(failures))
 
     async def _request_ai(
-        self, name: str, endpoint: str, model: str, api_key: str, system_prompt: str, user_prompt: str
+        self,
+        name: str,
+        endpoint: str,
+        model: str,
+        api_key: str,
+        system_prompt: str,
+        user_prompt: str,
+        extra: dict[str, object],
     ) -> AIAnalysisResult:
         """Send one chat completion request and parse its verdict."""
         timeout_seconds = 360  # 6 minutes for thinking models
@@ -439,7 +453,8 @@ Analyze this conversation against the server rules, paying close attention to ch
                         # Thinking models spend tokens reasoning before they answer; too few leaves no answer.
                         "max_tokens": 10000,
                         "temperature": 0.3,
-                    },
+                    }
+                    | extra,
                     timeout=aiohttp.ClientTimeout(total=timeout_seconds),
                 ) as response:
                     if response.status != 200:
@@ -1073,7 +1088,7 @@ Analyze this conversation against the server rules, paying close attention to ch
             api_key = (await self.bot.get_shared_api_tokens(service)).get("api_key", "")
             api_key_display = f"{'*' * 8}...{api_key[-4:]}" if api_key else "Not set"
             embed.add_field(name=f"{label} (`{service}`)", value=api_key_display, inline=False)
-        models = "\n".join(f"{i}. {model} ({name})" for i, (name, _, model, _) in enumerate(self.AI_PROVIDERS, 1))
+        models = "\n".join(f"{i}. {model} ({name})" for i, (name, _, model, *_) in enumerate(self.AI_PROVIDERS, 1))
         embed.add_field(name="AI Models (tried in order)", value=models, inline=False)
         embed.add_field(name="Rules Source", value="rules.md file", inline=True)
 
