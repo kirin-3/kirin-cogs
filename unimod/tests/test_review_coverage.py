@@ -1,11 +1,13 @@
 """Neutral under-18 age claims reach the AI, and a review that fails still alerts staff."""
 
+from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 
+from unimod.tests.test_ai_error_handling import sse
 from unimod.unimod import BufferedMessage, UniMod, mentions_minor_age
 
 
@@ -67,8 +69,9 @@ class _Response:
     async def __aexit__(self, *_: object) -> bool:
         return False
 
-    async def json(self) -> dict[str, Any]:
-        return self._body
+    @property
+    def content(self) -> AsyncIterator[bytes]:
+        return sse(self._body)
 
 
 class _Session:
@@ -89,7 +92,7 @@ class _Session:
 
 @pytest.mark.asyncio
 async def test_an_empty_reply_is_an_error_and_the_model_gets_room_to_think(cog: UniMod) -> None:
-    session = _Session({"choices": [{"message": {"content": None}, "finish_reason": "length"}]})
+    session = _Session({"choices": [{"delta": {"content": None}, "finish_reason": "length"}]})
 
     with (
         patch("unimod.unimod.aiohttp.ClientSession", return_value=session),
@@ -98,6 +101,7 @@ async def test_an_empty_reply_is_an_error_and_the_model_gets_room_to_think(cog: 
         await cog._analyze_with_ai("system", "user")
 
     assert session.payload["max_tokens"] == 10000
+    assert session.payload["stream"] is True
     assert cog._last_ai_error is not None
     assert "Empty AI reply (finish_reason: length)" in cog._last_ai_error
 

@@ -437,8 +437,10 @@ Analyze this conversation against the server rules, paying close attention to ch
         user_prompt: str,
         extra: dict[str, object],
     ) -> AIAnalysisResult:
-        """Send one chat completion request and parse its verdict."""
-        timeout_seconds = 360  # 6 minutes for thinking models
+        """Send one streamed chat completion request and parse its verdict."""
+        # NIM's gateway answers 504 to a request that sends nothing back for 300s, and its free tier often takes
+        # longer than that to think. Streaming keeps bytes flowing, so only our own (longer) limit applies.
+        timeout_seconds = 600
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -453,6 +455,7 @@ Analyze this conversation against the server rules, paying close attention to ch
                         # Thinking models spend tokens reasoning before they answer; too few leaves no answer.
                         "max_tokens": 10000,
                         "temperature": 0.3,
+                        "stream": True,
                     }
                     | extra,
                     timeout=aiohttp.ClientTimeout(total=timeout_seconds),
@@ -466,19 +469,37 @@ Analyze this conversation against the server rules, paying close attention to ch
                             status=response.status,
                             message=f"{name} API Error {response.status}: {error_text}",
                         )
-                    result = await response.json()
+                    raw_content, finish_reason = await self._read_stream(response)
         except TimeoutError:
             raise TimeoutError(f"timed out after {timeout_seconds}s") from None
 
-        choice = result["choices"][0]
-        raw_content = choice["message"].get("content") or ""
         if not raw_content.strip():
-            raise ValueError(f"Empty AI reply (finish_reason: {choice.get('finish_reason')})")
+            raise ValueError(f"Empty AI reply (finish_reason: {finish_reason})")
 
         self._last_ai_response = raw_content
         self._save_last_response(raw_content, model)
         log.debug(f"AI raw response preview: {raw_content[:200]}...")
         return self.parse_ai_response(raw_content)
+
+    @staticmethod
+    async def _read_stream(response: aiohttp.ClientResponse) -> tuple[str, str | None]:
+        """Join the answer text from an OpenAI-style server-sent event stream; reasoning deltas are skipped."""
+        parts: list[str] = []
+        finish_reason = None
+        async for raw_line in response.content:
+            line = raw_line.decode("utf-8", "replace").strip()
+            if not line.startswith("data:"):
+                continue
+            data = line.removeprefix("data:").strip()
+            if data == "[DONE]":
+                break
+            chunk = json.loads(data)
+            if chunk.get("error"):
+                raise ValueError(f"Stream error: {str(chunk['error'])[:300]}")
+            for choice in chunk.get("choices") or []:
+                parts.append((choice.get("delta") or {}).get("content") or "")
+                finish_reason = choice.get("finish_reason") or finish_reason
+        return "".join(parts), finish_reason
 
     def _save_last_response(self, content: str, model: str):
         """Save a redacted AI response while time-limited diagnostics are enabled."""

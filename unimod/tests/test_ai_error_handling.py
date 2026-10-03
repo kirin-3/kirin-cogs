@@ -1,5 +1,7 @@
 """Regression tests for UniMod AI error handling."""
 
+import json
+from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -7,6 +9,15 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from unimod.unimod import UniMod
+
+
+async def sse(*chunks: dict[str, Any]) -> AsyncIterator[bytes]:
+    """Yield chunks the way an OpenAI-style stream sends them, keep-alive comment and all."""
+    yield b": keep-alive\n"
+    for chunk in chunks:
+        yield f"data: {json.dumps(chunk)}\n".encode()
+        yield b"\n"
+    yield b"data: [DONE]\n"
 
 
 class FakeErrorResponse:
@@ -66,8 +77,13 @@ class FakeOkResponse(FakeErrorResponse):
     def __init__(self) -> None:
         super().__init__(status=200, body="")
 
-    async def json(self) -> dict[str, object]:
-        return {"choices": [{"message": {"content": '{"is_violation": false, "confidence": 0.9}'}}]}
+    @property
+    def content(self) -> AsyncIterator[bytes]:
+        return sse(
+            {"choices": [{"delta": {"reasoning_content": "hmm"}}]},
+            {"choices": [{"delta": {"content": '{"is_violation": false, '}}]},
+            {"choices": [{"delta": {"content": '"confidence": 0.9}'}, "finish_reason": "stop"}]},
+        )
 
 
 class FallbackSession(FakeSession):
@@ -143,3 +159,11 @@ async def test_gemini_is_asked_to_think_hard(cog: UniMod) -> None:
     assert payloads[0]["model"] == "gemini-3.8-flash"
     assert payloads[0]["reasoning_effort"] == "high"
     assert payloads[0]["temperature"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_a_stream_error_fails_the_model(cog: UniMod) -> None:
+    response = SimpleNamespace(content=sse({"error": {"message": "overloaded"}}))
+
+    with pytest.raises(ValueError, match="overloaded"):
+        await cog._read_stream(response)  # type: ignore[arg-type]
