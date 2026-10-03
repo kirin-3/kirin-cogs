@@ -221,8 +221,14 @@ class BanLog(commands.Cog):
     @commands.Cog.listener()
     async def on_audit_log_entry_create(self, entry: discord.AuditLogEntry) -> None:
         """Bans from any source ([p]ban, Honeypot, Discord's menus, other bots) all land in the audit log."""
+        if entry.guild.id != GUILD_ID or entry.action not in (
+            discord.AuditLogAction.ban,
+            discord.AuditLogAction.unban,
+        ):
+            return
+        # Only read target for bans: discord.py raises on some other entries whose target_id is null.
         target = entry.target
-        if entry.guild.id != GUILD_ID or not isinstance(target, discord.Object | discord.User | discord.Member):
+        if not isinstance(target, discord.Object | discord.User | discord.Member):
             return
         when = entry.created_at.timestamp()
         if entry.action is discord.AuditLogAction.ban:

@@ -289,6 +289,22 @@ async def test_unban_without_a_record_changes_nothing(cog: BanLog) -> None:
     assert await _rows(cog, "SELECT * FROM bans") == []
 
 
+@pytest.mark.asyncio
+async def test_non_ban_entries_never_read_target(cog: BanLog) -> None:
+    # discord.py raises TypeError on .target for some channel entries with a null target_id.
+    class BrokenTarget(SimpleNamespace):
+        @property
+        def target(self) -> Any:
+            raise TypeError("int() argument must be ... not 'NoneType'")
+
+    entry: Any = BrokenTarget(
+        **{k: v for k, v in vars(_entry(discord.AuditLogAction.channel_update)).items() if k != "target"}
+    )
+    await cog.on_audit_log_entry_create(entry)
+
+    assert await _rows(cog, "SELECT * FROM bans") == []
+
+
 @pytest.mark.parametrize("allowed", [True, False])
 def test_warns_when_audit_log_is_hidden(cog: BanLog, caplog: pytest.LogCaptureFixture, allowed: bool) -> None:
     guild = SimpleNamespace(me=SimpleNamespace(guild_permissions=SimpleNamespace(view_audit_log=allowed)))
