@@ -16,6 +16,7 @@ from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import aiohttp
 import discord
@@ -130,8 +131,9 @@ Analyze this conversation against the server rules, paying close attention to ch
     NIM_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
     GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     AI_PROVIDERS = (
-        ("NVIDIA NIM", NIM_ENDPOINT, "z-ai/glm-5.3", "openai", {}),
-        ("NVIDIA NIM", NIM_ENDPOINT, "deepseek-ai/deepseek-v4.1-flash", "openai", {}),
+        # Thinking off: a moderation verdict doesn't need minutes of reasoning on a slow free tier.
+        ("NVIDIA NIM", NIM_ENDPOINT, "z-ai/glm-5.3", "openai", {"chat_template_kwargs": {"enable_thinking": False}}),
+        # Gemini comes before the second NIM model, since a NIM 504 usually means NIM's whole queue is backed up.
         # reasoning_effort is Gemini's thinking_level; Google advises Gemini 3 models keep temperature at 1.0.
         (
             "Google AI Studio",
@@ -140,6 +142,7 @@ Analyze this conversation against the server rules, paying close attention to ch
             "gemini",
             {"reasoning_effort": "high", "temperature": 1.0},
         ),
+        ("NVIDIA NIM", NIM_ENDPOINT, "deepseek-ai/deepseek-v4.1-flash", "openai", {}),
     )
 
     def __init__(self, bot: Red):
@@ -168,6 +171,8 @@ Analyze this conversation against the server rules, paying close attention to ch
         # Per-channel message buffers
         self.channel_buffers: dict[int, deque] = {}
         self.channel_locks: dict[int, asyncio.Lock] = {}
+        # One request per endpoint at a time: parallel requests queue on the free tier and slow each other down.
+        self._endpoint_locks: dict[str, asyncio.Lock] = {}
 
         # Background task references (prevents GC)
         self._background_tasks: set[asyncio.Task] = set()
@@ -410,14 +415,15 @@ Analyze this conversation against the server rules, paying close attention to ch
             api_key = (await self.bot.get_shared_api_tokens(token_service)).get("api_key")
             if not api_key:
                 continue
-            request_start = time.monotonic()
-            try:
-                result = await self._request_ai(name, endpoint, model, api_key, system_prompt, user_prompt, extra)
-            except Exception as e:
-                error_text = f"{model}: {self._safe_exception_text(e)}"
-                log.warning(f"AI request failed after {time.monotonic() - request_start:.1f}s, {error_text}")
-                failures.append(error_text)
-                continue
+            async with self._endpoint_locks.setdefault(endpoint, asyncio.Lock()):
+                request_start = time.monotonic()
+                try:
+                    result = await self._request_ai(name, endpoint, model, api_key, system_prompt, user_prompt, extra)
+                except Exception as e:
+                    error_text = f"{model}: {self._safe_exception_text(e)}"
+                    log.warning(f"AI request failed after {time.monotonic() - request_start:.1f}s, {error_text}")
+                    failures.append(error_text)
+                    continue
             log.info(f"{model} answered in {time.monotonic() - request_start:.1f}s")
             self._last_ai_error = None
             return result
@@ -435,7 +441,7 @@ Analyze this conversation against the server rules, paying close attention to ch
         api_key: str,
         system_prompt: str,
         user_prompt: str,
-        extra: dict[str, object],
+        extra: dict[str, Any],
     ) -> AIAnalysisResult:
         """Send one streamed chat completion request and parse its verdict."""
         # NIM's gateway answers 504 to a request that sends nothing back for 300s, and its free tier often takes

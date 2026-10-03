@@ -1,5 +1,6 @@
 """Regression tests for UniMod AI error handling."""
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
@@ -105,7 +106,7 @@ async def test_a_failed_model_falls_back_to_the_next_one(cog: UniMod) -> None:
         result = await cog._analyze_with_ai("system prompt", "user prompt")
 
     assert result.is_violation is False
-    assert session.models == ["z-ai/glm-5.3", "deepseek-ai/deepseek-v4.1-flash"]
+    assert session.models == ["z-ai/glm-5.3", "gemini-3.8-flash"]
     assert cog._last_ai_error is None
 
 
@@ -167,3 +168,41 @@ async def test_a_stream_error_fails_the_model(cog: UniMod) -> None:
 
     with pytest.raises(ValueError, match="overloaded"):
         await cog._read_stream(response)  # type: ignore[arg-type]
+
+
+class SlowSession(FakeSession):
+    """Answers every request after a pause, recording how many were in flight at once."""
+
+    def __init__(self) -> None:
+        self.in_flight = 0
+        self.most_in_flight = 0
+        self.payloads: list[dict[str, Any]] = []
+
+    def post(self, *args: object, **kwargs: Any) -> FakeErrorResponse:
+        self.payloads.append(kwargs["json"])
+        session = self
+
+        class _Slow(FakeOkResponse):
+            async def __aenter__(self) -> "FakeErrorResponse":
+                session.in_flight += 1
+                session.most_in_flight = max(session.most_in_flight, session.in_flight)
+                await asyncio.sleep(0.01)
+                return self
+
+            async def __aexit__(self, *exc: object) -> bool:
+                session.in_flight -= 1
+                return False
+
+        return _Slow()
+
+
+@pytest.mark.asyncio
+async def test_nim_gets_one_request_at_a_time_with_thinking_off(cog: UniMod) -> None:
+    session = SlowSession()
+
+    with patch("unimod.unimod.aiohttp.ClientSession", return_value=session):
+        await asyncio.gather(*(cog._analyze_with_ai("system prompt", "user prompt") for _ in range(3)))
+
+    assert session.most_in_flight == 1
+    assert [p["model"] for p in session.payloads] == ["z-ai/glm-5.3"] * 3
+    assert session.payloads[0]["chat_template_kwargs"] == {"enable_thinking": False}

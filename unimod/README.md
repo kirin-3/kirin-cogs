@@ -1,6 +1,6 @@
 # UniMod - AI-Powered Auto Moderation Cog
 
-Intelligent auto-moderation system that combines **VADER sentiment analysis** for local pre-filtering with **GLM-5.3 via NVIDIA NIM's OpenAI-compatible endpoint** (`https://integrate.api.nvidia.com/v1/chat/completions`, hardcoded; free developer tier) for accurate rule violation detection. If a model fails (timeout, 504, empty or unparsable reply), UniMod falls back to DeepSeek V4.1 Flash on NIM, then to Gemini 3.8 Flash (thinking level high) on Google AI Studio's free tier if a `gemini` key is set.
+Intelligent auto-moderation system that combines **VADER sentiment analysis** for local pre-filtering with **GLM-5.3 via NVIDIA NIM's OpenAI-compatible endpoint** (`https://integrate.api.nvidia.com/v1/chat/completions`, hardcoded; free developer tier) for accurate rule violation detection. GLM runs with thinking off for speed, and UniMod sends one request at a time to each provider so they don't queue against each other. If a model fails (timeout, 504, empty or unparsable reply), UniMod falls back to Gemini 3.8 Flash (thinking level high) on Google AI Studio's free tier if a `gemini` key is set, then to DeepSeek V4.1 Flash on NIM.
 
 ## Features
 
@@ -125,9 +125,9 @@ Discord Message
       ↓
   Build Prompt with Rules
       ↓
-  Send to GLM-5.3 via the NVIDIA NIM endpoint (max 10,000 tokens, room for its reasoning)
+  Send to GLM-5.3 via the NVIDIA NIM endpoint (max 10,000 tokens, thinking off)
       ↓ fails?
-  Retry with DeepSeek V4.1 Flash (NIM), then Gemini (AI Studio, if keyed)
+  Retry with Gemini (AI Studio, if keyed), then DeepSeek V4.1 Flash (NIM)
       ↓
   Parse JSON Response
       ↓
