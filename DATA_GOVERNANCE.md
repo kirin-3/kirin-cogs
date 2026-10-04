@@ -31,7 +31,7 @@ This document is the per-cog annex to the bot's [Privacy Policy](PRIVACY.md), wh
 | UnicornAI | User opt-out preference | Clears the preference; channel history is processed transiently by the configured provider |
 | Unicornia | XP, balances, inventory, games (including unicorn stables, the unicorns' names, and the stable collection of every breed the member has hatched), relationships, and financial history | Removes operational state; anonymizes accounting rows that must remain internally consistent |
 | UniMod | In-memory message buffers; optional redacted diagnostic response | Buffers vanish on unload; diagnostic files expire within one hour and are removed on unload/restart |
-| VoiceNoteLog | Voice note audio sent to Google for transcription; the text is posted to a staff-only log channel with the author's name and ID | No local record; Google processes the audio transiently and the log messages follow Discord retention |
+| VoiceNoteLog | Voice note audio sent to Google Cloud Speech-to-Text for transcription; the text is posted to a staff-only log channel with the author's name and ID | No local record; Google processes the audio transiently and the log messages follow Discord retention |
 
 Configuration-only cogs do not retain per-user records. Some cogs send user-provided content to Discord or a configured external service; their metadata statements describe that processing even when the cog itself does not retain a copy.
 

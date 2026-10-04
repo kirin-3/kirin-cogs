@@ -51,7 +51,7 @@ The bot reads message content only for the purposes below. Apart from the 7-day 
 - **Raid honeypot.** A hidden channel exists that legitimate members have no reason to post in. Posting there records the message text and attachment filenames into the staff audit log as the evidence supporting the resulting ban or quarantine.
 - **Moderation logging.** Edited and deleted messages in public channels are copied to a private staff-only channel so moderators can review content that was removed before they saw it.
 - **Deleted-message recall.** A short-lived in-memory cache holds the most recent deleted or edited message per channel so staff can recall it. It expires after 30 seconds by default and is never written to disk.
-- **Voice note transcription.** When staff enable it, voice notes posted in the server are sent to Google's speech recognition service to be transcribed, and the text is posted to a staff-only log channel with your name and a link to the voice note. The bot keeps no copy of the audio or the text.
+- **Voice note transcription.** When staff enable it, voice notes posted in the server are sent to Google Cloud Speech-to-Text to be transcribed, and the text is posted to a staff-only log channel with your name and a link to the voice note. The bot keeps no copy of the audio or the text.
 - **Commands and triggers.** Text-prefixed commands, member-authored text triggers, and keyword auto-responses require reading the message that invokes them.
 
 Message content is **not** used to train any machine-learning or AI model.
@@ -96,7 +96,7 @@ The bot is hosted on infrastructure we control. The following external services 
 | **Google (AI Studio)** | The same excerpts, only when NVIDIA fails to answer | Automated moderation (fallback) |
 | **AI Horde** | The image prompt you supply | Image generation (free tier) |
 | **Modal** | The image prompt you supply | Image generation (premium tier) |
-| **Google** | The audio of voice notes posted in the server | Voice note transcription |
+| **Google (Cloud Speech-to-Text)** | The audio of voice notes posted in the server | Voice note transcription |
 | **Tenor** | The topic you type in a “<topic> rate” message that has no built-in rate | Rate responder (supporters) |
 | **popcat.xyz** | The target member's Discord avatar URL | Avatar image commands |
 | **Cloudflare** | Traffic to the staff and member web sites, including what you view and upload there and your IP address; Buy Me a Coffee payment notifications on their way to the bot | Web sites; supporter rewards |

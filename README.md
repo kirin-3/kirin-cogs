@@ -109,7 +109,7 @@ AI-powered auto-moderation using sentiment analysis and AI detection to alert mo
 Allows authorized users to verify other members by granting them a specific verification role.
 
 ### VoiceNoteLog
-Transcribes voice notes into a log channel with ffmpeg and Google's speech endpoint. Fork of japandotorg's voicenotelog. See [voicenotelog/README.md](voicenotelog/README.md).
+Transcribes voice notes into a log channel with ffmpeg and Google Cloud Speech-to-Text. Fork of japandotorg's voicenotelog. See [voicenotelog/README.md](voicenotelog/README.md).
 
 ## Archived Cogs
 

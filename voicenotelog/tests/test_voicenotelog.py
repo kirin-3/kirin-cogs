@@ -1,6 +1,5 @@
 """Tests for the VoiceNoteLog cog."""
 
-import json
 import shutil
 import subprocess
 from types import SimpleNamespace
@@ -14,37 +13,27 @@ from voicenotelog.voicenotelog import (
     TranscriptionError,
     VoiceNoteLog,
     find_voice_note,
-    parse_google_response,
+    parse_speech_response,
     to_flac,
 )
 
 
-def test_parse_skips_empty_result_lines_and_picks_most_confident() -> None:
-    body = "\n".join(
-        [
-            json.dumps({"result": []}),
-            json.dumps(
-                {
-                    "result": [
-                        {
-                            "alternative": [
-                                {"transcript": "hello word"},
-                                {"transcript": "hello world", "confidence": 0.9},
-                            ],
-                            "final": True,
-                        }
-                    ],
-                    "result_index": 0,
-                }
-            ),
+def test_parse_joins_results_using_top_alternative() -> None:
+    data = {
+        "results": [
+            {"alternatives": [{"transcript": "hello world", "confidence": 0.9}, {"transcript": "hello word"}]},
+            {"alternatives": [{"transcript": " how are you "}]},
+            {"alternatives": []},
         ]
-    )
-    assert parse_google_response(body) == "hello world"
+    }
+    assert parse_speech_response(data) == "hello world how are you"
 
 
-@pytest.mark.parametrize("body", ["", '{"result":[]}', "not json", '{"result":[{"alternative":[]}]}', "[1]"])
-def test_parse_returns_none_without_speech(body: str) -> None:
-    assert parse_google_response(body) is None
+@pytest.mark.parametrize(
+    "data", [None, {}, {"results": []}, {"results": [{"alternatives": []}]}, [1], {"results": "x"}]
+)
+def test_parse_returns_none_without_speech(data: object) -> None:
+    assert parse_speech_response(data) is None
 
 
 def test_find_voice_note_needs_flag_and_voice_attachment() -> None:
@@ -73,6 +62,44 @@ async def test_to_flac_converts_ogg_and_rejects_garbage() -> None:
     assert (await to_flac(ogg))[:4] == b"fLaC"
     with pytest.raises(TranscriptionError):
         await to_flac(b"definitely not audio")
+
+
+def _cog_with_key(key: str | None) -> VoiceNoteLog:
+    with patch("redbot.core.config.get_driver", return_value=MagicMock()):
+        cog = VoiceNoteLog(MagicMock())
+    cog.bot.get_shared_api_tokens = AsyncMock(return_value={"api_key": key} if key else {})
+    return cog
+
+
+@pytest.mark.asyncio
+async def test_transcribe_polls_operation_until_done() -> None:
+    cog = _cog_with_key("k")
+    done = {"name": "op1", "done": True, "response": {"results": [{"alternatives": [{"transcript": "hi"}]}]}}
+    request = AsyncMock(side_effect=[{"name": "op1"}, {"name": "op1", "done": False}, done])
+    with (
+        patch.object(cog, "_speech_request", request),
+        patch("voicenotelog.voicenotelog.to_flac", AsyncMock(return_value=b"fLaC")),
+        patch("voicenotelog.voicenotelog.POLL_INTERVAL", 0),
+    ):
+        assert await cog.transcribe(b"ogg") == "hi"
+    first, *polls = request.await_args_list
+    assert first.args[:3] == ("POST", "speech:longrunningrecognize", "k")
+    assert first.args[3]["audio"]["content"] == "ZkxhQw=="
+    assert [c.args[:3] for c in polls] == [("GET", "operations/op1", "k")] * 2
+
+
+@pytest.mark.asyncio
+async def test_transcribe_raises_on_missing_key_or_operation_error() -> None:
+    with pytest.raises(TranscriptionError, match="no API key"):
+        await _cog_with_key(None).transcribe(b"ogg")
+    cog = _cog_with_key("k")
+    failed = AsyncMock(return_value={"name": "op1", "done": True, "error": {"code": 3, "message": "bad audio"}})
+    with (
+        patch.object(cog, "_speech_request", failed),
+        patch("voicenotelog.voicenotelog.to_flac", AsyncMock(return_value=b"fLaC")),
+        pytest.raises(TranscriptionError, match="bad audio"),
+    ):
+        await cog.transcribe(b"ogg")
 
 
 def _setup(transcript: str | None) -> tuple[VoiceNoteLog, MagicMock, MagicMock]:

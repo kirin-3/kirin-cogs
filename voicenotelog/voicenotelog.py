@@ -6,12 +6,13 @@ settings carry over.
 
 The original went through pydub and SpeechRecognition, which needs a ``flac`` binary.
 SpeechRecognition only bundles one for x86, so on the aarch64 VPS every transcription
-failed. This version encodes FLAC with ffmpeg and calls the same Google endpoint with
-aiohttp, which also keeps the work off the event loop.
+failed. This version encodes FLAC with ffmpeg and sends it to Google Cloud Speech-to-Text
+(v1) with aiohttp, which also keeps the work off the event loop. v1 takes a plain API key
+and gives 60 free minutes a month; v2 needs a service account.
 """
 
 import asyncio
-import json
+import base64
 import logging
 from typing import Final
 
@@ -24,41 +25,31 @@ from redbot.core.utils.chat_formatting import box
 log = logging.getLogger("red.kirin_cogs.voicenotelog")
 
 MIC_GIF: Final[str] = "https://cdn.discordapp.com/emojis/1164844325973270599.gif"
-# The free Chromium key SpeechRecognition uses; Google may revoke it at any time.
-GOOGLE_URL: Final[str] = "https://www.google.com/speech-api/v2/recognize"
-GOOGLE_PARAMS: Final[dict[str, str]] = {
-    "client": "chromium",
-    "lang": "en-US",
-    "key": "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw",
-    "pFilter": "0",
-}
+SPEECH_API: Final[str] = "https://speech.googleapis.com/v1"
+# Set with `[p]set api google_speech api_key,<key>`.
+TOKEN_SERVICE: Final[str] = "google_speech"
 SAMPLE_RATE: Final[int] = 16_000
 MAX_VOICE_NOTE_BYTES: Final[int] = 25 * 1024 * 1024
 FFMPEG_TIMEOUT: Final[float] = 60.0
+POLL_INTERVAL: Final[float] = 5.0
+POLL_ATTEMPTS: Final[int] = 120  # 10 minutes
 
 
 class TranscriptionError(Exception):
     pass
 
 
-def parse_google_response(text: str) -> str | None:
-    """Best transcript from the endpoint's newline-separated JSON, or None if no speech was found."""
-    for line in text.splitlines():
-        try:
-            data = json.loads(line)
-        except ValueError:
-            continue
-        results = data.get("result") if isinstance(data, dict) else None
-        if not results or not isinstance(results, list) or not isinstance(results[0], dict):
-            continue
-        alternatives = [
-            a for a in results[0].get("alternative", []) if isinstance(a, dict) and isinstance(a.get("transcript"), str)
-        ]
-        if not alternatives:
-            continue
-        best = max(alternatives, key=lambda a: a.get("confidence", 0))
-        return best["transcript"].strip() or None
-    return None
+def parse_speech_response(data: object) -> str | None:
+    """Joined transcript from a finished recognize operation's response, or None if no speech was found."""
+    results = data.get("results") if isinstance(data, dict) else None
+    if not isinstance(results, list):
+        return None
+    parts = []
+    for result in results:
+        alternatives = result.get("alternatives") if isinstance(result, dict) else None
+        if alternatives and isinstance(alternatives[0], dict) and isinstance(alternatives[0].get("transcript"), str):
+            parts.append(alternatives[0]["transcript"].strip())
+    return " ".join(p for p in parts if p) or None
 
 
 async def to_flac(audio: bytes) -> bytes:
@@ -124,18 +115,52 @@ class VoiceNoteLog(commands.Cog):
         """This cog stores no user data."""
         return
 
-    async def transcribe(self, audio: bytes) -> str | None:
+    async def _speech_request(self, method: str, path: str, key: str, payload: dict | None = None) -> dict:
         assert self.session is not None
-        flac = await to_flac(audio)
-        headers = {"Content-Type": f"audio/x-flac; rate={SAMPLE_RATE}"}
         try:
-            async with self.session.post(GOOGLE_URL, params=GOOGLE_PARAMS, data=flac, headers=headers) as resp:
-                body = await resp.text()
+            # The key goes in a header so it never ends up in a logged URL.
+            async with self.session.request(
+                method, f"{SPEECH_API}/{path}", json=payload, headers={"X-Goog-Api-Key": key}
+            ) as resp:
+                data = await resp.json(content_type=None)
                 if resp.status != 200:
-                    raise TranscriptionError(f"Google returned HTTP {resp.status}: {body[:200]}")
-        except (aiohttp.ClientError, TimeoutError) as error:
+                    raise TranscriptionError(f"Google returned HTTP {resp.status}: {str(data)[:300]}")
+        except (aiohttp.ClientError, TimeoutError, ValueError) as error:
             raise TranscriptionError(f"Request to Google failed: {error!r}")
-        return parse_google_response(body)
+        if not isinstance(data, dict):
+            raise TranscriptionError(f"Unexpected response from Google: {str(data)[:300]}")
+        return data
+
+    async def transcribe(self, audio: bytes) -> str | None:
+        key = (await self.bot.get_shared_api_tokens(TOKEN_SERVICE)).get("api_key")
+        if not key:
+            raise TranscriptionError(f"no API key; set one with `[p]set api {TOKEN_SERVICE} api_key,<key>`")
+        flac = await to_flac(audio)
+        # Long-running recognition handles notes over a minute; the plain endpoint stops at 60 seconds.
+        operation = await self._speech_request(
+            "POST",
+            "speech:longrunningrecognize",
+            key,
+            {
+                "config": {
+                    "encoding": "FLAC",
+                    "sampleRateHertz": SAMPLE_RATE,
+                    "languageCode": "en-US",
+                    "enableAutomaticPunctuation": True,
+                },
+                "audio": {"content": base64.b64encode(flac).decode()},
+            },
+        )
+        for _ in range(POLL_ATTEMPTS):
+            if operation.get("done"):
+                break
+            await asyncio.sleep(POLL_INTERVAL)
+            operation = await self._speech_request("GET", f"operations/{operation.get('name')}", key)
+        else:
+            raise TranscriptionError("Google did not finish transcribing in time")
+        if "error" in operation:
+            raise TranscriptionError(f"Google could not transcribe: {str(operation['error'])[:300]}")
+        return parse_speech_response(operation.get("response"))
 
     async def _embed(self, text: str, message: discord.Message) -> discord.Embed:
         if len(text) > 3800:  # embed descriptions cap at 4096
