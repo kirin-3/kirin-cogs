@@ -502,8 +502,9 @@ class Dashboard(commands.Cog):
 
     async def health(self, request: web.Request) -> web.StreamResponse:
         """For the Cloud Monitoring uptime check: 200 only while the bot is connected to Discord."""
-        ws = self.bot.ws
-        if self.bot.is_closed() or not self.bot.is_ready() or ws is None or not ws.open:
+        # Red is an AutoShardedClient, whose own bot.ws is always None; each shard has a socket.
+        shards = self.bot.shards.values()
+        if self.bot.is_closed() or not self.bot.is_ready() or not shards or any(s.is_closed() for s in shards):
             raise web.HTTPServiceUnavailable()
         return web.Response(text="ok")
 

@@ -199,11 +199,12 @@ async def test_security_headers_on_public_and_protected_pages(site: SimpleNamesp
 async def test_health_needs_no_login_and_fails_when_disconnected(site: SimpleNamespace) -> None:
     site.bot.is_closed.return_value = False
     site.bot.is_ready.return_value = True
-    site.bot.ws.open = True
+    shard = MagicMock(is_closed=MagicMock(return_value=False))
+    site.bot.shards = {0: shard}
     assert (await site.client.get("/health", allow_redirects=False)).status == 200
-    site.bot.ws.open = False
+    shard.is_closed.return_value = True
     assert (await site.client.get("/health", allow_redirects=False)).status == 503
-    site.bot.ws = None
+    site.bot.shards = {}
     assert (await site.client.get("/health", allow_redirects=False)).status == 503
 
 
