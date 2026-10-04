@@ -310,3 +310,22 @@ async def test_display_name_change_is_checked(cog: AutoMod) -> None:
     )
     [entry] = await cog.action_log()
     assert (entry["event"], entry["rules"][0]["trigger"]) == ("name", "Name word list")
+
+
+@pytest.mark.asyncio
+async def test_unsafe_links_are_looked_up_once_and_failures_count_as_safe(cog: AutoMod) -> None:
+    await _load(cog, document(ruleset("links", [rule("r", [{"type": "unsafe_link"}], [{"type": "delete"}])])), True)
+    cog.bot.get_shared_api_tokens = AsyncMock(return_value={"api_key": "k"})
+    lookup = AsyncMock(side_effect=lambda url, key: url == "https://evil.example/x")
+    cog._lookup = lookup  # type: ignore[method-assign]
+
+    await cog.on_message(_message("look https://evil.example/x and https://tenor.com/view/cat"))
+    await cog.on_message(_message("again https://evil.example/x"))
+    assert [c.args for c in lookup.await_args_list] == [("https://evil.example/x", "k")]  # cached, tenor skipped
+    assert [e["rules"][0]["trigger"] for e in await cog.action_log()] == ["Unsafe link", "Unsafe link"]
+
+    lookup.side_effect = TimeoutError
+    await cog.on_message(_message("https://new.example"))
+    cog.bot.get_shared_api_tokens = AsyncMock(return_value={})
+    await cog.on_message(_message("https://other.example"))
+    assert len(await cog.action_log()) == 2

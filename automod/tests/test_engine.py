@@ -1,6 +1,6 @@
 from collections import deque
 
-from automod.engine import Counts, Event, compile_document, evaluate, fold, plan
+from automod.engine import Counts, Event, compile_document, evaluate, fold, link_urls, needs_link_check, plan
 from automod.tests.helpers import document, rule, ruleset, word_list
 from automod.types import validate
 
@@ -246,3 +246,31 @@ def test_ignored_channel_traffic_does_not_evict_counted_messages() -> None:
         event = Event("message", 7, channel_ids=frozenset({channel}), channel_id=channel, at=100.0 + n)
         fired.append(bool(evaluate(s, event, counts.add(event, s.window))))
     assert fired == [False] * 199 + [True]
+
+
+def test_link_urls_skip_invites_and_trusted_sites_and_unwrap_markdown() -> None:
+    text = fold(
+        "<https://evil.example/a> [x](https://evil.example/b) ||www.bad.example|| discord.gg/abc "
+        "https://tenor.com/view/cat https://media.discordapp.net/x https://discord.com@evil.example/c "
+        "https://evil.example/a https://d.example https://e.example https://f.example"
+    )
+    assert link_urls(text) == [
+        "https://evil.example/a",
+        "https://evil.example/b",
+        "http://www.bad.example",
+        "https://discord.com@evil.example/c",  # the host is evil.example, not discord.com
+        "https://d.example",
+    ]
+
+
+def test_unsafe_link_only_looked_up_when_a_rule_applies() -> None:
+    s = snap(
+        ruleset("links", [rule("r", [{"type": "unsafe_link"}], conditions=[{"type": "require_roles", "roles": [LOW]}])])
+    )
+    newbie, regular = msg("https://evil.example", role_ids=frozenset({LOW})), msg("https://evil.example")
+    assert needs_link_check(s, newbie, lambda _: True)
+    assert not needs_link_check(s, regular, lambda _: True)
+    assert not needs_link_check(snap(ruleset("i", [rule("r", [INVITE])])), newbie, lambda _: True)
+    assert fires(s, newbie) == []
+    newbie.unsafe_link = True
+    assert fires(s, newbie) == ["r"]

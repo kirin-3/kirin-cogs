@@ -12,6 +12,10 @@ Rule-based automod for Unicornia, replacing YAGPDB's. Staff read the rules and t
   - message contents: server invite, any link (`http(s)://`, `www.`, or a bare `discord.gg/...` invite; other bare
     domains don't count), mentions of
     distinct users and roles;
+  - unsafe link: a link Google Web Risk lists as phishing, malware or unwanted software. Only links in messages a
+    rule with this trigger applies to are looked up, at most 5 per message; server invites and the trusted sites
+    below are never looked up, and a result is reused for 10 minutes. If the lookup fails or no API key is set, the
+    link counts as safe and the bot logs a warning at most every 10 minutes;
   - counted over a window of 1 to 3600 seconds: messages, identical messages, attachments, links, mentions. Messages
     in channels the rule's channel conditions exclude don't count, and a member's counts start again from zero after
     one of these fires. Identical messages are counted the way YAGPDB counts them: case and outer spaces don't
@@ -41,6 +45,9 @@ that today; if that moves into the XP cog, it must keep doing so.
    don't post it in a server channel; if you do, the bot deletes your message after importing.
 3. Watch the Automod log on the staff site. While dry-run is on, it shows what automod *would* do.
 4. Switch dry-run off on the staff site.
+5. For unsafe link triggers: enable the Web Risk API in a Google Cloud project, create an API key restricted to it,
+   and set it with `[p]set api google_webrisk api_key,<key>`. The first 100,000 lookups a month are free; cap the
+   API's daily quota in the Cloud console so a busy month can't go past that.
 
 An import replaces every ruleset and list, including edits made on the staff site, so run `[p]automod export` first.
 It leaves dry-run as it is.
@@ -67,11 +74,14 @@ checks. A member at or above the bot's highest role can't be punished; the log r
 | Action log | newest 250 entries |
 | Regex time limit | 100 ms |
 | Counted history | 100 messages per member per channel (tracked separately for each channel) |
+| Unsafe link lookups | at most 5 links per message, results reused for 10 minutes |
+| Trusted sites (never looked up) | discord.com, discord.gg, discordapp.com, discordapp.net, tenor.com, giphy.com, youtube.com, youtu.be, unicornia.net and their subdomains |
 
 ## Storage and data deletion
 
 Red Config holds the rules, the lists, the dry-run switch and the action log. A log entry holds the time, the member's
 ID and name, the channel, the rules that fired and the actions, but no message text. Counts for counted triggers are
-kept in memory only.
+kept in memory only. Links checked by an unsafe link trigger are sent to Google Web Risk without the member's ID or
+the rest of the message; the results are cached in memory by link only.
 
 Every Red data-deletion request removes the user's log entries and counts. Rules and lists hold no user data.

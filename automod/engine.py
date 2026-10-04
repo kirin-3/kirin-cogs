@@ -10,6 +10,7 @@ from collections import deque
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 import regex
 
@@ -25,6 +26,20 @@ LINK_RE = regex.compile(r"(?i)https?://\S+|\bwww\.\S+|(?:discord\.gg|discord(?:a
 MENTION_RE = regex.compile(r"<@[!&]?\d+>")
 SPLIT_RE = regex.compile(r"\W+")
 FORMAT_RE = regex.compile(r"\p{Cf}+")  # invisible format characters: zero-width space and joiners, soft hyphen
+
+# Unsafe link lookups skip these sites (and their subdomains) to stay inside Web Risk's free 100k lookups a month.
+TRUSTED_HOSTS = (
+    "discord.com",
+    "discord.gg",
+    "discordapp.com",
+    "discordapp.net",
+    "tenor.com",
+    "giphy.com",
+    "youtube.com",
+    "youtu.be",
+    "unicornia.net",
+)
+MAX_LINK_LOOKUPS = 5  # distinct links checked per message
 
 # Harshest punishment wins: (rank, duration). A mute or timeout ranks by its length.
 RANKS = {"ban": 5, "mute": 4, "timeout": 3, "warn": 2, "nickname": 1}
@@ -51,6 +66,27 @@ def spaced(text: str) -> str:
     return f" {' '.join(tokens(text))} "
 
 
+def link_urls(text: str) -> list[str]:
+    """The distinct links in a message worth an unsafe link lookup: no invites or trusted sites, at most 5."""
+    urls: dict[str, None] = {}
+    for match in LINK_RE.findall(text):
+        if INVITE_RE.fullmatch(match):
+            continue
+        url = match.rstrip(">)]}'\".,;:!?*_|~")  # markdown, <no embed> and ||spoiler|| wrapping
+        if not url.lower().startswith(("http://", "https://")):
+            url = f"http://{url}"
+        try:
+            host = (urlsplit(url).hostname or "").rstrip(".")
+        except ValueError:
+            continue
+        if not host or any(host == h or host.endswith(f".{h}") for h in TRUSTED_HOSTS):
+            continue
+        urls[url] = None
+        if len(urls) == MAX_LINK_LOOKUPS:
+            break
+    return list(urls)
+
+
 def list_entries(entries: Iterable[str]) -> tuple[frozenset[str], tuple[str, ...]]:
     """A word list's single words, and its multi-word entries ("kill yourself", "don't") as spaced phrases."""
     split = [tokens(fold(e)) for e in entries]
@@ -72,6 +108,7 @@ class Event:
     mentions: int = 0  # distinct users and roles
     names: tuple[str, ...] = ()
     at: float = 0.0
+    unsafe_link: bool = False  # set by the cog after a Web Risk lookup
     words: frozenset[str] = field(init=False)
     name_words: frozenset[str] = field(init=False)
     spaced: tuple[str, ...] = field(init=False)
@@ -254,6 +291,8 @@ def trigger_matches(trigger: Trigger, event: Event, history: deque[Entry], rule:
         return INVITE_RE.search(event.text) is not None
     if kind == "link":
         return event.links > 0
+    if kind == "unsafe_link":
+        return event.unsafe_link
     if kind == "mentions":
         return event.mentions >= row["count"]
     return False
@@ -280,6 +319,15 @@ def condition_holds(row: dict, event: Event, role_exists: Callable[[int], bool])
     if kind == "edits_only":
         return event.kind == "edit"
     return False
+
+
+def needs_link_check(snapshot: Snapshot, event: Event, role_exists: Callable[[int], bool]) -> bool:
+    """Whether a rule with an unsafe link trigger applies to this message, so the lookup is worth making."""
+    return event.is_message and any(
+        any(t.row["type"] == "unsafe_link" for t in rule.triggers)
+        and all(condition_holds(c, event, role_exists) for c in rule.conditions)
+        for rule in snapshot.rules
+    )
 
 
 @dataclass

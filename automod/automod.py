@@ -4,16 +4,31 @@ import copy
 import io
 import json
 import logging
+import math
 import time
 from datetime import timedelta
 from typing import Any
 
+import aiohttp
 import discord
 from discord.ext import tasks
 from redbot.core import Config, commands
 
 from . import types as registry
-from .engine import EMPTY, Counts, Event, Rule, Snapshot, compile_document, evaluate, fold, is_counted, plan
+from .engine import (
+    EMPTY,
+    Counts,
+    Event,
+    Rule,
+    Snapshot,
+    compile_document,
+    evaluate,
+    fold,
+    is_counted,
+    link_urls,
+    needs_link_check,
+    plan,
+)
 from .types import TRIGGERS, RuleError, validate
 
 log = logging.getLogger("red.kirin_cogs.automod")
@@ -21,6 +36,14 @@ log = logging.getLogger("red.kirin_cogs.automod")
 GUILD_ID = 684360255798509578
 LOG_SIZE = 250
 MAX_IMPORT = 2_000_000  # bytes
+
+# Unsafe link trigger: Google Web Risk's Lookup API. Set the key with `[p]set api google_webrisk api_key,<key>`.
+WEBRISK_URL = "https://webrisk.googleapis.com/v1/uris:search"
+WEBRISK_TOKEN = "google_webrisk"
+THREAT_TYPES = ("MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE")
+LOOKUP_TTL = 600  # seconds a lookup result is reused
+LOOKUP_CACHE = 5000  # ponytail: cleared wholesale when full; an LRU if raids ever churn through it
+WARN_EVERY = 600  # seconds between lookup failure warnings
 
 
 def empty_document() -> dict:
@@ -43,6 +66,9 @@ class AutoMod(commands.Cog):
         self.edit_lock = asyncio.Lock()
         self._log_lock = asyncio.Lock()
         self._renamed: dict[int, str] = {}  # member id -> nickname automod just set
+        self._session: aiohttp.ClientSession | None = None
+        self._lookups: dict[str, tuple[bool, float]] = {}  # url -> (unsafe, expires at)
+        self._warned_at = -math.inf
 
     async def cog_load(self) -> None:
         self.dry_run = await self.config.dry_run()
@@ -55,6 +81,8 @@ class AutoMod(commands.Cog):
 
     async def cog_unload(self) -> None:
         self.sweep.cancel()
+        if self._session is not None:
+            await self._session.close()
 
     @tasks.loop(minutes=10)
     async def sweep(self) -> None:
@@ -197,10 +225,56 @@ class AutoMod(commands.Cog):
 
     # --- evaluation and actions -------------------------------------------------------------------
 
+    def _warn(self, text: str, *args: object) -> None:
+        now = time.monotonic()
+        if now - self._warned_at >= WARN_EVERY:
+            self._warned_at = now
+            log.warning(text, *args)
+
+    async def _lookup(self, url: str, key: str) -> bool:
+        """Whether Web Risk lists the URL. Raises on a failed request."""
+        if self._session is None:
+            self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5))
+        params = [("uri", url), *(("threatTypes", t) for t in THREAT_TYPES)]
+        # The key goes in a header so it never ends up in a logged URL.
+        async with self._session.get(WEBRISK_URL, params=params, headers={"X-Goog-Api-Key": key}) as resp:
+            data = await resp.json(content_type=None)
+            if resp.status != 200:
+                raise ValueError(f"HTTP {resp.status}: {str(data)[:300]}")
+        return isinstance(data, dict) and bool(data.get("threat"))
+
+    async def unsafe_link(self, urls: list[str]) -> bool:
+        """Whether any of the URLs is a known phishing or malware site. Lookup failures count as safe."""
+        if not urls:
+            return False
+        key = (await self.bot.get_shared_api_tokens(WEBRISK_TOKEN)).get("api_key")
+        if not key:
+            self._warn("Unsafe link trigger has no API key; set one with `[p]set api %s api_key,<key>`", WEBRISK_TOKEN)
+            return False
+        now = time.monotonic()
+        cached = {url: hit[0] for url in urls if (hit := self._lookups.get(url)) and hit[1] > now}
+        missing = [url for url in urls if url not in cached]
+        results = await asyncio.gather(*(self._lookup(url, key) for url in missing), return_exceptions=True)
+        if len(self._lookups) + len(missing) > LOOKUP_CACHE:
+            self._lookups.clear()
+        for url, result in zip(missing, results, strict=True):
+            if isinstance(result, BaseException):
+                self._warn("Web Risk lookup failed: %r", result)
+                continue
+            self._lookups[url] = (result, now + LOOKUP_TTL)
+            cached[url] = result
+        return any(cached.values())
+
     async def handle(self, event: Event, member: discord.Member, message: discord.Message | None = None) -> None:
         snapshot = self.snapshot
         history = self.counts.add(event, snapshot.window)
-        hits = evaluate(snapshot, event, history, lambda role_id: member.guild.get_role(role_id) is not None)
+
+        def role_exists(role_id: int) -> bool:
+            return member.guild.get_role(role_id) is not None
+
+        if event.links and needs_link_check(snapshot, event, role_exists):
+            event.unsafe_link = await self.unsafe_link(link_urls(event.text))
+        hits = evaluate(snapshot, event, history, role_exists)
         if not hits:
             return
         if any(is_counted(h.trigger) for h in hits):

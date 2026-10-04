@@ -59,6 +59,9 @@ TRIGGERS: dict[str, RowType] = {
         RowType("invite", "Server invite", "Message contains a server invite", (), "message"),
         RowType("link", "Any link", "Message contains a link", (), "message"),
         RowType(
+            "unsafe_link", "Unsafe link", "Message links to a site Google lists as phishing or malware", (), "message"
+        ),
+        RowType(
             "mentions",
             "Mentions",
             "Message mentions {count} or more different users and roles",
