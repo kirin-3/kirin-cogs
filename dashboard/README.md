@@ -180,9 +180,11 @@ so losing the staff role, or leaving the server, ends access on the next click. 
 
 ## Protections
 
-- Every route needs a session unless it is one of `/login`, `/callback`, `/logged-out`, or a static file. The staff and
+- Every route needs a session unless it is one of `/login`, `/callback`, `/logged-out`, `/health`, or a static file. The staff and
   member cookies (`__Host-staff`, `__Host-member`) and session stores are separate, so a session from one site is
   never accepted by the other.
+- `staff.unicornia.net/health` is public for the Cloud Monitoring uptime check. It answers `ok` while the bot is
+  connected to Discord and 503 otherwise; when the bot process is down, Caddy answers 502.
 - Every POST must carry the session's CSRF token. The member site accepts bodies up to 9 MB, for custom command files,
   and reads them only after the session check. The one exception is a gif upload (`POST /gifs/upload`) from a member
   who may send in gifs, which accepts up to 100 MB, Cloudflare's own limit; the real ceiling is what Discord lets the

@@ -57,7 +57,7 @@ MEMBER_EXCHANGES = 20  # member logins stop here, so the last 10 of the minute s
 MEMBER_MAX_BODY = 9 * 1024 * 1024  # an 8 MB custom command attachment plus the rest of the form
 # A gif sent in by a member who may: Cloudflare's own request limit. The real ceiling is what Discord lets the bot post.
 GIF_UPLOAD_MAX_BODY = 100 * 1024 * 1024
-PUBLIC_PATHS = frozenset({"/login", "/callback", "/logged-out"})
+PUBLIC_PATHS = frozenset({"/login", "/callback", "/logged-out", "/health"})
 # POSTs to these routes also need a bot owner; staff can only view automod.
 OWNER_ONLY = frozenset(
     {
@@ -288,6 +288,7 @@ class Dashboard(commands.Cog):
 
     def make_app(self) -> web.Application:
         app = self._app(STAFF)
+        app.router.add_get("/health", self.health)
         app.router.add_get("/", self.ban_list)
         app.router.add_get(r"/bans/{ban_id:\d{1,18}}", self.ban_detail)
         ruleset, rule, word_list = r"{ruleset_id:\d{1,18}}", r"{rule_id:\d{1,18}}", r"{list_id:\d{1,18}}"
@@ -498,6 +499,13 @@ class Dashboard(commands.Cog):
     async def logged_out(self, request: web.Request) -> web.StreamResponse:
         title = request.app[SITE].login_title
         return self._message(request, 200, title, "Log in with your Discord account to continue.", login=True)
+
+    async def health(self, request: web.Request) -> web.StreamResponse:
+        """For the Cloud Monitoring uptime check: 200 only while the bot is connected to Discord."""
+        ws = self.bot.ws
+        if self.bot.is_closed() or not self.bot.is_ready() or ws is None or not ws.open:
+            raise web.HTTPServiceUnavailable()
+        return web.Response(text="ok")
 
     # --- ban pages ---------------------------------------------------------------------------------
 

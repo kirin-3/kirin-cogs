@@ -196,6 +196,18 @@ async def test_security_headers_on_public_and_protected_pages(site: SimpleNamesp
 
 
 @pytest.mark.asyncio
+async def test_health_needs_no_login_and_fails_when_disconnected(site: SimpleNamespace) -> None:
+    site.bot.is_closed.return_value = False
+    site.bot.is_ready.return_value = True
+    site.bot.ws.open = True
+    assert (await site.client.get("/health", allow_redirects=False)).status == 200
+    site.bot.ws.open = False
+    assert (await site.client.get("/health", allow_redirects=False)).status == 503
+    site.bot.ws = None
+    assert (await site.client.get("/health", allow_redirects=False)).status == 503
+
+
+@pytest.mark.asyncio
 async def test_only_the_sites_own_script_may_run(site: SimpleNamespace) -> None:
     policy = SECURITY_HEADERS["Content-Security-Policy"]
     assert "script-src 'self';" in policy and "unsafe" not in policy and "connect-src" not in policy
