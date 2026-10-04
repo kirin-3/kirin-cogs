@@ -651,7 +651,8 @@ class XPCardGenerator:
                         frames.append(frame)
 
                     output = io.BytesIO()
-                    # Save as WebP (Lossless for quality, method=3 for speed balance)
+                    # Save as WebP. The encode is ~97% of render time; method=0 is
+                    # ~3.6x faster than method=3 for ~7% bigger files.
                     frames[0].save(
                         output,
                         format="WEBP",
@@ -661,7 +662,7 @@ class XPCardGenerator:
                         duration=duration,
                         lossless=False,
                         quality=90,
-                        method=3,
+                        method=0,
                     )
                     output.seek(0)
                     return output, "webp"
