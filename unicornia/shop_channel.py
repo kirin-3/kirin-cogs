@@ -291,9 +291,17 @@ class ShopChannelMixin(UnicorniaMixinBase):
             if item_id in items and self._item_role_problem(guild, items[item_id]) is None
         ]
         if shown:
-            lines = []
+            lines, options = [], []
             for item in shown:
                 role = guild.get_role(item["role_id"] or 0) if item["type"] == self.db.shop.SHOP_TYPE_ROLE else None
+                # A role item is labelled by its role: the shop imported from Nadeko named every item "-".
+                options.append(
+                    discord.SelectOption(
+                        label=(role.name if role else item["name"])[:100],
+                        value=str(item["index"]),
+                        description=("Free" if item["price"] == 0 else f"{item['price']:,} {currency}")[:100],
+                    )
+                )
                 what = role.mention if role else f"**{item['name']}**"
                 price = "Free" if item["price"] == 0 else f"**{item['price']:,}** {symbol}"
                 line = f"{what} ➥ {price} · `{prefix}shop buy {item['index']}`"
@@ -302,14 +310,6 @@ class ShopChannelMixin(UnicorniaMixinBase):
                 lines.append(line)
             card.add_item(ui.Separator())
             card.add_item(ui.TextDisplay("\n".join(lines)))
-            options = [
-                discord.SelectOption(
-                    label=item["name"][:100],
-                    value=str(item["index"]),
-                    description=("Free" if item["price"] == 0 else f"{item['price']:,} {currency}")[:100],
-                )
-                for item in shown
-            ]
             card.add_item(ui.ActionRow().add_item(BuySelect(section_id, options)))
         else:
             card.add_item(ui.TextDisplay("Nothing for sale here yet."))

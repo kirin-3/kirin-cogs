@@ -144,7 +144,7 @@ async def test_sections_change_in_place_and_reposting_replaces_the_shop(red_env:
     await cog.shop_item_edit(bot_guild, editor, blue_id, "Sky blue", 7, None, None, first)
     assert "<@&" in _texts(_latest(channel, posted.id)) and [
         o.label for o in _options(_latest(channel, posted.id))
-    ] == ["Sky blue"]
+    ] == ["Blue"]  # a role item is labelled by its role
     await cog.shop_section_edit(bot_guild, first, "Colour roles", "Pretty")
     assert "## Colour roles\nPretty" in _texts(_latest(channel, posted.id))
 
@@ -177,7 +177,7 @@ async def test_sections_and_items_reorder_in_place(red_env: simcord.Env) -> None
     colors = await cog.shop_section_create(bot_guild, "Colors")
     extras = await cog.shop_section_create(bot_guild, "Extras")
     red_id = await cog.shop_item_add(
-        bot_guild, editor, "Red", 1, cast(discord.Role, bot_guild.get_role(red.id)), None, colors
+        bot_guild, editor, "-", 1, cast(discord.Role, bot_guild.get_role(red.id)), None, colors
     )
     green_id = await cog.shop_item_add(
         bot_guild, editor, "Green", 2, cast(discord.Role, bot_guild.get_role(green.id)), None, colors
