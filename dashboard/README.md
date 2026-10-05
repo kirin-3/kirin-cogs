@@ -9,7 +9,7 @@ Cloudflare. They share the login code but keep separate sessions and cookies.
   economy and XP, the house economy, the cog's configuration and the stock market. Its Modmail pages show every
   thread the modmail bot has kept since October 2020, read-only. Its Gif votes page lists the thumbs-up and thumbs-down
   totals of every roleplay gif that has a vote. Its Self roles page adds roles to and removes them from the SelfRoles
-  cog's menus.
+  cog's menus. Its Role shop page posts Unicornia's role shop in a channel and manages its sections and items.
 - **Member site**, `my.unicornia.net` on `127.0.0.1:8012`. Every member can see their Unicornia profile, stocks, club,
   waifu standing and unicorn stable, buy and equip rank-card backgrounds, see the XP leaderboard and their own
   warnings, and turn
@@ -131,6 +131,40 @@ permissions. A role on a menu that no longer passes those checks, or was deleted
 checks every change again, and a refused one comes back under its category with the reason and 400. Categories are
 created, posted and deleted with `[p]selfroles` in Discord. The page answers 503 while the SelfRoles cog isn't loaded.
 
+## Role shop page
+
+`/shop` on the staff site manages the role shop that Unicornia posts in a channel. It replaces the hand-made
+messages that the shop channel (`768087418510639144`) used to have. The shop is one Components V2 message per
+section, posted in section order. Each message has an optional banner, then a card with the section's heading and
+note. Below that are its items, one a line: a role item shows the role's mention, which Discord draws in the role's
+colour, so the post previews the colour live. Each line has the price, the `[p]shop buy` command, and any required
+role. Last comes a menu to buy one of the items. Picking an item answers privately with its price and the member's
+balance, plus Buy and Cancel buttons. Buy goes through the same purchase as `[p]shop buy`: it checks the balance,
+the required role and whether the role can still be sold, and refunds if Discord won't give the role. If staff
+changed the item while the member was deciding, the purchase is refused. The menu keeps working after a restart.
+
+Everyone on the staff site can see the page. Changes follow `[p]shop add`'s gate: the server owner, a bot owner,
+Red's admin role, or Manage Roles. Anyone else gets 403, and the page tells them they can only look. On the page,
+staff can:
+
+- **Post the shop** in a channel the bot can send in. This deletes the shop messages posted before, so it also moves
+  the shop to another channel.
+- **Create, rename and delete sections**, and set a section's note (Discord markdown, up to 1,000 characters) and
+  banner (PNG, JPEG, GIF or WebP up to 8 MB, checked by content). Deleting a section deletes its message; its items
+  stay in the shop. A section created after posting goes up at the end of the channel.
+- **Add a role to the shop**, with a name, a price, an optional required role and a section. The role list only
+  offers roles the bot can sell: below the editor's top role and the bot's, without moderator permissions.
+- **Edit and remove items.** Any shop item can be put in a section, at most 25 to a section; a new one goes at the
+  end. A changed role is checked like a new one.
+- **Reorder** sections and the items in a section with the ↑ and ↓ arrows. An item move edits its section's message.
+  A section move swaps the two neighbouring messages' contents, so the channel shows the new order without posting
+  again, and a later post keeps it.
+
+Every change edits the posted messages straight away, and so do `[p]shop add`, `edit` and `remove` in Discord. An
+item whose role was deleted, or can no longer be sold, is left out of the post and marked on the page. If Discord
+refuses an updated message, the change is still saved and the page says the channel wasn't updated. The page answers
+503 while the Unicornia cog isn't loaded.
+
 ## Warnings page
 
 `/me/warnings` lists the member's own warnings in Unicornia, newest first, with the date, reason and points, and their
@@ -213,8 +247,8 @@ so losing the staff role, or leaving the server, ends access on the next click. 
   never accepted by the other.
 - `staff.unicornia.net/health` is public for the Cloud Monitoring uptime check. It answers `ok` while the bot is
   connected to Discord and 503 otherwise; when the bot process is down, Caddy answers 502.
-- Every POST must carry the session's CSRF token. The member site accepts bodies up to 9 MB, for custom command files,
-  and reads them only after the session check. The one exception is a gif upload (`POST /gifs/upload`) from a member
+- Every POST must carry the session's CSRF token. Both sites accept bodies up to 9 MB (custom command files on the
+  member site, shop banners on the staff site), and read them only after the session check. The one exception is a gif upload (`POST /gifs/upload`) from a member
   who may send in gifs, which accepts up to 100 MB, Cloudflare's own limit; the real ceiling is what Discord lets the
   bot upload. Everyone else, and every other route, keeps 9 MB.
 - Uploads are checked by their content, not their file name: emojis must be PNG, JPEG or GIF, role icons PNG or JPEG.

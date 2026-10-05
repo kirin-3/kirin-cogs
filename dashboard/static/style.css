@@ -399,6 +399,9 @@ legend { padding: 0 6px; color: var(--muted); font: 600 0.95rem var(--heading); 
 .danger { margin-top: 10px; }
 .danger button { color: var(--warn); border-color: var(--warn); background: transparent; box-shadow: none; }
 .danger button:hover { background: var(--warn-bg); }
+.move { display: inline-flex; gap: 4px; margin: 0 0 8px; }
+.move button { padding: 2px 10px; min-width: 0; }
+.move button:disabled { opacity: .35; cursor: default; }
 .offscreen { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .words { columns: 12rem; margin: 0; padding: 16px 20px 16px 38px; overflow-wrap: anywhere; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
 

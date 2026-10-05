@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Role shop{% endblock %}
+{% macro problem(where) %}{% if error and error_for == where %}<p class="notice">{{ error }}</p>{% endif %}{% endmacro %}
+{% macro section_options(selected) %}
+  <option value="">No section (not posted)</option>
+  {% for section in shop.sections %}<option value="{{ section.id }}"{% if section.id == selected %} selected{% endif %}>{{ section.name }}</option>{% endfor %}
+{% endmacro %}
+{% macro move(action, first, last, what) %}
+  <form class="move" method="post" action="{{ action }}">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <button type="submit" name="direction" value="up" aria-label="Move {{ what }} up"{% if first %} disabled{% endif %}>↑</button>
+    <button type="submit" name="direction" value="down" aria-label="Move {{ what }} down"{% if last %} disabled{% endif %}>↓</button>
+  </form>
+{% endmacro %}
+{% macro requirement_options(selected) %}
+  <option value="">No requirement</option>
+  {% for role in shop.requirements %}<option value="{{ role.id }}"{% if role.id == selected %} selected{% endif %}>{{ role.name }}</option>{% endfor %}
+{% endmacro %}
+{% block content %}
+<h1>Role shop</h1>
+<p class="empty">The shop channel shows each section as one message, with a menu to buy from it. Role names show in their own colour there. Every change here updates the posted messages right away, and so do <code>[p]shop add</code>, <code>edit</code> and <code>remove</code>.</p>
+{% if not shop.may_manage %}<p class="notice">You can look, but changing the shop needs Manage Roles or the bot's admin role, like <code>[p]shop add</code>.</p>{% endif %}
+
+<section class="panel" id="channel">
+  <h2>Shop channel</h2>
+  <p class="empty">{% if shop.channel %}Posted in #{{ shop.channel.name }}.{% else %}Not posted yet.{% endif %} Use the arrows to reorder sections and their items; the posted messages change in place. A new section is added at the end of the channel. Post again to move the shop to another channel; the messages posted before are deleted.</p>
+  {{ problem("channel") }}
+  {% if shop.may_manage %}
+  <form class="inline" method="post" action="/shop/post" data-confirm="Post the whole shop in the chosen channel? The shop messages posted before are deleted.">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <select name="channel" aria-label="Channel" required>
+      <option value="">Choose a channel</option>
+      {% for channel in shop.channels %}<option value="{{ channel.id }}"{% if shop.channel and channel.id == shop.channel.id %} selected{% endif %}>#{{ channel.name }}</option>{% endfor %}
+    </select>
+    <button type="submit">Post the shop</button>
+  </form>
+  {% endif %}
+</section>
+
+{% for section in shop.sections %}
+<section class="panel" id="section-{{ section.id }}">
+  <h2>{{ section.name }}</h2>
+  {% if shop.may_manage and shop.sections|length > 1 %}{{ move("/shop/sections/" ~ section.id ~ "/move", loop.first, loop.last, section.name) }}{% endif %}
+  <p class="empty">{% if section.url %}<a href="{{ section.url }}">See it in Discord</a>.{% else %}Not posted yet.{% endif %}{% if section.banner %} Has a banner.{% endif %}</p>
+  {% if section.note %}<p>{{ section.note }}</p>{% endif %}
+  {{ problem("section-" ~ section.id) }}
+  {% if section["items"] %}
+  <div class="scroll"><table>
+    <thead><tr><th class="num">#</th><th>Item</th><th class="num">Price</th><th>Requires</th>{% if shop.may_manage %}<th>Order</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for item in section["items"] %}
+    <tr>
+      <td class="num">{{ item.index }}</td>
+      <td>{{ item.role or item.name }}{% if item.problem %} <span class="badge warn">Not shown: {{ item.problem }}</span>{% endif %}</td>
+      <td class="num">{{ "{:,}".format(item.price) }}</td>
+      <td>{{ item.requirement }}</td>
+      {% if shop.may_manage %}<td>{{ move("/shop/sections/" ~ section.id ~ "/items/" ~ item.id ~ "/move", loop.first, loop.last, item.role or item.name) }}</td>{% endif %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="empty">No items yet. Put items in this section in the shop items list below.</p>
+  {% endif %}
+  {% if shop.may_manage %}
+  <details class="edit">
+    <summary>Edit section</summary>
+    <form method="post" action="/shop/sections/{{ section.id }}" class="editor">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <label>Name <small>Up to 80 characters.</small>
+        <input type="text" name="name" value="{{ section.name }}" maxlength="80" required></label>
+      <label>Note <small>Shown under the heading. Discord markdown works, such as *italics* or `.nitroshop`. Up to 1,000 characters.</small>
+        <textarea name="note" rows="3" maxlength="1000">{{ section.note }}</textarea></label>
+      <p class="actions"><button type="submit" class="primary">Save</button></p>
+    </form>
+    <form method="post" action="/shop/sections/{{ section.id }}/banner" class="editor" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <label>Banner <small>A PNG, JPEG, GIF or WebP image up to 8 MB, shown above the section.</small>
+        <input type="file" name="banner" accept="image/png,image/jpeg,image/gif,image/webp"></label>
+      <p class="actions"><button type="submit">Upload banner</button>
+      {% if section.banner %}<button type="submit" name="remove" value="1">Remove banner</button>{% endif %}</p>
+    </form>
+  </details>
+  <form method="post" action="/shop/sections/{{ section.id }}/delete" class="danger" data-confirm="Delete the section {{ section.name }} and its message? Its items stay in the shop.">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <button type="submit">Delete section</button>
+  </form>
+  {% endif %}
+</section>
+{% endfor %}
+
+{% if shop.may_manage %}
+<section class="panel" id="new-section">
+  <h2>New section</h2>
+  {{ problem("new-section") }}
+  <form method="post" action="/shop/sections" class="editor">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <label>Name <input type="text" name="name" maxlength="80" placeholder="Color roles" required></label>
+    <label>Note <small>Optional. Discord markdown works.</small>
+      <textarea name="note" rows="2" maxlength="1000"></textarea></label>
+    <p class="actions"><button type="submit" class="primary">Create section</button></p>
+  </form>
+</section>
+{% endif %}
+
+<section class="panel" id="items">
+  <h2>Shop items</h2>
+  <p class="empty">Everything <code>[p]shop list</code> sells. An item shows in the channel when it is in a section, at most 25 to a section; reorder them with the arrows on the section.</p>
+  {{ problem("items") }}
+  {% if shop["items"] %}
+  <div class="scroll"><table>
+    <thead><tr><th class="num">#</th><th>Name</th><th>Role</th><th class="num">Price</th><th>Requires</th><th>Section</th><th></th></tr></thead>
+    <tbody>
+    {% for item in shop["items"] %}
+    <tr>
+      <td class="num">{{ item.index }}</td>
+      <td>{{ item.name }}{% if item.type != "Role" %} <small>{{ item.type }}</small>{% endif %}</td>
+      <td>{{ item.role }}{% if item.problem %} <span class="badge warn">{{ item.problem }}</span>{% endif %}</td>
+      <td class="num">{{ "{:,}".format(item.price) }}</td>
+      <td>{{ item.requirement }}</td>
+      <td>{% for section in shop.sections if section.id == item.section_id %}{{ section.name }}{% endfor %}</td>
+      <td>
+        {% if shop.may_manage %}
+        <details class="edit">
+          <summary>Edit</summary>
+          <form method="post" action="/shop/items/{{ item.id }}" class="editor">
+            <input type="hidden" name="csrf" value="{{ session.csrf }}">
+            <label>Name <input type="text" name="name" value="{{ item.name }}" maxlength="100" required></label>
+            <label>Price <input type="number" name="price" value="{{ item.price }}" min="0" step="1" required></label>
+            <label>Role <small>A role must be below yours and the bot's, without moderator permissions.</small>
+              <select name="role">
+                <option value="">{% if item.role %}Keep {{ item.role }}{% else %}No role{% endif %}</option>
+                {% for role in shop.roles if role.id != item.role_id %}<option value="{{ role.id }}">{{ role.name }}</option>{% endfor %}
+              </select></label>
+            <label>Requires <select name="requirement">{{ requirement_options(item.requirement_id) }}</select></label>
+            <label>Section <select name="section">{{ section_options(item.section_id) }}</select></label>
+            <p class="actions"><button type="submit" class="primary">Save</button></p>
+          </form>
+        </details>
+        <form method="post" action="/shop/items/{{ item.id }}/delete" class="danger" data-confirm="Remove {{ item.name }} from the shop? Members who bought it keep it.">
+          <input type="hidden" name="csrf" value="{{ session.csrf }}">
+          <button type="submit">Remove</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="empty">The shop is empty.</p>
+  {% endif %}
+  {% if shop.may_manage %}
+  <h3>Add a role</h3>
+  {% if shop.roles %}
+  <form method="post" action="/shop/items" class="editor">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <label>Name <input type="text" name="name" maxlength="100" placeholder="Pink" required></label>
+    <label>Price <input type="number" name="price" min="0" step="1" placeholder="14000" required></label>
+    <label>Role <select name="role" required>
+      <option value="">Choose a role</option>
+      {% for role in shop.roles %}<option value="{{ role.id }}">{{ role.name }}</option>{% endfor %}
+    </select></label>
+    <label>Requires <select name="requirement">{{ requirement_options(none) }}</select></label>
+    <label>Section <select name="section">{{ section_options(none) }}</select></label>
+    <p class="actions"><button type="submit" class="primary">Add to the shop</button></p>
+  </form>
+  {% else %}
+  <p class="empty">There are no roles you can sell: a role must be below yours and the bot's, without moderator permissions.</p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

@@ -35,6 +35,7 @@ from .gifs import GIF_UPLOAD_PATH, MemberGifs, StaffGifs
 from .member import MemberSite
 from .modmail import StaffModmail
 from .selfroles import StaffSelfRoles
+from .shop import StaffShop
 from .unicornia_views import StaffUnicornia
 
 GUILD_ID = 684360255798509578
@@ -58,6 +59,7 @@ MEMBER_EXCHANGES = 20  # member logins stop here, so the last 10 of the minute s
 MEMBER_MAX_BODY = 9 * 1024 * 1024  # an 8 MB custom command attachment plus the rest of the form
 # A gif sent in by a member who may: Cloudflare's own request limit. The real ceiling is what Discord lets the bot post.
 GIF_UPLOAD_MAX_BODY = 100 * 1024 * 1024
+STAFF_MAX_BODY = 9 * 1024 * 1024  # an 8 MB shop banner plus the rest of the form
 PUBLIC_PATHS = frozenset({"/login", "/callback", "/logged-out", "/health"})
 # POSTs to these routes also need a bot owner; staff can only view automod.
 OWNER_ONLY = frozenset(
@@ -247,6 +249,7 @@ class Dashboard(commands.Cog):
         self.staff_unicornia = StaffUnicornia(self)
         self.staff_modmail = StaffModmail(self)
         self.staff_selfroles = StaffSelfRoles(self)
+        self.staff_shop = StaffShop(self)
 
     async def cog_load(self) -> None:
         # Not bot.http: that session carries the bot token.
@@ -290,7 +293,7 @@ class Dashboard(commands.Cog):
         return app
 
     def make_app(self) -> web.Application:
-        app = self._app(STAFF)
+        app = self._app(STAFF, client_max_size=STAFF_MAX_BODY)
         app.router.add_get("/health", self.health)
         app.router.add_get("/", self.ban_list)
         app.router.add_get(r"/bans/{ban_id:\d{1,18}}", self.ban_detail)
@@ -313,6 +316,7 @@ class Dashboard(commands.Cog):
         self.staff_modmail.add_routes(app)
         self.staff_gifs.add_routes(app)
         self.staff_selfroles.add_routes(app)
+        self.staff_shop.add_routes(app)
         return app
 
     # --- access control --------------------------------------------------------------------------
