@@ -25,6 +25,9 @@ Rule-based automod for Unicornia, replacing YAGPDB's. Staff read the rules and t
 - **Conditions:** ignore bots, ignore roles, require roles (any or all), ignore channels, only in channels, new
   messages only, edits only. A thread counts as its parent channel too.
 - **Effects:** delete, warn, mute (0 minutes = until unmuted), timeout, ban, set nickname, send message.
+  A send message text can use `{user}` (the member, shown without a ping), `{user_id}`, `{channel}`, `{rule}`
+  (ruleset / rule) and `{message}` (the message text in a code block, so its links can't be clicked; empty for joins
+  and name changes). "Mention the member" adds a ping in front.
 - **Harshest punishment wins.** When several rules fire on one event, only the harshest rule's punishments run:
   ban > mute > timeout > warn > set nickname, and longer beats shorter. Every fired rule's delete and send message
   effects still run, and the message is deleted once.

@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import math
+import re
 import time
 from datetime import timedelta
 from typing import Any
@@ -13,6 +14,7 @@ import aiohttp
 import discord
 from discord.ext import tasks
 from redbot.core import Config, commands
+from redbot.core.utils.chat_formatting import box
 
 from . import types as registry
 from .engine import (
@@ -44,6 +46,24 @@ THREAT_TYPES = ("MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE")
 LOOKUP_TTL = 600  # seconds a lookup result is reused
 LOOKUP_CACHE = 5000  # ponytail: cleared wholesale when full; an LRU if raids ever churn through it
 WARN_EVERY = 600  # seconds between lookup failure warnings
+
+PLACEHOLDER_RE = re.compile(r"\{(user|user_id|channel|rule|message)\}")
+
+
+def fill(text: str, rule: Rule, member: discord.Member, message: discord.Message | None) -> str:
+    """A send message effect's text with its placeholders filled in, in one pass."""
+    quoted = ""
+    if message is not None and message.content:
+        # In a code block, links can't be clicked and don't embed.
+        quoted = box(message.content[:1500].replace("```", "`\N{ZERO WIDTH SPACE}``"))
+    values = {
+        "user": member.mention,
+        "user_id": str(member.id),
+        "channel": f"<#{message.channel.id}>" if message is not None else "",
+        "rule": f"{rule.ruleset} / {rule.name}",
+        "message": quoted,
+    }
+    return PLACEHOLDER_RE.sub(lambda m: values[m[1]], text)
 
 
 def empty_document() -> dict:
@@ -335,8 +355,10 @@ class AutoMod(commands.Cog):
             channel = guild.get_channel(effect["channel"]) if effect["channel"] else message and message.channel
             if not isinstance(channel, discord.abc.Messageable):
                 return "The channel is missing."
-            text = f"{member.mention} {effect['text']}" if effect["ping"] else effect["text"]
-            mentions = discord.AllowedMentions(users=[member] if effect["ping"] else False)
+            text = fill(effect["text"], rule, member, message)
+            text = f"{member.mention} {text}" if effect["ping"] else text
+            # {user} shows the member without pinging them; quoted text never pings anyone.
+            mentions = discord.AllowedMentions(everyone=False, roles=False, users=[member] if effect["ping"] else False)
             if effect["delete_after"]:
                 await channel.send(text[:2000], delete_after=effect["delete_after"], allowed_mentions=mentions)
             else:

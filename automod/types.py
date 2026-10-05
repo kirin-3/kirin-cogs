@@ -159,7 +159,14 @@ EFFECTS: dict[str, RowType] = {
             "Send to {channel} (ping: {ping}, delete after {delete_after} s): {text}",
             (
                 Field("channel", "channel", "Channel (none: the event's channel)", 0),
-                Field("text", "text", "Text", "", 1, 2000),
+                Field(
+                    "text",
+                    "text",
+                    "Text ({user}, {user_id}, {channel}, {rule} and {message} are filled in)",
+                    "",
+                    1,
+                    2000,
+                ),
                 Field("ping", "bool", "Mention the member", False),
                 Field("delete_after", "int", "Delete after seconds (0: keep)", 0, 0, 3600),
             ),

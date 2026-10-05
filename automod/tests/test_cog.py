@@ -221,6 +221,19 @@ async def test_send_message_with_ping_and_auto_delete(cog: AutoMod) -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_message_fills_placeholders_and_quotes_the_message(cog: AutoMod) -> None:
+    text = "{user} ({user_id}) in {channel} hit {rule} {nope}: {message}"
+    send = {"type": "send", "text": text, "ping": False, "delete_after": 0}
+    await _load(cog, document(ruleset("s", [rule("r", [{"type": "invite"}], [{"type": "delete"}, send])])))
+    message = _message("discord.gg/abc ```{rule}```")
+    await cog.on_message(message)
+    call = message.channel.send.await_args
+    quoted = "```\ndiscord.gg/abc `\N{ZERO WIDTH SPACE}``{rule}`\N{ZERO WIDTH SPACE}``\n```"
+    assert call.args == (f"<@7> (7) in <#10> hit s / r {{nope}}: {quoted}",)
+    assert call.kwargs["allowed_mentions"].users is False
+
+
+@pytest.mark.asyncio
 async def test_counts_reset_after_a_counted_rule_fires(cog: AutoMod) -> None:
     burst = {"type": "message_rate", "count": 3, "seconds": 60}
     await _load(cog, document(ruleset("spam", [rule("r", [burst], [{"type": "delete"}])])), dry_run=True)
