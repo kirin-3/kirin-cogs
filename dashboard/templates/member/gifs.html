@@ -1,8 +1,9 @@
 {% extends "member/base.html" %}
 {% block title %}Gifs{% endblock %}
 {% block content %}
+<p class="eyebrow">the bot's gif shelf ♡</p>
 <div class="bar">
-  <h1>Gifs</h1>
+  <h1><span class="squiggle">Gifs</span></h1>
   {% if can_upload %}<a class="button" href="/gifs/upload">Send in a gif</a>{% endif %}
 </div>
 <p class="sub">Every gif the bot can post, by action. Give a gif a thumbs up or a thumbs down; only you can see your votes.</p>

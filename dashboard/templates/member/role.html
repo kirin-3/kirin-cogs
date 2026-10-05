@@ -1,6 +1,7 @@
 {% extends "member/base.html" %}
 {% block title %}Custom role{% endblock %}
 {% block content %}
+<p class="eyebrow">your very own role ♡</p>
 <h1>{% if icon_url %}<img class="emoji" src="{{ icon_url }}" alt="" width="32" height="32"> {% elif icon_emoji %}{{ icon_emoji }} {% endif %}{{ role.name }}</h1>
 <p class="swatches">
   {% for color in colors %}<input type="color" value="#{{ color }}" disabled aria-label="Current color #{{ color }}">{% endfor %}

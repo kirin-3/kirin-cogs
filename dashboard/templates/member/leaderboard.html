@@ -1,7 +1,8 @@
 {% extends "member/base.html" %}
 {% block title %}Leaderboard{% endblock %}
 {% block content %}
-<h1>XP leaderboard</h1>
+<p class="eyebrow">who's been the chattiest? ✨</p>
+<h1>XP <span class="squiggle">leaderboard</span></h1>
 <p class="sub">
   You're {{ viewer }}{% if viewer_page and viewer_page != page %} · <a href="/leaderboard?page={{ viewer_page }}">Show me</a>{% endif %}
   <br><small>Updated every minute. Like <code>level leaderboard</code>, only the top 300 are ranked.</small>

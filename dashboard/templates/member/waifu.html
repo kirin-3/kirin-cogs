@@ -2,7 +2,8 @@
 {% block title %}Waifu{% endblock %}
 {% block content %}
 {% include "member/_account.html" %}
-<h1>Waifu</h1>
+<p class="eyebrow">who's got your heart? ♡</p>
+<h1><span class="squiggle">Waifu</span></h1>
 <div class="stats">
   <div class="panel"><h2>Price</h2><p class="big">{{ currency|emojis }}{{ "{:,}".format(waifu.price) }}</p></div>
   <div class="panel"><h2>Owner</h2><p class="big">{{ owner }}</p></div>

@@ -6,6 +6,7 @@
 {% block content %}
 {% include "member/_account.html" %}
 {% if club %}
+<p class="eyebrow">your crew ♡</p>
 <h1>{{ club.name }}</h1>
 {% if club.banner %}<p>{{ picture(club.banner, "banner") }}</p>{% endif %}
 <p class="sub">{% if club.icon %}{{ picture(club.icon, "icon") }} {% endif %}{{ club.description or "No description." }}</p>
@@ -23,7 +24,8 @@
   </ul>
 </section>
 {% else %}
-<h1>Club</h1>
+<p class="eyebrow">find your crew ♡</p>
+<h1><span class="squiggle">Club</span></h1>
 <p class="empty">You're not in a club.</p>
 {% if invitations %}
 <section class="panel">

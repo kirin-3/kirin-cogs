@@ -2,7 +2,8 @@
 {% block title %}Stable{% endblock %}
 {% block content %}
 {% include "member/_account.html" %}
-<h1>Stable</h1>
+<p class="eyebrow">your little herd ♡</p>
+<h1><span class="squiggle">Stable</span></h1>
 {% if collected is not none %}
 {% if collected > 0 %}
 <p class="notice">💰 Collected {{ "{:,}".format(collected) }} {{ currency }} into your wallet.</p>
