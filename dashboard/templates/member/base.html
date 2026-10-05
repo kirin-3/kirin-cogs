@@ -25,27 +25,41 @@
     <a href="/roleplay"{% if path == "/roleplay" %} class="on"{% endif %}>Roleplay</a>
     <a href="/gifs"{% if path.startswith("/gifs") %} class="on"{% endif %}>Gifs</a>
     <a href="/settings"{% if path == "/settings" %} class="on"{% endif %}>Settings</a>
-    {% if nav and nav.commands %}
-    <a href="/commands"{% if path.startswith("/commands") %} class="on"{% endif %}>Commands</a>
-    {% endif %}
-    {% if nav and nav.emojis %}
-    <a href="/emojis"{% if path.startswith("/emojis") %} class="on"{% endif %}>Emojis</a>
-    {% endif %}
-    {% if nav and nav.role %}
-    <a href="/role"{% if path.startswith("/role/") or path == "/role" %} class="on"{% endif %}>Custom role</a>
-    {% endif %}
   </nav>
-  <form class="logout" method="post" action="/logout">
-    {% if user_avatar(session.user_id) %}<img class="avatar" src="{{ user_avatar(session.user_id) }}" alt="" width="32" height="32">{% endif %}
-    <span>{{ user_name(session.user_id) }}</span>
-    <input type="hidden" name="csrf" value="{{ session.csrf }}">
-    <button type="submit">Log out</button>
-  </form>
+  {# The sections only some members have live in the account menu, so the bar stays one row #}
+  <details class="account">
+    <summary>
+      {% if user_avatar(session.user_id) %}<img class="avatar" src="{{ user_avatar(session.user_id) }}" alt="" width="32" height="32">{% endif %}
+      <span>{{ user_name(session.user_id) }}</span>
+    </summary>
+    <div class="menu">
+      {% if nav and nav.commands %}
+      <a href="/commands"{% if path.startswith("/commands") %} class="on"{% endif %}>Custom commands</a>
+      {% endif %}
+      {% if nav and nav.emojis %}
+      <a href="/emojis"{% if path.startswith("/emojis") %} class="on"{% endif %}>Custom emojis</a>
+      {% endif %}
+      {% if nav and nav.role %}
+      <a href="/role"{% if path.startswith("/role/") or path == "/role" %} class="on"{% endif %}>Custom role</a>
+      {% endif %}
+      {% if nav and nav.apply %}
+      <a href="/apply"{% if path == "/apply" %} class="on"{% endif %}>Apply for staff</a>
+      {% endif %}
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf" value="{{ session.csrf }}">
+        <button type="submit">Log out</button>
+      </form>
+    </div>
+  </details>
   {% endif %}
 </header>
 <main>
 {% if error %}<p class="notice">{{ error }}</p>{% endif %}
 {% block content %}{% endblock %}
 </main>
+<footer class="foot">
+  <span>Made with ♡ for Unicornia</span>
+  <a href="https://unicornia.net">unicornia.net</a>
+</footer>
 </body>
 </html>

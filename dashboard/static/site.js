@@ -32,6 +32,19 @@ addEventListener("pageshow", (event) => {
 // On narrow screens the nav scrolls sideways; start with the current page in view.
 document.querySelector(".nav a.on")?.scrollIntoView({ block: "nearest", inline: "center" });
 
+// The account menu closes on a click outside it, or on Escape.
+const account = document.querySelector("details.account");
+if (account) {
+  document.addEventListener("click", (event) => {
+    if (!account.contains(event.target)) account.open = false;
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !account.open) return;
+    account.open = false;
+    account.querySelector("summary").focus();
+  });
+}
+
 // Filter boxes hide the rows (or list items) of the element right after them that don't contain the text.
 function enhance(root) {
   for (const input of root.querySelectorAll("input.filter")) {

@@ -144,12 +144,28 @@ code { padding: 1px 6px; border-radius: 6px; background: var(--raised); font-siz
 .logout { display: flex; gap: 10px; align-items: center; color: var(--muted); font-weight: 600; }
 .avatar { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--lavender); }
 
+/* The member site's account menu: avatar and name, opening onto the member's own sections and Log out */
+.account { position: relative; }
+.account summary { display: flex; gap: 8px; align-items: center; padding: 3px 12px 3px 3px; border-radius: 999px; color: var(--muted); font-weight: 600; cursor: pointer; list-style: none; transition: background 0.2s, color 0.2s; }
+.account summary::-webkit-details-marker { display: none; }
+.account summary::after { content: "▾"; font-size: 0.8em; }
+.account summary > span { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account summary:hover, .account[open] summary { color: var(--accent); background: var(--accent-soft); }
+.menu { position: absolute; top: calc(100% + 10px); right: 0; display: flex; flex-direction: column; gap: 2px; min-width: 200px; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-lg); }
+.menu a, .menu button { justify-content: flex-start; padding: 8px 12px; border: 0; border-radius: 12px; background: none; box-shadow: none; color: var(--text); text-decoration: none; font: 600 0.95rem var(--heading); }
+.menu a:hover, .menu button:hover { transform: none; color: var(--accent); background: var(--accent-soft); }
+.menu a.on { color: var(--on-accent); background: var(--accent); }
+.menu form { display: flex; flex-direction: column; }
+.menu a + form { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
+
+.foot { display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; width: min(1068px, 100% - 32px); margin: 0 auto; padding: 18px 0 32px; border-top: 1px dashed var(--line); color: var(--muted); font-size: 0.9rem; }
+
 /* Narrow screens: brand and account on the first row, the nav as one row below that scrolls sideways */
 @media (max-width: 1100px) {
   .top { margin: 8px 8px 0; border-radius: 1.5rem; }
   .nav { order: 1; flex: 1 0 100%; flex-wrap: nowrap; margin: 0; overflow-x: auto; scrollbar-width: none; }
   .nav a { flex: none; }
-  .logout { margin-left: auto; }
+  .logout, .account { margin-left: auto; }
 }
 
 @media (max-width: 520px) {
