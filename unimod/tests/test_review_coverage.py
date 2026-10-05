@@ -77,7 +77,7 @@ class _Response:
 class _Session:
     def __init__(self, body: dict[str, Any]) -> None:
         self.body = body
-        self.payload: dict[str, Any] = {}
+        self.payloads: list[dict[str, Any]] = []
 
     async def __aenter__(self) -> "_Session":
         return self
@@ -86,7 +86,7 @@ class _Session:
         return False
 
     def post(self, *_args: object, json: dict[str, Any], **_kwargs: object) -> _Response:
-        self.payload = json
+        self.payloads.append(json)
         return _Response(self.body)
 
 
@@ -100,8 +100,8 @@ async def test_an_empty_reply_is_an_error_and_the_model_gets_room_to_think(cog: 
     ):
         await cog._analyze_with_ai("system", "user")
 
-    assert session.payload["max_tokens"] == 10000
-    assert session.payload["stream"] is True
+    assert session.payloads[0]["max_tokens"] == 10000
+    assert session.payloads[0]["stream"] is True
     assert cog._last_ai_error is not None
     assert "Empty AI reply (finish_reason: length)" in cog._last_ai_error
 

@@ -130,6 +130,10 @@ Analyze this conversation against the server rules, paying close attention to ch
     # (name, endpoint, model, Red shared token, extra request fields). A provider whose key isn't set is skipped.
     NIM_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
     GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    # Vertex's OpenAI-style endpoint only takes OAuth tokens; its own API takes an API key bound to a service account.
+    VERTEX_ENDPOINT = (
+        "https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:streamGenerateContent?alt=sse"
+    )
     AI_PROVIDERS = (
         # Thinking off: a moderation verdict doesn't need minutes of reasoning on a slow free tier.
         ("NVIDIA NIM", NIM_ENDPOINT, "z-ai/glm-5.3", "openai", {"chat_template_kwargs": {"enable_thinking": False}}),
@@ -143,6 +147,8 @@ Analyze this conversation against the server rules, paying close attention to ch
             {"reasoning_effort": "high", "temperature": 1.0},
         ),
         ("NVIDIA NIM", NIM_ENDPOINT, "deepseek-ai/deepseek-v4.1-flash", "openai", {}),
+        # Paid last resort. Extra fields here go into Vertex's generationConfig.
+        ("Vertex AI", VERTEX_ENDPOINT, "gemini-3.5-flash-lite", "vertex", {"temperature": 1.0}),
     )
 
     def __init__(self, bot: Red):
@@ -447,23 +453,35 @@ Analyze this conversation against the server rules, paying close attention to ch
         # NIM's gateway answers 504 to a request that sends nothing back for 300s, and its free tier often takes
         # longer than that to think. Streaming keeps bytes flowing, so only our own (longer) limit applies.
         timeout_seconds = 600
+        # Thinking models spend tokens reasoning before they answer; too few leaves no answer.
+        max_tokens = 10000
+        if endpoint == self.VERTEX_ENDPOINT:
+            url = endpoint.format(model=model)
+            headers = {"x-goog-api-key": api_key}
+            payload: dict[str, Any] = {
+                "systemInstruction": {"parts": [{"text": system_prompt}]},
+                "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+                "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.3} | extra,
+            }
+        else:
+            url = endpoint
+            headers = {"Authorization": f"Bearer {api_key}"}
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.3,
+                "stream": True,
+            } | extra
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    endpoint,
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                    json={
-                        "model": model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        # Thinking models spend tokens reasoning before they answer; too few leaves no answer.
-                        "max_tokens": 10000,
-                        "temperature": 0.3,
-                        "stream": True,
-                    }
-                    | extra,
+                    url,
+                    headers=headers | {"Content-Type": "application/json"},
+                    json=payload,
                     timeout=aiohttp.ClientTimeout(total=timeout_seconds),
                 ) as response:
                     if response.status != 200:
@@ -489,7 +507,7 @@ Analyze this conversation against the server rules, paying close attention to ch
 
     @staticmethod
     async def _read_stream(response: aiohttp.ClientResponse) -> tuple[str, str | None]:
-        """Join the answer text from an OpenAI-style server-sent event stream; reasoning deltas are skipped."""
+        """Join the answer text from an OpenAI-style or Vertex server-sent event stream; reasoning is skipped."""
         parts: list[str] = []
         finish_reason = None
         async for raw_line in response.content:
@@ -505,6 +523,11 @@ Analyze this conversation against the server rules, paying close attention to ch
             for choice in chunk.get("choices") or []:
                 parts.append((choice.get("delta") or {}).get("content") or "")
                 finish_reason = choice.get("finish_reason") or finish_reason
+            for candidate in chunk.get("candidates") or []:
+                for part in (candidate.get("content") or {}).get("parts") or []:
+                    if not part.get("thought"):
+                        parts.append(part.get("text") or "")
+                finish_reason = candidate.get("finishReason") or finish_reason
         return "".join(parts), finish_reason
 
     def _save_last_response(self, content: str, model: str):
@@ -1111,7 +1134,11 @@ Analyze this conversation against the server rules, paying close attention to ch
         """Show current configuration."""
         embed = discord.Embed(title="⚙️ UniMod Configuration", color=0x0099FF)
 
-        for service, label in (("openai", "NVIDIA NIM API Key"), ("gemini", "Google AI Studio API Key")):
+        for service, label in (
+            ("openai", "NVIDIA NIM API Key"),
+            ("gemini", "Google AI Studio API Key"),
+            ("vertex", "Vertex AI API Key"),
+        ):
             api_key = (await self.bot.get_shared_api_tokens(service)).get("api_key", "")
             api_key_display = f"{'*' * 8}...{api_key[-4:]}" if api_key else "Not set"
             embed.add_field(name=f"{label} (`{service}`)", value=api_key_display, inline=False)

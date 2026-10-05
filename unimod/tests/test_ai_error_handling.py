@@ -113,7 +113,7 @@ async def test_a_failed_model_falls_back_to_the_next_one(cog: UniMod) -> None:
 @pytest.mark.asyncio
 async def test_a_provider_without_a_key_is_skipped(cog: UniMod) -> None:
     response = FakeErrorResponse(status=504, body="")
-    tokens = {"openai": {"api_key": "nim-key"}, "gemini": {}}
+    tokens = {"openai": {"api_key": "nim-key"}, "gemini": {}, "vertex": {}}
     cog.bot.get_shared_api_tokens = AsyncMock(side_effect=lambda service: tokens[service])  # type: ignore[method-assign]
 
     with patch("unimod.unimod.aiohttp.ClientSession", return_value=FakeSession(response)):
@@ -151,7 +151,7 @@ async def test_gemini_is_asked_to_think_hard(cog: UniMod) -> None:
     payloads: list[dict[str, Any]] = []
     post = session.post
     session.post = lambda *a, **kw: payloads.append(kw["json"]) or post(*a, **kw)  # type: ignore[method-assign]
-    tokens = {"openai": {}, "gemini": {"api_key": "gemini-key"}}
+    tokens = {"openai": {}, "gemini": {"api_key": "gemini-key"}, "vertex": {}}
     cog.bot.get_shared_api_tokens = AsyncMock(side_effect=lambda service: tokens[service])  # type: ignore[method-assign]
 
     with patch("unimod.unimod.aiohttp.ClientSession", return_value=session):
@@ -206,3 +206,52 @@ async def test_nim_gets_one_request_at_a_time_with_thinking_off(cog: UniMod) -> 
     assert session.most_in_flight == 1
     assert [p["model"] for p in session.payloads] == ["z-ai/glm-5.3"] * 3
     assert session.payloads[0]["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+class FakeVertexResponse(FakeOkResponse):
+    """Answers in Vertex's own stream format, which has no [DONE] line and marks reasoning parts as thoughts."""
+
+    @property
+    def content(self) -> AsyncIterator[bytes]:
+        async def chunks() -> AsyncIterator[bytes]:
+            for parts, finish in (
+                ([{"text": "weighing it up", "thought": True}], None),
+                ([{"text": '{"is_violation": false, '}], None),
+                ([{"text": '"confidence": 0.9}'}], "STOP"),
+            ):
+                candidate: dict[str, Any] = {"content": {"role": "model", "parts": parts}}
+                if finish:
+                    candidate["finishReason"] = finish
+                yield f"data: {json.dumps({'candidates': [candidate]})}\n\n".encode()
+
+        return chunks()
+
+
+class VertexSession(FakeSession):
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def post(self, *args: object, **kwargs: Any) -> FakeErrorResponse:
+        self.calls.append({"url": args[0]} | kwargs)
+        return FakeVertexResponse()
+
+
+@pytest.mark.asyncio
+async def test_vertex_is_the_paid_last_resort_and_gets_its_own_request_shape(cog: UniMod) -> None:
+    session = VertexSession()
+    tokens = {"openai": {}, "gemini": {}, "vertex": {"api_key": "vertex-key"}}
+    cog.bot.get_shared_api_tokens = AsyncMock(side_effect=lambda service: tokens[service])  # type: ignore[method-assign]
+
+    with patch("unimod.unimod.aiohttp.ClientSession", return_value=session):
+        result = await cog._analyze_with_ai("system prompt", "user prompt")
+
+    assert result.is_violation is False
+    assert cog._last_ai_response == '{"is_violation": false, "confidence": 0.9}'
+    (call,) = session.calls
+    assert call["url"].endswith("/models/gemini-3.5-flash-lite:streamGenerateContent?alt=sse")
+    assert call["headers"]["x-goog-api-key"] == "vertex-key"
+    assert "Authorization" not in call["headers"]
+    body = call["json"]
+    assert body["systemInstruction"] == {"parts": [{"text": "system prompt"}]}
+    assert body["contents"] == [{"role": "user", "parts": [{"text": "user prompt"}]}]
+    assert body["generationConfig"] == {"maxOutputTokens": 10000, "temperature": 1.0}
