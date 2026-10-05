@@ -248,10 +248,14 @@ async def test_vertex_is_the_paid_last_resort_and_gets_its_own_request_shape(cog
     assert result.is_violation is False
     assert cog._last_ai_response == '{"is_violation": false, "confidence": 0.9}'
     (call,) = session.calls
-    assert call["url"].endswith("/models/gemini-3.5-flash-lite:streamGenerateContent?alt=sse")
+    assert call["url"].endswith("/models/gemini-3.8-flash:streamGenerateContent?alt=sse")
     assert call["headers"]["x-goog-api-key"] == "vertex-key"
     assert "Authorization" not in call["headers"]
     body = call["json"]
     assert body["systemInstruction"] == {"parts": [{"text": "system prompt"}]}
     assert body["contents"] == [{"role": "user", "parts": [{"text": "user prompt"}]}]
-    assert body["generationConfig"] == {"maxOutputTokens": 10000, "temperature": 1.0}
+    assert body["generationConfig"] == {
+        "maxOutputTokens": 10000,
+        "temperature": 1.0,
+        "thinkingConfig": {"thinkingLevel": "HIGH"},
+    }

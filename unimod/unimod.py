@@ -147,8 +147,14 @@ Analyze this conversation against the server rules, paying close attention to ch
             {"reasoning_effort": "high", "temperature": 1.0},
         ),
         ("NVIDIA NIM", NIM_ENDPOINT, "deepseek-ai/deepseek-v4.1-flash", "openai", {}),
-        # Paid last resort. Extra fields here go into Vertex's generationConfig.
-        ("Vertex AI", VERTEX_ENDPOINT, "gemini-3.5-flash-lite", "vertex", {"temperature": 1.0}),
+        # Paid last resort. Extra fields here go into Vertex's generationConfig, whose enums are upper case.
+        (
+            "Vertex AI",
+            VERTEX_ENDPOINT,
+            "gemini-3.8-flash",
+            "vertex",
+            {"temperature": 1.0, "thinkingConfig": {"thinkingLevel": "HIGH"}},
+        ),
     )
 
     def __init__(self, bot: Red):
