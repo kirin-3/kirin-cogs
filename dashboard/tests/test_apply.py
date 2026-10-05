@@ -11,11 +11,13 @@ import pytest
 
 from dashboard.apply import (
     APPLICATIONS_CHANNEL,
-    EMBED_PAGE,
     LONG_LIMIT,
     QUESTIONS,
+    SECTIONS,
+    SHORT_LIMIT,
     SITUATIONS,
-    application_embeds,
+    TONES,
+    application_messages,
     read_answers,
 )
 from dashboard.tests import test_member_site
@@ -50,7 +52,6 @@ def channel(ms: SimpleNamespace) -> MagicMock:
     channel.permissions_for.return_value = SimpleNamespace(view_channel=True, send_messages=True, embed_links=True)
     channel.send = AsyncMock()
     ms.bot.get_channel.side_effect = {APPLICATIONS_CHANNEL: channel}.get
-    ms.bot.get_embed_colour = AsyncMock(return_value=discord.Colour(0x9401FE))
     return channel
 
 
@@ -64,27 +65,64 @@ def test_required_answers_must_be_there_and_line_breaks_count_once() -> None:
     assert too_long == "Your answer to “Why do you want to do this?” is too long."
 
 
-def test_the_message_names_the_member_and_shows_every_question_with_its_answer() -> None:
-    (embed,) = application_embeds(_applicant(), _answers(why="first line\n\nsecond line", other=""), discord.Colour(1))
-    text = embed.description or ""
-    assert embed.title == "Staff application" and embed.author.name == "member0 (sparkle)"
-    assert f"<@{LEVEL_30}> (`sparkle`, `{LEVEL_30}`)" in text
-    assert f"**Level role:** <@&{DIVINE}>" in text  # the highest one
-    assert "### How you'd handle things\n*There's no right answer." in text
-    assert "talk us through them.*\n1. Two regulars roast" in text  # the situations, numbered for the picks
-    assert "\n7. Another staff member makes a call in chat that you think is wrong.\n**Your first pick**" in text
-    assert "**What should we call you, and what are your pronouns?** answer to name" in text
-    assert "**Why do you want to do this?**\n> first line\n> second line" in text
-    assert "**Anything else you want us to know?**\n> *No answer*" in text
+def test_the_message_is_a_header_then_a_card_per_section_with_every_answer() -> None:
+    (embeds,) = application_messages(_applicant(), _answers(why="first line\n\n  second line", other=""))
+    header, *sections = embeds
+    fields = {field.name: field.value for field in header.fields}
+    assert (
+        header.title == "📝 New staff application" and header.thumbnail.url == "https://cdn.discordapp.com/avatar.png"
+    )
+    assert fields["Member"] == f"<@{LEVEL_30}>\n`sparkle`" and fields["User ID"] == f"`{LEVEL_30}`"
+    assert fields["Level"] == f"<@&{DIVINE}>"  # the highest one
+    assert fields["Joined the server"] == "<t:1704067200:D>\n<t:1704067200:R>"
+    assert [e.title for e in sections] == [
+        "🌸 About you",
+        "💭 How you'd handle things",
+        "🫶 Being honest",
+        "✨ Last bit",
+    ]
+    assert [e.colour.value for e in sections if e.colour] == [TONES[section.tone] for section in SECTIONS]
+    handling, last = sections[1].description or "", sections[3].description or ""
+    assert handling.startswith("*There's no right answer.")
+    assert "**1.** Two regulars roast" in handling and "**7.** Another staff member" in handling  # for the picks
+    assert "**Your first pick**\n> answer to pick1\n\n**Your second pick**" in handling
+    assert "**Why do you want to do this?**\n> first line\n> second line" in last
+    assert last.endswith("**Anything else you want us to know?**\n*No answer*")
+    assert all(not e.footer.text and not e.author.name for e in embeds)  # one message needs no part numbers
 
 
-def test_a_long_application_is_split_into_parts_that_each_fit_an_embed() -> None:
-    answers = _answers(**{q.key: "word " * (LONG_LIMIT // 5) for q in QUESTIONS if q.long})
-    embeds = application_embeds(_applicant(), answers, discord.Colour(1))
-    assert len(embeds) > 1
-    assert all(len(e.description or "") <= EMBED_PAGE and e.author.name == "member0 (sparkle)" for e in embeds)
-    assert [e.footer.text for e in embeds] == [f"Part {n} of {len(embeds)}" for n in range(1, len(embeds) + 1)]
-    assert sum((e.description or "").count("> word") for e in embeds) == sum(q.long for q in QUESTIONS)
+def test_markdown_in_an_answer_cannot_restyle_the_message() -> None:
+    nasty = "# Heading\n```py\n> fake quote\n-# tiny\n**bold** [link](https://example.com)"
+    (embeds,) = application_messages(_applicant(), _answers(why=nasty))
+    expected = (
+        "> \\# Heading\n> \\`\\`\\`py\n> \\> fake quote\n> \\-# tiny\n> \\*\\*bold\\*\\* \\[link](https://example.com)"
+    )
+    assert expected in (embeds[-1].description or "")
+
+
+def test_a_full_application_is_packed_into_few_messages_that_each_say_where_they_are() -> None:
+    answers = {q.key: ("A fair answer with some detail. " * 50)[:LONG_LIMIT] if q.long else "x" * 60 for q in QUESTIONS}
+    messages = application_messages(_applicant(), answers)
+    cards = [embed for message in messages for embed in message][1:]
+    assert len(messages) <= 4
+    assert all(message[0].title for message in messages)  # every message starts with the section's name
+    assert all(not embed.title for message in messages for embed in message[1:] if "(continued)" in (embed.title or ""))
+    assert all("**" in (card.description or "") for card in cards)  # no card holds only a section's intro
+
+
+def test_an_application_at_every_limit_still_fits_discord_and_loses_nothing() -> None:
+    # Every character escaped and every other one a line break: the most an answer can grow in the message
+    answers = {q.key: "*\n" * (LONG_LIMIT // 2) if q.long else "*" * SHORT_LIMIT for q in QUESTIONS}
+    messages = application_messages(_applicant(), answers)
+    embeds = [embed for message in messages for embed in message]
+    assert len(messages) > 1
+    assert all(len(message) <= 10 and sum(map(len, message)) <= 6000 for message in messages)
+    assert all(len(embed.description or "") <= 4096 and len(embed.title or "") <= 256 for embed in embeds)
+    parts = [f"Staff application · part {n} of {len(messages)}" for n in range(1, len(messages) + 1)]
+    assert [message[-1].footer.text for message in messages] == parts
+    assert all(message[0].author.name == "member0 (sparkle)" for message in messages[1:])
+    quoted = [line for embed in embeds for line in (embed.description or "").splitlines() if line.startswith("> ")]
+    assert len(quoted) == sum(LONG_LIMIT // 2 if q.long else 1 for q in QUESTIONS)
 
 
 @pytest.mark.asyncio
@@ -96,7 +134,9 @@ async def test_only_level_30_members_see_the_tile_and_the_page(ms: SimpleNamespa
     response = await _post(ms, REGULAR, "/apply", _answers())
     assert 'href="/apply"' in home and 'href="/apply"' not in other_home
     assert status == 200 and page.count("<textarea") == sum(q.long for q in QUESTIONS)
-    assert page.count("<li>") == len(SITUATIONS) and "<li>Two regulars roast" in page
+    situations = page.split('<ol class="situations">')[1].split("</ol>")[0]
+    assert situations.count("<li>") == len(SITUATIONS) and "<li>Two regulars roast" in situations
+    assert "senior staff or Kirin rather than" in page and page.count("data-count") == page.count("<textarea")
     assert refused == 403 and response.status == 403 and not channel.send.called
 
 
@@ -109,10 +149,10 @@ async def test_an_application_is_posted_once_and_the_member_must_wait_a_week(
     _, later = await _get(ms, LEVEL_30, "/apply")
     again = await _post(ms, LEVEL_30, "/apply", _answers(why="me <b>again</b>"))
     assert response.status == 303 and response.headers["Location"] == "/apply?sent=1"
-    assert "was sent to the staff" in thanks and "You can send another in 7 days." in later
+    assert "Your application is with the staff now." in thanks and "You can send another in 7 days." in later
     assert channel.send.await_count == 1
     kwargs = channel.send.await_args.kwargs
-    assert kwargs["embed"].title == "Staff application" and kwargs["allowed_mentions"].users is False
+    assert kwargs["embeds"][0].title == "📝 New staff application" and kwargs["allowed_mentions"].users is False
     page = await again.text()
     assert again.status == 400 and "You can send another in 7 days." in page
     assert "me &lt;b&gt;again&lt;/b&gt;</textarea>" in page  # the answers come back, escaped

@@ -1,36 +1,74 @@
 {% extends "member/base.html" %}
 {% block title %}Apply for staff{% endblock %}
 {% block content %}
-<h1>Apply for staff</h1>
-<p class="sub">We go through applications when we need staff. If you're accepted, a staff member will contact you, and you'll start as a Helper. Please only talk to staff about your application if you have questions while filling it out, or if they contact you first.</p>
+<div class="apply">
+<section class="hello">
+  {% if user_avatar(session.user_id) %}<img src="{{ user_avatar(session.user_id) }}" alt="" width="72" height="72">{% endif %}
+  <div>
+    <p class="eyebrow">psst, wanna help look after this place? ♡</p>
+    <h1>Apply for <span class="squiggle">staff</span></h1>
+    <p>Grab a drink and get comfy. This takes about 15 minutes.</p>
+  </div>
+</section>
+
 {% if sent %}
-<p class="note">Thanks! Your application was sent to the staff.</p>
+<section class="card washi tone-lavender">
+  <span class="sticker big" aria-hidden="true">💌</span>
+  <h2>Thank you, {{ member.display_name }}!</h2>
+  <p>Your application is with the staff now. We go through applications when we need staff, so it can take a while. If you're accepted, a staff member will reach out to you.</p>
+  <p><a class="button" href="/">Back home</a></p>
+</section>
 {% elif days %}
-<p class="note">You've already sent an application. You can send another in {{ days }} day{{ "s" if days != 1 }}.</p>
+<section class="card washi tone-peach">
+  <span class="sticker big" aria-hidden="true">⏳</span>
+  <h2>You've already applied</h2>
+  <p>Your application is with the staff. You can send another in {{ days }} day{{ "s" if days != 1 }}.</p>
+  <p><a class="button" href="/">Back home</a></p>
+</section>
 {% else %}
-<form method="post" action="/apply">
+<section class="panel apply-intro">
+  <h2>Before you start</h2>
+  <ul>
+    <li><span aria-hidden="true">💜</span> There are no trick questions. We'd rather read your own words than perfect ones.</li>
+    <li><span aria-hidden="true">🌱</span> If you're accepted, a staff member will contact you, and you'll start as a Helper.</li>
+    <li><span aria-hidden="true">📬</span> We go through applications when we need staff, so it can take a while.</li>
+    <li><span aria-hidden="true">🤫</span> Please only talk to staff about your application if you have questions while filling it out, or if they reach out first.</li>
+    <li><span aria-hidden="true">💾</span> If something goes wrong when you send it, your answers stay right here.</li>
+  </ul>
+</section>
+
+<form class="editor apply-form" method="post" action="/apply">
   <input type="hidden" name="csrf" value="{{ session.csrf }}">
   {% for section in sections %}
-  <section class="panel">
-    <h2>{{ section.title }}</h2>
-    {% if section.text %}<p>{{ section.text }}</p>{% endif %}
-    {% if section.items %}<ol>{% for item in section.items %}<li>{{ item }}</li>{% endfor %}</ol>{% endif %}
-    <div class="editor">
-      {% for question in section.questions %}
-      <label>{{ question.label }}
-        {% if not question.required %}<small>Optional</small>{% endif %}
-        {% if question.hint %}<small>{{ question.hint }}</small>{% endif %}
-        {% if question.long %}
-        <textarea name="{{ question.key }}" rows="4" maxlength="{{ long_limit }}"{% if question.required %} required{% endif %}>{{ answers.get(question.key, "") }}</textarea>
-        {% else %}
-        <input type="text" name="{{ question.key }}" maxlength="{{ short_limit }}" value="{{ answers.get(question.key, '') }}"{% if question.required %} required{% endif %}>
-        {% endif %}
-      </label>
-      {% endfor %}
-    </div>
+  <section class="panel washi apply-step tone-{{ section.tone }}">
+    <header class="step-head">
+      <span class="sticker" aria-hidden="true">{{ section.emoji }}</span>
+      <div>
+        <p class="step-count">part {{ loop.index }} of {{ loop.length }}</p>
+        <h2>{{ section.title }}</h2>
+      </div>
+    </header>
+    {% if section.text %}<p class="step-text">{{ section.text }}</p>{% endif %}
+    {% if section.items %}<ol class="situations">{% for item in section.items %}<li>{{ item }}</li>{% endfor %}</ol>{% endif %}
+    {% for question in section.questions %}
+    <label class="question">
+      <span>{{ question.label }}{% if not question.required %} <span class="badge">optional</span>{% endif %}</span>
+      {% if question.hint %}<small>{{ question.hint }}</small>{% endif %}
+      {% if question.long %}
+      <textarea name="{{ question.key }}" rows="5" maxlength="{{ long_limit }}" data-count{% if question.required %} required{% endif %}>{{ answers.get(question.key, "") }}</textarea>
+      {% else %}
+      <input type="text" name="{{ question.key }}" maxlength="{{ short_limit }}" value="{{ answers.get(question.key, '') }}"{% if question.required %} required{% endif %}>
+      {% endif %}
+    </label>
+    {% endfor %}
   </section>
   {% endfor %}
-  <p class="actions"><button class="primary" type="submit">Send application</button></p>
+  <section class="apply-send">
+    <p class="eyebrow">all done? ♡</p>
+    <p>Read it over once, then send it our way.</p>
+    <button class="primary big" type="submit">Send my application 💌</button>
+  </section>
 </form>
 {% endif %}
+</div>
 {% endblock %}

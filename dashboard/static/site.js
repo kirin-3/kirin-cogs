@@ -208,3 +208,17 @@ addEventListener("beforeunload", (event) => {
     event.returnValue = "";
   }
 });
+
+// Long answers show how much room is left, so the length limit never cuts anyone off by surprise.
+for (const field of document.querySelectorAll("textarea[data-count]")) {
+  const counter = document.createElement("small");
+  counter.className = "count";
+  const update = () => {
+    const used = field.value.length;
+    counter.textContent = `${used.toLocaleString()} / ${field.maxLength.toLocaleString()}`;
+    counter.classList.toggle("near", used >= field.maxLength * 0.9);
+  };
+  field.addEventListener("input", update);
+  field.after(counter);
+  update();
+}

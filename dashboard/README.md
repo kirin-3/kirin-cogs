@@ -72,10 +72,14 @@ they'd hand something up. The questions are `SECTIONS` in `apply.py`; the page, 
 are all built from it. The home page shows the tile to members with a level role from Level 30 up; anyone else gets
 403. The form doesn't ask for anything the embed already shows (Discord name, level, join date).
 
-A sent application is posted to the applications channel `1418772229633605692` as an embed: the member's mention, name,
-ID, highest level role, join date and account age, then a heading per section with each question in bold and the answer
-under it. A long application is split over several messages, each marked "Part 1 of 3" and naming the member. Mentions
-in it never ping. The bot needs View Channel, Send Messages and Embed Links there; without them, or if the channel is
+A sent application is posted to the applications channel `1418772229633605692` as embeds. A lavender header shows the
+member's avatar, mention, name, ID, highest level role, join date and account age. Then each section gets its own
+card in the pastel it has on the page, with each question in bold and the answer quoted under it. Markdown in an
+answer is escaped, so a heading or code block someone types can't restyle the message. Answers are packed in order
+into as few messages as Discord's limits allow (4096 characters an embed, 6000 a message), and an answer is only split,
+at a line break, if it's too long for an embed on its own (only with extreme input, such as 750 one-symbol lines). A typical application is one or
+two messages, and one with every answer full is four. When there's more than one, each is numbered ("part 2 of 4"),
+each after the first names the member, and each starts with the name of the section it continues. Mentions never ping. The bot needs View Channel, Send Messages and Embed Links there; without them, or if the channel is
 gone, the member is told to try later and a warning is logged.
 
 Short answers take up to 200 characters and long ones 1,500. A refused application (a missing answer, the channel
