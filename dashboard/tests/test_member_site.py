@@ -776,12 +776,16 @@ async def test_roleplay_page_shows_stats_and_top_pairs_by_name(ms: SimpleNamespa
         "received_total": 0,
         "partners": [(ACTIVE, 3)],
     }
-    rp.top_pairs.return_value = [{"a": ACTIVE, "b": 42, "total": 3, "actions": [("hug", 3)]}]
+    rp.top_pairs.return_value = [{"a": ACTIVE, "b": REGULAR, "total": 3, "actions": [("hug", 3)]}]
 
     _, page = await _get(ms, REGULAR, "/roleplay")
 
     assert "Favourite partners" in page and "member2" in page
-    assert "Unknown user" in page and "hug 3" in page
+    assert "Unknown user" not in page and "hug 3" in page
+    # Members who left (42) are filtered out by the Roleplay cog
+    for call in (rp.stats_for, rp.top_pairs):
+        keep = call.call_args.kwargs["keep"]
+        assert keep(ACTIVE) and not keep(42)
 
 
 @pytest.mark.asyncio

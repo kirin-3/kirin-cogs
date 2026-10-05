@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from collections import Counter
+from collections.abc import Callable
 from io import BufferedIOBase
 from math import ceil
 from pathlib import Path
@@ -121,8 +122,10 @@ class Roleplay(commands.Cog):
         await self.user_settings.config.user_from_id(user_id).get_attr(key).set(bool(value))
         await self.setting_changed(user_id, key, bool(value))
 
-    async def stats_for(self, user_id: int) -> dict:
-        """A member's own counts for the member site: totals, top actions and top partners (as user IDs)."""
+    async def stats_for(self, user_id: int, keep: Callable[[int], bool] = lambda _: True) -> dict:
+        """A member's own counts for the member site: totals, top actions and top partners (as user IDs).
+
+        Only partners ``keep`` accepts are listed; the totals still count everyone."""
         if await self.is_untracked(user_id):
             return {"untracked": True}
         given, received, partners = member_stats(await self.tally.pairs(), user_id)
@@ -132,7 +135,7 @@ class Roleplay(commands.Cog):
             "given_total": given.total(),
             "received": received.most_common(5),
             "received_total": received.total(),
-            "partners": partners.most_common(5),
+            "partners": Counter({uid: n for uid, n in partners.items() if keep(uid)}).most_common(5),
         }
 
     async def action_counts(self, user_id: int) -> Counter[str] | None:
@@ -142,11 +145,14 @@ class Roleplay(commands.Cog):
         given, received, _ = member_stats(await self.tally.pairs(), user_id)
         return given + received
 
-    async def top_pairs(self, limit: int = 10) -> list[dict]:
-        """The busiest pairs on the server for the member site, as user IDs, with their top actions."""
+    async def top_pairs(self, limit: int = 10, keep: Callable[[int], bool] = lambda _: True) -> list[dict]:
+        """The busiest pairs on the server for the member site, as user IDs, with their top actions.
+
+        Only pairs where ``keep`` accepts both members are ranked."""
+        pairs = {ids: counts for ids, counts in (await self.tally.pairs()).items() if keep(ids[0]) and keep(ids[1])}
         return [
             {"a": a, "b": b, "total": counts.total(), "actions": counts.most_common(3)}
-            for a, b, counts in top_pairs(await self.tally.pairs(), limit)
+            for a, b, counts in top_pairs(pairs, limit)
         ]
 
     # --- Gifs, for the member and staff sites ---

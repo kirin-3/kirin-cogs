@@ -4,6 +4,12 @@
 
  - Add support for for pronouns. Currently, there is no way to retrieve pronouns from a discord.User profile
 
+## [2.10.6] - 2026-10-05
+
+### Changed
+
+- The member site's favourite partners and top pairs leave out people who have left the server, instead of showing them as "Unknown user". Their counts are kept, and the totals still include them
+
 ## [2.10.5] - 2026-10-02
 
 ### Fixed

@@ -179,10 +179,17 @@ class MemberSite:
             else:
                 ids = value if isinstance(value, list) else []
                 lists.append({"key": key, **item, "names": [self._name(user_id) for user_id in ids]})
-        stats = await rp.stats_for(request["member"].id)
+
+        def present(user_id: int) -> bool:  # members who left stay counted but aren't shown
+            return self.cog.member(user_id) is not None
+
+        stats = await rp.stats_for(request["member"].id, keep=present)
         if not stats["untracked"]:
             stats["partners"] = [(self._name(user_id), times) for user_id, times in stats["partners"]]
-        pairs = [{**pair, "a": self._name(pair["a"]), "b": self._name(pair["b"])} for pair in await rp.top_pairs()]
+        pairs = [
+            {**pair, "a": self._name(pair["a"]), "b": self._name(pair["b"])}
+            for pair in await rp.top_pairs(keep=present)
+        ]
         return self._render(
             request, "roleplay.html", status=status, toggles=toggles, lists=lists, stats=stats, pairs=pairs, error=error
         )

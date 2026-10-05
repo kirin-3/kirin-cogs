@@ -139,6 +139,11 @@ async def test_member_site_gets_stats_and_top_pairs_as_ids(red_env: simcord.Env)
     }
     assert (await cog.top_pairs())[0] == {"a": 1, "b": 2, "total": 2, "actions": [("hug", 1), ("kiss", 1)]}
 
+    # A partner who left (2) is left out of the lists, not the totals
+    gone = await cog.stats_for(1, keep=lambda uid: uid != 2)
+    assert gone["partners"] == [(3, 1)] and gone["received_total"] == 2
+    assert await cog.top_pairs(keep=lambda uid: uid != 2) == [{"a": 1, "b": 3, "total": 1, "actions": [("pat", 1)]}]
+
     await cog.set_toggle(1, "untracked", True)
     assert await cog.stats_for(1) == {"untracked": True}
     assert await cog.top_pairs() == []
