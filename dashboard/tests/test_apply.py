@@ -30,7 +30,7 @@ PLATINUM, DIVINE = 714508825071190086, 721360680770469958
 
 
 def _answers(**changes: str) -> dict[str, str]:
-    return {q.key: f"answer to {q.key}" for q in QUESTIONS} | changes
+    return {q.key: "24" if q.digits else f"answer to {q.key}" for q in QUESTIONS} | changes
 
 
 def _applicant() -> Any:
@@ -63,6 +63,15 @@ def test_required_answers_must_be_there_and_line_breaks_count_once() -> None:
     assert missing == "Answer “What's your time zone, and when are you usually around?” too."
     assert error == "" and "\r" not in answers["why"]
     assert too_long == "Your answer to “Why do you want to do this?” is too long."
+
+
+@pytest.mark.parametrize("age", ["7", "123", "2a", "twenty", " 2 4", "²⁴", "٢٤", "-1"])
+def test_the_age_must_be_a_two_digit_number(age: str) -> None:
+    assert read_answers(_answers(age=age))[1] == "Answer “How old are you?” with a 2-digit number."
+
+
+def test_a_two_digit_age_is_accepted() -> None:
+    assert read_answers(_answers(age="24")) == (_answers(age="24"), "")
 
 
 def test_the_message_is_a_header_then_a_card_per_section_with_every_answer() -> None:
@@ -137,6 +146,8 @@ async def test_only_level_30_members_see_the_tile_and_the_page(ms: SimpleNamespa
     situations = page.split('<ol class="situations">')[1].split("</ol>")[0]
     assert situations.count("<li>") == len(SITUATIONS) and "<li>Two regulars roast" in situations
     assert "senior staff or Kirin rather than" in page and page.count("data-count") == page.count("<textarea")
+    assert 'name="age" inputmode="numeric" pattern="[0-9]{2}" maxlength="2"' in page  # a box, not a drop-down
+    assert "<select" not in page
     assert refused == 403 and response.status == 403 and not channel.send.called
 
 

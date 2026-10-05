@@ -56,6 +56,8 @@
       {% if question.hint %}<small>{{ question.hint }}</small>{% endif %}
       {% if question.long %}
       <textarea name="{{ question.key }}" rows="5" maxlength="{{ long_limit }}" data-count{% if question.required %} required{% endif %}>{{ answers.get(question.key, "") }}</textarea>
+      {% elif question.digits %}
+      <input class="digits" type="text" name="{{ question.key }}" inputmode="numeric" pattern="[0-9]{{ '{' }}{{ question.digits }}{{ '}' }}" maxlength="{{ question.digits }}" title="A number with {{ question.digits }} digits" value="{{ answers.get(question.key, '') }}"{% if question.required %} required{% endif %}>
       {% else %}
       <input type="text" name="{{ question.key }}" maxlength="{{ short_limit }}" value="{{ answers.get(question.key, '') }}"{% if question.required %} required{% endif %}>
       {% endif %}

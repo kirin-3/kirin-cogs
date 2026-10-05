@@ -82,7 +82,8 @@ two messages, and one with every answer full is four. When there's more than one
 each after the first names the member, and each starts with the name of the section it continues. Mentions never ping. The bot needs View Channel, Send Messages and Embed Links there; without them, or if the channel is
 gone, the member is told to try later and a warning is logged.
 
-Short answers take up to 200 characters and long ones 1,500. A refused application (a missing answer, the channel
+Short answers take up to 200 characters and long ones 1,500. The age is a plain box (no drop-down) that takes a
+two-digit number, checked by the browser and again by the bot. A refused application (a missing answer, the channel
 unavailable, sent too soon) comes back with the answers still filled in. A member can send one application a week. The
 bot only remembers when, in memory, so a restart lets them send another; nothing about the application is stored.
 

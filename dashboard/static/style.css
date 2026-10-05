@@ -586,3 +586,4 @@ progress::-moz-progress-bar { background: linear-gradient(90deg, var(--pink), va
 .apply-send { text-align: center; }
 .apply-send p { margin: 0 0 12px; color: var(--muted); }
 .apply-send .primary { padding: 12px 28px; font-size: 1.1rem; }
+.apply-step input.digits { width: 6rem; text-align: center; }

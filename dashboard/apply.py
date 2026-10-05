@@ -46,6 +46,7 @@ class Question(NamedTuple):
     long: bool = False
     required: bool = True
     hint: str = ""
+    digits: int = 0  # when set, the answer must be a number with exactly this many digits
 
 
 class Section(NamedTuple):
@@ -79,6 +80,7 @@ SECTIONS = (
         "The easy part, so we know who we're talking to.",
         (
             Question("name", "What should we call you, and what are your pronouns?", hint="Pronouns are optional."),
+            Question("age", "How old are you?", digits=2),
             Question("around", "What's your time zone, and when are you usually around?"),
             Question("time", "How much time could you realistically give us in a week?"),
             Question("unicornia", "What do you like about Unicornia, and what's one thing you'd change?", long=True),
@@ -158,6 +160,10 @@ def read_answers(form: Any) -> tuple[dict[str, str], str]:
             return answers, f"Answer “{q.label}” too."
         if len(answers[q.key]) > (LONG_LIMIT if q.long else SHORT_LIMIT):
             return answers, f"Your answer to “{q.label}” is too long."
+        answer = answers[q.key]
+        # isascii: isdigit alone also takes "²" and other scripts' digits
+        if q.digits and answer and not (answer.isascii() and answer.isdigit() and len(answer) == q.digits):
+            return answers, f"Answer “{q.label}” with a {q.digits}-digit number."
     return answers, ""
 
 
