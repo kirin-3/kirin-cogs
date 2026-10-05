@@ -333,8 +333,8 @@ class MarketSystem:
                 reserve_after=quote.reserve_after,
             )
             if not executed:
-                wallet = await self.db.economy.get_user_currency(user.id)
-                return False, f"Insufficient funds. You need {total_cost} but have {wallet}."
+                balance = await self.db.economy.get_spendable(user.id)
+                return False, f"Insufficient funds. You need {total_cost} but have {balance}."
 
             # Update Cache locally
             self.stocks_cache[symbol]["total_shares"] += amount

@@ -309,7 +309,7 @@ class ShopRepository:
                 ) = entry
 
                 # Check if user has enough currency
-                user_balance = await self.db.economy._get_user_currency(user_id, db)
+                user_balance = await self.db.economy._get_spendable(user_id, db)
                 if user_balance < price:
                     await db.execute("ROLLBACK")
                     return False, f"Insufficient currency. You need {price:,} but have {user_balance:,}"

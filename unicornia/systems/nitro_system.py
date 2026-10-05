@@ -85,11 +85,11 @@ class NitroSystem:
             price = await self.get_price(item_type)
             if price <= 0:
                 return False, "This item has no price set."
-            wallet, _bank = await self.economy_system.get_balance(ctx.author.id)
-            if wallet < price:
+            wallet, bank = await self.economy_system.get_balance(ctx.author.id)
+            if wallet + bank < price:
                 return (
                     False,
-                    f"You need {humanize_number(price)} to purchase this item. You only have {humanize_number(wallet)} in your wallet.",
+                    f"You need {humanize_number(price)} to purchase this item. You only have {humanize_number(wallet + bank)} in your wallet and bank.",
                 )
 
             # Stock first: a crash before the order is written loses a unit of stock, never a paid order

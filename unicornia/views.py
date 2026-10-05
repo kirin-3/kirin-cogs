@@ -821,7 +821,7 @@ class TransactionModal(ui.Modal):
 
                 success = await self.cog.economy_system.give_currency(interaction.user.id, target_user.id, amount)
                 msg = f"<a:zz_YesTick:729318762356015124> Gave {currency_symbol}{amount:,} to {target_user.mention}!"
-                fail_msg = "❌ Insufficient funds in your wallet."
+                fail_msg = "❌ Insufficient funds in your wallet and bank."
 
             if success:
                 await interaction.response.send_message(msg, ephemeral=True)

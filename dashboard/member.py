@@ -269,13 +269,13 @@ class MemberSite:
 
     async def backgrounds(self, request: web.Request, *, error: str = "", status: int = 200) -> web.Response:
         member, uni = self._unicornia(request)
-        wallet, _bank = await uni.get_balance(member.id)
+        wallet, bank = await uni.get_balance(member.id)
         return self._render(
             request,
             "backgrounds.html",
             status=status,
             backgrounds=await uni.backgrounds_for(member),
-            wallet=wallet,
+            spendable=wallet + bank,
             currency=await uni.config.currency_name(),
             error=error,
         )

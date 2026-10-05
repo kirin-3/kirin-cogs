@@ -6,12 +6,15 @@ import logging
 import re
 from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import aiosqlite
 
 from ..stock_market import INITIAL_SHARE_RESERVE, P_BASE
-from .core import CoreDB
 from .economy import POOL_SOURCE_TRADE_TAX
+
+if TYPE_CHECKING:
+    from ..database import DatabaseManager
 
 log = logging.getLogger("red.kirin_cogs.unicornia.database")
 
@@ -19,7 +22,7 @@ log = logging.getLogger("red.kirin_cogs.unicornia.database")
 class StockRepository:
     """Handles database operations for the Stock Market"""
 
-    def __init__(self, db: CoreDB):
+    def __init__(self, db: "DatabaseManager"):
         self.db = db
 
     @staticmethod
@@ -158,14 +161,7 @@ class StockRepository:
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
             try:
-                debit = await db.execute(
-                    """
-                    UPDATE DiscordUser SET CurrencyAmount = CurrencyAmount - ?
-                    WHERE UserId = ? AND CurrencyAmount >= ?
-                    """,
-                    (total_cost, user_id, total_cost),
-                )
-                if debit.rowcount == 0:
+                if not await self.db.economy._debit(user_id, total_cost, db):
                     await db.execute("ROLLBACK")
                     return False
 

@@ -363,12 +363,6 @@ class StableSystem:
         )
 
     @staticmethod
-    async def _balance(conn, user_id: int) -> int:
-        cursor = await conn.execute("SELECT CurrencyAmount FROM DiscordUser WHERE UserId = ?", (user_id,))
-        row = await cursor.fetchone()
-        return int(row[0]) if row and row[0] is not None else 0
-
-    @staticmethod
     async def _save(conn, user_id: int, now: float, box: float, box_size: int) -> None:
         await conn.execute(
             """
@@ -413,14 +407,14 @@ class StableSystem:
             if price is None:
                 await conn.rollback()
                 return None, f"Your stable is full ({MAX_UNICORNS} unicorns). Release one to make room."
-            # A free egg (Clover) still has to be affordable, so the wallet is checked before the free roll
-            if await self._balance(conn, user_id) < price:
+            # A free egg (Clover) still has to be affordable, so wallet and bank are checked before the free roll
+            if await self.db.economy._get_spendable(user_id, conn) < price:
                 await conn.rollback()
-                return None, f"An egg costs **{price:,}** and you don't have enough in your wallet."
+                return None, f"An egg costs **{price:,}** and you don't have enough in your wallet and bank."
             free = state.modifiers.free_egg_chance > 0 and self.rng.random() < state.modifiers.free_egg_chance
             if not free and not await self._buy(conn, user_id, price, "stable_egg", "Stable egg"):
                 await conn.commit()
-                return None, f"An egg costs **{price:,}** and you don't have enough in your wallet."
+                return None, f"An egg costs **{price:,}** and you don't have enough in your wallet and bank."
             breed, shiny = roll_hatch(self.rng, active_season(now), state.modifiers)
             await conn.execute(
                 "INSERT INTO StableUnicorn (UserId, Breed, Shiny) VALUES (?, ?, ?)", (user_id, breed, int(shiny))
@@ -459,7 +453,10 @@ class StableSystem:
                 return False, f"**{unicorn.safe_label}** is already level {MAX_LEVEL}."
             if not await self._buy(conn, user_id, price, "stable_upgrade", "Stable unicorn level"):
                 await conn.commit()
-                return False, f"Level {unicorn.level + 1} costs **{price:,}** and you don't have enough in your wallet."
+                return (
+                    False,
+                    f"Level {unicorn.level + 1} costs **{price:,}** and you don't have enough in your wallet and bank.",
+                )
             await conn.execute("UPDATE StableUnicorn SET Level = Level + 1 WHERE Id = ?", (unicorn.id,))
             await self._save(conn, user_id, now, state.box, state.box_size)
             await conn.commit()
@@ -477,7 +474,10 @@ class StableSystem:
             hours, price = state.next_box
             if not await self._buy(conn, user_id, price, "stable_box", "Stable coin box"):
                 await conn.commit()
-                return False, f"A {hours}-hour coin box costs **{price:,}** and you don't have enough in your wallet."
+                return (
+                    False,
+                    f"A {hours}-hour coin box costs **{price:,}** and you don't have enough in your wallet and bank.",
+                )
             await self._save(conn, user_id, now, state.box, state.box_size + 1)
             await conn.commit()
         return True, f"📦 Your coin box now holds {hours} hours of earnings."

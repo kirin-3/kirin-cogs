@@ -4,7 +4,7 @@
 {% include "member/_account.html" %}
 <p class="eyebrow">dress up your rank card ♡</p>
 <h1><span class="squiggle">Backgrounds</span></h1>
-<p class="sub">The background of your rank card. <span class="badge">{{ "{:,}".format(wallet) }} {{ currency }} in your wallet</span></p>
+<p class="sub">The background of your rank card. <span class="badge">{{ "{:,}".format(spendable) }} {{ currency }} in your wallet and bank</span></p>
 <div class="bg-grid">
   {% for bg in backgrounds %}
   <article class="bg-card{% if bg.equipped %} equipped{% endif %}">

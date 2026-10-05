@@ -107,7 +107,7 @@ class BackgroundShopView(discord.ui.View):
             return
 
         # Check balance
-        user_balance = await self.ctx.cog.db.economy.get_user_currency(self.ctx.author.id)
+        user_balance = await self.ctx.cog.db.economy.get_spendable(self.ctx.author.id)
         if user_balance < price:
             currency_symbol = await self.ctx.cog.config.currency_symbol()
             await interaction.response.send_message(

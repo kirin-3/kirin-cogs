@@ -111,7 +111,7 @@ class EconomyCommands(UnicorniaMixinBase):
         """
         Transfer currency to another user.
 
-        Money is taken from your wallet.
+        Money is taken from your wallet, then your bank.
 
         **Syntax**
         `[p]economy give <amount> <member> [note]`

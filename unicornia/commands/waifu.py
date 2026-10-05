@@ -83,7 +83,7 @@ class WaifuCommands(UnicorniaMixinBase):
                     discount_text = f" (20% affinity discount applied! Original: {base_price:,})"
 
             # Check if user has enough currency
-            user_balance = await self.db.economy.get_user_currency(ctx.author.id)
+            user_balance = await self.db.economy.get_spendable(ctx.author.id)
             if user_balance < final_price:
                 await ctx.send(
                     f"<a:zz_NoTick:729318761655435355> You need {currency_symbol}{final_price:,} but only have {currency_symbol}{user_balance:,}!"

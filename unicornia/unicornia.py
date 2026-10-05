@@ -454,7 +454,7 @@ class Unicornia(
         self, user_id: int, amount: int, reason: str = "External API", source: str = "external"
     ) -> bool:
         """
-        Remove currency from a user's wallet.
+        Remove currency from a user's wallet, taking any shortfall from their bank.
 
         Args:
             user_id: The ID of the user.
@@ -495,13 +495,13 @@ class Unicornia(
             raise ValueError(f"Background `{key}` is no longer available for purchase.")
         if await self.db.xp.user_owns_xp_item(member.id, 1, key):
             raise ValueError("You already own this background!")
-        balance = await self.db.economy.get_user_currency(member.id)
+        balance = await self.db.economy.get_spendable(member.id)
         if balance < price:
             raise ValueError(f"Insufficient Slut points! You have {balance:,} but need {price:,}.")
         if not await self.db.xp.purchase_xp_item(member.id, 1, key, price):
             if await self.db.xp.user_owns_xp_item(member.id, 1, key):
                 raise ValueError("You already own this background!")
-            balance = await self.db.economy.get_user_currency(member.id)
+            balance = await self.db.economy.get_spendable(member.id)
             raise ValueError(f"Insufficient Slut points! You have {balance:,} but need {price:,}.")
         await self.db.xp.set_active_xp_item(member.id, 1, key)
         return background.get("name", key)

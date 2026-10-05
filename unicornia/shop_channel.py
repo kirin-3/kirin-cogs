@@ -602,7 +602,7 @@ class ShopChannelMixin(UnicorniaMixinBase):
         role = guild.get_role(item["role_id"] or 0) if item["type"] == self.db.shop.SHOP_TYPE_ROLE else None
         what = role.mention if role else f"**{item['name']}**"
         symbol = await self.config.currency_symbol()
-        balance = await self.db.economy.get_user_currency(member.id)
+        balance = await self.db.economy.get_spendable(member.id)
         await interaction.response.send_message(
             f"Buy {what} for {item['price']:,} {symbol}?\nYou have {balance:,} {symbol}.",
             view=BuyConfirm(self, item, what),

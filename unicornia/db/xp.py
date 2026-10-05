@@ -391,17 +391,8 @@ class XPRepository:
             if await self._user_owns_xp_item(user_id, item_type, item_key, db):
                 return False
 
-            # Atomic deduction
-            cursor = await db.execute(
-                """
-                UPDATE DiscordUser
-                SET CurrencyAmount = CurrencyAmount - ?
-                WHERE UserId = ? AND CurrencyAmount >= ?
-            """,
-                (price, user_id, price),
-            )
-
-            if cursor.rowcount == 0:
+            # Wallet first, then bank
+            if not await self.db.economy._debit(user_id, price, db):
                 return False
 
             # Add item to user's collection

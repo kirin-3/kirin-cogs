@@ -70,21 +70,10 @@ Stores accumulated gambling losses.
 ## Key Features
 
 ### 1. Atomic Transactions
-To prevent race conditions (e.g., a user spending the same money twice in split-second commands), all balance deductions use **Atomic SQL Updates**:
-
-```sql
-UPDATE DiscordUser
-SET CurrencyAmount = CurrencyAmount - ?
-WHERE UserId = ? AND CurrencyAmount >= ?
-```
-
-If the user's balance is insufficient, the `UPDATE` affects 0 rows, and the transaction is aborted at the database level. This is far more secure than a "Read -> Check -> Write" pattern in application code.
+Every payment goes through `EconomyRepository._debit`, which takes the amount from the wallet and any shortfall from the bank, inside the caller's transaction. All database access shares one connection behind a lock, so the balances can't change between `_debit`'s read and its writes, and a user can't spend the same money twice in split-second commands. If wallet and bank together fall short, nothing changes and the caller rolls back.
 
 ### 2. Banking System
-Users have a separate "Bank" account. This separation is useful for:
-*   Protecting funds from accidental spending.
-*   Future implementation of interest systems.
-*   Role-playing elements.
+Users have a separate "Bank" account, which decays at its own (usually lower) rate. Purchases, bets, transfers and other payments spend the wallet first and then the bank, so nobody has to withdraw before buying. Winnings and refunds land in the wallet. Betting `all` stakes only the wallet.
 
 ### 3. Gambling System
 The gambling module integrates deeply with the economy:

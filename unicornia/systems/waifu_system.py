@@ -68,7 +68,7 @@ class WaifuSystem:
             return False, "Gift not found. Use `[p]gifts` to see available items."
 
         # Check balance
-        giver_balance = await self.db.economy.get_user_currency(giver.id)
+        giver_balance = await self.db.economy.get_spendable(giver.id)
         if giver_balance < gift["price"]:
             return False, f"Not enough currency. You need {gift['price']}."
 

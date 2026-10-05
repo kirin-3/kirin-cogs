@@ -162,16 +162,7 @@ class WaifuRepository:
             await db.execute("BEGIN")
             try:
                 # 1. Deduct from claimer
-                cursor = await db.execute(
-                    """
-                    UPDATE DiscordUser
-                    SET CurrencyAmount = CurrencyAmount - ?
-                    WHERE UserId = ? AND CurrencyAmount >= ?
-                """,
-                    (price, claimer_id, price),
-                )
-
-                if cursor.rowcount == 0:
+                if not await self.db.economy._debit(claimer_id, price, db):
                     # Insufficient funds
                     await db.execute("ROLLBACK")
                     return False
@@ -265,16 +256,7 @@ class WaifuRepository:
             await db.execute("BEGIN")
             try:
                 # 1. Deduct currency
-                cursor = await db.execute(
-                    """
-                    UPDATE DiscordUser
-                    SET CurrencyAmount = CurrencyAmount - ?
-                    WHERE UserId = ? AND CurrencyAmount >= ?
-                """,
-                    (gift_price, giver_id, gift_price),
-                )
-
-                if cursor.rowcount == 0:
+                if not await self.db.economy._debit(giver_id, gift_price, db):
                     await db.execute("ROLLBACK")
                     return None
 
@@ -342,16 +324,7 @@ class WaifuRepository:
                     return False
 
                 # 1. Deduct currency
-                cursor = await db.execute(
-                    """
-                    UPDATE DiscordUser
-                    SET CurrencyAmount = CurrencyAmount - ?
-                    WHERE UserId = ? AND CurrencyAmount >= ?
-                """,
-                    (price, claimer_id, price),
-                )
-
-                if cursor.rowcount == 0:
+                if not await self.db.economy._debit(claimer_id, price, db):
                     await db.execute("ROLLBACK")
                     return False
 

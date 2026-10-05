@@ -419,7 +419,7 @@ class EconomyRepository:
         other_id: int | None = None,
         note: str = "",
     ) -> bool:
-        """Remove currency from user's wallet.
+        """Remove currency from user's wallet, taking any shortfall from their bank.
 
         Args:
             user_id: Discord user ID
@@ -437,40 +437,9 @@ class EconomyRepository:
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
             try:
-                # Atomic update with WHERE clause to prevent race conditions
-                cursor = await db.execute(
-                    """
-                    UPDATE DiscordUser
-                    SET CurrencyAmount = CurrencyAmount - ?
-                    WHERE UserId = ? AND CurrencyAmount >= ?
-                """,
-                    (amount, user_id, amount),
-                )
-
-                if cursor.rowcount == 0:
-                    # Update failed - insufficient funds or user doesn't exist
-                    # Check if user exists but has no money, or doesn't exist
-                    check = await db.execute("SELECT 1 FROM DiscordUser WHERE UserId = ?", (user_id,))
-                    if not await check.fetchone():
-                        # Create user if doesn't exist (starts with 0, so still fails check)
-                        await db.execute(
-                            "INSERT OR IGNORE INTO DiscordUser (UserId, CurrencyAmount) VALUES (?, 0)", (user_id,)
-                        )
-
-                    await db.commit()
-                    return False
-
-                # Log transaction
-                await db.execute(
-                    """
-                    INSERT INTO CurrencyTransactions (UserId, Amount, Type, Extra, OtherId, Reason, DateAdded)
-                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-                """,
-                    (user_id, -amount, transaction_type, extra, other_id, note),
-                )
-
+                removed = await self._remove_currency(user_id, amount, transaction_type, extra, other_id, note, db)
                 await db.commit()
-                return True
+                return removed
             except Exception:
                 await db.execute("ROLLBACK")
                 raise
@@ -492,18 +461,7 @@ class EconomyRepository:
         async with self.db._get_connection() as db:
             await db.execute("BEGIN")
             try:
-                # Atomic update with WHERE clause to prevent race conditions
-                cursor = await db.execute(
-                    """
-                    UPDATE DiscordUser
-                    SET CurrencyAmount = CurrencyAmount - ?
-                    WHERE UserId = ? AND CurrencyAmount >= ?
-                """,
-                    (amount, from_user, amount),
-                )
-
-                if cursor.rowcount == 0:
-                    # Update failed - insufficient funds or user doesn't exist
+                if not await self._debit(from_user, amount, db):
                     await db.execute("ROLLBACK")
                     return False
 
@@ -660,24 +618,53 @@ class EconomyRepository:
                 await db.execute("ROLLBACK")
                 raise
 
+    async def _get_spendable(self, user_id: int, db) -> int:
+        """Wallet plus bank: what a purchase, bet or payment can draw on."""
+        cursor = await db.execute(
+            """
+            SELECT MAX(0, COALESCE((SELECT CurrencyAmount FROM DiscordUser WHERE UserId = ?), 0))
+                 + MAX(0, COALESCE((SELECT Balance FROM BankUsers WHERE UserId = ?), 0))
+        """,
+            (user_id, user_id),
+        )
+        row = await cursor.fetchone()
+        return int(row[0]) if row else 0
+
+    async def get_spendable(self, user_id: int) -> int:
+        """Wallet plus bank: what a purchase, bet or payment can draw on."""
+        async with self.db._get_connection() as db:
+            return await self._get_spendable(user_id, db)
+
+    async def _debit(self, user_id: int, amount: int, db) -> bool:
+        """Take ``amount`` from the wallet, then any shortfall from the bank, without logging it.
+
+        Returns False and changes nothing when wallet and bank together fall short. Every caller holds the
+        shared connection's lock, so the balances can't move between the read and the writes.
+        """
+        wallet = max(0, await self._get_user_currency(user_id, db))
+        from_bank = max(0, amount - wallet)
+        if from_bank:
+            cursor = await db.execute(
+                "UPDATE BankUsers SET Balance = Balance - ? WHERE UserId = ? AND Balance >= ?",
+                (from_bank, user_id, from_bank),
+            )
+            if cursor.rowcount == 0:
+                return False
+        if amount > from_bank:
+            await db.execute(
+                "UPDATE DiscordUser SET CurrencyAmount = CurrencyAmount - ? WHERE UserId = ?",
+                (amount - from_bank, user_id),
+            )
+        return True
+
     async def _remove_currency(
         self, user_id: int, amount: int, transaction_type: str, extra: str, other_id: int | None, note: str, db
     ) -> bool:
-        """Internal remove currency (no transaction control).
+        """Internal remove currency (no transaction control), from the wallet then the bank.
 
         Used by ShopRepository and the stable to participate in existing transactions.
         """
-        # Atomic update with WHERE clause to prevent race conditions
-        cursor = await db.execute(
-            """
-            UPDATE DiscordUser
-            SET CurrencyAmount = CurrencyAmount - ?
-            WHERE UserId = ? AND CurrencyAmount >= ?
-        """,
-            (amount, user_id, amount),
-        )
-
-        if cursor.rowcount == 0:
+        if not await self._debit(user_id, amount, db):
             # Update failed - insufficient funds or user doesn't exist
             # Check if user exists but has no money, or doesn't exist
             check = await db.execute("SELECT 1 FROM DiscordUser WHERE UserId = ?", (user_id,))
@@ -1405,25 +1392,16 @@ class EconomyRepository:
                     """,
                         (user_id, amount, amount),
                     )
-                else:
-                    debit_cursor = await db.execute(
-                        """
-                        UPDATE DiscordUser
-                        SET CurrencyAmount = CurrencyAmount - ?
-                        WHERE UserId = ? AND CurrencyAmount >= ?
-                    """,
-                        (amount, user_id, amount),
+                elif not await self._debit(user_id, amount, db):
+                    # Insufficient funds: roll back the key claim as well,
+                    # so the operation stays safe to retry after funding.
+                    await db.execute("ROLLBACK")
+                    return OperationOutcome(
+                        key=key,
+                        state=OUTCOME_INSUFFICIENT_FUNDS,
+                        new_balance=await self._get_spendable(user_id, db),
+                        amount=0,
                     )
-                    if debit_cursor.rowcount == 0:
-                        # Insufficient funds: roll back the key claim as well,
-                        # so the operation stays safe to retry after funding.
-                        await db.execute("ROLLBACK")
-                        return OperationOutcome(
-                            key=key,
-                            state=OUTCOME_INSUFFICIENT_FUNDS,
-                            new_balance=await self._get_user_currency(user_id, db),
-                            amount=0,
-                        )
 
                 signed = amount if direction == DIRECTION_CREDIT else -amount
                 await db.execute(
@@ -1506,20 +1484,12 @@ class EconomyRepository:
                     await db.execute("ROLLBACK")
                     return await self._duplicate_outcome(key, user_id, db)
 
-                debit_cursor = await db.execute(
-                    """
-                    UPDATE DiscordUser
-                    SET CurrencyAmount = CurrencyAmount - ?
-                    WHERE UserId = ? AND CurrencyAmount >= ?
-                """,
-                    (amount, user_id, amount),
-                )
-                if debit_cursor.rowcount == 0:
+                if not await self._debit(user_id, amount, db):
                     await db.execute("ROLLBACK")
                     return OperationOutcome(
                         key=key,
                         state=OUTCOME_INSUFFICIENT_FUNDS,
-                        new_balance=await self._get_user_currency(user_id, db),
+                        new_balance=await self._get_spendable(user_id, db),
                         amount=0,
                     )
 
@@ -1582,15 +1552,8 @@ class EconomyRepository:
                     if inserted.rowcount == 0:
                         await db.execute("ROLLBACK")
                         return {key: await self._duplicate_outcome(key, user_id, db)}
-                    debited = await db.execute(
-                        """
-                        UPDATE DiscordUser SET CurrencyAmount = CurrencyAmount - ?
-                        WHERE UserId = ? AND CurrencyAmount >= ?
-                        """,
-                        (amount, user_id, amount),
-                    )
-                    if debited.rowcount == 0:
-                        balance = await self._get_user_currency(user_id, db)
+                    if not await self._debit(user_id, amount, db):
+                        balance = await self._get_spendable(user_id, db)
                         await db.execute("ROLLBACK")
                         return {
                             key: OperationOutcome(
@@ -2086,15 +2049,8 @@ class EconomyRepository:
                     await db.execute("ROLLBACK")
                     return {"state": "opposite_side"}
 
-                debit = await db.execute(
-                    """
-                    UPDATE DiscordUser SET CurrencyAmount = CurrencyAmount - ?
-                    WHERE UserId = ? AND CurrencyAmount >= ?
-                    """,
-                    (amount, user_id, amount),
-                )
-                if debit.rowcount == 0:
-                    balance = await self._get_user_currency(user_id, db)
+                if not await self._debit(user_id, amount, db):
+                    balance = await self._get_spendable(user_id, db)
                     await db.execute("ROLLBACK")
                     return {"state": OUTCOME_INSUFFICIENT_FUNDS, "balance": balance}
 

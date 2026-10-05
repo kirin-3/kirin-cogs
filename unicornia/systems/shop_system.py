@@ -195,7 +195,7 @@ class ShopSystem:
             return False, "Shop item not found", {}
 
         # Check if user has enough currency
-        user_balance = await self.db.economy.get_user_currency(user.id)
+        user_balance = await self.db.economy.get_spendable(user.id)
         if user_balance < item["price"]:
             return False, f"Insufficient Slut points. You need {item['price']:,} but have {user_balance:,}", {}
 
