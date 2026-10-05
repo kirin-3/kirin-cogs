@@ -257,5 +257,5 @@ async def test_vertex_is_the_paid_last_resort_and_gets_its_own_request_shape(cog
     assert body["generationConfig"] == {
         "maxOutputTokens": 10000,
         "temperature": 1.0,
-        "thinkingConfig": {"thinkingLevel": "HIGH"},
+        "thinkingConfig": {"thinkingLevel": "MEDIUM"},
     }
