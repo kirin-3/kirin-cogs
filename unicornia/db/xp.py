@@ -391,8 +391,10 @@ class XPRepository:
             if await self._user_owns_xp_item(user_id, item_type, item_key, db):
                 return False
 
-            # Wallet first, then bank
+            # Wallet first, then bank. A refused charge has still opened sqlite3's implicit transaction,
+            # which would make the next BEGIN on the shared connection fail.
             if not await self.db.economy._debit(user_id, price, db):
+                await db.rollback()
                 return False
 
             # Add item to user's collection

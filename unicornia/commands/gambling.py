@@ -13,7 +13,8 @@ class GamblingCommands(UnicorniaMixinBase):
                 balance = await self.db.economy.get_user_currency(ctx.author.id)
                 if balance <= 0:
                     await ctx.reply(
-                        "<a:zz_NoTick:729318761655435355> You don't have any currency to bet.", mention_author=False
+                        "<a:zz_NoTick:729318761655435355> You don't have anything in your wallet to bet. `all` only stakes your wallet; use a number to bet from your bank too.",
+                        mention_author=False,
                     )
                     return None
                 return balance

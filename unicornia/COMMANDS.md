@@ -73,7 +73,7 @@ Manage your wallet, bank, and transactions.
 | `[p]economy balance [user]` | Check your or another user's wallet and bank balance. Aliases: `bal`, `wallet`. | |
 | `[p]balance [user]` | Global shortcut for balance check. Aliases: `bal`, `$`, `€`, `£`. | |
 | `[p]wallet [user]` | Global shortcut for balance check. | |
-| `[p]economy give <amount> <user>` | Give currency to another user from your wallet. | |
+| `[p]economy give <amount> <user>` | Give currency to another user, from your wallet then your bank. | |
 | `[p]economy timely` | Claim your daily currency reward. Alias: `daily`. | |
 | `[p]timely` | Global shortcut to claim daily reward. Alias: `daily`. | |
 | `[p]economy history [user]` | View recent transaction history. Aliases: `transactions`, `tx`. | Admin/Manage Roles |

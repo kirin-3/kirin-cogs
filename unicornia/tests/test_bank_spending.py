@@ -78,3 +78,23 @@ async def test_one_log_row_records_the_whole_payment(db: DatabaseManager) -> Non
             "SELECT Amount, Type FROM CurrencyTransactions WHERE UserId = ? AND Type = 'shop_purchase'", (USER,)
         )
         assert [tuple(row) for row in await cursor.fetchall()] == [(-600, "shop_purchase")]
+
+
+@pytest.mark.asyncio
+async def test_an_xp_shop_item_can_be_bought_from_the_bank(db: DatabaseManager) -> None:
+    await _fund(db, wallet=100, bank=1_000)
+
+    assert await db.xp.purchase_xp_item(USER, 1, "bg", 600)
+    assert await _balances(db) == (0, 500)
+    assert await db.xp.user_owns_xp_item(USER, 1, "bg")
+
+
+@pytest.mark.asyncio
+async def test_a_refused_xp_shop_purchase_leaves_the_connection_usable(db: DatabaseManager) -> None:
+    await _fund(db, wallet=100, bank=200)
+
+    assert not await db.xp.purchase_xp_item(USER, 1, "bg", 301)
+    assert db._conn is not None and not db._conn.in_transaction
+    assert await db.economy.remove_currency(USER, 300, "shop")  # its BEGIN would fail on a dangling transaction
+    assert await _balances(db) == (0, 0)
+    assert not await db.xp.user_owns_xp_item(USER, 1, "bg")

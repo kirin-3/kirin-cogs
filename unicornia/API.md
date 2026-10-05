@@ -27,7 +27,7 @@ transaction-log row, so retries and replayed webhooks never pay twice.
 
 **Parameters:**
 - `key` (str): Unique idempotency key (e.g. `"nitro:<guild>:<member>:<ts>"`).
-- `user_id` (int): The Discord ID of the user whose wallet is mutated.
+- `user_id` (int): The Discord ID of the user. Credits go to the wallet; debits take from the wallet, then the bank.
 - `amount` (int): Absolute amount to apply.
 - `direction` (OperationDirection): `"credit"` to add, `"debit"` to remove.
 - `source` (str): Calling cog/system identity.
@@ -95,7 +95,7 @@ if success:
 
 ### `remove_balance(user_id: int, amount: int, reason: str = "External API", source: str = "external") -> bool`
 
-Safely removes currency from a user's wallet. This operation is atomic and checks for sufficient funds before processing.
+Safely removes currency from a user's wallet, taking any shortfall from their bank. This operation is atomic and fails without changing anything when wallet and bank together fall short.
 
 **Parameters:**
 - `user_id` (int): The Discord ID of the user.
