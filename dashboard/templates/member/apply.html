@@ -14,6 +14,7 @@
   <section class="panel">
     <h2>{{ section.title }}</h2>
     {% if section.text %}<p>{{ section.text }}</p>{% endif %}
+    {% if section.items %}<ol>{% for item in section.items %}<li>{{ item }}</li>{% endfor %}</ol>{% endif %}
     <div class="editor">
       {% for question in section.questions %}
       <label>{{ question.label }}

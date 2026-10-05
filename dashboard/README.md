@@ -65,9 +65,12 @@ names the section, key and new state; anything unknown gets 400.
 
 ## Staff application
 
-`/apply` on the member site is the staff application, in place of the old Google Form, with the same questions: basic
-information, five moderation scenarios and the rest. The home page shows its tile to members with a level role from
-Level 30 up; anyone else gets 403. The member's Discord name isn't asked for, since the login already says who it is.
+`/apply` on the member site is the staff application, in place of the old Google Form. It has four sections: About
+you, How you'd handle things, Being honest, and Last bit. Instead of a quiz, How you'd handle things lists seven grey
+areas drawn from the rules, and the applicant talks through two of them, plus a conflict they've dealt with and when
+they'd hand something up. The questions are `SECTIONS` in `apply.py`; the page, the checks and the Discord message
+are all built from it. The home page shows the tile to members with a level role from Level 30 up; anyone else gets
+403. The form doesn't ask for anything the embed already shows (Discord name, level, join date).
 
 A sent application is posted to the applications channel `1418772229633605692` as an embed: the member's mention, name,
 ID, highest level role, join date and account age, then a heading per section with each question in bold and the answer

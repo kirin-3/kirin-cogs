@@ -39,56 +39,87 @@ class Section(NamedTuple):
     title: str
     text: str
     questions: tuple[Question, ...]
+    items: tuple[str, ...] = ()  # a numbered list under the text, for questions that point at it
 
 
-SCENARIOS = (
-    "Two people are having a heated discussion even though they are still being civil to each other.",
-    "One person is typing slurs against another person.",
-    "A staff member has asked someone to stop doing something but they disregard the request.",
-    "A staff member is disobeying the rules.",
-    "Someone is harassing another member in direct messages.",
+# Grey areas from the rules (2.3/2.5, 3.1, 1.2/1.3, 8.5a, 6.6, 3.7/9.1, 6.7); the applicant talks through two.
+SITUATIONS = (
+    "Two regulars roast each other all the time. A newer member joins in with the same kind of jokes aimed at one of "
+    "them, and that person goes quiet.",
+    "A member reports DMs from someone who ignored their DO NOT DM role. The other person says the two of them had "
+    "been chatting before.",
+    'Someone keeps making "jokes" that make you wonder if they\'re actually underage.',
+    "An image is posted that might fall under rule 8.5, but you're honestly not sure.",
+    "A friend of yours breaks a rule, and other members are watching how you handle it.",
+    "A post in the vent channel makes you worry the person might hurt themselves.",
+    "Another staff member makes a call in chat that you think is wrong.",
 )
+PICK_HINT = "Start with the situation's number."
 # The form, in order. The page, the checks and the message in Discord are all built from this.
 SECTIONS = (
     Section(
-        "Basic information",
+        "About you",
         "",
         (
-            Question("age", "How old are you?"),
-            Question("timezone", "What is your time zone?", hint="For example UTC+1 or EST."),
-            Question("country", "Where are you from? (Country)"),
+            Question("name", "What should we call you, and what are your pronouns?", hint="Pronouns are optional."),
+            Question("around", "What's your time zone, and when are you usually around?"),
+            Question("time", "How much time could you realistically give us in a week?"),
+            Question("unicornia", "What do you like about Unicornia, and what's one thing you'd change?", long=True),
         ),
     ),
-    *(
-        Section(
-            f"Scenario {number}",
-            text,
-            (
-                Question(f"scenario{number}_wrong", "What is wrong here?"),
-                Question(f"scenario{number}_fix", "What should you do to alleviate the issue and why?", long=True),
+    Section(
+        "How you'd handle things",
+        "There's no right answer. We want to see how you think: what you'd want to know first, what you'd do, and "
+        "what you'd say. Pick two of these situations and talk us through them.",
+        (
+            Question("pick1", "Your first pick", long=True, hint=PICK_HINT),
+            Question("pick2", "Your second pick", long=True, hint=PICK_HINT),
+            Question(
+                "conflict",
+                "Tell us about a time you dealt with a conflict, on Discord or anywhere else. What happened, and what "
+                "would you do differently now?",
+                long=True,
             ),
-        )
-        for number, text in enumerate(SCENARIOS, 1)
+            Question(
+                "hand_off",
+                "When would you hand something to senior staff or the owner rather than deal with it yourself?",
+                long=True,
+            ),
+        ),
+        SITUATIONS,
     ),
     Section(
-        "Other information",
+        "Being honest",
         "",
         (
-            Question("availability", "What times during the week are you available?"),
-            Question("hours", "How many hours are you on Discord per day?"),
-            Question("why", "Why are you interested in being a staff member?", long=True),
             Question(
-                "qualified",
-                "How do you feel qualified for this position?",
+                "experience",
+                "Have you been staff anywhere before? What did you do there, and why did you stop?",
                 long=True,
-                hint="Include any relevant experience from other Discord servers, other social media platforms, etc.",
             ),
-            Question("choose", "Why should we choose you over other applicants?", long=True),
-            Question("banned", "Have you ever been banned on a Discord server before? If so, why?", long=True),
-            Question("expect", "What do you expect to do in the server as Staff/Helper?", long=True),
-            Question("changes", "Are there any changes you'd like to make to the server?", long=True, required=False),
-            Question("about", "Tell us a bit about yourself!", long=True),
-            Question("other", "Anything else you would like to add?", long=True, required=False),
+            Question(
+                "history",
+                "Have you ever been warned, muted or banned, here or elsewhere? What happened?",
+                long=True,
+                hint="We care more about what you took from it than whether it happened.",
+            ),
+            Question(
+                "boundaries",
+                "Staff here sometimes see explicit or upsetting things: reports, vents, ban evidence. Is there anything "
+                "you'd rather not have to deal with?",
+                long=True,
+                required=False,
+                hint="This won't count against you.",
+            ),
+            Question("hardest", "What do you think you'd find hardest about being staff?", long=True),
+        ),
+    ),
+    Section(
+        "Last bit",
+        "",
+        (
+            Question("why", "Why do you want to do this?", long=True, hint="Honest answers welcome."),
+            Question("other", "Anything else you want us to know?", long=True, required=False),
         ),
     ),
 )
@@ -120,6 +151,7 @@ def application_text(member: discord.Member, answers: dict[str, str]) -> str:
         lines += ["", f"### {section.title}"]
         if section.text:
             lines.append(f"*{section.text}*")
+        lines += [f"{number}. {item}" for number, item in enumerate(section.items, 1)]
         for q in section.questions:
             answer = answers.get(q.key) or "*No answer*"
             if q.long:
