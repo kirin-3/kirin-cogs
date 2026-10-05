@@ -29,6 +29,7 @@ from redbot.core.bot import Red
 from redbot.core.errors import CogLoadError
 from yarl import URL
 
+from .apply import MemberApply
 from .automod_forms import SECTIONS, Names, apply_action, editor_view, parse_rows, row_templates, row_view
 from .gifs import GIF_UPLOAD_PATH, MemberGifs, StaffGifs
 from .member import MemberSite
@@ -241,6 +242,7 @@ class Dashboard(commands.Cog):
         )
         self.member_site = MemberSite(self)
         self.member_gifs = MemberGifs(self)
+        self.member_apply = MemberApply(self)
         self.staff_gifs = StaffGifs(self)
         self.staff_unicornia = StaffUnicornia(self)
         self.staff_modmail = StaffModmail(self)
@@ -284,6 +286,7 @@ class Dashboard(commands.Cog):
         app = self._app(MEMBER, client_max_size=MEMBER_MAX_BODY)
         self.member_site.add_routes(app)
         self.member_gifs.add_routes(app)
+        self.member_apply.add_routes(app)
         return app
 
     def make_app(self) -> web.Application:

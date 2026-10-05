@@ -17,6 +17,7 @@ Cloudflare. They share the login code but keep separate sessions and cookies.
   pairs, and turn the bot's daddy replies and the UnicornAI opt-out on or off. They can also browse the roleplay
   gifs and give each a thumbs up or down. Supporters also manage their custom commands, custom emojis and, if they
   were given one with `[p]assignrole`, their custom role. Supporters and Level 30+ members can send in a gif.
+  Level 30+ members can apply for staff.
 
 ## Who can log in
 
@@ -44,6 +45,7 @@ at the time of each request:
 | Custom commands | The active supporter role (`700121551483437128`), or the inactive one (`1458440559713718466`) while the member still has commands |
 | Custom emojis | A supporter role who can create emojis (the `[p]ce setrole` role), or who still has emojis |
 | Custom role | Either supporter role, plus a role assigned with `[p]assignrole` |
+| Apply for staff | A level role from Level 30 up (Platinum, Diamond, Legend, Champion or Divine) |
 
 The pages follow the same rules as the bot's commands, because they call the same cog methods. Only active supporters
 can create custom commands, or edit them on the site (a replace in one step, under the create rules). Creating and renaming emojis needs the role set with `[p]ce setrole`. Either kind of
@@ -60,6 +62,22 @@ only upload new emojis, not copy existing ones, and it can't add people to or re
 
 A section whose cog isn't loaded shows a notice, and changes to it get 503; the other section keeps working. A POST
 names the section, key and new state; anything unknown gets 400.
+
+## Staff application
+
+`/apply` on the member site is the staff application, in place of the old Google Form, with the same questions: basic
+information, five moderation scenarios and the rest. The home page shows its tile to members with a level role from
+Level 30 up; anyone else gets 403. The member's Discord name isn't asked for, since the login already says who it is.
+
+A sent application is posted to the applications channel `1418772229633605692` as an embed: the member's mention, name,
+ID, highest level role, join date and account age, then a heading per section with each question in bold and the answer
+under it. A long application is split over several messages, each marked "Part 1 of 3" and naming the member. Mentions
+in it never ping. The bot needs View Channel, Send Messages and Embed Links there; without them, or if the channel is
+gone, the member is told to try later and a warning is logged.
+
+Short answers take up to 200 characters and long ones 1,500. A refused application (a missing answer, the channel
+unavailable, sent too soon) comes back with the answers still filled in. A member can send one application a week. The
+bot only remembers when, in memory, so a restart lets them send another; nothing about the application is stored.
 
 ## Gifs pages
 
@@ -226,7 +244,8 @@ Member site request limits: 9 MB, and 100 MB for a gif upload from a member who 
 (the two supporter roles and the level roles from Level 30 up: Platinum `714508825071190086`, Diamond
 `714508827822915694`, Legend `714508831081758723`, Champion `714508834433007698` and Divine `721360680770469958`),
 the review channel `1554813851302887494` and the 60 second
-wait between gifs live in the Roleplay cog, `roleplay/const.py`.
+wait between gifs live in the Roleplay cog, `roleplay/const.py`. The staff application uses the same level roles
+(`LEVEL_30_ROLES` in `member.py`) and posts to `1418772229633605692` (`apply.py`).
 
 ## Deployment checklist
 

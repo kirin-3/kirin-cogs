@@ -1,0 +1,35 @@
+{% extends "member/base.html" %}
+{% block title %}Apply for staff{% endblock %}
+{% block content %}
+<h1>Apply for staff</h1>
+<p class="sub">We go through applications when we need staff. If you're accepted, a staff member will contact you, and you'll start as a Helper. Please only talk to staff about your application if you have questions while filling it out, or if they contact you first.</p>
+{% if sent %}
+<p class="note">Thanks! Your application was sent to the staff.</p>
+{% elif days %}
+<p class="note">You've already sent an application. You can send another in {{ days }} day{{ "s" if days != 1 }}.</p>
+{% else %}
+<form method="post" action="/apply">
+  <input type="hidden" name="csrf" value="{{ session.csrf }}">
+  {% for section in sections %}
+  <section class="panel">
+    <h2>{{ section.title }}</h2>
+    {% if section.text %}<p>{{ section.text }}</p>{% endif %}
+    <div class="editor">
+      {% for question in section.questions %}
+      <label>{{ question.label }}
+        {% if not question.required %}<small>Optional</small>{% endif %}
+        {% if question.hint %}<small>{{ question.hint }}</small>{% endif %}
+        {% if question.long %}
+        <textarea name="{{ question.key }}" rows="4" maxlength="{{ long_limit }}"{% if question.required %} required{% endif %}>{{ answers.get(question.key, "") }}</textarea>
+        {% else %}
+        <input type="text" name="{{ question.key }}" maxlength="{{ short_limit }}" value="{{ answers.get(question.key, '') }}"{% if question.required %} required{% endif %}>
+        {% endif %}
+      </label>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+  <p class="actions"><button class="primary" type="submit">Send application</button></p>
+</form>
+{% endif %}
+{% endblock %}

@@ -18,6 +18,10 @@ if TYPE_CHECKING:
 ACTIVE_SUPPORTER = 700121551483437128
 INACTIVE_SUPPORTER = 1458440559713718466
 SUPPORTER_ROLES = frozenset({ACTIVE_SUPPORTER, INACTIVE_SUPPORTER})
+# The level roles from Level 30 up: Platinum (Level 30), Diamond, Legend, Champion and Divine
+LEVEL_30_ROLES = frozenset(
+    {714508825071190086, 714508827822915694, 714508831081758723, 714508834433007698, 721360680770469958}
+)
 TOGGLE_STATES = {"on": True, "off": False}
 LEADERBOARD_PAGE = 25
 TRANSACTIONS = 20
@@ -115,7 +119,11 @@ class MemberSite:
         Commands and emojis show to supporters who can create them, or who still have some to look after:
         a legacy (inactive) supporter with nothing left would only see an empty page.
         """
-        everyone = {"unicornia": self._cog("Unicornia") is not None, "warnings": self._cog("Moderation") is not None}
+        everyone = {
+            "unicornia": self._cog("Unicornia") is not None,
+            "warnings": self._cog("Moderation") is not None,
+            "apply": any(role.id in LEVEL_30_ROLES for role in member.roles),
+        }
         if not any(role.id in SUPPORTER_ROLES for role in member.roles):
             return {**everyone, "commands": False, "emojis": False, "role": False}
         cc, ce, crc = self._cog("CustomCommand"), self._cog("CustomEmoji"), self._cog("CustomRoleColor")
