@@ -22,20 +22,10 @@ APPLICATIONS_CHANNEL = 1418772229633605692
 # ponytail: in memory, so a restart lets members apply again; store it in Config if that gets abused
 COOLDOWN = 7 * 24 * 3600
 SHORT_LIMIT, LONG_LIMIT = 200, 1500
-# Discord's limits are 4096 characters in an embed's description and 6000 across a message's (up to 10) embeds. These
-# leave room for the title, author and footer.
-EMBED_PAGE = 4000
-MESSAGE_LIMIT = 5800
-EMBEDS_PER_MESSAGE = 10
-# The site's pastel tones (style.css), for each section's embed in Discord
-TONES = {
-    "pink": 0xFFC8DD,
-    "peach": 0xFFD8B8,
-    "butter": 0xFFEAA7,
-    "mint": 0xC4ECD4,
-    "sky": 0xC3E0FF,
-    "lavender": 0xDCCBFF,
-}
+# Discord allows 4000 characters of text across one Components V2 message; this leaves room for the "part 2 of 3" line.
+TEXT_LIMIT = 3950
+BLOCK_LIMIT = 3000  # a longer question-and-answer is split at a line break, so a block always fits a message
+ACCENT = 0xDCCBFF  # the site's lavender
 
 log = logging.getLogger("red.kirin_cogs.dashboard.apply")
 
@@ -52,7 +42,7 @@ class Question(NamedTuple):
 class Section(NamedTuple):
     title: str
     emoji: str
-    tone: str  # a key of TONES
+    tone: str  # the pastel of its card on the page (a tone-* class in style.css)
     text: str
     questions: tuple[Question, ...]
     items: tuple[str, ...] = ()  # a numbered list under the text, for questions that point at it
@@ -168,79 +158,82 @@ def read_answers(form: Any) -> tuple[dict[str, str], str]:
 
 
 def _answer(question: Question, answer: str) -> str:
-    """A question in bold over its quoted answer. The answer's markdown is escaped, so a stray heading, code block or
-    quote in it can't restyle the rest of the message."""
+    """The question in small grey text over the answer, like a form response. The answer's markdown is escaped, so a
+    stray heading, code block or subtext line in it can't restyle the rest of the message."""
     lines = [discord.utils.escape_markdown(line.strip()) for line in answer.splitlines() if line.strip()]
-    return f"**{question.label}**\n" + ("\n".join(f"> {line}" for line in lines) or "*No answer*")
+    return f"-# {question.label}\n" + ("\n".join(lines) or "*No answer*")
 
 
 def _blocks(section: Section, answers: dict[str, str]) -> list[str]:
-    """Each question with its answer, in pieces that each fit an embed. The section's intro and numbered list go with the
-    first question, so they're never left at the bottom of one message with the answers in the next."""
-    intro = [f"*{section.text}*"] if section.text else []
-    if section.items:
-        intro.append("\n".join(f"**{number}.** {item}" for number, item in enumerate(section.items, 1)))
+    """The section's heading, then each question with its answer, in pieces that each fit a message. The heading and
+    numbered list go with the first question, so they're never left at the bottom of one message."""
+    intro = [f"### {section.emoji} {section.title}"]
+    intro += [f"-# **{number}.** {item}" for number, item in enumerate(section.items, 1)]
     blocks = [_answer(q, answers.get(q.key, "")) for q in section.questions]
-    blocks[0] = "\n\n".join([*intro, blocks[0]])
-    # pagify only splits a block too long for an embed on its own, at a line break
-    return [piece for block in blocks for piece in pagify(block, page_length=EMBED_PAGE)]
+    blocks[0] = "\n".join(intro) + ("\n\n" if section.items else "\n") + blocks[0]
+    # pagify only splits a block too long for a message on its own, at a line break
+    return [piece for block in blocks for piece in pagify(block, page_length=BLOCK_LIMIT)]
 
 
-def _header(member: discord.Member) -> discord.Embed:
+def _header(member: discord.Member) -> tuple[str, str]:
+    """The title and details next to the applicant's avatar."""
     level = max((r for r in member.roles if r.id in LEVEL_30_ROLES), key=lambda r: r.position, default=None)
 
     def when(moment: Any) -> str:
-        return (
-            f"{discord.utils.format_dt(moment, 'D')}\n{discord.utils.format_dt(moment, 'R')}" if moment else "Unknown"
-        )
+        if moment is None:
+            return "unknown"
+        return f"{discord.utils.format_dt(moment, 'D')} · {discord.utils.format_dt(moment, 'R')}"
 
-    embed = discord.Embed(
-        title="📝 New staff application",
-        description=f"{member.mention} would like to join the team.",
-        colour=TONES["lavender"],
-        timestamp=discord.utils.utcnow(),
+    details = (
+        f"{member.mention} · `{member.name}` · `{member.id}`\n"
+        f"**Level** {level.mention if level else 'none'}\n"
+        f"**Joined** {when(member.joined_at)}\n"
+        f"**Account created** {when(member.created_at)}"
     )
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.add_field(name="Member", value=f"{member.mention}\n`{member.name}`")
-    embed.add_field(name="User ID", value=f"`{member.id}`")
-    embed.add_field(name="Level", value=level.mention if level else "None")
-    embed.add_field(name="Joined the server", value=when(member.joined_at))
-    embed.add_field(name="Account created", value=when(member.created_at))
-    return embed
+    return "## 📝 New staff application", details
 
 
-def application_messages(member: discord.Member, answers: dict[str, str]) -> list[list[discord.Embed]]:
-    """The application as messages of embeds: a header with who sent it, then each section in its own colour. Answers
-    are packed in order, never split unless one is too long for an embed alone, so a long application takes as few
-    messages as Discord allows; each message after the first names the member, and each is numbered."""
-    messages = [[_header(member)]]
+def _continued(member: discord.Member) -> str:
+    return f"-# {member.mention}'s staff application, continued"
+
+
+def application_messages(member: discord.Member, answers: dict[str, str]) -> list[discord.ui.LayoutView]:
+    """The application as Components V2 messages: one lavender card each, with the applicant's avatar and details at
+    the top and a divider between sections. Answers are packed in order into as few messages as Discord's text limit
+    allows; one is only split if it's too long for a message on its own. Each message after the first names the
+    applicant, and each is numbered when there are several."""
+    pages: list[list[str]] = [[]]  # each message's section texts
+    used = sum(map(len, _header(member)))
     for section in SECTIONS:
-        title = f"{section.emoji} {section.title}"
-        embed: discord.Embed | None = None  # the section's latest embed, always the last one of the latest message
-        for block in _blocks(section, answers):
-            room = MESSAGE_LIMIT - sum(map(len, messages[-1]))
-            if (
-                embed is not None
-                and len(embed.description or "") + 2 + len(block) <= EMBED_PAGE
-                and 2 + len(block) <= room
-            ):
-                embed.description = f"{embed.description}\n\n{block}"
+        for number, block in enumerate(_blocks(section, answers)):
+            if number and used + 2 + len(block) <= TEXT_LIMIT:
+                pages[-1][-1] += f"\n\n{block}"
+                used += 2 + len(block)
                 continue
-            started = embed is not None
-            embed = discord.Embed(
-                title=f"{title} (continued)" if started else title, description=block, colour=TONES[section.tone]
-            )
-            if len(messages[-1]) == EMBEDS_PER_MESSAGE or len(embed) > room:
-                messages.append([])
-            elif started:
-                embed.title = None  # right under the section's last embed, in the same colour: no need to repeat it
-            messages[-1].append(embed)
-    for number, message in enumerate(messages, 1):
-        if number > 1:
-            message[0].set_author(name=f"{member.display_name} ({member.name})", icon_url=member.display_avatar.url)
-        if len(messages) > 1:
-            message[-1].set_footer(text=f"Staff application · part {number} of {len(messages)}")
-    return messages
+            if number:  # the section goes on in the next message
+                block = f"### {section.emoji} {section.title} (continued)\n{block}"
+            if used + len(block) > TEXT_LIMIT:
+                pages.append([])
+                used = len(_continued(member))
+            pages[-1].append(block)
+            used += len(block)
+    return [_card(member, texts, number, len(pages)) for number, texts in enumerate(pages, 1)]
+
+
+def _card(member: discord.Member, texts: list[str], number: int, parts: int) -> discord.ui.LayoutView:
+    card = discord.ui.Container(accent_colour=ACCENT)
+    if number == 1:
+        card.add_item(discord.ui.Section(*_header(member), accessory=discord.ui.Thumbnail(member.display_avatar.url)))
+    else:
+        card.add_item(discord.ui.TextDisplay(_continued(member)))
+    for text in texts:
+        card.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
+        card.add_item(discord.ui.TextDisplay(text))
+    if parts > 1:
+        card.add_item(discord.ui.TextDisplay(f"-# part {number} of {parts}"))
+    view = discord.ui.LayoutView(timeout=None)
+    view.add_item(card)
+    return view
 
 
 class MemberApply:
@@ -319,8 +312,8 @@ class MemberApply:
             log.warning("The bot can't send embeds in the staff applications channel %s.", channel.id)
             raise unavailable
         try:
-            for embeds in application_messages(member, answers):
-                await channel.send(embeds=embeds, allowed_mentions=discord.AllowedMentions.none())
+            for view in application_messages(member, answers):
+                await channel.send(view=view, allowed_mentions=discord.AllowedMentions.none())
         except discord.HTTPException:
             log.exception("Posting a staff application from %s failed.", member.id)
             raise unavailable from None

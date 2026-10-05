@@ -2,6 +2,7 @@
 channel, and one application per member a week."""
 
 from datetime import UTC, datetime
+from math import ceil
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -10,13 +11,13 @@ import discord
 import pytest
 
 from dashboard.apply import (
+    ACCENT,
     APPLICATIONS_CHANNEL,
     LONG_LIMIT,
     QUESTIONS,
     SECTIONS,
     SHORT_LIMIT,
     SITUATIONS,
-    TONES,
     application_messages,
     read_answers,
 )
@@ -74,64 +75,88 @@ def test_a_two_digit_age_is_accepted() -> None:
     assert read_answers(_answers(age="24")) == (_answers(age="24"), "")
 
 
-def test_the_message_is_a_header_then_a_card_per_section_with_every_answer() -> None:
-    (embeds,) = application_messages(_applicant(), _answers(why="first line\n\n  second line", other=""))
-    header, *sections = embeds
-    fields = {field.name: field.value for field in header.fields}
-    assert (
-        header.title == "📝 New staff application" and header.thumbnail.url == "https://cdn.discordapp.com/avatar.png"
-    )
-    assert fields["Member"] == f"<@{LEVEL_30}>\n`sparkle`" and fields["User ID"] == f"`{LEVEL_30}`"
-    assert fields["Level"] == f"<@&{DIVINE}>"  # the highest one
-    assert fields["Joined the server"] == "<t:1704067200:D>\n<t:1704067200:R>"
-    assert [e.title for e in sections] == [
-        "🌸 About you",
-        "💭 How you'd handle things",
-        "🫶 Being honest",
-        "✨ Last bit",
+def _card(view: discord.ui.LayoutView) -> dict[str, Any]:
+    (card,) = view.to_components()  # one container per message
+    return card
+
+
+def _texts(view: discord.ui.LayoutView) -> list[str]:
+    """Every text in the message, the header's included, in order."""
+    found: list[str] = []
+
+    def walk(component: dict[str, Any]) -> None:
+        if component["type"] == 10:
+            found.append(component["content"])
+        for child in component.get("components", []):
+            walk(child)
+
+    walk(_card(view))
+    return found
+
+
+def _count(component: dict[str, Any]) -> int:
+    """Components in a message, nested ones and accessories included, as Discord counts them toward its 40."""
+    children = component.get("components", []) + ([component["accessory"]] if "accessory" in component else [])
+    return 1 + sum(map(_count, children))
+
+
+@pytest.mark.asyncio
+async def test_the_message_is_one_card_with_the_applicant_then_each_section() -> None:
+    (view,) = application_messages(_applicant(), _answers(why="first line\n\n  second line", other=""))
+    card = _card(view)
+    header, *rest = card["components"]
+    sections = [component["content"] for component in rest if component["type"] == 10]
+    assert card["type"] == 17 and card["accent_color"] == ACCENT
+    assert header["type"] == 9 and header["accessory"]["media"]["url"] == "https://cdn.discordapp.com/avatar.png"
+    assert [text["content"] for text in header["components"]] == [
+        "## 📝 New staff application",
+        f"<@{LEVEL_30}> · `sparkle` · `{LEVEL_30}`\n**Level** <@&{DIVINE}>\n"  # the highest level role
+        "**Joined** <t:1704067200:D> · <t:1704067200:R>\n**Account created** <t:1704067200:D> · <t:1704067200:R>",
     ]
-    assert [e.colour.value for e in sections if e.colour] == [TONES[section.tone] for section in SECTIONS]
-    handling, last = sections[1].description or "", sections[3].description or ""
-    assert handling.startswith("*There's no right answer.")
-    assert "**1.** Two regulars roast" in handling and "**7.** Another staff member" in handling  # for the picks
-    assert "**Your first pick**\n> answer to pick1\n\n**Your second pick**" in handling
-    assert "**Why do you want to do this?**\n> first line\n> second line" in last
-    assert last.endswith("**Anything else you want us to know?**\n*No answer*")
-    assert all(not e.footer.text and not e.author.name for e in embeds)  # one message needs no part numbers
-
-
-def test_markdown_in_an_answer_cannot_restyle_the_message() -> None:
-    nasty = "# Heading\n```py\n> fake quote\n-# tiny\n**bold** [link](https://example.com)"
-    (embeds,) = application_messages(_applicant(), _answers(why=nasty))
-    expected = (
-        "> \\# Heading\n> \\`\\`\\`py\n> \\> fake quote\n> \\-# tiny\n> \\*\\*bold\\*\\* \\[link](https://example.com)"
+    assert [component["type"] for component in rest] == [14, 10] * len(SECTIONS)  # a divider before each section
+    assert [text.split("\n")[0] for text in sections] == [f"### {s.emoji} {s.title}" for s in SECTIONS]
+    assert sections[0].startswith(
+        "### 🌸 About you\n-# What should we call you, and what are your pronouns?\nanswer to name\n\n"
+        "-# How old are you?\n24\n\n"
     )
-    assert expected in (embeds[-1].description or "")
+    assert "\n-# **1.** Two regulars roast" in sections[1] and "\n-# **7.** Another staff member" in sections[1]
+    assert "you think is wrong.\n\n-# Your first pick\nanswer to pick1\n\n-# Your second pick\n" in sections[1]
+    assert "-# Why do you want to do this?\nfirst line\nsecond line" in sections[3]
+    assert sections[3].endswith("-# Anything else you want us to know?\n*No answer*")  # and no "part 1 of 1"
 
 
-def test_a_full_application_is_packed_into_few_messages_that_each_say_where_they_are() -> None:
+@pytest.mark.asyncio
+async def test_markdown_in_an_answer_cannot_restyle_the_message() -> None:
+    nasty = "# Heading\n```py\n> fake quote\n-# tiny\n**bold** [link](https://example.com)"
+    (view,) = application_messages(_applicant(), _answers(why=nasty))
+    expected = "\\# Heading\n\\`\\`\\`py\n\\> fake quote\n\\-# tiny\n\\*\\*bold\\*\\* \\[link](https://example.com)"
+    assert expected in _texts(view)[-1]
+
+
+@pytest.mark.asyncio
+async def test_a_full_application_is_packed_into_few_messages_that_each_say_where_they_are() -> None:
     answers = {q.key: ("A fair answer with some detail. " * 50)[:LONG_LIMIT] if q.long else "x" * 60 for q in QUESTIONS}
     messages = application_messages(_applicant(), answers)
-    cards = [embed for message in messages for embed in message][1:]
-    assert len(messages) <= 4
-    assert all(message[0].title for message in messages)  # every message starts with the section's name
-    assert all(not embed.title for message in messages for embed in message[1:] if "(continued)" in (embed.title or ""))
-    assert all("**" in (card.description or "") for card in cards)  # no card holds only a section's intro
+    texts = [_texts(view) for view in messages]
+    # Whole answers only, so not every message can be full, but none is mostly empty
+    assert len(messages) <= ceil(sum(len(text) for message in texts for text in message) / 4000) + 1
+    assert all(sum(map(len, message)) > 2000 for message in texts[:-1])
+    assert all(message[0] == f"-# <@{LEVEL_30}>'s staff application, continued" for message in texts[1:])
+    assert [message[-1] for message in texts] == [f"-# part {n} of {len(messages)}" for n in range(1, len(texts) + 1)]
+    sections = [text for message in texts for text in message if text.startswith("### ")]
+    assert all("\n-# " in text for text in sections)  # no section heading is left without a question under it
 
 
-def test_an_application_at_every_limit_still_fits_discord_and_loses_nothing() -> None:
+@pytest.mark.asyncio
+async def test_an_application_at_every_limit_still_fits_discord_and_loses_nothing() -> None:
     # Every character escaped and every other one a line break: the most an answer can grow in the message
     answers = {q.key: "*\n" * (LONG_LIMIT // 2) if q.long else "*" * SHORT_LIMIT for q in QUESTIONS}
     messages = application_messages(_applicant(), answers)
-    embeds = [embed for message in messages for embed in message]
-    assert len(messages) > 1
-    assert all(len(message) <= 10 and sum(map(len, message)) <= 6000 for message in messages)
-    assert all(len(embed.description or "") <= 4096 and len(embed.title or "") <= 256 for embed in embeds)
-    parts = [f"Staff application · part {n} of {len(messages)}" for n in range(1, len(messages) + 1)]
-    assert [message[-1].footer.text for message in messages] == parts
-    assert all(message[0].author.name == "member0 (sparkle)" for message in messages[1:])
-    quoted = [line for embed in embeds for line in (embed.description or "").splitlines() if line.startswith("> ")]
-    assert len(quoted) == sum(LONG_LIMIT // 2 if q.long else 1 for q in QUESTIONS)
+    texts = [_texts(view) for view in messages]
+    assert all(sum(map(len, message)) <= 4000 for message in texts)
+    assert all(_count(_card(view)) <= 40 for view in messages)
+    lines = [line for message in texts for text in message for line in text.split("\n") if line.startswith("\\*")]
+    assert len(lines) == sum(LONG_LIMIT // 2 if q.long else 1 for q in QUESTIONS)
 
 
 @pytest.mark.asyncio
@@ -163,7 +188,8 @@ async def test_an_application_is_posted_once_and_the_member_must_wait_a_week(
     assert "Your application is with the staff now." in thanks and "You can send another in 7 days." in later
     assert channel.send.await_count == 1
     kwargs = channel.send.await_args.kwargs
-    assert kwargs["embeds"][0].title == "📝 New staff application" and kwargs["allowed_mentions"].users is False
+    assert _texts(kwargs["view"])[0] == "## 📝 New staff application" and set(kwargs) == {"view", "allowed_mentions"}
+    assert kwargs["allowed_mentions"].users is False and kwargs["allowed_mentions"].roles is False
     page = await again.text()
     assert again.status == 400 and "You can send another in 7 days." in page
     assert "me &lt;b&gt;again&lt;/b&gt;</textarea>" in page  # the answers come back, escaped

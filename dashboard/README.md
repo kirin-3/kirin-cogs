@@ -72,15 +72,17 @@ they'd hand something up. The questions are `SECTIONS` in `apply.py`; the page, 
 are all built from it. The home page shows the tile to members with a level role from Level 30 up; anyone else gets
 403. The form doesn't ask for anything the embed already shows (Discord name, level, join date).
 
-A sent application is posted to the applications channel `1418772229633605692` as embeds. A lavender header shows the
-member's avatar, mention, name, ID, highest level role, join date and account age. Then each section gets its own
-card in the pastel it has on the page, with each question in bold and the answer quoted under it. Markdown in an
-answer is escaped, so a heading or code block someone types can't restyle the message. Answers are packed in order
-into as few messages as Discord's limits allow (4096 characters an embed, 6000 a message), and an answer is only split,
-at a line break, if it's too long for an embed on its own (only with extreme input, such as 750 one-symbol lines). A typical application is one or
-two messages, and one with every answer full is four. When there's more than one, each is numbered ("part 2 of 4"),
-each after the first names the member, and each starts with the name of the section it continues. Mentions never ping. The bot needs View Channel, Send Messages and Embed Links there; without them, or if the channel is
-gone, the member is told to try later and a warning is logged.
+A sent application is posted to the applications channel `1418772229633605692` as a Components V2 message: one
+lavender card with the member's avatar beside their mention, name, ID, highest level role, join date and account age,
+then a divider and a heading for each section. Each question is small grey text with the answer under it, like a form
+response, and the situations are listed in small text above the two picks. Markdown in an answer is escaped, so a
+heading or code block someone types can't restyle the message. Discord allows 4,000 characters of text a message, so
+answers are packed in order into as few messages as it takes; an answer is only split, at a line break, if it's too
+long for a message on its own (only with extreme input, such as 750 one-symbol lines). A short application is one
+message, a typical one two, and one with every answer full six. When there's more than one, each is numbered
+("part 2 of 6"), each after the first names the member, and a section that goes on in the next message says
+"continued". Mentions never ping. The bot needs View Channel, Send Messages and Embed Links there; without them, or
+if the channel is gone, the member is told to try later and a warning is logged.
 
 Short answers take up to 200 characters and long ones 1,500. The age is a plain box (no drop-down) that takes a
 two-digit number, checked by the browser and again by the bot. A refused application (a missing answer, the channel
