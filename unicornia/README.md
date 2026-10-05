@@ -9,7 +9,7 @@ Unicornia is a full Nadeko-compatible leveling and economy suite in one cog, bac
 - **Gambling**: Betroll, RPS, slots, blackjack (with capped spectator wagers), coinflip, luckyladder, mines, and staked PvP rock-paper-scissors duels via `[p]duel @user <amount>`.
 - **Leveling**: XP per message with rank cards, role and currency level rewards, double-XP channels, and per-guild channel whitelists.
 - **XP Shop**: Background shop with purchasable rank-card backgrounds.
-- **Shop**: Guild item/role shop.
+- **Shop**: Guild item/role shop, also posted in a shop channel as one Components V2 message per section, with a menu to buy from it (managed on the staff dashboard's Role shop page).
 - **Clubs**: Create, join, and manage clubs with shared XP and leaderboards.
 - **Waifus**: Claim, snipe, gift, divorce, and set affinity with other members.
 - **Unicorn Stable**: An idle game with an image card: hatch unicorns of five rarities that earn coins while you're away, upgrade them, and collect the coin box — plus shinies (1 in 200), a permanent collection with per-breed perks, ascension for a full stable of level-10s, and seasonal eggs in their UTC windows, all also on the member site ([STABLE.md](STABLE.md)).

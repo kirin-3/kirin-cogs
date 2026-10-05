@@ -141,6 +141,11 @@ class BackgroundShopView(discord.ui.View):
 
 
 class ShopCommands(UnicorniaMixinBase):
+    async def _update_shop_channel(self, ctx) -> None:
+        """Bring the posted shop up to date after an item changed, and say so if Discord refused."""
+        if problem := await self.refresh_shop_posts(ctx.guild):
+            await ctx.send(f"⚠️ The shop channel wasn't updated: {problem}")
+
     # Shop commands
     @commands.hybrid_group(name="shop", aliases=["store"])  # type: ignore[arg-type]
     @commands.guild_only()
@@ -354,6 +359,7 @@ class ShopCommands(UnicorniaMixinBase):
                 embed.add_field(name="Role", value=role_name, inline=True)
 
             await ctx.send(embed=embed)
+            await self._update_shop_channel(ctx)
 
         except Exception as e:
             await ctx.send(f"<a:zz_NoTick:729318761655435355> Error adding shop item: {e}")
@@ -482,6 +488,7 @@ class ShopCommands(UnicorniaMixinBase):
 
             if success:
                 await ctx.send(f"✅ Shop item #{item['index']} updated: {response_msg}")
+                await self._update_shop_channel(ctx)
             else:
                 await ctx.send("<a:zz_NoTick:729318761655435355> Failed to update shop item.")
 
@@ -510,6 +517,7 @@ class ShopCommands(UnicorniaMixinBase):
             success = await self.shop_system.delete_shop_item(ctx.guild.id, item["id"])
             if success:
                 await ctx.send(f"✅ Removed shop item: **{item['name']}**")
+                await self._update_shop_channel(ctx)
             else:
                 await ctx.send("<a:zz_NoTick:729318761655435355> Failed to remove shop item.")
 

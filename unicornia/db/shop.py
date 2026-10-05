@@ -1,3 +1,6 @@
+from types import EllipsisType
+
+
 class ShopRepository:
     """Repository for Shop system database operations"""
 
@@ -147,7 +150,7 @@ class ShopRepository:
         entry_type: int | None = None,
         role_name: str | None = None,
         role_id: int | None = None,
-        role_requirement: int | None = None,
+        role_requirement: int | EllipsisType | None = ...,
         command: str | None = None,
     ) -> bool:
         """Update a shop entry.
@@ -160,7 +163,7 @@ class ShopRepository:
             entry_type: New type (optional).
             role_name: New role name (optional).
             role_id: New role ID (optional).
-            role_requirement: New role requirement (optional).
+            role_requirement: New role requirement, or None to remove it (optional).
             command: New command (optional).
 
         Returns:
@@ -186,7 +189,7 @@ class ShopRepository:
             if role_id is not None:
                 updates.append("RoleId = ?")
                 params.append(role_id)
-            if role_requirement is not None:
+            if role_requirement is not ...:
                 updates.append("RoleRequirement = ?")
                 params.append(role_requirement)
             if command is not None:

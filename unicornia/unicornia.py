@@ -36,6 +36,7 @@ from .db.economy import OperationDirection, OperationOutcome
 from .db.waifu import DEFAULT_WAIFU_PRICE
 from .errors import SystemNotReadyError
 from .market_views import StockDashboardView, portfolio_totals
+from .shop_channel import BuySelect, ShopChannelMixin
 from .systems import (
     ClubSystem,
     CurrencyDecay,
@@ -85,6 +86,7 @@ class Unicornia(
     NitroCommands,
     StockCommands,
     StableCommands,
+    ShopChannelMixin,
     commands.Cog,
 ):
     """
@@ -142,6 +144,8 @@ class Unicornia(
             "system_whitelist": {},  # {system_name: [channel_ids]}
             "market_channel": None,  # Channel ID for Stock Dashboard
             "market_message": None,  # Message ID for Stock Dashboard
+            "shop_channel": None,  # Channel ID of the posted shop (shop_channel.py)
+            "shop_sections": {},  # {section_id: section}, see shop_channel.clean_section
         }
 
         self.config.register_global(**default_global)
@@ -164,6 +168,7 @@ class Unicornia(
         self.reservation_recovery_task = None
         self.nitro_task = None
         self._whitelist_cache: dict[int, tuple[dict[str, list[int]], dict[str, list[int]]]] = {}
+        self._shop_lock = asyncio.Lock()  # ponytail: one lock for every guild; the posted shop changes rarely
         # The member site's stable card cache: member id -> (what was rendered, when it expires, the webp bytes)
         self._stable_cards: dict[int, tuple[tuple, float, bytes]] = {}
 
@@ -224,6 +229,7 @@ class Unicornia(
 
             # Register Persistent Views
             self.bot.add_view(StockDashboardView(self.market_system))
+            self.bot.add_dynamic_items(BuySelect)
 
             # Start background tasks
             await self.currency_decay.start_decay_loop()
@@ -241,6 +247,7 @@ class Unicornia(
 
     async def cog_unload(self):
         """Called when the cog is unloaded - proper cleanup"""
+        self.bot.remove_dynamic_items(BuySelect)
         try:
             # Stop XP admission first, even if another system's cleanup fails.
             if self.xp_system:

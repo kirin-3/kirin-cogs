@@ -163,6 +163,8 @@ An idle game: unicorns earn coins into a coin box while you're away. See [STABLE
 ## Shop
 Buy roles, items, and XP card customizations.
 
+The shop is also posted in a shop channel, one message per section, each with a menu to buy from it. A role item shows the role's mention, in the role's colour. Picking an item asks you to confirm, then buys it the same way as `[p]shop buy`. Staff set the channel, the sections and the items on the staff dashboard's Role shop page (`staff.unicornia.net/shop`). `[p]shop add`, `edit` and `remove` update the posted messages too.
+
 | Command | Description | Permission |
 | :--- | :--- | :--- |
 | `[p]shop` | Base command for the item shop. Alias: `store`. | |
