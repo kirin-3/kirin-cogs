@@ -70,6 +70,15 @@ class CoreDB:
                     except Exception:
                         log.exception("Could not roll back after a failed database operation")
                 raise
+            else:
+                # Same for a caller that returns without committing, e.g. a refused payment whose
+                # failed checks still opened sqlite3's implicit transaction.
+                if self._conn is not None and self._conn.in_transaction:
+                    log.warning("Rolling back a transaction a caller left open", stack_info=True)
+                    try:
+                        await self._conn.rollback()
+                    except Exception:
+                        log.exception("Could not roll back after a failed database operation")
 
     async def _setup_wal_mode(self, db: aiosqlite.Connection) -> None:
         """Set up WAL mode and optimizations for a database connection.

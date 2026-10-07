@@ -71,3 +71,16 @@ async def test_a_failed_operation_does_not_leave_the_shared_transaction_open(db:
     assert await db.economy.get_user_currency(1) == 0
     await db.economy.add_currency(1, 100, "test")
     assert await db.economy.get_user_currency(1) == 100
+
+
+@pytest.mark.asyncio
+async def test_a_caller_returning_without_commit_does_not_leave_the_shared_transaction_open(
+    db: DatabaseManager,
+) -> None:
+    async with db._get_connection() as conn:
+        # Like a refused payment: a write opened sqlite3's implicit transaction, then the caller returned
+        await conn.execute("INSERT OR IGNORE INTO DiscordUser (UserId, CurrencyAmount) VALUES (1, 0)")
+
+    assert db._conn is not None and not db._conn.in_transaction
+    await db.economy.add_currency(1, 100, "test")
+    assert await db.economy.get_user_currency(1) == 100
