@@ -346,7 +346,7 @@ class CloseView(View):
             color=discord.Color.red(),
         )
         embed.set_image(
-            url="https://cdn.discordapp.com/attachments/686096388018405408/1267972588165136496/id-verify.png"
+            url="https://media.discordapp.net/attachments/686096388018405408/1557876769095421952/image.png"
         )
         await interaction.response.send_message(embed=embed)
 
