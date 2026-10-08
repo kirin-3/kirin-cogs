@@ -44,6 +44,7 @@ def _make_interaction(*, member: MagicMock, guild: discord.Guild | None) -> Magi
     interaction.guild = guild
     interaction.response.send_message = AsyncMock()
     interaction.response.send_modal = AsyncMock()
+    interaction.response.defer = AsyncMock()
     interaction.followup.send = AsyncMock()
     return interaction
 
@@ -231,7 +232,8 @@ async def test_modal_submit_valid_without_primary_role_points_at_the_roles_chann
 
     log_channel.send.assert_awaited_once()
     member.add_roles.assert_awaited_once_with(role, reason="Accepted the rules.")
-    interaction.response.send_message.assert_awaited_once_with(
+    interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+    interaction.followup.send.assert_awaited_once_with(
         "Thank you! You have accepted the rules. Pick a role in <#708066544688562196> for full access.",
         ephemeral=True,
     )
@@ -282,7 +284,7 @@ async def test_modal_submit_valid_role_assign_error(cog: RulesAccept, config_moc
 
     await modal.on_submit(interaction)
 
-    interaction.response.send_message.assert_awaited_once_with(
+    interaction.followup.send.assert_awaited_once_with(
         "The role could not be assigned. Please contact an administrator.", ephemeral=True
     )
 
@@ -388,6 +390,7 @@ async def test_modal_submit_replies_before_the_log_is_sent(
 
     order: list[str] = []
     interaction.response.send_message = AsyncMock(side_effect=lambda *a, **k: order.append("reply"))
+    interaction.followup.send = AsyncMock(side_effect=lambda *a, **k: order.append("reply"))
     log_channel = MagicMock(spec=discord.TextChannel)
     log_channel.send = AsyncMock(side_effect=lambda *a, **k: order.append("log"))
     cog.bot.get_channel = MagicMock(return_value=log_channel)
@@ -395,6 +398,32 @@ async def test_modal_submit_replies_before_the_log_is_sent(
     await modal.on_submit(interaction)
 
     assert order == ["reply", "log"]
+
+
+@pytest.mark.asyncio
+async def test_modal_submit_defers_before_granting_roles(cog: RulesAccept, config_mock: MagicMock) -> None:
+    """Granting roles can take longer than the 3 seconds Discord allows for a first reply."""
+    modal = rulesacceptModal(cog)
+    modal.answer._value = "I agree to the rules."
+
+    guild = MagicMock(spec=discord.Guild)
+    _configure_role_permissions(guild)
+    guild.get_role.return_value = _manageable_role()
+    member = MagicMock(spec=discord.Member)
+    member.id = 555
+    member.mention = "<@555>"
+    member.get_role.return_value = None
+    interaction = _make_interaction(member=member, guild=guild)
+    config_mock.guild.return_value.member_role_id = AsyncMock(return_value=42)
+
+    order: list[str] = []
+    interaction.response.defer = AsyncMock(side_effect=lambda *a, **k: order.append("defer"))
+    member.add_roles = AsyncMock(side_effect=lambda *a, **k: order.append("add_roles"))
+    interaction.followup.send = AsyncMock(side_effect=lambda *a, **k: order.append("reply"))
+
+    await modal.on_submit(interaction)
+
+    assert order == ["defer", "add_roles", "reply"]
 
 
 @pytest.mark.asyncio

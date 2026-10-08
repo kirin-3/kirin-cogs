@@ -181,8 +181,19 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
                 if error_msg:
                     await interaction.response.send_message(error_msg, ephemeral=True)
                     return
+                # Granting roles can outlast the 3 seconds Discord gives to reply, which expires the interaction
+                await interaction.response.defer(ephemeral=True)
                 try:
                     await member.add_roles(*roles, reason="Accepted the rules.")
+                except discord.Forbidden:
+                    message = "I do not have permission to assign this role."
+                except discord.HTTPException:
+                    log.exception("Failed to grant the rules-acceptance role")
+                    message = "Discord could not assign the role. Please try again or contact an administrator."
+                except Exception:
+                    log.exception("Unexpected failure while granting the rules-acceptance role")
+                    message = "The role could not be assigned. Please contact an administrator."
+                else:
                     if primary:
                         message = (
                             "Thank you! You have accepted the rules and now have access to the server. "
@@ -193,22 +204,7 @@ class rulesacceptModal(discord.ui.Modal, title="Rules Acceptance"):
                             "Thank you! You have accepted the rules. "
                             f"Pick a role in <#{ROLES_CHANNEL_ID}> for full access."
                         )
-                    await interaction.response.send_message(message, ephemeral=True)
-                except discord.Forbidden:
-                    await interaction.response.send_message(
-                        "I do not have permission to assign this role.", ephemeral=True
-                    )
-                except discord.HTTPException:
-                    log.exception("Failed to grant the rules-acceptance role")
-                    await interaction.response.send_message(
-                        "Discord could not assign the role. Please try again or contact an administrator.",
-                        ephemeral=True,
-                    )
-                except Exception:
-                    log.exception("Unexpected failure while granting the rules-acceptance role")
-                    await interaction.response.send_message(
-                        "The role could not be assigned. Please contact an administrator.", ephemeral=True
-                    )
+                await interaction.followup.send(message, ephemeral=True)
             else:
                 await interaction.response.send_message("Role not found. Please contact an admin.", ephemeral=True)
         else:

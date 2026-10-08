@@ -56,9 +56,8 @@ async def test_member_accepts_rules_and_picks_a_primary_role(
     accepted = await member.submit_modal(
         shown, {phrase["custom_id"]: '"i agree to the rules"', select["custom_id"]: [str(male.id)]}
     )
-    assert accepted.response is not None and accepted.response.ephemeral
-    assert "now have access" in accepted.response.content
-    assert not accepted.followups
+    assert accepted.followups[-1].ephemeral
+    assert "now have access" in accepted.followups[-1].content
     assert member.member is not None
     assert {r.id for r in member.member.roles} == {guild.id, role.id, male.id}
     simcord.assert_no_errors(red_env)
