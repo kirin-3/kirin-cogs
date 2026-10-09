@@ -41,6 +41,7 @@ from .unicornia_views import StaffUnicornia
 GUILD_ID = 684360255798509578
 CUSTOM_EMOJI = re.compile(r"<(a?):(\w{2,32}):(\d{15,21})>")
 STAFF_ROLE_ID = 696020813299580940
+VIEW_ONLY_ROLE_ID = 898586656842600549  # may log in to the staff site but not change anything
 HOST = "127.0.0.1"
 STAFF_PORT = 8011
 MEMBER_PORT = 8012
@@ -333,6 +334,8 @@ class Dashboard(commands.Cog):
                 raise web.HTTPFound("/logged-out")
             raise web.HTTPUnauthorized()
         if request.method == "POST":
+            if request.app[SITE] is STAFF and resource.canonical != "/logout" and not self._is_staff(session.user_id):
+                raise web.HTTPForbidden()  # view-only role: can look, not change
             # Read only now that the session is known, so anonymous clients can't make the bot buffer uploads.
             if resource.canonical == GIF_UPLOAD_PATH and self._may_upload_gif(request, session):
                 request = request.clone(client_max_size=GIF_UPLOAD_MAX_BODY)  # keeps the route and app; must come first
@@ -371,7 +374,7 @@ class Dashboard(commands.Cog):
         return session
 
     def _admits(self, site: Site, user_id: int) -> bool:
-        return self._is_staff(user_id) if site is STAFF else self.member(user_id) is not None
+        return self._is_staff_viewer(user_id) if site is STAFF else self.member(user_id) is not None
 
     def guild(self) -> discord.Guild | None:
         return self.bot.get_guild(GUILD_ID)
@@ -387,6 +390,13 @@ class Dashboard(commands.Cog):
         return member is not None and (
             member.get_role(STAFF_ROLE_ID) is not None or member.guild_permissions.ban_members
         )
+
+    def _is_staff_viewer(self, user_id: int) -> bool:
+        """Staff, or the view-only role: may log in to the staff site, but can't POST (see _require_session)."""
+        if self._is_staff(user_id):
+            return True
+        member = self.member(user_id)
+        return member is not None and member.get_role(VIEW_ONLY_ROLE_ID) is not None
 
     async def _is_owner(self, user_id: int) -> bool:
         member = self.member(user_id)

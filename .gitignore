@@ -29,6 +29,7 @@ discord_py_new_features_explanation.md
 AGENTS.md
 .mcp.json
 discord_components_v2_guide.md
+.tobeported/
 
 # Dependency directories
 node_modules/
