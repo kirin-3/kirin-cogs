@@ -1,0 +1,12 @@
+{
+  "author": ["kirin"],
+  "short": "Records the payloads the bot sends, for reference captures.",
+  "description": "Developer tool: records the exact JSON the bot sends to Discord while a capture session is on. Owner only.",
+  "end_user_data_statement": "Stores the commands, interactions and bot replies of the owner who starts a capture, in a local file, until the next capture is started.",
+  "min_bot_version": "3.5.0",
+  "min_python_version": [3, 11, 0],
+  "requirements": [],
+  "tags": ["dev"],
+  "type": "COG",
+  "hidden": true
+}
